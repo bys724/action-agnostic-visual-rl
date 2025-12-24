@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# 실험 결과
+experiments/
+logs/
+wandb/
+tensorboard/
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+
+# 데이터
+data/
+datasets/
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# 환경 설정
+.env
+.env.local
+
+# 캐시
+.cache/
+*.cache
+
+# 임시 파일
+tmp/
+temp/
+*.tmp
