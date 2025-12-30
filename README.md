@@ -6,66 +6,37 @@
 ## 실험 환경
 - **벤치마크**: SIMPLER (시뮬레이션-실제 전환 평가)
 - **시뮬레이터**: SAPIEN (레이 트레이싱 렌더링)
-- **GPU 요구사항**: RTX 시리즈 (RT 코어 필수)
+- **GPU 요구사항**: NVIDIA RTX (RT 코어 필요)
 
 ## 프로젝트 구조
 ```
 action-agnostic-visual-rl/
-├── configs/           # 실험 설정
+├── docker/           # Docker 개발 환경
+├── docs/             # 문서
 ├── src/              
-│   ├── models/       # 시각 인코더, 정책 네트워크
-│   ├── algorithms/   # RL 알고리즘
-│   ├── envs/         # SIMPLER 환경 래퍼
-│   └── utils/        # 유틸리티
-├── scripts/          # 실행 스크립트
-└── experiments/      # 실험 결과
+│   └── envs/         # SIMPLER 환경 래퍼
+└── third_party/      # 외부 의존성
+    └── SimplerEnv/   # SIMPLER 환경
 ```
 
-## 설치
+## 빠른 시작 (Docker 권장)
 
-### 자동 설치 (권장)
+### Docker 환경 사용 (권장)
 ```bash
-# 설치 스크립트 실행
-bash setup_env.sh
+# 1. Docker 이미지 빌드
+./docker/build.sh
+
+# 2. 개발 환경 실행
+./docker/run.sh
+
+# 3. 컨테이너 내부에서 테스트
+python docker/test_env.py
 ```
 
-### 수동 설치
-```bash
-# Python venv 사용 (conda 없이)
-python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# Windows: venv\Scripts\activate
+자세한 내용은 [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md) 참조
 
-# pip 업그레이드
-pip install --upgrade pip
-
-# numpy 버전 고정 (중요!)
-pip install numpy==1.24.4
-
-# SIMPLER 서브모듈 설치
-cd third_party/SimplerEnv/ManiSkill2_real2sim
-pip install -e .
-cd ../
-pip install -e .
-cd ../../
-
-# 나머지 패키지 설치
-pip install -r requirements.txt
-```
-
-## 실행
-```bash
-# SIMPLER 환경 테스트
-python scripts/test_simpler_env.py --list-envs
-python scripts/test_simpler_env.py --env google_robot_pick_coke_can
-
-# 학습 (준비중)
-python scripts/train.py --config configs/experiment.yaml
-
-# 평가 (준비중)
-python scripts/evaluate.py --checkpoint path/to/model.pt
-```
-
-## 주요 실험
-1. 베이스라인: 랜덤 초기화, 고정/미세조정 사전학습 모델
-2. 제안 방법: 행동 비의존적 시각 표현 학습 (EMA 교사-학생)
+## 개발 현황
+- ✅ Docker 개발 환경 구성 완료
+- ✅ SIMPLER 환경 통합 완료
+- 🔄 시각 인코더 및 정책 네트워크 구현 예정
+- 🔄 학습 알고리즘 구현 예정

@@ -8,119 +8,65 @@ This project implements action-agnostic visual representation learning for robot
 - Basic configuration files set up
 - Dependencies listed in requirements.txt
 - SIMPLER added as submodule in third_party/SimplerEnv
-- Test script created: scripts/test_simpler_env.py
+- Docker-based development environment configured
+- Test script created: docker/test_env.py
 - Environment wrapper created: src/envs/simpler_wrapper.py
-- Setup guide: docs/SIMPLER_SETUP.md
+- Setup guides: docs/DOCKER_SETUP.md, docs/SIMPLER_SETUP.md
 
-## Next Steps
+## Development with Docker
 
-### 1. SIMPLER Environment Setup ✅
+### Quick Start
 ```bash
-# Quick setup (using Python venv, no conda needed)
-bash setup_env.sh
+# Build and run Docker environment
+./docker/build.sh
+./docker/run.sh
 
-# Or manual installation
-python3 -m venv venv
-source venv/bin/activate
-pip install numpy==1.24.4
-cd third_party/SimplerEnv/ManiSkill2_real2sim && pip install -e .
-cd ../ && pip install -e .
-cd ../../ && pip install -r requirements.txt
-
-# Test installation
-python scripts/test_simpler_env.py --list-envs
-python scripts/test_simpler_env.py --env google_robot_pick_coke_can --steps 100
+# Inside container:
+python docker/test_env.py
 ```
 
-### 2. Core Components to Implement
+### Current Structure
+```
+/workspace/
+├── docker/           # Docker scripts and tests
+├── docs/            # Documentation
+├── src/envs/        # Environment wrappers
+└── third_party/     # SIMPLER environment
+```
 
-#### Visual Encoder (src/models/visual_encoder.py)
-- DINOv2 backbone with partial fine-tuning
-- CLIP backbone alternative
-- EMA momentum teacher network (β = 0.999)
+## Next Steps (To be implemented)
 
-#### Policy Network (src/models/policy.py)
-- MLP policy for SIMPLER action space (7-dim)
-- Action format: [dx, dy, dz, rx, ry, rz, gripper]
-- Quaternion to axis-angle conversion
+### 1. Core Components
+- [ ] Visual encoder (DINOv2/CLIP)
+- [ ] Policy network
+- [ ] Training loop
+- [ ] Evaluation pipeline
 
-#### Training Loop (scripts/train.py)
-- Integration with SIMPLER reset() and step() methods
-- Visual encoder + policy co-training
-- EMA update for momentum teacher
-
-### 3. Key Technical Details
+### 2. Technical Notes
 
 #### SIMPLER Action Space
-- **Format**: 7-dimensional continuous
-- **Position**: Delta end-effector position (dx, dy, dz)
-- **Rotation**: Axis-angle representation (rx, ry, rz)
-- **Gripper**: Continuous value (open/close)
+- 7-dimensional: [dx, dy, dz, rx, ry, rz, gripper]
+- Position: Delta end-effector position
+- Rotation: Axis-angle representation
+- Gripper: Continuous value
 
-#### EMA Update Formula
+#### EMA Update
 ```python
 # Momentum encoder update
 for param_q, param_k in zip(student.parameters(), teacher.parameters()):
     param_k.data = param_k.data * beta + param_q.data * (1 - beta)
 ```
 
-#### Partial Fine-tuning Strategy
-Based on PVM in MBRL paper:
-- Freeze early layers (feature extraction)
-- Fine-tune later layers (task-specific)
-- Keep momentum encoder for stable targets
-
-### 4. Experiment Pipeline
-
-1. **Baseline Tests**
-   - Random initialization
-   - Frozen DINOv2/CLIP
-   - Full fine-tuning
-
-2. **Our Method**
-   - Action-agnostic visual learning
-   - EMA teacher-student
-   - Partial fine-tuning
-
-3. **Evaluation Metrics**
-   - Success rate on SIMPLER tasks
-   - Sample efficiency
-   - Cross-embodiment transfer
-
-### 5. Common Issues & Solutions
-
-#### GPU Memory
-- Use gradient accumulation if OOM
-- Reduce batch size or image resolution
-- Consider mixed precision training
-
-#### SIMPLER Integration
-- Ensure RT cores available (RTX GPU)
-- Check SAPIEN renderer initialization
-- Verify action space conversion
-
-#### Training Stability
-- Start with lower learning rate (1e-4)
-- Warm-up EMA decay (0.996 → 0.999)
-- Monitor gradient norms
-
 ## Important Commands
 
 ```bash
-# Run lint and type checking (if available)
-# npm run lint
-# npm run typecheck
-# ruff check .
-# mypy src/
+# Docker commands
+docker-compose up simpler-dev    # Development environment
+docker-compose up jupyter         # Jupyter Lab
 
-# Training
-python scripts/train.py --config configs/experiment.yaml
-
-# Evaluation
-python scripts/evaluate.py --checkpoint path/to/model.pt
-
-# Tensorboard
-tensorboard --logdir experiments/
+# Inside container
+cd /workspace
+python docker/test_env.py        # Test SIMPLER environment
 ```
 
 ## Research Context
