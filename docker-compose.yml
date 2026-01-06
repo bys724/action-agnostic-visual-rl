@@ -21,7 +21,7 @@ services:
     stdin_open: true
     tty: true
     shm_size: '16gb'
-    command: bash -c "Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & exec bash"
+    command: /bin/bash
 
   jupyter:
     build:
