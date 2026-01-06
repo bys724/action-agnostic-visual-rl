@@ -4,6 +4,11 @@ Docker 환경 테스트 스크립트
 컨테이너 내에서 실행하여 SIMPLER가 정상 작동하는지 확인
 """
 
+import os
+# Vulkan 렌더링 비활성화, CPU 렌더링 사용
+os.environ['SAPIEN_DISABLE_VULKAN'] = '1'
+os.environ['SAPIEN_RENDERER'] = 'offscreen'
+
 import simpler_env
 from simpler_env.utils.env.observation_utils import get_image_from_maniskill2_obs_dict
 import numpy as np

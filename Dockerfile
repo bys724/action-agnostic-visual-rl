@@ -80,6 +80,8 @@ RUN mkdir -p /workspace/experiments /workspace/logs /workspace/checkpoints
 
 # Set up display for rendering (when needed)
 ENV DISPLAY=:99
+# Disable Vulkan for SAPIEN (use CPU rendering)
+ENV SAPIEN_DISABLE_VULKAN=1
 
 # Default command (can be overridden)
 CMD ["/bin/bash"]
