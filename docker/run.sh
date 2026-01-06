@@ -3,7 +3,7 @@
 
 echo "Starting SIMPLER development environment..."
 
-# 컨테이너 실행
+# Xvfb를 백그라운드에서 실행하고 bash 쉘 시작
 docker run -it --rm \
     --runtime=nvidia \
     --gpus all \
@@ -18,4 +18,4 @@ docker run -it --rm \
     --network=host \
     --name simpler-dev \
     action-agnostic-visual-rl:latest \
-    /bin/bash -c "Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & bash"
+    bash -c "Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & exec bash"

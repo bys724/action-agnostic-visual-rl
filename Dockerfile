@@ -81,5 +81,5 @@ RUN mkdir -p /workspace/experiments /workspace/logs /workspace/checkpoints
 # Set up display for rendering (when needed)
 ENV DISPLAY=:99
 
-# Entry point for running with virtual display
-ENTRYPOINT ["/bin/bash"]
+# Default command (can be overridden)
+CMD ["/bin/bash"]
