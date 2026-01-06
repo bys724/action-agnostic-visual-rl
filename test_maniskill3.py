@@ -23,11 +23,8 @@ def test_maniskill3():
     
     try:
         print(f"\n1. Creating environment: {env_name}")
-        env = simpler_env.make(
-            env_name,
-            max_episode_steps=50,
-            render_mode='rgb_array'  # For headless rendering
-        )
+        # ManiSkill3 API - simpler arguments
+        env = simpler_env.make(env_name)
         print("   ✓ Environment created")
         
         print("\n2. Resetting environment...")
