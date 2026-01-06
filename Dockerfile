@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1
 ENV MUJOCO_GL=egl
 ENV PYOPENGL_PLATFORM=egl
 
-# Install system dependencies
+# Install system dependencies and Vulkan
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3.10-dev \
@@ -33,13 +33,14 @@ RUN apt-get update && apt-get install -y \
     patchelf \
     xvfb \
     ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Vulkan for SAPIEN
-RUN apt-get update && apt-get install -y \
     libvulkan1 \
-    vulkan-utils \
-    mesa-vulkan-drivers \
+    libxkbcommon-x11-0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-xinerama0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.10 as default
