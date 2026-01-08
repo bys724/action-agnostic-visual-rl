@@ -222,27 +222,37 @@ def evaluate_models(
         print(f"\n  Results saved to {model_file}")
     
     # DataFrame으로 변환
-    df = pd.DataFrame(results)
-    
-    # 비교 표 출력
-    print("\n" + "="*80)
-    print("COMPARISON TABLE")
-    print("="*80)
-    
-    # 성공률만 보여주는 간단한 표
-    success_cols = ["model", "avg_success"] + [f"{task}_success" for task in tasks]
-    success_df = df[success_cols].copy()
-    
-    # 퍼센트로 변환
-    for col in success_cols[1:]:
-        success_df[col] = success_df[col].apply(lambda x: f"{x:.1%}")
-    
-    print(success_df.to_string(index=False))
-    
-    # 전체 결과 CSV 저장
-    csv_file = Path(output_dir) / f"comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    df.to_csv(csv_file, index=False)
-    print(f"\nFull results saved to {csv_file}")
+    if results:
+        df = pd.DataFrame(results)
+        
+        # 비교 표 출력
+        print("\n" + "="*80)
+        print("COMPARISON TABLE")
+        print("="*80)
+        
+        # 성공률만 보여주는 간단한 표
+        success_cols = ["model", "avg_success"] + [f"{task}_success" for task in tasks]
+        if not df.empty and all(col in df.columns for col in success_cols):
+            success_df = df[success_cols].copy()
+            
+            # 퍼센트로 변환
+            for col in success_cols[1:]:
+                success_df[col] = success_df[col].apply(lambda x: f"{x:.1%}")
+            
+            print(success_df.to_string(index=False))
+        else:
+            print("No successful model evaluations to compare.")
+        
+        # 전체 결과 CSV 저장
+        if not df.empty:
+            csv_file = Path(output_dir) / f"comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            df.to_csv(csv_file, index=False)
+            print(f"\nFull results saved to {csv_file}")
+    else:
+        print("\n" + "="*80)
+        print("No models were successfully evaluated.")
+        print("="*80)
+        df = pd.DataFrame()
     
     return df
 
