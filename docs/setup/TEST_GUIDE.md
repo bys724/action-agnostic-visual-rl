@@ -44,13 +44,13 @@ python src/test_simpler_demo.py
 
 ### 옵션 2: 개별 테스트
 
-#### 1. SimplePolicy 테스트 (빠른 동작 확인)
+#### 1. 단일 모델 평가 (레거시 모드)
 ```bash
-# 기본 정책으로 환경 테스트
-python src/eval_simpler.py --model simple --n-episodes 2 --max-steps 100
+# OpenVLA 평가
+python src/eval_simpler.py --model "openvla/openvla-7b" --n-episodes 2 --max-steps 100
 
-# Trajectory 수집 테스트
-python src/collect_trajectories.py --model simple --n-per-task 2 --max-steps 100
+# 또는 타입 명시
+python src/eval_simpler.py --model "openvla-7b" --checkpoint "openvla/openvla-7b" --n-episodes 2
 ```
 
 예상 출력:
@@ -64,55 +64,48 @@ Evaluating PutSpoonOnTableClothInScene-v1...
 ...
 ```
 
-#### 2. OpenVLA 모델 테스트 (GPU 필요)
+#### 2. 다중 모델 비교 평가
 ```bash
-# OpenVLA import 확인
-python -c "from src.policies.openvla import OpenVLAPolicy; print('OpenVLA import OK')"
+# 커맨드라인에서 직접 설정
+python src/eval_simpler.py \
+    --models "openvla-base:openvla:openvla/openvla-7b" \
+             "openvla-ft:openvla:/path/to/finetuned" \
+    --n-episodes 24
 
-# OpenVLA 평가 (최소 테스트)
-python src/eval_simpler.py --model "openvla/openvla-7b" --n-episodes 1 --max-steps 100
+# JSON 설정 파일 사용
+python src/eval_simpler.py --config configs/eval_example.json
+```
 
+#### 3. Trajectory 수집
+```bash
 # OpenVLA trajectory 수집
-python src/collect_trajectories.py --model "openvla/openvla-7b" --n-per-task 1 --max-steps 100
-```
+python src/collect_trajectories.py \
+    --type openvla \
+    --checkpoint "openvla/openvla-7b" \
+    --n-per-task 25
 
-#### 3. Octo 모델 테스트 (의존성 충돌 가능)
-```bash
-# Octo-small 모델 평가 (자동 다운로드)
-python src/eval_simpler.py --model octo-small --n-episodes 4
-
-# Octo-base 모델 평가 (더 큰 모델)
-python src/eval_simpler.py --model octo-base --n-episodes 4
-```
-
-#### 4. RT-1 모델 테스트 (체크포인트 필요)
-```bash
-# RT-1 체크포인트 다운로드 (별도 수행 필요)
-# gsutil -m cp -r gs://gdm-robotics-open-x-embodiment/open_x_embodiment_and_rt_x_oss/rt_1_x_tf_trained_for_002272480_step.zip .
-
-# RT-1 평가
-python src/eval_simpler.py --model /path/to/rt1_checkpoint --n-episodes 4
-```
-
-#### 5. Trajectory 수집
-```bash
-# SimplePolicy로 trajectory 수집 (테스트)
-python src/collect_trajectories.py --model simple --n-per-task 2
-
-# Octo로 성공 trajectory 수집
-python src/collect_trajectories.py --model octo-small --n-per-task 25
+# 커스텀 모델 trajectory 수집
+python src/collect_trajectories.py \
+    --type custom \
+    --checkpoint "/path/to/model" \
+    --name "my-model-v1" \
+    --n-per-task 10
 ```
 
 ## 명령어 옵션
 
-### eval_simpler.py
-- `--model`: 모델 타입 또는 경로 (simple, octo-small, octo-base, rt1_path)
+### eval_simpler.py (다중 모델 지원)
+- `--model`: 단일 모델 경로 (레거시 모드)
+- `--models`: 모델 목록 "name:type:checkpoint" 형식
+- `--config`: JSON 설정 파일 경로
 - `--n-episodes`: 평가할 에피소드 수 (기본: 24)
 - `--max-steps`: 에피소드당 최대 스텝 (기본: 300)
 - `--output`: 결과 저장 디렉토리 (기본: ./data/results)
 
 ### collect_trajectories.py
-- `--model`: 모델 타입 또는 경로
+- `--type`: 모델 타입 (openvla, lapa, custom)
+- `--checkpoint`: 체크포인트 경로 또는 ID
+- `--name`: 출력 파일용 모델 이름 (선택)
 - `--n-per-task`: Task당 수집할 trajectory 수 (기본: 25)
 - `--max-steps`: 에피소드당 최대 스텝 (기본: 300)
 - `--output`: Trajectory 저장 디렉토리 (기본: ./data/trajectories)
@@ -122,7 +115,7 @@ python src/collect_trajectories.py --model octo-small --n-per-task 25
 ### 평가 결과 (JSON)
 ```
 data/results/
-└── octo-small_20241209_143022.json
+└── openvla_20241209_143022.json
     {
       "PutSpoonOnTableClothInScene-v1": 0.25,
       "PutCarrotOnPlateInScene-v1": 0.30,
@@ -135,7 +128,7 @@ data/results/
 ### Trajectory 데이터 (Pickle)
 ```
 data/trajectories/
-└── octo-small_100trajs_20241209_143022.pkl
+└── openvla_100trajs_20241209_143022.pkl
     [
       {
         "task": "...",
@@ -179,12 +172,10 @@ pip install mani_skill3
 
 | Model | Average Success Rate | Notes |
 |-------|---------------------|-------|
-| Random | ~0% | 랜덤 액션 |
-| SimplePolicy | 0-5% | 스크립트 정책 |
-| OpenVLA | 20-40% | 7B VLA 모델 (Zero-shot) |
-| Octo-small | 15-30% | 경량 모델 |
-| Octo-base | 20-40% | 표준 모델 |
-| RT-1 | 30-50% | Google 모델 |
+| OpenVLA-7B | 20-40% | Zero-shot 성능 |
+| OpenVLA-7B-FT | 40-60% | Fine-tuned (예상) |
+| LAPA-7B | 30-50% | Action-free 사전학습 (예상) |
+| Custom Model | TBD | 개발 중 |
 
 ## 다음 단계
 

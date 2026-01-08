@@ -22,23 +22,8 @@ else
     exit 1
 fi
 
-# 2. Octo-small 모델 테스트 (현재 의존성 충돌로 스킵)
-echo -e "\n${YELLOW}2. Octo-small model test (SKIPPED)${NC}"
-echo "----------------------------------------"
-echo "Note: Skipping due to dependency conflicts"
-echo "See docs/setup/OCTO_SETUP_ISSUES.md for details"
-echo -e "${YELLOW}⚠ Octo test skipped - known dependency issues${NC}"
-
-# 추후 수정 시 아래 코드 사용
-# python src/eval_simpler.py --model octo-small --n-episodes 2 --max-steps 100
-# if [ $? -eq 0 ]; then
-#     echo -e "${GREEN}✓ Octo-small test passed${NC}"
-# else
-#     echo -e "${RED}✗ Octo-small test failed${NC}"
-# fi
-
-# 3. Trajectory 수집 테스트
-echo -e "\n${YELLOW}3. Testing trajectory collection...${NC}"
+# 2. Trajectory 수집 테스트
+echo -e "\n${YELLOW}2. Testing trajectory collection...${NC}"
 echo "----------------------------------------"
 python src/collect_trajectories.py --model simple --n-per-task 2 --max-steps 100
 if [ $? -eq 0 ]; then
@@ -48,8 +33,8 @@ else
     exit 1
 fi
 
-# 4. 결과 확인
-echo -e "\n${YELLOW}4. Checking output files...${NC}"
+# 3. 결과 확인
+echo -e "\n${YELLOW}3. Checking output files...${NC}"
 echo "----------------------------------------"
 if [ -d "data/results" ]; then
     echo -e "${GREEN}✓ Results directory exists${NC}"

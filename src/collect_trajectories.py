@@ -15,80 +15,49 @@ from simpler_env.utils.env.observation_utils import get_image_from_maniskill3_ob
 from mani_skill.envs.tasks.digital_twins.bridge_dataset_eval import *
 
 
-class SimplePolicy:
-    """테스트용 Simple Policy (test_simpler_demo.py에서 가져옴)"""
+def load_policy(model_type: str, checkpoint_path: str):
+    """
+    정책 로드
     
-    def __init__(self):
-        self.step_count = 0
-        self.phase = 0
-        self.phase_steps = 0
-        
-    def get_action(self, obs):
-        """Generate simple action sequence for demonstration"""
-        sequences = [
-            (20, np.array([0, 0, -0.01, 0, 0, 0, 1.0])),
-            (10, np.array([0, 0, 0, 0, 0, 0, -1.0])),
-            (20, np.array([0, 0, 0.01, 0, 0, 0, -1.0])),
-            (30, np.array([0.005, 0.005, 0, 0, 0, 0, -1.0])),
-            (20, np.array([0, 0, -0.005, 0, 0, 0, -1.0])),
-            (10, np.array([0, 0, 0, 0, 0, 0, 1.0])),
-        ]
-        
-        if self.phase >= len(sequences):
-            self.phase = 0
-            self.phase_steps = 0
-            
-        duration, action = sequences[self.phase]
-        self.phase_steps += 1
-        
-        if self.phase_steps >= duration:
-            self.phase += 1
-            self.phase_steps = 0
-            
-        self.step_count += 1
-        return action.astype(np.float32)
+    Args:
+        model_type: 모델 타입 (openvla, lapa, custom)
+        checkpoint_path: 체크포인트 경로 또는 모델 ID
+    """
+    import sys
+    import os
     
-    def reset(self, instruction=None):
-        """Reset policy state (instruction ignored for SimplePolicy)"""
-        self.phase = 0
-        self.phase_steps = 0
-        self.step_count = 0
-
-
-def load_policy(model_path):
-    """정책 로드"""
-    if model_path == "simple":
-        return SimplePolicy()
+    # Add src directory to path for import
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
     
-    # SimplerEnv 베이스라인 모델 로드
-    policy_setup = "widowx_bridge"  # WidowX 로봇 사용
-    
-    if "openvla" in model_path.lower():
-        import sys
-        import os
-        # Add src directory to path for import
-        src_dir = os.path.dirname(os.path.abspath(__file__))
-        if src_dir not in sys.path:
-            sys.path.insert(0, src_dir)
+    if model_type == "openvla":
         from policies.openvla import OpenVLAPolicy
-        print(f"Loading OpenVLA model: {model_path}")
-        # HuggingFace model ID or local path
-        return OpenVLAPolicy(model_path=model_path)
+        print(f"Loading OpenVLA from: {checkpoint_path}")
+        return OpenVLAPolicy(model_path=checkpoint_path)
     
-    elif "octo" in model_path.lower():
-        from simpler_env.policies.octo.octo_model import OctoInference
-        model_type = "octo-small" if "small" in model_path else "octo-base"
-        print(f"Loading Octo model: {model_type}")
-        return OctoInference(model_type=model_type, policy_setup=policy_setup, init_rng=0)
+    elif model_type == "lapa":
+        # LAPA 모델 플레이스홀더
+        try:
+            from policies.lapa import LAPAPolicy
+            print(f"Loading LAPA from: {checkpoint_path}")
+            return LAPAPolicy(model_path=checkpoint_path)
+        except ImportError:
+            print("Warning: LAPA not yet implemented")
+            return None
     
-    elif "rt1" in model_path.lower() or "rt_1" in model_path.lower():
-        from simpler_env.policies.rt1.rt1_model import RT1Inference
-        print(f"Loading RT-1 model from: {model_path}")
-        return RT1Inference(saved_model_path=model_path, policy_setup=policy_setup)
+    elif model_type == "custom":
+        # 사용자 정의 모델 플레이스홀더
+        try:
+            from policies.custom import CustomPolicy
+            print(f"Loading Custom model from: {checkpoint_path}")
+            return CustomPolicy(model_path=checkpoint_path)
+        except ImportError:
+            print("Warning: Custom model not yet implemented")
+            return None
     
     else:
-        print(f"Warning: Unknown model type, using SimplePolicy")
-        return SimplePolicy()
+        raise ValueError(f"Unknown model type: {model_type}")
 
 
 def collect_successful_trajectories(policy, task_name, n_target=25, max_steps=300):
@@ -125,7 +94,7 @@ def collect_successful_trajectories(policy, task_name, n_target=25, max_steps=30
             trajectory["observations"].append(img)
             
             # 액션 생성
-            if hasattr(policy, 'step'):  # RT-1, Octo 모델
+            if hasattr(policy, 'step'):  # RT-1, OpenVLA 모델
                 raw_action, action = policy.step(img, instruction)
                 # terminate_episode 체크
                 if action.get("terminate_episode", [0])[0] > 0:
@@ -173,33 +142,57 @@ def collect_successful_trajectories(policy, task_name, n_target=25, max_steps=30
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="simple",
-                       help="모델 체크포인트 경로 또는 'simple' for test")
+    parser = argparse.ArgumentParser(description="Trajectory Collection for SimplerEnv")
+    
+    # 모델 설정
+    parser.add_argument("--type", type=str, default="openvla",
+                       help="Model type (openvla, lapa, custom)")
+    parser.add_argument("--checkpoint", type=str, required=True,
+                       help="Model checkpoint path or ID")
+    parser.add_argument("--name", type=str,
+                       help="Model name for output file (optional)")
+    
+    # 수집 설정
     parser.add_argument("--output", type=str, default="./data/trajectories",
-                       help="Trajectory 저장 디렉토리")
+                       help="Trajectory save directory")
     parser.add_argument("--n-per-task", type=int, default=25,
-                       help="Task당 수집할 trajectory 수")
-    parser.add_argument("--max-steps", type=int, default=300)
+                       help="Trajectories to collect per task")
+    parser.add_argument("--max-steps", type=int, default=300,
+                       help="Max steps per episode")
+    parser.add_argument("--tasks", nargs="+",
+                       help="Tasks to collect from (default: all 4)")
     
     args = parser.parse_args()
     
-    # SimplerEnv 4개 task
-    tasks = [
+    # 기본 task 목록
+    default_tasks = [
         "PutSpoonOnTableClothInScene-v1",
         "PutCarrotOnPlateInScene-v1",
         "StackGreenCubeOnYellowCubeBakedTexInScene-v1",
         "PutEggplantInBasketScene-v1"
     ]
+    tasks = args.tasks if args.tasks else default_tasks
     
     # 정책 로드
-    print(f"Loading policy: {args.model}")
-    policy = load_policy(args.model)
+    print(f"Loading {args.type} model from: {args.checkpoint}")
+    policy = load_policy(args.type, args.checkpoint)
+    
+    if policy is None:
+        print("Failed to load policy!")
+        return
+    
+    # 모델 이름 결정
+    if args.name:
+        model_name = args.name
+    else:
+        model_name = f"{args.type}_{Path(args.checkpoint).stem}"
     
     # 수집 실행
     all_trajectories = []
     print("\n" + "="*60)
     print(f"Collecting {args.n_per_task} trajectories per task")
+    print(f"Model: {model_name}")
+    print(f"Tasks: {len(tasks)}")
     print("="*60)
     
     for task in tasks:
@@ -218,7 +211,6 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    model_name = Path(args.model).stem if args.model != "simple" else "simple"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = output_dir / f"{model_name}_{len(all_trajectories)}trajs_{timestamp}.pkl"
     

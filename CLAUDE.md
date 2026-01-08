@@ -35,20 +35,19 @@ docker exec -it simpler-dev bash
 # - 유용한 alias (test-simple, test-all)
 ```
 
-### 통합된 베이스라인
-- **SimplePolicy**: 테스트용 더미 정책
-- **OpenVLA**: 7B VLA 모델 (src/policies/openvla/)
-- **Octo**: (의존성 충돌로 현재 비활성)
-- **RT-1**: (체크포인트 필요)
+### 비교 모델 라인업
+- **OpenVLA**: 7B VLA 모델 (구현 완료)
+- **LAPA**: Action-free 사전학습 모델 (예정)
+- **Custom**: 개발 중인 모델 (예정)
 
 ## 주요 파일 위치
 
-- **평가**: `src/eval_simpler.py`
+- **평가**: `src/eval_simpler.py` (다중 모델 비교 지원)
 - **데이터 수집**: `src/collect_trajectories.py`
 - **테스트**: `src/test_simpler_demo.py`
 - **연구 배경**: `docs/research/RESEARCH_CONTEXT.md`
-- **OpenVLA 정책**: `src/policies/openvla/`
-- **OpenVLA 테스트**: `scripts/test_openvla.sh`
+- **정책 구현**: `src/policies/`
+- **평가 설정**: `configs/eval_example.json`
 
 ## 개발 원칙
 
@@ -68,7 +67,7 @@ docker exec -it simpler-dev bash
 
 ## 중요 참고사항
 
-- SimplerEnv는 ManiSkill3 기반 (ManiSkill2 아님)
+- SimplerEnv는 ManiSkill3 기반
 - NumPy 버전은 1.x 유지 (OpenCV 호환성)
-- JAX/TensorFlow 메모리 사전할당 비활성화 필요
-- Octo 모델은 추가 의존성 필요 (dlimp, distrax 등)
+- GPU 메모리 관리: XLA_PYTHON_CLIENT_PREALLOCATE=false
+- 모델 비교 시 동일한 seed 사용 권장

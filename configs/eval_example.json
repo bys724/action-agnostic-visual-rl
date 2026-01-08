@@ -1,0 +1,35 @@
+{
+  "description": "Example configuration for multi-model evaluation",
+  "models": [
+    {
+      "name": "openvla-7b-base",
+      "type": "openvla",
+      "checkpoint": "openvla/openvla-7b"
+    },
+    {
+      "name": "openvla-7b-finetuned",
+      "type": "openvla",
+      "checkpoint": "/path/to/finetuned/checkpoint"
+    },
+    {
+      "name": "lapa-7b",
+      "type": "lapa",
+      "checkpoint": "lapa/lapa-7b"
+    },
+    {
+      "name": "custom-model-v1",
+      "type": "custom",
+      "checkpoint": "/path/to/custom/model"
+    }
+  ],
+  "tasks": [
+    "PutSpoonOnTableClothInScene-v1",
+    "PutCarrotOnPlateInScene-v1",
+    "StackGreenCubeOnYellowCubeBakedTexInScene-v1",
+    "PutEggplantInBasketScene-v1"
+  ],
+  "evaluation_params": {
+    "n_episodes": 24,
+    "max_steps": 300
+  }
+}
