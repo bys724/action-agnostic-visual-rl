@@ -54,14 +54,25 @@ RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/c
 # Install ManiSkill3 (required by SimplerEnv)
 RUN pip install --upgrade git+https://github.com/haosulab/ManiSkill.git
 
-# Install OpenVLA dependencies (let pip resolve versions)
+# Install OpenVLA dependencies with specific versions for production
 RUN pip install --no-cache-dir \
-    transformers \
-    accelerate \
-    timm \
-    tokenizers \
+    transformers>=4.45.0 \
+    accelerate>=0.30.0 \
+    timm>=0.9.10 \
+    tokenizers>=0.15.0 \
     sentencepiece \
-    pillow
+    pillow \
+    einops \
+    safetensors
+
+# Pre-download OpenVLA model files (optional, comment out if not needed)
+# This speeds up first run but increases image size
+# RUN python -c "from transformers import AutoProcessor, AutoModel; \
+#     AutoProcessor.from_pretrained('openvla/openvla-7b', trust_remote_code=True); \
+#     print('Processor downloaded')"
+
+# Flash Attention 2 for faster inference (requires CUDA 11.6+)
+# RUN pip install flash-attn --no-build-isolation
 
 # Install SimplerEnv from submodule
 COPY third_party/SimplerEnv /tmp/SimplerEnv

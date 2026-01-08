@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from pathlib import Path
 from typing import Optional, Dict, Any
-from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers import AutoModelForCausalLM, AutoProcessor, AutoModel
 from PIL import Image
 
 
@@ -39,24 +39,27 @@ class OpenVLAPolicy:
                 model_path, 
                 trust_remote_code=True
             )
-            # Try to load the model with trust_remote_code
-            # OpenVLA requires custom model class
-            from transformers import AutoModel
+            
+            # OpenVLA uses a custom model class that requires trust_remote_code
+            # The model should auto-download from HuggingFace on first use
             try:
-                # First try with AutoModel (for custom models)
-                self.model = AutoModel.from_pretrained(
-                    model_path,
-                    torch_dtype=torch_dtype,
-                    device_map=device,
-                    trust_remote_code=True
-                )
-            except:
-                # Fallback to AutoModelForCausalLM
+                # Load OpenVLA model - it registers its own class
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_path,
                     torch_dtype=torch_dtype,
                     device_map=device,
-                    trust_remote_code=True
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True  # For large models
+                )
+            except Exception as e1:
+                print(f"AutoModelForCausalLM failed: {e1}")
+                # Try AutoModel as fallback
+                self.model = AutoModel.from_pretrained(
+                    model_path,
+                    torch_dtype=torch_dtype,
+                    device_map=device,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True
                 )
         except Exception as e:
             print(f"Warning: Could not load actual model, using mock. Error: {e}")
