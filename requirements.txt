@@ -2,7 +2,7 @@
 torch>=2.0.0
 torchvision>=0.15.0
 numpy>=1.24.0
-opencv-python>=4.8.0
+# opencv-python은 시스템 패키지(python3-opencv) 사용
 
 # SIMPLER 및 시뮬레이션
 # simpler-env  # GitHub에서 직접 설치 필요

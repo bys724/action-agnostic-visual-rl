@@ -26,6 +26,20 @@ datasets/
 *.hdf5
 *.npy
 *.npz
+*.pkl
+*.pickle
+
+# 대용량 데이터셋
+droid/
+bridge_v2/
+openx/
+trajectories/
+results/
+
+# 모델 체크포인트  
+checkpoints/
+*.safetensors
+*.bin
 
 # IDE
 .vscode/

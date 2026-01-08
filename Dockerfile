@@ -39,11 +39,14 @@ WORKDIR /workspace
 # Copy requirements file
 COPY requirements.txt /tmp/requirements.txt
 
-# Install Python dependencies with NumPy 1.x for compatibility
+# Install NumPy 1.x first (MUST be before other packages)
 RUN pip install --no-cache-dir "numpy<2.0" scipy
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Force NumPy 1.x again (in case requirements.txt upgraded it)
+RUN pip install --no-cache-dir --force-reinstall "numpy<2.0"
 
 # Install PyTorch with CUDA support first
 RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
@@ -55,17 +58,40 @@ RUN pip install --upgrade git+https://github.com/haosulab/ManiSkill.git
 COPY third_party/SimplerEnv /tmp/SimplerEnv
 RUN cd /tmp/SimplerEnv && pip install -e .
 
-# Install OpenCV with GUI support
+# Install OpenCV with GUI support (system package)
 RUN apt-get update && apt-get install -y python3-opencv && \
     rm -rf /var/lib/apt/lists/*
 
-# Ensure NumPy 1.x is maintained
-RUN pip install --force-reinstall "numpy<2.0"
+# Remove pip opencv-python if accidentally installed and ensure NumPy 1.x
+RUN pip uninstall -y opencv-python opencv-python-headless 2>/dev/null || true && \
+    pip install --force-reinstall "numpy<2.0" --no-deps && \
+    python -c "import numpy; assert numpy.__version__ < '2.0', f'NumPy {numpy.__version__} >= 2.0!'" && \
+    python -c "import cv2; assert hasattr(cv2, 'imshow'), 'OpenCV GUI support missing!'"
 
 # Environment variables for rendering
 ENV MUJOCO_GL=egl
 ENV PYOPENGL_PLATFORM=egl
 ENV DISPLAY=:99
+
+# Setup bashrc with commonly needed environment variables
+RUN echo '# GPU Memory Management' >> /root/.bashrc && \
+    echo 'export XLA_PYTHON_CLIENT_PREALLOCATE=false' >> /root/.bashrc && \
+    echo 'export TF_FORCE_GPU_ALLOW_GROWTH=true' >> /root/.bashrc && \
+    echo '' >> /root/.bashrc && \
+    echo '# CUDA Settings' >> /root/.bashrc && \
+    echo 'export CUDA_VISIBLE_DEVICES=0' >> /root/.bashrc && \
+    echo '' >> /root/.bashrc && \
+    echo '# Convenience aliases' >> /root/.bashrc && \
+    echo 'alias ll="ls -la"' >> /root/.bashrc && \
+    echo 'alias test-simple="python src/eval_simpler.py --model simple --n-episodes 2"' >> /root/.bashrc && \
+    echo 'alias test-all="./scripts/test_baseline.sh"' >> /root/.bashrc && \
+    echo '' >> /root/.bashrc && \
+    echo '# Welcome message' >> /root/.bashrc && \
+    echo 'echo "========================================="' >> /root/.bashrc && \
+    echo 'echo "SimplerEnv Evaluation Environment"' >> /root/.bashrc && \
+    echo 'echo "GPU memory settings configured."' >> /root/.bashrc && \
+    echo 'echo "Use test-simple or test-all to run tests"' >> /root/.bashrc && \
+    echo 'echo "========================================="' >> /root/.bashrc
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\

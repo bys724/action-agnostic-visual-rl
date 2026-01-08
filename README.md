@@ -1,42 +1,95 @@
-# Action-Agnostic Visual Representation for Robotic Manipulation
+# Action-Agnostic Visual Representation Learning
 
-## 핵심 아이디어
-행동 정보 없이 학습한 시각적 표현이 다양한 로봇과 작업에서 더 잘 일반화된다는 가설 검증
+## 연구 목표
 
-## 실험 환경
-- **벤치마크**: SIMPLER (시뮬레이션-실제 전환 평가)
-- **시뮬레이터**: SAPIEN (레이 트레이싱 렌더링)
-- **GPU 요구사항**: NVIDIA RTX (RT 코어 필요)
+**핵심 가설**: 행동 정보 없이 학습한 시각적 표현이 다양한 로봇과 작업에 더 잘 일반화된다
+
+### 검증하고자 하는 것
+1. 행동 조건부 학습 vs 행동 독립적 학습의 성능 차이
+2. 다양한 로봇 형태(morphology)에 대한 전이 능력
+3. 새로운 작업에 대한 적응 속도
+
+## 실험 계획
+
+### Phase 1: 베이스라인 구축
+- SimplerEnv 벤치마크에서 기존 모델들의 성능 측정
+- RT-1, Octo, OpenVLA 등 최신 모델 평가
+- Zero-shot 및 few-shot 성능 기록
+
+### Phase 2: 행동 독립적 표현 학습
+- 대규모 비전 데이터셋으로 사전학습 (DROID, Open-X)
+- Self-supervised learning 방법론 적용
+  - Contrastive learning (시간적 일관성)
+  - Masked autoencoding (공간적 이해)
+  - Cross-view prediction (다중 시점 일반화)
+
+### Phase 3: 정책 학습 및 전이
+- 학습된 표현 위에 경량 정책 헤드 추가
+- SimplerEnv 작업에서 fine-tuning
+- 다른 로봇/작업으로 전이 실험
+
+### Phase 4: 분석 및 검증
+- 표현 공간 분석 (t-SNE, attention maps)
+- Ablation studies
+- 실제 로봇 검증 (가능한 경우)
+
+## 평가 지표
+
+### 주요 메트릭
+- **Success Rate**: 작업 완료율
+- **Sample Efficiency**: 필요한 학습 데이터 양
+- **Transfer Performance**: 새로운 작업/로봇에서의 성능
+- **Representation Quality**: 선형 평가, 최근접 이웃 검색
+
+### 벤치마크
+- SimplerEnv: 4개 조작 작업
+- 추가 검증 환경 (계획 중)
+
+## 기술 스택
+
+- **환경**: SimplerEnv (ManiSkill3 기반)
+- **비전 모델**: DINOv2, CLIP, MAE
+- **정책 학습**: Behavior Cloning, RLPD
+- **인프라**: Docker, PyTorch, JAX
 
 ## 프로젝트 구조
+
 ```
-action-agnostic-visual-rl/
-├── docker/           # Docker 개발 환경
-├── docs/             # 문서
-├── src/              
-│   └── envs/         # SIMPLER 환경 래퍼
-└── third_party/      # 외부 의존성
-    └── SimplerEnv/   # SIMPLER 환경
+.
+├── src/              # 핵심 구현
+├── scripts/          # 실험 스크립트
+├── data/            # 데이터 및 결과
+├── docs/            # 상세 문서
+└── third_party/     # 외부 의존성
 ```
 
-## 빠른 시작 (Docker 권장)
+## 시작하기
 
-### Docker 환경 사용 (권장)
 ```bash
-# 1. Docker 이미지 빌드
-./docker/build.sh
+# Docker 환경 구축
+docker compose build eval
+docker compose up -d eval
 
-# 2. 개발 환경 실행
-./docker/run.sh
-
-# 3. 컨테이너 내부에서 테스트
-python docker/test_env.py
+# 테스트 실행
+docker exec -it simpler-dev bash
+cd /workspace && ./scripts/test_baseline.sh
 ```
 
-자세한 내용은 [docs/DOCKER_SETUP.md](docs/DOCKER_SETUP.md) 참조
+## 관련 문서
 
-## 개발 현황
-- ✅ Docker 개발 환경 구성 완료
-- ✅ SIMPLER 환경 통합 완료
-- 🔄 시각 인코더 및 정책 네트워크 구현 예정
-- 🔄 학습 알고리즘 구현 예정
+- [`docs/research/RESEARCH_CONTEXT.md`](docs/research/RESEARCH_CONTEXT.md) - 연구 배경 및 관련 논문
+- [`docs/setup/TEST_GUIDE.md`](docs/setup/TEST_GUIDE.md) - 환경 설정 및 테스트
+- [`CLAUDE.md`](CLAUDE.md) - AI 어시스턴트용 개발 가이드
+
+## 현재 진행 상황
+
+- [x] SimplerEnv 환경 구축
+- [x] 베이스라인 모델 통합 (SimplePolicy, Octo)
+- [ ] 대규모 데이터셋 준비
+- [ ] 행동 독립적 표현 학습 구현
+- [ ] 전이 학습 실험
+- [ ] 결과 분석 및 논문 작성
+
+---
+
+> 이 프로젝트는 로봇 조작에서 범용적인 시각 표현을 학습하는 새로운 접근 방식을 탐구합니다.
