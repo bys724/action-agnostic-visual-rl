@@ -64,7 +64,13 @@ def load_policy(model_path):
     policy_setup = "widowx_bridge"  # WidowX 로봇 사용
     
     if "openvla" in model_path.lower():
-        from src.policies.openvla import OpenVLAPolicy
+        import sys
+        import os
+        # Add src directory to path for import
+        src_dir = os.path.dirname(os.path.abspath(__file__))
+        if src_dir not in sys.path:
+            sys.path.insert(0, src_dir)
+        from policies.openvla import OpenVLAPolicy
         print(f"Loading OpenVLA model: {model_path}")
         # HuggingFace model ID or local path
         return OpenVLAPolicy(model_path=model_path)
