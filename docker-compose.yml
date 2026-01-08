@@ -1,17 +1,15 @@
-version: '3.8'
-
 services:
-  simpler-dev:
+  dev:
     build:
       context: .
       dockerfile: Dockerfile
-    image: action-agnostic-visual-rl:latest
+    image: simpler-env:latest
     container_name: simpler-dev
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-      - DISPLAY=:99
+      - DISPLAY=${DISPLAY:-:0}
       - MUJOCO_GL=egl
       - PYOPENGL_PLATFORM=egl
     volumes:
@@ -21,29 +19,4 @@ services:
     stdin_open: true
     tty: true
     shm_size: '16gb'
-    command: /bin/bash
-
-  jupyter:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: action-agnostic-visual-rl:latest
-    container_name: simpler-jupyter
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-      - DISPLAY=:99
-      - MUJOCO_GL=egl
-      - PYOPENGL_PLATFORM=egl
-    volumes:
-      - .:/workspace
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-    ports:
-      - "8888:8888"
-    shm_size: '16gb'
-    command: >
-      bash -c "
-      Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
-      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
-      "
+    command: tail -f /dev/null
