@@ -57,7 +57,13 @@ def load_policy(model_path):
     # SimplerEnv 베이스라인 모델 로드
     policy_setup = "widowx_bridge"  # WidowX 로봇 사용
     
-    if "octo" in model_path.lower():
+    if "openvla" in model_path.lower():
+        from src.policies.openvla import OpenVLAPolicy
+        print(f"Loading OpenVLA model: {model_path}")
+        # HuggingFace model ID or local path
+        return OpenVLAPolicy(model_path=model_path)
+    
+    elif "octo" in model_path.lower():
         from simpler_env.policies.octo.octo_model import OctoInference
         # octo-base 또는 octo-small
         model_type = "octo-small" if "small" in model_path else "octo-base"

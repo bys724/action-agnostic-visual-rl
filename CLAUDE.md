@@ -35,12 +35,20 @@ docker exec -it simpler-dev bash
 # - 유용한 alias (test-simple, test-all)
 ```
 
+### 통합된 베이스라인
+- **SimplePolicy**: 테스트용 더미 정책
+- **OpenVLA**: 7B VLA 모델 (src/policies/openvla/)
+- **Octo**: (의존성 충돌로 현재 비활성)
+- **RT-1**: (체크포인트 필요)
+
 ## 주요 파일 위치
 
 - **평가**: `src/eval_simpler.py`
 - **데이터 수집**: `src/collect_trajectories.py`
 - **테스트**: `src/test_simpler_demo.py`
 - **연구 배경**: `docs/research/RESEARCH_CONTEXT.md`
+- **OpenVLA 정책**: `src/policies/openvla/`
+- **OpenVLA 테스트**: `scripts/test_openvla.sh`
 
 ## 개발 원칙
 

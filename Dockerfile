@@ -54,6 +54,15 @@ RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/c
 # Install ManiSkill3 (required by SimplerEnv)
 RUN pip install --upgrade git+https://github.com/haosulab/ManiSkill.git
 
+# Install OpenVLA dependencies
+RUN pip install --no-cache-dir \
+    transformers==4.46.0 \
+    accelerate==0.32.1 \
+    timm==0.9.10 \
+    tokenizers==0.15.2 \
+    sentencepiece \
+    pillow
+
 # Install SimplerEnv from submodule
 COPY third_party/SimplerEnv /tmp/SimplerEnv
 RUN cd /tmp/SimplerEnv && pip install -e .
