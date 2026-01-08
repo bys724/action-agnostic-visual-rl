@@ -4,8 +4,8 @@
 
 ### 1. Docker 환경 시작
 ```bash
-# Docker 이미지 빌드 (최초 1회)
-docker compose build eval
+# Docker 이미지 빌드 (최초 1회 또는 Dockerfile 수정 후)
+docker build -t simpler-env:latest .
 
 # 평가 컨테이너 시작
 docker compose up -d eval
@@ -24,10 +24,22 @@ docker exec -it simpler-dev bash
 
 ## 테스트 실행
 
+### 0. 기본 SimplerEnv 동작 확인
+```bash
+# SimplerEnv 환경 테스트 (GUI 포함)
+python src/test_simpler_demo.py --gui
+
+# 헤드리스 모드 (서버 환경)
+python src/test_simpler_demo.py
+```
+
 ### 옵션 1: 자동 테스트 스크립트
 ```bash
 # 모든 테스트 자동 실행
 ./scripts/test_baseline.sh
+
+# OpenVLA 테스트 (GPU 필요)
+./scripts/test_openvla.sh
 ```
 
 ### 옵션 2: 개별 테스트
@@ -35,7 +47,10 @@ docker exec -it simpler-dev bash
 #### 1. SimplePolicy 테스트 (빠른 동작 확인)
 ```bash
 # 기본 정책으로 환경 테스트
-python src/eval_simpler.py --model simple --n-episodes 2
+python src/eval_simpler.py --model simple --n-episodes 2 --max-steps 100
+
+# Trajectory 수집 테스트
+python src/collect_trajectories.py --model simple --n-per-task 2 --max-steps 100
 ```
 
 예상 출력:
@@ -49,7 +64,19 @@ Evaluating PutSpoonOnTableClothInScene-v1...
 ...
 ```
 
-#### 2. Octo 모델 테스트
+#### 2. OpenVLA 모델 테스트 (GPU 필요)
+```bash
+# OpenVLA import 확인
+python -c "from src.policies.openvla import OpenVLAPolicy; print('OpenVLA import OK')"
+
+# OpenVLA 평가 (최소 테스트)
+python src/eval_simpler.py --model "openvla/openvla-7b" --n-episodes 1 --max-steps 100
+
+# OpenVLA trajectory 수집
+python src/collect_trajectories.py --model "openvla/openvla-7b" --n-per-task 1 --max-steps 100
+```
+
+#### 3. Octo 모델 테스트 (의존성 충돌 가능)
 ```bash
 # Octo-small 모델 평가 (자동 다운로드)
 python src/eval_simpler.py --model octo-small --n-episodes 4
@@ -58,7 +85,7 @@ python src/eval_simpler.py --model octo-small --n-episodes 4
 python src/eval_simpler.py --model octo-base --n-episodes 4
 ```
 
-#### 3. RT-1 모델 테스트 (체크포인트 필요)
+#### 4. RT-1 모델 테스트 (체크포인트 필요)
 ```bash
 # RT-1 체크포인트 다운로드 (별도 수행 필요)
 # gsutil -m cp -r gs://gdm-robotics-open-x-embodiment/open_x_embodiment_and_rt_x_oss/rt_1_x_tf_trained_for_002272480_step.zip .
@@ -67,7 +94,7 @@ python src/eval_simpler.py --model octo-base --n-episodes 4
 python src/eval_simpler.py --model /path/to/rt1_checkpoint --n-episodes 4
 ```
 
-#### 4. Trajectory 수집
+#### 5. Trajectory 수집
 ```bash
 # SimplePolicy로 trajectory 수집 (테스트)
 python src/collect_trajectories.py --model simple --n-per-task 2
@@ -154,6 +181,7 @@ pip install mani_skill3
 |-------|---------------------|-------|
 | Random | ~0% | 랜덤 액션 |
 | SimplePolicy | 0-5% | 스크립트 정책 |
+| OpenVLA | 20-40% | 7B VLA 모델 (Zero-shot) |
 | Octo-small | 15-30% | 경량 모델 |
 | Octo-base | 20-40% | 표준 모델 |
 | RT-1 | 30-50% | Google 모델 |
