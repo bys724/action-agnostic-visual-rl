@@ -17,11 +17,14 @@ tensorboard/
 *.pt
 *.pth
 *.ckpt
-checkpoints/
 
-# 데이터
-data/
-datasets/
+# 데이터 (README는 추적)
+data/*
+!data/README.md
+!data/checkpoints/.gitkeep
+!data/trajectories/.gitkeep
+!data/results/.gitkeep
+!data/datasets/.gitkeep
 *.h5
 *.hdf5
 *.npy

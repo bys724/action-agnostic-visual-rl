@@ -16,12 +16,8 @@ services:
     volumes:
       # 코드 및 설정
       - .:/workspace
-      # 모델 체크포인트 (읽기 전용)
-      - ${CHECKPOINT_DIR:-./checkpoints}:/checkpoints:ro
-      # Trajectory 저장 (쓰기 가능)
-      - ${TRAJECTORY_DIR:-./trajectories}:/trajectories
-      # 평가 결과 저장
-      - ${RESULTS_DIR:-./results}:/results
+      # 데이터 디렉토리 (체크포인트, trajectories, results)
+      - ./data:/workspace/data
       # GUI 지원
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     network_mode: host
