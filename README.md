@@ -72,9 +72,12 @@ docker compose build eval
 docker compose up -d eval
 
 # 2. OpenVLA 설치 (모델 + 의존성)
-python scripts/setup_openvla.py
+python3 scripts/setup_openvla.py
 
-# 3. 테스트 실행
+# 3. 컨테이너에서 assets 설치
+docker exec simpler-dev python scripts/setup_openvla.py --skip-deps
+
+# 4. 테스트 실행
 docker exec simpler-dev python src/eval_simpler.py --model openvla/openvla-7b --n-episodes 1
 ```
 
