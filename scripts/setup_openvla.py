@@ -27,7 +27,7 @@ def install_dependencies():
     packages = {
         "transformers": "4.45.0",
         "timm": "0.9.16",
-        "accelerate": ">=0.30.0",
+        "accelerate": "0.30.0",  # Fixed version for stability
         "einops": None,
         "safetensors": None,
         "pillow": None,
@@ -36,7 +36,10 @@ def install_dependencies():
     
     for package, version in packages.items():
         if version:
-            cmd = f"pip install {package}=={version}"
+            if ">=" in version or "<=" in version:
+                cmd = f"pip install '{package}{version}'"
+            else:
+                cmd = f"pip install {package}=={version}"
         else:
             cmd = f"pip install {package}"
         
@@ -73,82 +76,29 @@ def download_maniskill_assets():
     return True
 
 def download_openvla_model(model_id="openvla/openvla-7b", force=False):
-    """OpenVLA 모델 다운로드"""
+    """OpenVLA 모델 다운로드 - download_model.py 재사용"""
     print("\n" + "="*60)
     print("Downloading OpenVLA Model")
     print("="*60)
     
-    from huggingface_hub import snapshot_download
+    # download_model.py의 기능을 재사용
+    sys.path.insert(0, str(Path(__file__).parent))
+    import download_model
     
-    save_dir = Path("./data/checkpoints/openvla")
-    save_dir.mkdir(parents=True, exist_ok=True)
+    # 먼저 체크
+    exists, path = download_model.check_model(model_id)
+    if exists and not force:
+        print(f"✓ Model already exists at: {path}")
+        return path
     
-    model_name = model_id.split("/")[-1]
-    local_dir = save_dir / model_name
-    
-    # 이미 존재하는지 확인
-    if local_dir.exists() and any(local_dir.iterdir()) and not force:
-        print(f"✓ Model already exists at: {local_dir}")
-        return str(local_dir)
-    
-    print(f"  Downloading {model_id}...")
-    print(f"  Target: {local_dir}")
-    print("  This may take a while (~14GB)...")
-    
-    try:
-        snapshot_download(
-            repo_id=model_id,
-            local_dir=str(local_dir),
-            local_dir_use_symlinks=False,
-            resume_download=True,
-        )
-        
-        # 메타데이터 저장
-        metadata = {
-            "model_id": model_id,
-            "model_type": "openvla",
-            "download_date": datetime.now().isoformat(),
-            "local_path": str(local_dir),
-            "source": "huggingface"
-        }
-        
-        metadata_file = local_dir / "model_metadata.json"
-        with open(metadata_file, "w") as f:
-            json.dump(metadata, f, indent=2)
-        
-        # 레지스트리 업데이트
-        update_registry(model_name, str(local_dir))
-        
+    # 다운로드 실행
+    path = download_model.download_model(model_id, model_type="openvla", force=force)
+    if path:
         print(f"✓ Model downloaded successfully")
-        return str(local_dir)
-        
-    except Exception as e:
-        print(f"✗ Error downloading model: {e}")
-        return None
-
-def update_registry(model_name, local_path):
-    """체크포인트 레지스트리 업데이트"""
-    registry_file = Path("./data/checkpoints/registry.json")
-    
-    if registry_file.exists():
-        with open(registry_file, "r") as f:
-            registry = json.load(f)
+        return path
     else:
-        registry = {"models": {}}
-    
-    if "openvla" not in registry["models"]:
-        registry["models"]["openvla"] = {}
-    
-    registry["models"]["openvla"][model_name] = {
-        "path": local_path,
-        "added": datetime.now().isoformat()
-    }
-    
-    registry_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(registry_file, "w") as f:
-        json.dump(registry, f, indent=2)
-    
-    print(f"✓ Registry updated")
+        print(f"✗ Failed to download model")
+        return None
 
 def verify_installation():
     """설치 확인"""
