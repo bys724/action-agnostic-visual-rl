@@ -6,9 +6,12 @@ Based on: https://github.com/DelinQu/SimplerEnv-OpenVLA
 import numpy as np
 import torch
 from pathlib import Path
-from typing import Optional, Dict, Any
-from transformers import AutoModelForCausalLM, AutoProcessor, AutoModel
+from typing import Optional, Dict, Any, List
+from transformers import AutoModelForVision2Seq, AutoProcessor
 from PIL import Image
+from transforms3d.euler import euler2axangle
+import os
+import json
 
 
 class OpenVLAPolicy:
@@ -18,7 +21,9 @@ class OpenVLAPolicy:
         self, 
         model_path: str = "openvla/openvla-7b",
         device: str = "cuda",
-        torch_dtype = torch.bfloat16
+        torch_dtype = torch.bfloat16,
+        policy_setup: str = "widowx_bridge",
+        use_local: bool = True
     ):
         """
         Initialize OpenVLA model
@@ -27,57 +32,125 @@ class OpenVLAPolicy:
             model_path: Path to model checkpoint or HuggingFace model ID
             device: Device to run model on
             torch_dtype: Data type for model weights
+            policy_setup: Robot setup (widowx_bridge or google_robot)
+            use_local: Try to use local checkpoint first if available
         """
         self.device = device
         self.torch_dtype = torch_dtype
+        self.policy_setup = policy_setup
         
-        print(f"Loading OpenVLA model from {model_path}...")
+        # Disable tokenizer parallelism warning
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        
+        # Check for local checkpoint first
+        actual_model_path = self._resolve_model_path(model_path, use_local)
+        
+        print(f"Loading OpenVLA model from {actual_model_path}...")
+        if actual_model_path != model_path:
+            print(f"  (Using local checkpoint)")
+        
+        # Setup unnorm key based on policy
+        if policy_setup == "widowx_bridge":
+            self.unnorm_key = "bridge_orig"
+            self.sticky_gripper_num_repeat = 1
+        elif policy_setup == "google_robot":
+            self.unnorm_key = "fractal20220817_data"
+            self.sticky_gripper_num_repeat = 15
+        else:
+            raise NotImplementedError(f"Policy setup {policy_setup} not supported")
         
         # Load processor and model
         try:
             self.processor = AutoProcessor.from_pretrained(
-                model_path, 
-                trust_remote_code=True
+                actual_model_path, 
+                trust_remote_code=True,
+                local_files_only=os.path.exists(actual_model_path)  # Use local if exists
             )
             
-            # OpenVLA uses a custom model class that requires trust_remote_code
-            # The model should auto-download from HuggingFace on first use
-            try:
-                # Load OpenVLA model - it registers its own class
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path,
-                    torch_dtype=torch_dtype,
-                    device_map=device,
-                    trust_remote_code=True,
-                    low_cpu_mem_usage=True  # For large models
-                )
-            except Exception as e1:
-                print(f"AutoModelForCausalLM failed: {e1}")
-                # Try AutoModel as fallback
-                self.model = AutoModel.from_pretrained(
-                    model_path,
-                    torch_dtype=torch_dtype,
-                    device_map=device,
-                    trust_remote_code=True,
-                    low_cpu_mem_usage=True
-                )
+            # Use AutoModelForVision2Seq for OpenVLA
+            self.model = AutoModelForVision2Seq.from_pretrained(
+                actual_model_path,
+                # attn_implementation="flash_attention_2",  # Optional, requires flash_attn
+                torch_dtype=torch_dtype,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+                local_files_only=os.path.exists(actual_model_path)  # Use local if exists
+            ).to(device)
+            
+            self.model.eval()
+            print("OpenVLA model loaded successfully")
+            
         except Exception as e:
             print(f"Warning: Could not load actual model, using mock. Error: {e}")
             # Use a mock model for testing without GPU
             self.model = None
             self.processor = None
         
-        if self.model is not None:
-            self.model.eval()
-        
         # Action space parameters for SimplerEnv
         self.action_dim = 7  # [dx, dy, dz, rx, ry, rz, gripper]
-        self.action_scale = np.array([0.02, 0.02, 0.02, 0.1, 0.1, 0.1, 1.0])
+        # Increase action scale for better movement
+        self.action_scale = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         
         # Cache for current instruction
         self.current_instruction = None
         
-        print("OpenVLA model loaded successfully")
+        # Sticky gripper state for google_robot
+        self.sticky_action_is_on = False
+        self.gripper_action_repeat = 0
+        self.sticky_gripper_action = 0.0
+        self.previous_gripper_action = None
+    
+    def _resolve_model_path(self, model_path: str, use_local: bool) -> str:
+        """
+        Resolve model path - check local first if enabled
+        
+        Args:
+            model_path: Original model path or HuggingFace ID
+            use_local: Whether to check local checkpoints first
+            
+        Returns:
+            Actual path to use for loading
+        """
+        if not use_local:
+            return model_path
+        
+        # Check if it's already a local path
+        if os.path.exists(model_path):
+            return model_path
+        
+        # Check in data/checkpoints directory
+        from pathlib import Path
+        import json
+        
+        # Try to load from registry
+        registry_file = Path("./data/checkpoints/registry.json")
+        if registry_file.exists():
+            with open(registry_file, "r") as f:
+                registry = json.load(f)
+            
+            # Extract model name from HuggingFace ID
+            if "/" in model_path:
+                model_name = model_path.split("/")[-1]
+                
+                # Check all model types
+                for model_type in registry.get("models", {}):
+                    if model_name in registry["models"][model_type]:
+                        local_path = registry["models"][model_type][model_name]["path"]
+                        if os.path.exists(local_path):
+                            return local_path
+        
+        # Check default locations
+        default_paths = [
+            f"./data/checkpoints/openvla/{model_path.split('/')[-1]}",
+            f"./data/checkpoints/{model_path.replace('/', '_')}",
+        ]
+        
+        for path in default_paths:
+            if os.path.exists(path):
+                return path
+        
+        # Fallback to original path (will download from HuggingFace)
+        return model_path
     
     def reset(self, instruction: str):
         """Reset policy with new instruction"""
@@ -88,7 +161,7 @@ class OpenVLAPolicy:
         Generate action from image observation
         
         Args:
-            image: RGB image observation (H, W, 3) as numpy array
+            image: RGB image observation (H, W, 3) as numpy array or torch tensor
             instruction: Language instruction (optional, uses cached if not provided)
             
         Returns:
@@ -103,19 +176,32 @@ class OpenVLAPolicy:
         if self.current_instruction is None:
             raise ValueError("No instruction provided")
         
+        # Convert to PIL Image
+        # Handle torch tensors (from ManiSkill3)
+        if torch.is_tensor(image):
+            # Convert torch tensor to numpy
+            image = image.cpu().numpy()
+            
         # Convert numpy array to PIL Image
         if isinstance(image, np.ndarray):
+            # Remove batch dimensions if present
+            while len(image.shape) > 3:
+                image = image.squeeze(0)
+            
             # Ensure correct shape and dtype
             if image.dtype == np.float32 or image.dtype == np.float64:
                 # Convert from [0, 1] to [0, 255]
                 image = (image * 255).astype(np.uint8)
-            elif image.max() <= 1.0:
+            elif image.max() <= 1.0 and image.dtype != np.uint8:
                 image = (image * 255).astype(np.uint8)
             
             # Handle different channel orders
             if len(image.shape) == 3:
                 if image.shape[0] == 3:  # (C, H, W) -> (H, W, C)
                     image = np.transpose(image, (1, 2, 0))
+                elif image.shape[0] == 480 and image.shape[2] == 3:
+                    # Already in (H, W, C) format
+                    pass
             
             pil_image = Image.fromarray(image)
         else:
@@ -132,77 +218,45 @@ class OpenVLAPolicy:
             }
             return action, action_dict
         
-        # Prepare inputs
-        prompt = f"In: What action should the robot take to {self.current_instruction}?\\nOut:"
+        # Prepare inputs - OpenVLA expects just the task description
+        prompt = self.current_instruction
         inputs = self.processor(prompt, pil_image).to(self.device, dtype=self.torch_dtype)
         
-        # Generate action
+        # Predict action using OpenVLA's predict_action method
         with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=256,
-                do_sample=False,
-                temperature=0.0
+            # OpenVLA directly predicts 7-DOF actions
+            raw_actions = self.model.predict_action(
+                **inputs, 
+                unnorm_key=self.unnorm_key,
+                do_sample=False
             )
         
-        # Decode action from output
-        generated_text = self.processor.decode(outputs[0], skip_special_tokens=True)
+        # Convert to numpy and extract action components
+        if isinstance(raw_actions, torch.Tensor):
+            raw_actions = raw_actions.cpu().numpy()
         
-        # Parse action from generated text
-        action = self._parse_action(generated_text)
+        # Parse the 7-DOF action [x, y, z, roll, pitch, yaw, gripper]
+        action = raw_actions.squeeze()[:7]  # Ensure we get 7 dimensions
         
         # Scale action
         scaled_action = action * self.action_scale
         
-        # Create action dictionary for SimplerEnv
+        # Process action for SimplerEnv format
+        # SimplerEnv expects a flat 7D action: [x, y, z, rx, ry, rz, gripper]
+        # where positions are in meters and rotations are in radians
+        
+        # Scale the action appropriately
+        scaled_action[6] = 2.0 * (action[6] > 0.5) - 1.0  # Convert gripper to -1/1 format
+        
+        # For ManiSkill3, we need to return the full 7D action
+        # Create action dictionary for compatibility
         action_dict = {
-            "world_vector": scaled_action,
-            "terminate_episode": np.array([0])  # OpenVLA doesn't predict termination
+            "world_vector": scaled_action.astype(np.float32),
+            "terminate_episode": np.array([0], dtype=np.float32)
         }
         
         return action, action_dict
     
-    def _parse_action(self, text: str) -> np.ndarray:
-        """
-        Parse action from generated text
-        
-        Args:
-            text: Generated text from model
-            
-        Returns:
-            7D action array
-        """
-        # Extract action values from text
-        # Expected format: "Out: <ACTION> [values]"
-        try:
-            # Find the action part after "Out:"
-            if "Out:" in text:
-                action_part = text.split("Out:")[-1].strip()
-            else:
-                action_part = text.strip()
-            
-            # Extract numbers from the action string
-            # OpenVLA outputs actions in various formats, try to extract numbers
-            import re
-            numbers = re.findall(r"[-+]?\d*\.?\d+", action_part)
-            
-            if len(numbers) >= 7:
-                # Take first 7 numbers as action
-                action = np.array([float(x) for x in numbers[:7]])
-            else:
-                # Default to small random action if parsing fails
-                print(f"Warning: Could not parse action from: {action_part}")
-                action = np.random.randn(7) * 0.001
-            
-            # Clip action to reasonable range
-            action = np.clip(action, -1.0, 1.0)
-            
-        except Exception as e:
-            print(f"Error parsing action: {e}")
-            # Return small random action on error
-            action = np.random.randn(7) * 0.001
-        
-        return action.astype(np.float32)
     
     def get_action(self, obs: Any) -> np.ndarray:
         """

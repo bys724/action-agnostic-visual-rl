@@ -92,6 +92,8 @@ RUN pip uninstall -y opencv-python opencv-python-headless 2>/dev/null || true &&
 ENV MUJOCO_GL=egl
 ENV PYOPENGL_PLATFORM=egl
 ENV DISPLAY=:99
+# Disable Vulkan for ManiSkill3 (use software rendering)
+ENV SAPIEN_DISABLE_VULKAN=1
 
 # Setup bashrc with commonly needed environment variables
 RUN echo '# GPU Memory Management' >> /root/.bashrc && \

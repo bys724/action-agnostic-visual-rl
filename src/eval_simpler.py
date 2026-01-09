@@ -3,6 +3,12 @@
 SimplerEnv 평가 스크립트 - 다중 모델/체크포인트 비교 지원
 """
 
+import os
+# Disable Vulkan for ManiSkill3 (use software rendering)
+os.environ["SAPIEN_DISABLE_VULKAN"] = "1"
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+
 import argparse
 import json
 import numpy as np

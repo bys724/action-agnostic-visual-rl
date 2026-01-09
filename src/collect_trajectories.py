@@ -4,6 +4,12 @@ Trajectory 수집 스크립트
 모델 로드 → 성공 trajectory 수집 → 저장
 """
 
+import os
+# Disable Vulkan for ManiSkill3 (use software rendering)
+os.environ["SAPIEN_DISABLE_VULKAN"] = "1"
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+
 import argparse
 import pickle
 import numpy as np
