@@ -33,13 +33,16 @@ python src/test_simpler_demo.py --gui
 python src/test_simpler_demo.py
 ```
 
-### 옵션 1: 자동 테스트 스크립트
+### 옵션 1: OpenVLA 설치 및 테스트
 ```bash
-# 모든 테스트 자동 실행
-./scripts/test_baseline.sh
+# OpenVLA 전체 설치 (모델 + 의존성 + assets)
+python scripts/setup_openvla.py
 
-# OpenVLA 테스트 (GPU 필요)
-./scripts/test_openvla.sh
+# 설치 확인
+python scripts/setup_openvla.py --verify-only
+
+# OpenVLA 평가 테스트
+python src/eval_simpler.py --model "openvla/openvla-7b" --n-episodes 1 --max-steps 10
 ```
 
 ### 옵션 2: 개별 테스트

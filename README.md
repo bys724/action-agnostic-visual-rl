@@ -65,26 +65,40 @@
 
 ## 시작하기
 
+### 빠른 설치 (새 워크스테이션)
 ```bash
-# Docker 환경 구축
+# 1. Docker 환경 구축
 docker compose build eval
 docker compose up -d eval
 
-# 테스트 실행
+# 2. OpenVLA 설치 (모델 + 의존성)
+python scripts/setup_openvla.py
+
+# 3. 테스트 실행
+docker exec simpler-dev python src/eval_simpler.py --model openvla/openvla-7b --n-episodes 1
+```
+
+### 개발 환경
+```bash
+# 컨테이너 접속
 docker exec -it simpler-dev bash
-cd /workspace && ./scripts/test_baseline.sh
+
+# 환경 테스트
+python src/test_simpler_demo.py
 ```
 
 ## 관련 문서
 
 - [`docs/research/RESEARCH_CONTEXT.md`](docs/research/RESEARCH_CONTEXT.md) - 연구 배경 및 관련 논문
 - [`docs/setup/TEST_GUIDE.md`](docs/setup/TEST_GUIDE.md) - 환경 설정 및 테스트
+- [`docs/CHECKPOINT_MANAGEMENT.md`](docs/CHECKPOINT_MANAGEMENT.md) - 모델 체크포인트 관리
 - [`CLAUDE.md`](CLAUDE.md) - AI 어시스턴트용 개발 가이드
 
 ## 현재 진행 상황
 
 - [x] SimplerEnv 환경 구축
-- [x] 베이스라인 모델 통합 (SimplePolicy, Octo)
+- [x] 베이스라인 모델 통합 (SimplePolicy, OpenVLA)
+- [x] 오프라인 체크포인트 관리 시스템
 - [ ] 대규모 데이터셋 준비
 - [ ] 행동 독립적 표현 학습 구현
 - [ ] 전이 학습 실험

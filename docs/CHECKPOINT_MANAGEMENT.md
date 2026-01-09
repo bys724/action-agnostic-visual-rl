@@ -3,6 +3,29 @@
 ## 개요
 모델 체크포인트를 효율적으로 관리하기 위한 시스템입니다. HuggingFace 모델을 로컬에 저장하고, 오프라인에서도 사용할 수 있습니다.
 
+## 빠른 시작
+
+### OpenVLA 전체 설치 (권장)
+```bash
+# OpenVLA 모델 + 의존성 + assets 한번에 설치
+python scripts/setup_openvla.py
+
+# 설치 확인
+python scripts/setup_openvla.py --verify-only
+```
+
+### 개별 모델 다운로드
+```bash
+# 모델 존재 여부 확인
+python scripts/download_model.py check openvla/openvla-7b
+
+# OpenVLA 모델만 다운로드
+python scripts/download_model.py download openvla/openvla-7b
+
+# 로컬 모델 목록 확인  
+python scripts/download_model.py list
+```
+
 ## 디렉토리 구조
 ```
 data/checkpoints/
@@ -10,23 +33,7 @@ data/checkpoints/
 ├── openvla/               # OpenVLA 모델들
 │   ├── openvla-7b/       # 기본 7B 모델
 │   └── openvla-custom/    # 커스텀 fine-tuned 모델
-├── lapa/                  # LAPA 모델들
 └── custom/                # 사용자 정의 모델들
-```
-
-## 사용 방법
-
-### 1. 모델 다운로드 및 저장
-
-```bash
-# OpenVLA 7B 모델 다운로드
-python scripts/download_model.py download openvla/openvla-7b --type openvla
-
-# 커스텀 모델 다운로드
-python scripts/download_model.py download your-hf-id/your-model --type custom
-
-# 로컬 모델 목록 확인
-python scripts/download_model.py list
 ```
 
 ### 2. 로컬 체크포인트 사용
