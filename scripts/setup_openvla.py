@@ -61,6 +61,7 @@ def download_maniskill_assets():
     
     assets = [
         "bridge_v2_real2sim",
+        "widowx250s",  # Robot asset for SimplerEnv
     ]
     
     for asset in assets:
