@@ -1,3 +1,6 @@
 [submodule "third_party/SimplerEnv"]
 	path = third_party/SimplerEnv
 	url = https://github.com/simpler-env/SimplerEnv.git
+[submodule "third_party/LAPA"]
+	path = third_party/LAPA
+	url = https://github.com/LatentActionPretraining/LAPA.git

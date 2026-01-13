@@ -1,27 +1,125 @@
 services:
-  # SimplerEnv 평가 환경
+  # ═══════════════════════════════════════════════════════════════
+  # 평가 환경 (ManiSkill3/SimplerEnv)
+  # 모든 모델 평가의 공통 환경
+  # ═══════════════════════════════════════════════════════════════
   eval:
     build:
       context: .
       dockerfile: Dockerfile
     image: simpler-env:latest
-    container_name: simpler-dev
+    container_name: simpler-eval
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-      - DISPLAY=${DISPLAY:-:0}
+      - DISPLAY=${DISPLAY:-:99}
       - MUJOCO_GL=egl
       - PYOPENGL_PLATFORM=egl
+      - VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+      - XDG_RUNTIME_DIR=/tmp/runtime
     volumes:
-      # 코드 및 설정
       - .:/workspace
-      # 데이터 디렉토리 (체크포인트, trajectories, results)
       - ./data:/workspace/data
-      # GUI 지원
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri
+      - /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro
     network_mode: host
     stdin_open: true
     tty: true
     shm_size: '16gb'
-    command: tail -f /dev/null
+    command: bash -c "mkdir -p /tmp/runtime && tail -f /dev/null"
+
+  # ═══════════════════════════════════════════════════════════════
+  # OpenVLA Policy Server
+  # PyTorch + transformers 4.40.1 환경
+  # ═══════════════════════════════════════════════════════════════
+  openvla:
+    build:
+      context: .
+      dockerfile: docker/openvla/Dockerfile
+    image: openvla-server:latest
+    container_name: openvla-server
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MODEL_PATH=${OPENVLA_MODEL_PATH:-openvla/openvla-7b}
+      - POLICY_SETUP=widowx_bridge
+      - PORT=8001
+    volumes:
+      - ./data/checkpoints:/app/checkpoints:ro
+    ports:
+      - "8001:8001"
+    shm_size: '16gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ═══════════════════════════════════════════════════════════════
+  # LAPA Policy Server
+  # JAX/Flax + transformers 4.29.2 환경
+  # ═══════════════════════════════════════════════════════════════
+  lapa:
+    build:
+      context: .
+      dockerfile: docker/lapa/Dockerfile
+    image: lapa-server:latest
+    container_name: lapa-server
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CHECKPOINT_PATH=${LAPA_CHECKPOINT_PATH:-/app/checkpoints/lapa/params}
+      - ACTION_SCALE_FILE=${LAPA_ACTION_SCALE:-/app/checkpoints/lapa/action_scale.csv}
+      - VQGAN_CHECKPOINT=${LAPA_VQGAN:-/app/checkpoints/lapa/vqgan}
+      - VOCAB_FILE=${LAPA_VOCAB:-/app/checkpoints/lapa/tokenizer.model}
+      - POLICY_SETUP=widowx_bridge
+      - PORT=8002
+    volumes:
+      - ./data/checkpoints:/app/checkpoints:ro
+      - ./third_party/LAPA:/app/LAPA:ro
+    ports:
+      - "8002:8002"
+    shm_size: '16gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+# ═══════════════════════════════════════════════════════════════
+# 사용 예시:
+#
+# 1. 평가 환경만 실행:
+#    docker compose up -d eval
+#
+# 2. OpenVLA 서버 실행:
+#    docker compose up -d openvla
+#
+# 3. LAPA 서버 실행:
+#    docker compose up -d lapa
+#
+# 4. 전체 실행 (평가 + 모든 모델):
+#    docker compose up -d
+#
+# 5. OpenVLA 평가 (API 모드):
+#    docker exec simpler-eval python src/eval_simpler.py \
+#      --model openvla --api-url http://localhost:8001
+#
+# 6. LAPA 평가 (API 모드):
+#    docker exec simpler-eval python src/eval_simpler.py \
+#      --model lapa --api-url http://localhost:8002
+#
+# 7. 다중 모델 비교 (JSON 설정):
+#    docker exec simpler-eval python src/eval_simpler.py \
+#      --config /workspace/configs/eval_api_example.json
+#
+# 8. 서버 상태 확인:
+#    curl http://localhost:8001/health  # OpenVLA
+#    curl http://localhost:8002/health  # LAPA
+# ═══════════════════════════════════════════════════════════════

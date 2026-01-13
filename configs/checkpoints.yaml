@@ -1,0 +1,70 @@
+# 체크포인트 관리 설정
+# 여러 버전의 모델을 쉽게 전환하고 비교할 수 있도록 구성
+
+checkpoints:
+  openvla:
+    # 기본 모델 (HuggingFace)
+    base:
+      path: "openvla/openvla-7b"
+      type: huggingface
+      description: "OpenVLA 7B base model (zero-shot)"
+
+    # Fine-tuned 버전들
+    finetuned-v1:
+      path: "/workspace/data/checkpoints/openvla/finetuned-v1"
+      type: local
+      description: "SimplerEnv 100 trajectories로 fine-tuned"
+      trained_on: "2025-01-10"
+      base_model: "openvla/openvla-7b"
+      training_data: "data/trajectories/simpler_100trajs.pkl"
+
+    finetuned-v2:
+      path: "/workspace/data/checkpoints/openvla/finetuned-v2"
+      type: local
+      description: "DROID 데이터로 추가 학습"
+      trained_on: "2025-01-15"
+      base_model: "finetuned-v1"
+
+  lapa:
+    # 공식 체크포인트
+    openx:
+      path: "/workspace/data/checkpoints/lapa"
+      params: "params"
+      vqgan: "vqgan"
+      tokenizer: "tokenizer.model"
+      action_scale: "action_scale.csv"
+      type: official
+      description: "LAPA OpenX pre-trained model"
+
+    # Fine-tuned 버전
+    simpler-ft:
+      path: "/workspace/data/checkpoints/lapa-simpler"
+      params: "params"
+      vqgan: "vqgan"  # 보통 VQGAN은 공유
+      tokenizer: "tokenizer.model"
+      action_scale: "action_scale_simpler.csv"
+      type: finetuned
+      description: "SimplerEnv에서 fine-tuned"
+
+# 현재 활성화된 체크포인트 (서버 시작 시 사용)
+active:
+  openvla: base
+  lapa: openx
+
+# 평가 설정 예시
+evaluation_presets:
+  baseline_comparison:
+    models:
+      - name: openvla-base
+        checkpoint: openvla.base
+      - name: openvla-ft
+        checkpoint: openvla.finetuned-v1
+      - name: lapa-openx
+        checkpoint: lapa.openx
+
+  ablation_study:
+    models:
+      - name: openvla-v1
+        checkpoint: openvla.finetuned-v1
+      - name: openvla-v2
+        checkpoint: openvla.finetuned-v2

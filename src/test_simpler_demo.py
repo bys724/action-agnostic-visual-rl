@@ -4,6 +4,12 @@ SimplerEnv demo with pre-trained model
 Tests the environment setup and optionally displays GUI visualization
 """
 
+import os
+# Disable Vulkan for ManiSkill3 (use software rendering)
+os.environ["SAPIEN_DISABLE_VULKAN"] = "1"
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+
 import argparse
 import numpy as np
 import torch

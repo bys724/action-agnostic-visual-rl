@@ -22,29 +22,41 @@ from simpler_env.utils.env.observation_utils import get_image_from_maniskill3_ob
 from mani_skill.envs.tasks.digital_twins.bridge_dataset_eval import *
 
 
-def load_policy(model_type: str, checkpoint_path: str):
+def load_policy(model_type: str, checkpoint_path: str, api_url: Optional[str] = None):
     """
     정책 로드
-    
+
     Args:
         model_type: 모델 타입 (openvla, lapa, custom)
         checkpoint_path: 체크포인트 경로 또는 모델 ID
+        api_url: API 서버 URL (설정 시 API 모드로 동작)
     """
     import sys
     import os
-    
+
     # Add src directory to path for import
     src_dir = os.path.dirname(os.path.abspath(__file__))
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
-    
+
+    # API 모드: 원격 서버에서 추론
+    if api_url:
+        from policies.api_interface import PolicyAPIClient
+        print(f"Using API mode: {api_url} ({model_type})")
+        client = PolicyAPIClient(server_url=api_url, model_name=model_type)
+        if client.health_check():
+            print(f"  Server is healthy")
+        else:
+            print(f"  Warning: Server health check failed")
+        return client
+
+    # 로컬 모드: 직접 모델 로드
     if model_type == "openvla":
         from policies.openvla import OpenVLAPolicy
         print(f"Loading OpenVLA from: {checkpoint_path}")
         return OpenVLAPolicy(model_path=checkpoint_path)
-    
+
     elif model_type == "lapa":
-        # LAPA 모델 플레이스홀더
         try:
             from policies.lapa import LAPAPolicy
             print(f"Loading LAPA from: {checkpoint_path}")
@@ -52,9 +64,8 @@ def load_policy(model_type: str, checkpoint_path: str):
         except ImportError:
             print("Warning: LAPA not yet implemented, using mock policy")
             return MockPolicy()
-    
+
     elif model_type == "custom":
-        # 사용자 정의 모델 플레이스홀더
         try:
             from policies.custom import CustomPolicy
             print(f"Loading Custom model from: {checkpoint_path}")
@@ -62,7 +73,7 @@ def load_policy(model_type: str, checkpoint_path: str):
         except ImportError:
             print("Warning: Custom model not yet implemented, using mock policy")
             return MockPolicy()
-    
+
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -158,33 +169,36 @@ def evaluate_models(
 ) -> pd.DataFrame:
     """
     여러 모델을 평가하고 결과 비교
-    
+
     Args:
-        models: [{"name": "model_name", "type": "openvla", "checkpoint": "path/to/checkpoint"}, ...]
+        models: [{"name": "model_name", "type": "openvla", "checkpoint": "path/to/checkpoint", "api_url": "http://..."}, ...]
         tasks: 평가할 task 목록
         n_episodes: task당 에피소드 수
         max_steps: 에피소드당 최대 스텝
         output_dir: 결과 저장 디렉토리
-    
+
     Returns:
         결과 DataFrame
     """
     results = []
-    
+
     for model_config in models:
         model_name = model_config["name"]
         model_type = model_config["type"]
         checkpoint = model_config["checkpoint"]
-        
+        api_url = model_config.get("api_url")  # API URL (optional)
+
         print(f"\n{'='*60}")
         print(f"Evaluating: {model_name}")
         print(f"  Type: {model_type}")
         print(f"  Checkpoint: {checkpoint}")
+        if api_url:
+            print(f"  API URL: {api_url}")
         print('='*60)
-        
+
         # 정책 로드
         try:
-            policy = load_policy(model_type, checkpoint)
+            policy = load_policy(model_type, checkpoint, api_url=api_url)
         except Exception as e:
             print(f"Error loading model: {e}")
             continue
@@ -274,6 +288,9 @@ def main():
     parser.add_argument("--config", type=str, help="JSON config file with model list")
     parser.add_argument("--models", nargs="+", help="Model configs as 'name:type:checkpoint'")
     
+    # API 모드 옵션
+    parser.add_argument("--api-url", type=str, help="API server URL for remote inference")
+
     # 공통 옵션
     parser.add_argument("--tasks", nargs="+", help="Tasks to evaluate (default: all 4)")
     parser.add_argument("--n-episodes", type=int, default=24, help="Episodes per task")
@@ -301,16 +318,21 @@ def main():
             models = config.get("models", [])
     
     elif args.models:
-        # 커맨드라인에서 파싱
+        # 커맨드라인에서 파싱 (format: name:type:checkpoint 또는 name:type:checkpoint:api_url)
         for model_str in args.models:
             parts = model_str.split(":")
-            if len(parts) == 3:
-                models.append({
+            if len(parts) >= 3:
+                model_config = {
                     "name": parts[0],
                     "type": parts[1],
                     "checkpoint": parts[2]
-                })
-    
+                }
+                # API URL이 포함된 경우 (4번째 파트가 http로 시작하면)
+                if len(parts) >= 4 and parts[3].startswith("http"):
+                    # http:// 또는 https:// 복원
+                    model_config["api_url"] = ":".join(parts[3:])
+                models.append(model_config)
+
     elif args.model:
         # 레거시 단일 모델 모드
         model_type = "openvla"  # 기본값
@@ -318,22 +340,24 @@ def main():
             model_type = "lapa"
         elif "custom" in args.model.lower():
             model_type = "custom"
-        
+
         checkpoint = args.checkpoint if args.checkpoint else args.model
         model_name = Path(checkpoint).stem if "/" in checkpoint else checkpoint
-        
+
         models = [{
             "name": model_name,
             "type": model_type,
-            "checkpoint": checkpoint
+            "checkpoint": checkpoint,
+            "api_url": args.api_url  # API URL 추가
         }]
-    
+
     else:
         # 기본: OpenVLA 테스트
         models = [{
             "name": "openvla-7b",
             "type": "openvla",
-            "checkpoint": "openvla/openvla-7b"
+            "checkpoint": "openvla/openvla-7b",
+            "api_url": args.api_url  # API URL 추가
         }]
     
     # 평가 실행

@@ -1,0 +1,25 @@
+{
+  "description": "API mode evaluation example - comparing OpenVLA and LAPA via remote servers",
+  "models": [
+    {
+      "name": "openvla-7b",
+      "type": "openvla",
+      "checkpoint": "openvla/openvla-7b",
+      "api_url": "http://localhost:8001"
+    },
+    {
+      "name": "lapa-finetuned",
+      "type": "lapa",
+      "checkpoint": "/app/checkpoints/lapa/params",
+      "api_url": "http://localhost:8002"
+    }
+  ],
+  "tasks": [
+    "PutSpoonOnTableClothInScene-v1",
+    "PutCarrotOnPlateInScene-v1",
+    "StackGreenCubeOnYellowCubeBakedTexInScene-v1",
+    "PutEggplantInBasketScene-v1"
+  ],
+  "n_episodes": 24,
+  "max_steps": 300
+}
