@@ -44,6 +44,5 @@ docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url htt
 
 ## 참고
 
-- 자세한 테스트 가이드: `docs/setup/TEST_GUIDE.md`
-- 모델 통합 진행: `docs/development/TODO_MODEL_INTEGRATION.md`
+- 테스트 가이드: `docs/setup/TEST_GUIDE.md`
 - 프로젝트 구조: `docs/PROJECT_ORGANIZATION.md`

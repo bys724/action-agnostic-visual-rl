@@ -170,19 +170,3 @@ Visual representations learned without action conditioning generalize better acr
 
 **Last Updated**: 2025-12-24
 **Status**: Initial setup phase
-
----
-
-## Quick Start Guide
-
-1. **Clone repository** on workstation with RTX GPU
-2. **Install SIMPLER**: Follow SIMPLER official setup (SAPIEN + ManiSkill)
-3. **Run baseline**: Test with existing models (RT-1, Octo) to verify setup
-4. **Implement custom policy**:
-   - Visual encoder (DINOv2/CLIP)
-   - Policy interface for SIMPLER (reset/step methods)
-   - Action conversion to SIMPLER format
-5. **Evaluate**: Compare against baselines on standard tasks
-6. **Iterate**: Ablation studies, hyperparameter tuning
-
-**Key Reference**: Read `PVM in MBRL (2025)` paper notes for architectural insights.

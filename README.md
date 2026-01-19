@@ -92,9 +92,8 @@ python src/test_simpler_demo.py
 
 ## 관련 문서
 
-- [`docs/research/RESEARCH_CONTEXT.md`](docs/research/RESEARCH_CONTEXT.md) - 연구 배경 및 관련 논문
-- [`docs/setup/TEST_GUIDE.md`](docs/setup/TEST_GUIDE.md) - 환경 설정 및 테스트
-- [`docs/CHECKPOINT_MANAGEMENT.md`](docs/CHECKPOINT_MANAGEMENT.md) - 모델 체크포인트 관리
+- [`docs/setup/TEST_GUIDE.md`](docs/setup/TEST_GUIDE.md) - 테스트 및 평가 가이드
+- [`docs/research/RESEARCH_CONTEXT.md`](docs/research/RESEARCH_CONTEXT.md) - 연구 배경
 - [`CLAUDE.md`](CLAUDE.md) - AI 어시스턴트용 개발 가이드
 
 ## 현재 진행 상황

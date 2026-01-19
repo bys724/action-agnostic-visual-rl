@@ -24,17 +24,3 @@
 ### Pi0 통합 (선택적)
 - 참고: [openpi](https://github.com/Physical-Intelligence/openpi)
 
-## 빠른 시작
-
-```bash
-# OpenVLA 평가
-docker compose up -d openvla
-docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url http://localhost:8001
-
-# LAPA 평가
-docker compose up -d lapa
-docker exec simpler-dev python src/eval_simpler.py --model lapa --api-url http://localhost:8002
-
-# 비교 평가
-docker exec simpler-dev python src/eval_simpler.py --config configs/eval_api_example.json
-```

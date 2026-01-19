@@ -9,7 +9,10 @@ docker compose up -d eval
 # 2. 기본 환경 테스트
 docker exec simpler-dev python src/test_simpler_demo.py
 
-# 3. 모델 평가 (API 모드)
+# 3. 환경 테스트 + 비디오 저장
+docker exec simpler-dev python src/test_simpler_demo.py --save-video
+
+# 4. 모델 평가 (API 모드)
 docker compose up -d openvla
 docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url http://localhost:8001
 ```
@@ -38,6 +41,14 @@ docker exec simpler-dev python src/eval_simpler.py --config configs/eval_api_exa
 | `--n-episodes` | 에피소드 수 | 24 |
 | `--max-steps` | 최대 스텝 | 300 |
 | `--config` | JSON 설정 파일 | - |
+
+### 비디오 저장 (test_simpler_demo.py)
+```bash
+--save-video              # data/results/demo_YYYYMMDD_HHMMSS.mp4
+--save-video my.mp4       # data/results/my.mp4
+--save-video /tmp/out.mp4 # 전체 경로 지정
+--gui --save-video        # GUI 표시 + 저장
+```
 
 ## Docker 서비스
 
