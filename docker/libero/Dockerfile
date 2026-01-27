@@ -5,9 +5,11 @@ FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# System dependencies (based on openpi's LIBERO Dockerfile)
-RUN apt-get update && apt-get install -y \
-    python3.8 python3.8-dev python3.8-venv python3-pip \
+# Add deadsnakes PPA for Python 3.8
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y \
+    python3.8 python3.8-dev python3.8-venv python3.8-distutils \
     git wget curl vim \
     make g++ clang \
     libosmesa6-dev libgl1-mesa-glx libegl1 \
@@ -15,9 +17,13 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 libsm6 libxrender1 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install pip for Python 3.8
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.8
+
 # Set Python 3.8 as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1 && \
+    update-alternatives --install /usr/bin/pip pip /usr/local/bin/pip3.8 1
 
 RUN python -m pip install --upgrade pip
 
