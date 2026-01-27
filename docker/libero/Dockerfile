@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y software-properties-common && \
     libglib2.0-0 libsm6 libxrender1 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pip for Python 3.8
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.8
+# Install pip for Python 3.8 (use 3.8-specific URL)
+RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python3.8
 
 # Set Python 3.8 as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 && \
