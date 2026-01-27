@@ -1,0 +1,8 @@
+# LIBERO Configuration
+# This file configures the LIBERO benchmark paths
+
+benchmark_root: /workspace/libero/libero/libero
+bddl_files: /workspace/libero/libero/libero/bddl_files
+init_states: /workspace/libero/libero/libero/init_files
+datasets: /workspace/libero/libero/datasets
+assets: /workspace/libero/libero/libero/assets

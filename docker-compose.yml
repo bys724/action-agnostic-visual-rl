@@ -1,7 +1,7 @@
 services:
   # ═══════════════════════════════════════════════════════════════
   # 평가 환경 (ManiSkill3/SimplerEnv)
-  # 모든 모델 평가의 공통 환경
+  # 모든 모델 평가의 공통 환경 (SIMPLER 벤치마크)
   # ═══════════════════════════════════════════════════════════════
   eval:
     build:
@@ -92,9 +92,133 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # ═══════════════════════════════════════════════════════════════
+  # 자체 모델 학습 환경 (Action-Agnostic Visual RL)
+  # H100 x 2 GPU, PyTorch 2.2 + HuggingFace 생태계
+  # DINOv2, CLIP, SigLIP 등 pre-trained 모델 활용
+  # ═══════════════════════════════════════════════════════════════
+  dev:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+    image: action-agnostic-dev:latest
+    container_name: dev-env
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0,1
+      - NCCL_DEBUG=INFO
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HF_HOME=/workspace/.cache/huggingface
+    volumes:
+      - .:/workspace
+      - ./data:/workspace/data
+      - ~/.cache/huggingface:/workspace/.cache/huggingface
+    ports:
+      - "6006:6006"   # TensorBoard
+      - "8888:8888"   # Jupyter
+    shm_size: '32gb'
+    ipc: host
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: bash
+
+  # ═══════════════════════════════════════════════════════════════
+  # LIBERO 평가 환경
+  # LIBERO 벤치마크용 시뮬레이션 환경 (Python 3.8, robosuite)
+  # ═══════════════════════════════════════════════════════════════
+  libero:
+    build:
+      context: .
+      dockerfile: docker/libero/Dockerfile
+    image: libero-env:latest
+    container_name: libero-eval
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - MUJOCO_GL=egl
+      - PYOPENGL_PLATFORM=egl
+      - LIBERO_CONFIG_PATH=/tmp/libero
+    volumes:
+      - .:/workspace
+      - ./data:/workspace/data
+      - ./third_party/openpi/third_party/libero:/workspace/libero:ro
+    network_mode: host
+    stdin_open: true
+    tty: true
+    shm_size: '16gb'
+    command: bash
+
+  # ═══════════════════════════════════════════════════════════════
+  # OpenVLA-LIBERO Policy Server
+  # LIBERO 데이터셋으로 fine-tuned된 OpenVLA 모델
+  # ═══════════════════════════════════════════════════════════════
+  openvla-libero:
+    build:
+      context: .
+      dockerfile: docker/openvla-libero/Dockerfile
+    image: openvla-libero-server:latest
+    container_name: openvla-libero-server
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MODEL_PATH=${OPENVLA_LIBERO_MODEL:-openvla/openvla-7b-finetuned-libero-10}
+      - PORT=8004
+    volumes:
+      - ./data/checkpoints:/app/checkpoints:ro
+    ports:
+      - "8004:8004"
+    shm_size: '16gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ═══════════════════════════════════════════════════════════════
+  # Pi0 Policy Server (using openpi infrastructure)
+  # Pi0.5 LIBERO checkpoint 사용
+  # 사용법: docker compose -f third_party/openpi/examples/libero/compose.yml up
+  # ═══════════════════════════════════════════════════════════════
+  # Pi0는 openpi의 자체 docker-compose를 사용하는 것을 권장합니다.
+  # 아래는 참조용 설정입니다.
+  #
+  # pi0:
+  #   build:
+  #     context: ./third_party/openpi
+  #     dockerfile: scripts/docker/serve_policy.Dockerfile
+  #   image: pi0-server:latest
+  #   container_name: pi0-server
+  #   network_mode: host
+  #   environment:
+  #     - SERVER_ARGS=--env libero
+  #     - OPENPI_DATA_HOME=/openpi_assets
+  #   volumes:
+  #     - ./third_party/openpi:/app
+  #     - ${OPENPI_DATA_HOME:-~/.cache/openpi}:/openpi_assets
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
 # ═══════════════════════════════════════════════════════════════
 # 사용 예시:
 #
+# [SIMPLER 벤치마크]
 # 1. 평가 환경만 실행:
 #    docker compose up -d eval
 #
@@ -104,22 +228,30 @@ services:
 # 3. LAPA 서버 실행:
 #    docker compose up -d lapa
 #
-# 4. 전체 실행 (평가 + 모든 모델):
-#    docker compose up -d
-#
-# 5. OpenVLA 평가 (API 모드):
+# 4. OpenVLA 평가 (API 모드):
 #    docker exec simpler-eval python src/eval_simpler.py \
 #      --model openvla --api-url http://localhost:8001
 #
-# 6. LAPA 평가 (API 모드):
-#    docker exec simpler-eval python src/eval_simpler.py \
-#      --model lapa --api-url http://localhost:8002
+# [LIBERO 벤치마크]
+# 5. LIBERO 환경 + OpenVLA-LIBERO 서버 실행:
+#    docker compose up -d libero openvla-libero
 #
-# 7. 다중 모델 비교 (JSON 설정):
-#    docker exec simpler-eval python src/eval_simpler.py \
-#      --config /workspace/configs/eval_api_example.json
+# 6. OpenVLA LIBERO 평가:
+#    docker exec libero-eval python src/eval_libero.py \
+#      --model openvla --host localhost --port 8004 \
+#      --task-suite libero_spatial --num-trials 50
 #
+# 7. Pi0 LIBERO 평가 (openpi 인프라 사용):
+#    # 터미널 1: Pi0 서버 실행
+#    cd third_party/openpi
+#    docker compose -f examples/libero/compose.yml up openpi_server
+#
+#    # 터미널 2: LIBERO 평가 실행
+#    docker compose -f examples/libero/compose.yml run runtime
+#
+# [서버 상태 확인]
 # 8. 서버 상태 확인:
-#    curl http://localhost:8001/health  # OpenVLA
+#    curl http://localhost:8001/health  # OpenVLA (SIMPLER)
 #    curl http://localhost:8002/health  # LAPA
+#    curl http://localhost:8004/health  # OpenVLA-LIBERO
 # ═══════════════════════════════════════════════════════════════
