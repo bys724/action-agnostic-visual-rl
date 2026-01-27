@@ -23,7 +23,7 @@
 | `openvla` | 8001 | OpenVLA (SIMPLER용) |
 | `lapa` | 8002 | LAPA |
 | `libero` | - | LIBERO 평가 환경 |
-| `openvla-libero` | 8004 | OpenVLA (LIBERO용) |
+| `openvla-libero` | 8010 | OpenVLA (LIBERO용) |
 | `pi0` | 8000 | Pi0 (openpi 인프라 사용) |
 
 ## Pi0 통합 완료
@@ -86,7 +86,7 @@ docker exec simpler-eval python src/eval_simpler.py \
 # OpenVLA (LIBERO)
 docker compose up -d libero openvla-libero
 docker exec libero-eval python src/eval_libero.py \
-  --model openvla --host localhost --port 8004 \
+  --model openvla --host localhost --port 8010 \
   --task-suite libero_spatial --num-trials 50
 
 # Pi0 (LIBERO) - openpi 인프라 사용

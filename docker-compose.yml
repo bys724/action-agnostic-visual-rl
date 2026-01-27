@@ -173,7 +173,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - MODEL_PATH=${OPENVLA_LIBERO_MODEL:-openvla/openvla-7b-finetuned-libero-10}
-      - PORT=8004
+      - PORT=8010
       - HF_HOME=/app/hf_cache
     volumes:
       - ./data/checkpoints:/app/checkpoints:ro
@@ -239,7 +239,7 @@ services:
 #
 # 6. OpenVLA LIBERO 평가:
 #    docker exec libero-eval python src/eval_libero.py \
-#      --model openvla --host localhost --port 8004 \
+#      --model openvla --host localhost --port 8010 \
 #      --task-suite libero_spatial --num-trials 50
 #
 # 7. Pi0 LIBERO 평가 (openpi 인프라 사용):
@@ -254,5 +254,5 @@ services:
 # 8. 서버 상태 확인:
 #    curl http://localhost:8001/health  # OpenVLA (SIMPLER)
 #    curl http://localhost:8002/health  # LAPA
-#    curl http://localhost:8004/health  # OpenVLA-LIBERO
+#    curl http://localhost:8010/health  # OpenVLA-LIBERO
 # ═══════════════════════════════════════════════════════════════

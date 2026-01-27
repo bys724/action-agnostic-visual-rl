@@ -51,6 +51,11 @@ RUN pip install --no-cache-dir \
     requests websocket-client \
     pandas
 
+# Clone and install LIBERO
+RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git /opt/libero && \
+    cd /opt/libero && \
+    pip install -e .
+
 # Setup EGL for headless rendering
 RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
     echo '{"file_format_version" : "1.0.0", "ICD" : { "library_path" : "libEGL_nvidia.so.0" }}' \
