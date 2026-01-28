@@ -169,7 +169,6 @@ services:
     image: openvla-libero-server:latest
     container_name: openvla-libero-server
     runtime: nvidia
-    network_mode: host
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - MODEL_PATH=${OPENVLA_LIBERO_MODEL:-openvla/openvla-7b-finetuned-libero-10}
@@ -178,6 +177,8 @@ services:
     volumes:
       - ./data/checkpoints:/app/checkpoints:ro
       - ~/.cache/huggingface:/app/hf_cache
+    ports:
+      - "8010:8010"
     shm_size: '16gb'
     deploy:
       resources:
