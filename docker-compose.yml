@@ -148,6 +148,7 @@ services:
       - MUJOCO_GL=egl
       - PYOPENGL_PLATFORM=egl
       - LIBERO_CONFIG_PATH=/tmp/libero
+      - PYTHONPATH=/opt/libero:/workspace
     volumes:
       - .:/workspace
       - ./data:/workspace/data

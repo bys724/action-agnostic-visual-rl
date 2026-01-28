@@ -51,10 +51,15 @@ RUN pip install --no-cache-dir \
     requests websocket-client \
     pandas
 
-# Clone and install LIBERO
+# Clone and install LIBERO with all dependencies
 RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git /opt/libero && \
     cd /opt/libero && \
-    pip install -e .
+    pip install 'setuptools<66' && \
+    pip install bddl easydict h5py cloudpickle 'gym>=0.21.0,<0.26.0' && \
+    pip install .
+
+# Add LIBERO to PYTHONPATH
+ENV PYTHONPATH=/opt/libero:$PYTHONPATH
 
 # Setup EGL for headless rendering
 RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
