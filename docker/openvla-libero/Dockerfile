@@ -47,6 +47,6 @@ COPY docker/openvla-libero/server.py /app/server.py
 
 ENV TOKENIZERS_PARALLELISM=false
 
-EXPOSE 8010
+EXPOSE 18010
 
 CMD ["python", "server.py"]

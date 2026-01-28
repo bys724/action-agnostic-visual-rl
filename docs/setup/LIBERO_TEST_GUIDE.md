@@ -29,7 +29,7 @@ docker compose up -d openvla-libero
 docker logs -f openvla-libero-server
 
 # 서버 상태 확인
-curl http://localhost:8010/health
+curl http://localhost:18010/health
 ```
 
 ### 2.2 평가 실행
@@ -38,7 +38,7 @@ curl http://localhost:8010/health
 docker compose run --rm libero python src/eval_libero.py \
   --model openvla \
   --host localhost \
-  --port 8010 \
+  --port 18010 \
   --task-suite libero_spatial \
   --num-trials 1 \
   --verbose
@@ -47,7 +47,7 @@ docker compose run --rm libero python src/eval_libero.py \
 docker compose run --rm libero python src/eval_libero.py \
   --model openvla \
   --host localhost \
-  --port 8010 \
+  --port 18010 \
   --task-suite libero_spatial \
   --num-trials 50
 ```
@@ -88,8 +88,8 @@ data/libero/videos/      # 에피소드 비디오
 
 ### 포트 충돌
 ```bash
-# 8010 포트 사용 중인 프로세스 확인
-sudo lsof -i :8010
+# 18010 포트 사용 중인 프로세스 확인
+sudo lsof -i :18010
 
 # 기존 컨테이너 정리
 docker compose down
@@ -108,7 +108,7 @@ docker compose run --rm libero python -c "import libero; print(libero.__file__)"
 docker logs openvla-libero-server
 
 # health check
-curl http://localhost:8010/health
+curl http://localhost:18010/health
 ```
 
 ## 6. Task Suite 옵션
@@ -127,7 +127,7 @@ curl http://localhost:8010/health
 # OpenVLA 평가
 docker compose up -d openvla-libero
 docker compose run --rm libero python src/eval_libero.py \
-  --model openvla --host localhost --port 8010 \
+  --model openvla --host localhost --port 18010 \
   --task-suite libero_10 --num-trials 50
 
 # Pi0 평가
