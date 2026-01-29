@@ -99,8 +99,11 @@ python src/test_simpler_demo.py
 ## 현재 진행 상황
 
 - [x] SimplerEnv 환경 구축
-- [x] 베이스라인 모델 통합 (SimplePolicy, OpenVLA)
+- [x] 베이스라인 모델 통합 (SimplePolicy, OpenVLA, LAPA)
 - [x] 오프라인 체크포인트 관리 시스템
+- [x] LIBERO 벤치마크 환경 구축
+- [x] Pi0 통합 및 평가 파이프라인
+- [x] OpenVLA vs Pi0 비교 평가 (libero_spatial: Pi0 100%, OpenVLA 40%)
 - [ ] 대규모 데이터셋 준비
 - [ ] 행동 독립적 표현 학습 구현
 - [ ] 전이 학습 실험

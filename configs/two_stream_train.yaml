@@ -1,0 +1,48 @@
+# Two-Stream Video Prediction Training Config
+# Action-Agnostic Visual Behavior Representation
+
+model:
+  # Two-Stream Architecture
+  encoder_type: "interleaved"  # "interleaved" (CLS exchange) or "separate"
+  embed_dim: 768
+  depth: 12
+  num_stages: 3  # CLS exchange stages for interleaved
+
+  # ViT backbone (for separate encoder only)
+  model_name: "vit_base_patch16_224"
+  pretrained: true  # Only for separate encoder
+
+data:
+  # Training dataset
+  train_data: "bridge"  # "bridge" or "egodex"
+  bridge_root: "/workspace/data/datasets/bridge_v2"
+  egodex_root: "/workspace/data/egodex"
+
+  # Multi-gap sampling (for multi-scale temporal learning)
+  max_gap: 10
+  sample_decay: 0.3  # Gentle decay for sampling probability
+  loss_decay: 0.7    # Steep decay for loss weights
+
+  # Image settings
+  img_size: 224
+
+training:
+  # Basic settings
+  epochs: 500           # ~3 days on H100 with full dataset
+  batch_size: 32        # Adjust based on GPU memory
+  lr: 1e-4
+  weight_decay: 0.01
+
+  # Evaluation
+  eval_interval: 10     # Evaluate every N epochs
+
+  # Checkpoints (creates timestamped subfolder)
+  checkpoint_dir: "/workspace/data/checkpoints/two_stream"
+  save_interval: null   # Auto-calculated: epochs // 12 (~12 checkpoints)
+
+  # Resume training
+  resume_from: null     # Path to checkpoint to resume from
+
+# GPU settings
+device: "cuda"
+cuda_visible_devices: "1"  # Use GPU 1 (GPU 0 may be occupied)

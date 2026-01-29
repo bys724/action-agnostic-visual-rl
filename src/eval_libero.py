@@ -129,10 +129,33 @@ class Pi0Client:
     def _connect(self):
         """Connect to Pi0 WebSocket server."""
         try:
+            import functools
             import websockets.sync.client
             import msgpack
-            import msgpack_numpy
-            msgpack_numpy.patch()
+
+            # Custom msgpack numpy serialization (matching openpi format)
+            def pack_array(obj):
+                if isinstance(obj, np.ndarray):
+                    return {
+                        b"__ndarray__": True,
+                        b"data": obj.tobytes(),
+                        b"dtype": obj.dtype.str,
+                        b"shape": obj.shape,
+                    }
+                if isinstance(obj, np.generic):
+                    return {
+                        b"__npgeneric__": True,
+                        b"data": obj.item(),
+                        b"dtype": obj.dtype.str,
+                    }
+                return obj
+
+            def unpack_array(obj):
+                if b"__ndarray__" in obj:
+                    return np.ndarray(buffer=obj[b"data"], dtype=np.dtype(obj[b"dtype"]), shape=obj[b"shape"])
+                if b"__npgeneric__" in obj:
+                    return np.dtype(obj[b"dtype"]).type(obj[b"data"])
+                return obj
 
             uri = f"ws://{self.host}:{self.port}"
             logging.info(f"Connecting to Pi0 server at {uri}...")
@@ -141,11 +164,14 @@ class Pi0Client:
                 uri, compression=None, max_size=None
             )
             # Receive server metadata
-            metadata = msgpack.unpackb(self._ws.recv(), raw=False)
+            metadata = msgpack.unpackb(self._ws.recv(), object_hook=unpack_array)
             logging.info(f"Pi0 server metadata: {metadata}")
-            self._packer = msgpack.Packer()
+
+            # Create packer and unpack function with numpy support
+            self._packer = msgpack.Packer(default=pack_array)
+            self._unpack_array = unpack_array
         except ImportError:
-            logging.error("websockets or msgpack not installed. Install: pip install websockets msgpack msgpack-numpy")
+            logging.error("websockets or msgpack not installed. Install: pip install websockets msgpack")
             raise
         except Exception as e:
             logging.error(f"Cannot connect to Pi0 server: {e}")
@@ -189,11 +215,11 @@ class Pi0Client:
         element = {
             "observation/image": image,
             "observation/wrist_image": wrist_image,
-            "observation/state": obs["observation/state"],
+            "observation/state": obs["observation/state"].astype(np.float32),
             "prompt": obs["prompt"],
         }
 
-        # Send request
+        # Send request using custom msgpack numpy serialization
         data = self._packer.pack(element)
         self._ws.send(data)
 
@@ -202,7 +228,7 @@ class Pi0Client:
         if isinstance(response, str):
             raise RuntimeError(f"Pi0 inference error: {response}")
 
-        result = msgpack.unpackb(response, raw=False)
+        result = msgpack.unpackb(response, object_hook=self._unpack_array)
         return result
 
 
@@ -391,8 +417,8 @@ def main():
                         help="LIBERO task suite")
     parser.add_argument("--num-trials", type=int, default=50,
                         help="Number of trials per task")
-    parser.add_argument("--replan-steps", type=int, default=5,
-                        help="Replanning interval")
+    parser.add_argument("--replan-steps", type=int, default=None,
+                        help="Replanning interval (default: 1 for OpenVLA, 5 for Pi0)")
 
     # Output
     parser.add_argument("--output-dir", type=str, default="data/libero/results",
@@ -402,18 +428,20 @@ def main():
 
     # Other
     parser.add_argument("--seed", type=int, default=7, help="Random seed")
-    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-episode logging")
 
     args = parser.parse_args()
 
     logging.basicConfig(
-        level=logging.INFO if args.verbose else logging.WARNING,
+        level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
-    # Set default ports
+    # Set model-specific defaults
     if args.port is None:
         args.port = 8001 if args.model == "openvla" else 8000
+    if args.replan_steps is None:
+        args.replan_steps = 1 if args.model == "openvla" else 5
 
     # Create client
     if args.model == "openvla":
@@ -427,6 +455,8 @@ def main():
     print(f"Server: {args.host}:{args.port}")
     print(f"Task Suite: {args.task_suite}")
     print(f"Trials per task: {args.num_trials}")
+    print(f"Replan steps: {args.replan_steps}")
+    print(f"Seed: {args.seed}")
     print("=" * 70)
 
     # Run evaluation
@@ -437,14 +467,27 @@ def main():
         replan_steps=args.replan_steps,
         video_out_path=args.video_dir,
         seed=args.seed,
-        verbose=args.verbose,
+        verbose=not args.quiet,
     )
+
+    # Add evaluation settings metadata
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results["metadata"] = {
+        "model": args.model,
+        "server": f"{args.host}:{args.port}",
+        "seed": args.seed,
+        "replan_steps": args.replan_steps,
+        "num_trials_per_task": args.num_trials,
+        "num_steps_wait": 10,
+        "env_resolution": LIBERO_ENV_RESOLUTION,
+        "max_steps": TASK_SUITE_CONFIG[args.task_suite]["max_steps"],
+        "timestamp": timestamp,
+    }
 
     # Save results
     output_path = pathlib.Path(args.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_file = output_path / f"{args.model}_{args.task_suite}_{timestamp}.json"
 
     with open(result_file, "w") as f:

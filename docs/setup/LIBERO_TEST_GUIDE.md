@@ -123,15 +123,45 @@ curl http://localhost:18010/health
 
 ## 7. 비교 평가
 
+### 7.1 통합 평가 스크립트 사용
+
 ```bash
+# 서버 실행 (각각 별도 터미널)
+docker compose up -d openvla-libero  # OpenVLA: localhost:18010
+docker compose -f third_party/openpi/serving/compose.yml up  # Pi0: localhost:8000
+
 # OpenVLA 평가
-docker compose up -d openvla-libero
-docker compose run --rm libero python src/eval_libero.py \
+docker exec libero-eval python src/eval_libero.py \
   --model openvla --host localhost --port 18010 \
-  --task-suite libero_10 --num-trials 50
+  --task-suite libero_spatial --num-trials 10
 
 # Pi0 평가
-cd third_party/openpi
-CLIENT_ARGS="--task_suite_name libero_10 --num_trials_per_task 50" \
-  docker compose -f examples/libero/compose.yml up
+docker exec libero-eval python src/eval_libero.py \
+  --model pi0 --host localhost --port 8000 \
+  --task-suite libero_spatial --num-trials 10
 ```
+
+### 7.2 결과 비교
+
+```bash
+# 기본 비교 (자동으로 최신 결과 파일 탐색)
+python3 src/compare_results.py --results-dir data/libero/results \
+  --models openvla pi0 --task-suite libero_spatial
+
+# 마크다운 리포트 생성
+python3 src/compare_results.py --results-dir data/libero/results \
+  --models openvla pi0 --task-suite libero_spatial \
+  --output data/libero/results/comparison_report.md
+
+# 특정 파일 직접 지정
+python3 src/compare_results.py --files \
+  data/libero/results/openvla_libero_spatial_*.json \
+  data/libero/results/pi0_libero_spatial_*.json
+```
+
+### 7.3 최신 결과 (libero_spatial, 10 trials/task)
+
+| 모델 | 성공률 | 성공 | 에피소드 |
+|------|--------|------|----------|
+| Pi0 | 100.0% | 100 | 100 |
+| OpenVLA | 40.0% | 40 | 100 |

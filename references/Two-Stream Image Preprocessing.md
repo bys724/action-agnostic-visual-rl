@@ -12,29 +12,32 @@
 
 ```
 M채널 (Magnocellular): "무엇이 변했는가?"
-  - 시간적 밝기 변화 감지
+  - 시간적 변화 감지 (밝기 + 색상)
   - 절대적 변화량 중요
   - 움직임, 조명 변화
+  - Dorsal pathway: Motion detection
 
-P채널 (Parvocellular): "형태가 무엇인가?"
-  - 공간적 대비 (edge, 형태)
-  - 상대적 대비 중요
+P채널 (Parvocellular): "무엇이 어디 있는가?"
+  - 공간적 구조 (edge, 형태)
+  - 색상 정보 (appearance)
   - 조명 불변적 형태 인식
+  - Ventral pathway: Object recognition
 ```
 
 **핵심 통찰**: 목적이 다르므로 **normalize 전략도 달라야 한다**
 
 ---
 
-## M채널: 절대적 밝기 변화
+## M채널: 시간적 변화 (Temporal Change)
 
 ### 처리 과정
 
 ```
 1. RGB → Luminance (trainable weights 공유)
 2. 시간 미분: ΔL = L(t) - L(t-1)
-3. 절대적 범위 유지 (고정 범위로만 clip)
-4. 이전 프레임 RGB 추가 (색상 정보 보존)
+3. 색상 변화: ΔR, ΔG, ΔB = RGB(t) - RGB(t-1)
+4. 절대적 범위 유지 (고정 범위로만 clip)
+5. 출력: [ΔL, ΔR, ΔG, ΔB]
 ```
 
 ### 구체적 구현
@@ -42,7 +45,7 @@ P채널 (Parvocellular): "형태가 무엇인가?"
 ```python
 def magnocellular_channel(img_prev, img_curr, lum_weights):
     """
-    M채널: 절대적 밝기 변화
+    M채널: 시간적 변화 (밝기 + 색상)
 
     Args:
         img_prev: [B, 3, H, W], range [0, 1]
@@ -50,24 +53,29 @@ def magnocellular_channel(img_prev, img_curr, lum_weights):
         lum_weights: [3], trainable weights for R, G, B
 
     Returns:
-        [B, 4, H, W]: [ΔL, R(t-1), G(t-1), B(t-1)]
+        [B, 4, H, W]: [ΔL, ΔR, ΔG, ΔB]
     """
     # 1. Luminance 계산 (trainable)
     w = torch.softmax(lum_weights, dim=0).view(1, 3, 1, 1)
     lum_prev = (img_prev * w).sum(dim=1, keepdim=True)  # [B, 1, H, W]
     lum_curr = (img_curr * w).sum(dim=1, keepdim=True)
 
-    # 2. 시간 미분
+    # 2. 밝기 변화 (시간 미분)
     delta_L = lum_curr - lum_prev  # 범위 [-1, 1]
-
-    # 3. 절대적 변화량 보존 (고정 범위로만 clip)
     delta_L = torch.clamp(delta_L, -1, 1)
 
-    # 4. RGB 색상 정보 유지 (이전 프레임)
-    rgb_prev = img_prev  # [B, 3, H, W]
+    # 3. 색상 변화 (RGB 각 채널)
+    delta_R = img_curr[:, 0:1] - img_prev[:, 0:1]  # [B, 1, H, W]
+    delta_G = img_curr[:, 1:2] - img_prev[:, 1:2]
+    delta_B = img_curr[:, 2:3] - img_prev[:, 2:3]
 
-    # 5. 통합
-    output = torch.cat([delta_L, rgb_prev], dim=1)  # [B, 4, H, W]
+    # Clip to valid range
+    delta_R = torch.clamp(delta_R, -1, 1)
+    delta_G = torch.clamp(delta_G, -1, 1)
+    delta_B = torch.clamp(delta_B, -1, 1)
+
+    # 4. 통합 (모두 temporal change)
+    output = torch.cat([delta_L, delta_R, delta_G, delta_B], dim=1)  # [B, 4, H, W]
 
     return output
 ```
@@ -103,7 +111,7 @@ def magnocellular_channel(img_prev, img_curr, lum_weights):
 
 ---
 
-## P채널: 상대적 대비 (형태)
+## P채널: 공간적 구조 + 색상 정보 (Spatial Appearance)
 
 ### 처리 과정
 
@@ -113,7 +121,8 @@ def magnocellular_channel(img_prev, img_curr, lum_weights):
 3. Sobel 필터 적용 (공간 미분)
 4. Gradient magnitude 계산
 5. Max magnitude로 normalize (방향 + 선명도 보존)
-6. 출력: [∂L/∂x, ∂L/∂y]
+6. 현재 프레임 RGB 추가 (색상 정보)
+7. 출력: [∂L/∂x, ∂L/∂y, R, G, B]
 ```
 
 ### 구체적 구현
@@ -121,7 +130,11 @@ def magnocellular_channel(img_prev, img_curr, lum_weights):
 ```python
 def parvocellular_channel(img, lum_weights, sobel_x, sobel_y):
     """
-    P채널: 방향(비율) + 선명도(강도) 모두 보존
+    P채널: 공간 구조 + 색상 정보
+
+    생물학적 근거: Ventral pathway (P cells)는 "what" 정보 담당
+    - 형태 (structure): ∂x, ∂y
+    - 색상 (appearance): R, G, B
 
     Args:
         img: [B, 3, H, W], range [0, 1]
@@ -129,7 +142,7 @@ def parvocellular_channel(img, lum_weights, sobel_x, sobel_y):
         sobel_x, sobel_y: [1, 1, 3, 3], Sobel kernels
 
     Returns:
-        [B, 2, H, W]: [∂L/∂x, ∂L/∂y], range [-1, 1]
+        [B, 5, H, W]: [∂L/∂x, ∂L/∂y, R, G, B], range [-1, 1] or [0, 1]
     """
     # 1. Luminance 계산 (M채널과 동일한 weights)
     w = torch.softmax(lum_weights, dim=0).view(1, 3, 1, 1)
@@ -145,7 +158,7 @@ def parvocellular_channel(img, lum_weights, sobel_x, sobel_y):
     grad_x = F.conv2d(lum_norm, sobel_x, padding=1)  # [B, 1, H, W]
     grad_y = F.conv2d(lum_norm, sobel_y, padding=1)  # [B, 1, H, W]
 
-    # 4. Gradient magnitude (핵심 개선!)
+    # 4. Gradient magnitude
     magnitude = torch.sqrt(grad_x**2 + grad_y**2)  # [B, 1, H, W]
 
     # 5. Max magnitude로 normalize
@@ -155,8 +168,12 @@ def parvocellular_channel(img, lum_weights, sobel_x, sobel_y):
     grad_x_norm = grad_x / max_magnitude  # 비율 보존 + 선명도 보존
     grad_y_norm = grad_y / max_magnitude
 
-    # 6. 출력
-    output = torch.cat([grad_x_norm, grad_y_norm], dim=1)  # [B, 2, H, W]
+    # 6. RGB 색상 정보 (현재 프레임)
+    # Ventral pathway의 color perception 모델링
+    R, G, B = img[:, 0:1], img[:, 1:2], img[:, 2:3]  # [B, 1, H, W] each
+
+    # 7. 출력: Structure + Appearance
+    output = torch.cat([grad_x_norm, grad_y_norm, R, G, B], dim=1)  # [B, 5, H, W]
 
     return output
 ```
@@ -274,48 +291,58 @@ w = torch.softmax(lum_weights, dim=0)  # 합 = 1 보장
 ### 최종 출력
 
 ```
-M채널: [B, 4, H, W]
+M채널: [B, 4, H, W] - Temporal Change (Dorsal)
   - Channel 0: ΔL (시간적 밝기 변화)
-  - Channel 1-3: R, G, B (색상 정보, t-1 시점)
+  - Channel 1: ΔR (빨강 채널 변화)
+  - Channel 2: ΔG (초록 채널 변화)
+  - Channel 3: ΔB (파랑 채널 변화)
 
-P채널: [B, 2, H, W]
+P채널: [B, 5, H, W] - Spatial Appearance (Ventral)
   - Channel 0: ∂L/∂x (가로 방향 edge)
   - Channel 1: ∂L/∂y (세로 방향 edge)
+  - Channel 2: R (빨강 채널, 현재 프레임)
+  - Channel 3: G (초록 채널, 현재 프레임)
+  - Channel 4: B (파랑 채널, 현재 프레임)
 
-Total: 6 channels
+Total: 9 channels
 ```
 
 ### ViT 입력 방식
 
 **Option A: 통합 (Single ViT)**
 ```python
-combined = torch.cat([m_output, p_output], dim=1)  # [B, 6, H, W]
+combined = torch.cat([m_output, p_output], dim=1)  # [B, 9, H, W]
 tokens = vit(combined)
 ```
 
 **Option B: 분리 (Two-Stream ViT)**
 ```python
-m_tokens = vit_m(m_output)  # [B, N, D]
-p_tokens = vit_p(p_output)  # [B, N, D]
-fused = fusion([m_tokens, p_tokens])
+m_tokens = vit_m(m_output)  # [B, N+1, D] (4채널 입력)
+p_tokens = vit_p(p_output)  # [B, N+1, D] (5채널 입력)
+fused = fusion([m_tokens, p_tokens])  # Pixel-wise fusion
 ```
 
-**추천**: Option A로 시작 → 필요 시 Option B
+**추천**: Option B (Two-Stream ViT)
+- M과 P의 독립적 인코딩으로 정보 보존
+- [[Pixel-wise Channel Fusion for Behavior Representation]] 참조
 
 ---
 
 ## Normalize 전략 비교표
 
-| 측면 | M채널 | P채널 |
-|------|-------|-------|
-| **목적** | 시간적 변화 감지 | 공간적 형태 인식 |
+| 측면 | M채널 (Dorsal) | P채널 (Ventral) |
+|------|---------------|----------------|
+| **생물학적 경로** | Magnocellular → Dorsal | Parvocellular → Ventral |
+| **목적** | "무엇이 변했는가" (What changed) | "무엇이 어디 있는가" (What is where) |
 | **입력** | img(t-1), img(t) | img(t-1) |
+| **출력** | [ΔL, ΔR, ΔG, ΔB] | [∂x, ∂y, R, G, B] |
+| **채널 수** | 4 channels | 5 channels |
 | **Normalize** | 절대적 (고정 범위) | 2단계 (조명 + 크기) |
-| **범위** | [-1, 1] (clipped) | [-1, 1] (magnitude-normalized) |
-| **보존 대상** | 절대적 변화량 | 방향(비율) + 선명도(강도) |
+| **범위** | [-1, 1] (clipped) | [-1, 1] 또는 [0, 1] |
+| **보존 대상** | 절대적 변화량 | 구조(방향+선명도) + 색상 |
 | **불변성** | 시간 일관성 | 조명 불변성 |
-| **예시** | "10% 밝아졌다" | "45° 방향의 선명한 edge" |
-| **생물학적** | Global adaptation (느림) | Local contrast (빠름) |
+| **예시** | "빨간색이 10% 증가" | "45° edge + 빨간색 물체" |
+| **기능** | Motion detection | Object recognition |
 
 ---
 
@@ -370,87 +397,233 @@ fused = fusion([m_tokens, p_tokens])
 
 M채널:
   ΔL = -0.5 (큰 음수)
-  RGB = 실내 색상
+  ΔR, ΔG, ΔB < 0 (모든 색상 감소)
   → "급격히 어두워졌다" 감지 ✅
 
 P채널:
-  L_norm = 상대적 normalize
+  ∂x, ∂y: 상대적 normalize
   → 어두운 환경에서도 edge 패턴 동일 ✅
-  → 형태 인식 유지
+  R, G, B: 현재 프레임 색상
+  → 어두운 환경에서도 물체 색상 인식 가능
 ```
 
-### 시나리오 2: 동일 물체, 다른 조명
+### 시나리오 2: 빨간 공이 정지 (Static)
 
 ```
-상황: 햇빛 아래 vs 그늘 아래 빨간 공
+상황: 햇빛 아래 빨간 공이 정지
 
 M채널:
-  ΔL ≈ 0 (정적)
-  RGB 보존 → 빨간색 유지 ✅
+  ΔL = 0 (변화 없음)
+  ΔR = ΔG = ΔB = 0 (변화 없음)
+  → M채널 완전 비활성화! ✅
 
 P채널:
-  햇빛: L_norm → edge pattern A
-  그늘: L_norm → edge pattern A (동일)
-  → 조명 불변 형태 인식 ✅
+  ∂x, ∂y: 공의 edge 패턴
+  R, G, B: 빨간 공의 색상
+  → "빨간 공이 여기 있다" 인식 ✅
+  → P만으로 충분! (생물학적으로 타당)
 ```
 
-### 시나리오 3: 빠른 움직임
+### 시나리오 3: 빨간 공이 빠르게 이동 (Video)
 
 ```
-상황: 물체가 빠르게 이동
+상황: 빨간 공이 왼쪽으로 빠르게 이동
 
 M채널:
-  큰 ΔL → 빠른 움직임 감지
-  RGB trail → 색상 기반 추적
+  ΔL: 왼쪽 +, 오른쪽 - (밝기 변화 패턴)
+  ΔR > 0 왼쪽, ΔR < 0 오른쪽 (빨간색 이동)
+  → "빨간 물체가 왼쪽으로 이동" ✅
 
 P채널:
-  연속 프레임의 edge 패턴
-  → 형태 일관성 확인
+  ∂x, ∂y: 공의 edge (현재 위치)
+  R, G, B: 빨간색 (현재 프레임)
+  → "현재 여기에 빨간 공" ✅
+```
+
+### 시나리오 4: "Pick the red cube" Task
+
+```
+Task: 빨간 큐브를 집어라
+
+P채널의 역할 (핵심!):
+  ∂x, ∂y: 큐브 형태 (edge pattern)
+  R, G, B: 빨간색 인식
+  → "빨간 큐브가 어디 있는가" 파악 ✅
+
+M채널의 역할:
+  ΔL, ΔR, ΔG, ΔB: 그리퍼 접근 중 변화
+  → "그리퍼가 큐브에 접근하고 있는가" 확인 ✅
+
+→ 두 채널이 complementary!
 ```
 
 ---
 
-## 주요 응용: Action-Agnostic Visual Behavior Representation
+## 주요 응용: Change Representation Learning
 
 **논문**: [[논문 - Action-Agnostic Visual Behavior Representation]]
 
-이 전처리 방법은 위 논문의 핵심 입력 처리 방식으로 설계됨.
+이 전처리 방법은 **change representation learning**의 핵심 입력으로 설계됨.
+
+---
+
+### 핵심 철학: Change를 효과적으로 표현하기
+
+> **목표**: 이미지 간 변화를 압축하여 representation 학습
+> **검증**: 그 representation으로 미래 프레임을 예측할 수 있는가?
+
+**Two-Stream의 역할**:
+```
+Visual Change = M (temporal dynamics) + P (spatial appearance)
+
+M채널: "무엇이 어떻게 변했는가"
+  → 미래 예측에 필수 (motion, temporal dynamics)
+
+P채널: "현재 무엇이 어디 있는가"
+  → 미래 예측의 기준점 (spatial context, object identity)
+
+→ 둘 다 있어야 정확한 미래 예측 가능!
+```
+
+---
+
+### 왜 M-P Split이 Change Representation에 적합한가?
+
+#### 1. **미래 예측 예시: 공이 굴러간다**
+
+**입력**:
+- img_t: 공이 왼쪽에 있음
+- img_t+k: 공이 오른쪽에 있음
+
+**P채널만으로 예측 시도** (실패):
+```python
+P(img_t) = [∂x, ∂y, R, G, B]  # 왼쪽에 빨간 공
+P(img_t+k) = ???
+
+# 문제: P만으로는 "어디로 움직일지" 알 수 없음
+# → 정지? 왼쪽? 오른쪽? 위? 아래? 불확실!
+```
+
+**M채널 추가 (성공)**:
+```python
+M(t→t+k) = [ΔL, ΔR, ΔG, ΔB]  # 왼쪽 -, 오른쪽 +
+P(img_t) = [∂x, ∂y, R, G, B]  # 현재 위치 + 형태
+
+# 해결: M이 motion direction 제공, P가 현재 상태 제공
+# → "빨간 공이 오른쪽으로 이동" 예측 가능!
+```
+
+**결론**: **M + P 모두 필요!**
+
+---
+
+#### 2. **M-P Balance 자동 달성**
+
+**Video Prediction 학습 중**:
+
+```python
+# 정지 이미지 (Static)
+M = [0, 0, 0, 0]  # 변화 없음
+P = [∂x, ∂y, R, G, B]  # 모든 정보
+
+# Decoder: img_t+k = img_t (그대로)
+# → P만으로 충분 (M 사용 안 함) ✓
+
+# 동영상 (공 이동)
+M = [ΔL, ΔR, ΔG, ΔB]  # 변화 있음
+P = [∂x, ∂y, R, G, B]  # 현재 상태
+
+# Decoder: "어디로 이동?" 알아야 함
+# → M 필수! (motion 정보)
+# → P 필수! (현재 위치)
+# → 둘 다 학습됨 ✓
+```
+
+**Video + Static 혼합 데이터셋**:
+- Static 30%: P 강제 학습 (M=0)
+- Video 70%: M+P 균형 학습 (motion + appearance)
+- **자동으로 M-P balance 달성!**
+
+---
 
 ### 논문과의 연결
 
 **논문의 2-Frame Input 설계**:
 ```
-입력: 항상 2장 이미지 (t, t+1)
-출력: Behavior representation
-목적: Speed-invariant, embodiment-independent learning
+입력: 항상 2장 이미지 (t, t+k)
+출력: Change embedding
+Pre-training: Video prediction (img_t + change_emb → img_t+k)
+Downstream: Inverse dynamics (change_emb → robot action)
 ```
 
 **Two-Stream Preprocessing의 역할**:
 ```
-M채널 (4ch): 시간적 변화 + 색상 정보
-  - ΔL: 밝기 변화 감지 (움직임 방향)
-  - RGB: 물체 색상 유지 (정체성)
+M채널 (4ch): 시간적 변화 (Dorsal pathway)
+  - [ΔL, ΔR, ΔG, ΔB]
+  - "무엇이 변했는가" (What changed)
+  - Forward dynamics의 핵심
 
-P채널 (2ch): 공간적 구조
-  - ∂L/∂x, ∂L/∂y: 형태/edge 정보
-  - 조명 불변적 (normalize)
+P채널 (5ch): 공간적 구조 + 색상 (Ventral pathway)
+  - [∂x, ∂y, R, G, B]
+  - "무엇이 어디 있는가" (What is where)
+  - Spatial context 제공
 
-→ 총 6채널로 시간·공간·색상 통합 표현
+→ 총 9채널로 완전한 change representation 학습
 ```
 
-**장점 (논문에서)**:
-1. ✅ **속도 불변성**: 로봇 속도 차이에 강인 (절대 변화량 보존)
-2. ✅ **조명 불변성**: P채널 normalize로 형태 인식 안정
-3. ✅ **Embodiment-independent**: 시각적 변화 자체를 표현
-4. ✅ **생물학적 근거**: Magnocellular/Parvocellular 이중 경로
+**장점 (Change Representation 관점)**:
+1. ✅ **Forward dynamics 학습 가능**: M-P 분리로 motion + appearance 모두 캐치
+2. ✅ **Spatial reasoning 보존**: Pixel-wise fusion과 결합 시 위치 정보 유지
+3. ✅ **Embodiment-independent**: Visual dynamics는 로봇 종류와 무관
+4. ✅ **Self-validation**: Video prediction 성능 = representation quality
+
+---
+
+### Change Representation → Inverse Dynamics 파이프라인
+
+**Phase 1: Pre-training (Forward)**
+```python
+Input: img_t, img_t+k (M-P preprocessed)
+Encoder: Two-Stream ViT
+Output: change_emb
+Loss: Reconstruction(img_t+k)
+
+→ "어떤 변화가 있었는지" 학습 (unsupervised)
+```
+
+**Phase 2: Downstream (Inverse)**
+```python
+Input: change_emb + task + sensors
+Decoder: Robot-specific action head
+Output: robot_action
+Loss: Behavior cloning / Supervised
+
+→ "그 변화를 만들려면 어떤 action?" 학습
+```
+
+**왜 이것이 효과적인가**:
+- Forward (어려움): 220k videos로 학습 (사람 비디오 활용)
+- Inverse (쉬움): 20-30 demos로 학습 (로봇 데모만)
+- **Two-Stream은 forward learning을 효율화**
+
+---
 
 ### 기타 응용 시나리오
 
 **로봇 비전 시스템**:
-- Visual servoing, Object tracking, Manipulation
+- Visual servoing: Target tracking with motion prediction
+- Object tracking: Combine motion (M) + appearance (P)
+- Manipulation: Predict object dynamics for planning
 
 **비디오 이해**:
-- Action recognition, Video segmentation, Temporal reasoning
+- Action recognition: Temporal change pattern
+- Video segmentation: Motion + appearance cues
+- Temporal reasoning: Predict future frames
+
+**Visual MPC (Model Predictive Control)**:
+- Forward model: img_t + action → img_t+1 prediction
+- Planning: Find action sequence that leads to goal state
+- Two-Stream provides dynamics prior
 
 ---
 
@@ -472,11 +645,11 @@ Tonic 노드 (긴 Duration): M채널 RGB + P채널 edge → 형태 유지
 ### 필수 구현
 
 - [x] Luminance weights (trainable, shared)
-- [x] M채널: 절대적 밝기 변화
-- [x] P채널: 상대적 대비 (Sobel)
+- [x] M채널: 시간적 변화 (ΔL, ΔR, ΔG, ΔB)
+- [x] P채널: 공간 구조 + 색상 (∂x, ∂y, R, G, B)
 - [x] 적절한 normalize 전략
 - [x] Magnitude-based normalization (방향 + 선명도 보존)
-- [x] 6채널 출력
+- [x] 9채널 출력
 
 ### 선택적 개선
 

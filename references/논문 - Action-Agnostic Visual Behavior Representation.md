@@ -1024,113 +1024,174 @@ Robot-specific decoder → action
 
 ## 실험 노트
 
-**요약**: 2-frame fixed input으로 speed-invariance 해결, DINO+SigLIP partially shared architecture (300M params), Alternating training 전략
+**요약**: Change representation learning via video prediction. 핵심 = 변화를 효과적으로 압축 (검증: 미래 예측 가능). U-Net decoder baseline, Forward/Inverse 분리.
 
 > [!note]- 📓 상세 내용 보기
 >
-> **2025-12-18: Method Architecture Discussion**
->
-> **핵심 아이디어 구체화**
+> **2025-12-18: Initial Discussion**
 >
 > **문제 인식**:
-> - 원래 계획: 임의 길이 연속 이미지 → Behavior representation
-> - 발견한 문제: 로봇 속도 차이 → 같은 행동인데 다른 temporal pattern
+> - 로봇 속도 차이 → 같은 행동인데 다른 temporal pattern
 >   - 빠른 로봇: 10 frames (0.3초)
 >   - 느린 로봇: 100 frames (3초)
 >
 > **해결 방안: 2-Frame Fixed Input**
 > ```
-> 입력: 항상 2장 이미지 고정 (t, t+1)
-> 출력: Change embedding e(t→t+1)
-> Sequential: e(t→t+1) → Transform → e(t+1→t+2) → ...
+> 입력: 항상 2장 이미지 고정 (t, t+k)
+> 출력: Change embedding
+> 목적: 변화의 본질만 캐치
 > ```
->
-> **장점**:
-> - Speed-invariant: 같은 변환, 적용 횟수만 다름
-> - 간단한 인코더: 가변 길이 불필요
-> - TraceGen의 speed retargeting과 유사하지만 더 단순
 >
 > **Image Preprocessing**: [[Two-Stream Image Preprocessing]]
-> - M채널 (4ch): 시간적 밝기 변화 (Magnocellular 경로 모델링)
-> - P채널 (2ch): 공간적 형태 정보 (Parvocellular 경로 모델링)
-> - 생물학적 근거: [[Two Visual Pathways]]
-> - 총 6채널 입력으로 시간·공간·색상 통합 표현
+> - M채널 (4ch): [ΔL, ΔR, ΔG, ΔB] - 시간적 변화
+> - P채널 (5ch): [∂x, ∂y, R, G, B] - 공간 + 색상
+> - 총 9채널 입력
 >
-> **Disentangled Representation**
+> ---
 >
-> **두 가지 임베딩 분리**:
+> **2026-01-29: Video Prediction Pre-training (최종 확정)**
+>
+> **핵심 철학: Change Representation Learning**
+>
+> > **목표**: 이미지 간 변화를 효과적으로 압축하는 representation 학습
+> > **검증**: 그 representation만으로 다음 순간을 정확히 예측할 수 있는가?
+>
+> **왜 이 접근법인가**:
+>
+> 1. **Self-validation**:
+>    - MAE: "패치 복원 잘 되나?" (정적)
+>    - DINO: "다른 view에서도 같은 feature?" (불변성)
+>    - **우리**: "다음 순간 예측 정확한가?" (동적 이해) ✅
+>
+> 2. **Cause-agnostic**:
+>    - 로봇 팔? 중력? 사람? → 상관없음
+>    - 모든 원인의 visual dynamics를 통합 학습
+>
+> 3. **Forward/Inverse 분리**:
+>    - Pre-training: Forward dynamics (unsupervised, 220k videos)
+>    - Downstream: Inverse dynamics (supervised, 20-30 demos)
+>
+> **Architecture**
+>
 > ```python
-> e(t→t+1) = Encoder(img_t, img_t+1)
->     ↓
-> z_task = task_head(e)      # Embodiment-invariant (공통 요소)
-> z_action = action_head(e)  # Action-specific (구체적 움직임)
+> class TwoStreamVideoPredictor(nn.Module):
+>     """
+>     Pre-training: img_t + change_emb → img_t+k
+>     Downstream: change_emb → robot action
+>     """
+>     def __init__(self, dim=768):
+>         # Two-Stream Encoders
+>         self.encoder_m = ViT_M(dim)
+>         self.encoder_p = ViT_P(dim)
+>         self.fusion = LinearClsFusion(dim)
+>
+>         # Image Encoder (현재 상태)
+>         self.img_encoder = ResNet50()
+>
+>         # U-Net Decoder (재구성)
+>         self.decoder = UNetDecoder(dim, out_ch=3)
+>
+>     def forward(self, img_t, img_tk):
+>         # 1. M-P preprocessing
+>         m_ch = magnocellular_channel(img_t, img_tk)
+>         p_ch = parvocellular_channel(img_tk)
+>
+>         # 2. Encode change
+>         m_tok = self.encoder_m(m_ch)
+>         p_tok = self.encoder_p(p_ch)
+>         change_emb = self.fusion(m_tok[:, 0], p_tok[:, 0])
+>
+>         # 3. Encode current state
+>         img_feat = self.img_encoder(img_t)
+>
+>         # 4. Reconstruct img_tk
+>         img_pred = self.decoder(img_feat, change_emb)
+>
+>         return img_pred, change_emb
 > ```
 >
-> **학습 전략**:
-> - z_task: DINO-style contrastive (같은 task는 가깝게)
-> - z_action: Transform-style prediction (sequential dynamics)
-> - 정보 손실 방지: 각각 다른 목적으로 전문화
+> **Training Protocol**
 >
-> **Multi-Objective Visual Encoder**
->
-> **DINO + SigLIP Partially Shared Architecture**:
 > ```python
-> # Early layers (0-6): 공유
-> shared_layers = ViT_layers[0:6]  # 100M params
+> # Dataset: EgoDex + Sth-Sth V2 + Robot data
+> # Variable k: 1~10 frames (multi-scale)
 >
-> # Late layers (6-12): 분리
-> dino_branch = ViT_layers[6:12]   # Spatial features (100M)
-> siglip_branch = ViT_layers[6:12] # Semantic features (100M)
+> for batch in dataloader:
+>     video = batch['frames']
+>     k = random.randint(1, 10)
 >
-> Total: 300M params (vs Prismatic 700M)
-> → 57% 파라미터 절약!
+>     img_t = video[:, 0]
+>     img_tk = video[:, k]
+>
+>     img_pred, change_emb = model(img_t, img_tk)
+>
+>     # Loss
+>     loss = F.mse_loss(img_pred, img_tk)
+>     loss += 0.1 * perceptual_loss(img_pred, img_tk)
+>
+>     loss.backward()
+>     optimizer.step()
 > ```
 >
-> **Alternating Training**:
-> ```python
-> # DINO step
-> dino_out = model.forward_dino(img)
-> loss_dino = dino_self_supervised_loss(dino_out)
-> loss_dino.backward()
-> optimizer_shared.step()
-> optimizer_dino.step()
+> **Downstream (Inverse Dynamics)**
 >
-> # SigLIP step
-> siglip_out = model.forward_siglip(img)
-> loss_siglip = contrastive_loss(siglip_out, text)
-> loss_siglip.backward()
-> optimizer_shared.step()
-> optimizer_siglip.step()
+> ```python
+> class InverseDynamicsModel(nn.Module):
+>     def __init__(self):
+>         # Load pretrained (frozen or fine-tunable)
+>         self.encoder_m = load_pretrained(ViT_M)
+>         self.encoder_p = load_pretrained(ViT_P)
+>         self.fusion = load_pretrained(LinearClsFusion)
+>
+>         # Action head (random init)
+>         self.action_head = nn.Linear(dim + task_dim, action_dim)
+>
+>     def forward(self, img_t, img_t1, task_emb):
+>         change_emb = self.encoder(img_t, img_t1)
+>         combined = torch.cat([change_emb, task_emb], dim=-1)
+>         action = self.action_head(combined)
+>         return action
 > ```
 >
-> **장점**:
-> - Loss 충돌 없음 (번갈아가며 학습)
-> - Early layer에서 중복 패치 attention 공유
-> - Inference 25% 빠름 (shared layers 한번만)
+> **Why This Works: M-P Split의 완벽한 조화**
 >
-> **관련 연구**
+> ```python
+> # 미래 예측 예시: 공이 굴러간다
 >
-> **Reconstruction-based ViT 조사**:
-> - **I-JEPA (2023)**: Feature prediction (픽셀 아닌 feature space)
-> - **MAE (2022)**: Pixel reconstruction, 가장 유명
-> - **BootMAE (2023)**: MAE 개선, 88.7% ImageNet
+> # P채널만 (실패)
+> P(img_t) = [∂x, ∂y, R, G, B]  # 현재 위치
+> → "어디로 갈지?" 알 수 없음
 >
-> **잠재적 활용**:
-> - Option A: MAE를 추가 baseline으로?
-> - Option B: Self-supervised reconstruction objective 추가?
-> - Option C: Feature-level prediction (I-JEPA-like) → 우리의 Transform 아이디어와 유사!
+> # M채널 추가 (성공)
+> M(t→t+k) = [ΔL, ΔR, ΔG, ΔB]  # Motion
+> P(img_t) = [∂x, ∂y, R, G, B]  # Appearance
+> → "오른쪽으로 이동" 예측 가능!
+> ```
+>
+> **M-P Balance 자동 달성**:
+> - Static: M=[0,0,0,0], P가 모든 일 → P 학습
+> - Video: M+P 둘 다 필요 → 균형 학습
+>
+> **Key Design Decisions**
+>
+> 1. **Decoder**: U-Net (baseline, simple & stable)
+> 2. **원본 이미지 입력**: img_t를 ResNet 인코딩 → spatial detail 보존
+> 3. **Variable k**: 1~10 frames, multi-scale temporal learning
 >
 > **Next Steps**
 >
-> **다음 논의 주제**:
-> - [ ] MAE/Reconstruction objective를 추가할지 결정
-> - [ ] Partially shared architecture vs Separate encoders 실험 계획
-> - [ ] Transform-based sequential prediction 구현 방법
+> 구현 우선순위:
+> - [x] 핵심 아이디어 확정
+> - [x] Architecture 설계
+> - [ ] U-Net decoder 구현
+> - [ ] EgoDex 데이터 로딩
+> - [ ] Baseline training
+> - [ ] Ablation: M vs P vs M+P
+> - [ ] Inverse dynamics downstream
 >
-> **우선순위 재확인**:
-> - 핵심 아이디어는 변하지 않음 (Cross-embodiment, Action-agnostic)
-> - 오늘은 구현 디테일만 구체화
-> - Week 1-2 목표: Method architecture 확정 → ✅ 거의 완료!
+> **관련 메모**:
+> - [[Pixel-wise Channel Fusion for Behavior Representation#5. Change Representation via Video Prediction]]
+> - [[Two-Stream Image Preprocessing#주요 응용: Change Representation Learning]]
 
 ---
 

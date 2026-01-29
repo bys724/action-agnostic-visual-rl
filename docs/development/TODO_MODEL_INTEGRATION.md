@@ -8,12 +8,21 @@
 | LAPA | ✅ 완료 | ❌ N/A | baseline 비교용 (비전 인코더 교체 불가) |
 | Pi0 | ❌ N/A | ✅ 완료 | 비전 인코더 연구 타겟 |
 
+## 최신 평가 결과 (libero_spatial, 10 trials/task)
+
+| 모델 | 성공률 | 성공 | 에피소드 |
+|------|--------|------|----------|
+| **Pi0** | **100.0%** | 100 | 100 |
+| **OpenVLA** | **40.0%** | 40 | 100 |
+
+결과 파일: `data/libero/results/`
+
 ## 벤치마크 선택
 
 **LIBERO를 통합 벤치마크로 사용**
 - OpenVLA와 Pi0 모두 LIBERO에서 평가 가능
 - 동일한 환경에서 공정한 비교 가능
-- `openvla/openvla-7b-finetuned-libero-10` 체크포인트 사용
+- 체크포인트: `openvla-7b-finetuned-libero-spatial`, `pi05_libero`
 
 ## Docker 서비스
 
@@ -99,9 +108,15 @@ docker compose -f examples/libero/compose.yml up --build
 ```bash
 # OpenVLA 평가
 docker exec libero-eval python src/eval_libero.py \
-  --model openvla --task-suite libero_10 --output-dir data/libero/results
+  --model openvla --host localhost --port 18010 \
+  --task-suite libero_spatial --num-trials 10
 
-# Pi0 평가 (별도 터미널)
-cd third_party/openpi
-CLIENT_ARGS="--task_suite_name libero_10" docker compose -f examples/libero/compose.yml up
+# Pi0 평가
+docker exec libero-eval python src/eval_libero.py \
+  --model pi0 --host localhost --port 8000 \
+  --task-suite libero_spatial --num-trials 10
+
+# 결과 비교
+python3 src/compare_results.py --results-dir data/libero/results \
+  --models openvla pi0 --task-suite libero_spatial
 ```

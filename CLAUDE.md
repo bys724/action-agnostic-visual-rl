@@ -18,19 +18,40 @@ docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url htt
 python src/eval_simpler.py  # 이렇게 하면 안됨
 ```
 
-### 빠른 시작
+### 빠른 시작 (SIMPLER)
 ```bash
 docker compose up -d eval openvla  # 컨테이너 시작
 docker exec simpler-dev python src/test_simpler_demo.py  # 환경 테스트
-docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url http://localhost:8001  # 평가
+docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url http://localhost:8001
+```
+
+### 빠른 시작 (LIBERO)
+```bash
+docker compose up -d libero openvla-libero  # 컨테이너 시작
+docker exec libero-eval python src/eval_libero.py --model openvla --host localhost --port 18010
+python3 src/compare_results.py --results-dir data/libero/results  # 결과 비교
+```
+
+### Two-Stream 모델 학습
+```bash
+# GPU 1 사용 (GPU 0이 다른 작업에 사용 중일 경우)
+docker exec -e CUDA_VISIBLE_DEVICES=1 simpler-eval python /workspace/scripts/train_long.py \
+    --epochs 500 --batch-size 32 --checkpoint-dir /workspace/data/checkpoints/two_stream
+
+# 체크포인트에서 재개
+docker exec -e CUDA_VISIBLE_DEVICES=1 simpler-eval python /workspace/scripts/train_long.py \
+    --resume /workspace/data/checkpoints/two_stream/<timestamp>/latest.pt
 ```
 
 ## 주요 파일
 
 | 파일 | 용도 |
 |------|------|
-| `src/eval_simpler.py` | 모델 평가 |
-| `src/collect_trajectories.py` | 데이터 수집 |
+| `src/models/two_stream.py` | Two-Stream 모델 구현 |
+| `scripts/train_long.py` | Two-Stream 장기 학습 스크립트 |
+| `src/eval_simpler.py` | SIMPLER 모델 평가 |
+| `src/eval_libero.py` | LIBERO 벤치마크 평가 (OpenVLA, Pi0) |
+| `src/compare_results.py` | LIBERO 결과 비교 |
 | `src/policies/` | 정책 구현 (openvla, lapa) |
 | `docker/` | 모델 API 서버 |
 | `configs/` | 평가 설정 |
@@ -44,5 +65,8 @@ docker exec simpler-dev python src/eval_simpler.py --model openvla --api-url htt
 
 ## 참고
 
-- 테스트 가이드: `docs/setup/TEST_GUIDE.md`
 - 프로젝트 구조: `docs/PROJECT_ORGANIZATION.md`
+- SIMPLER 테스트: `docs/setup/TEST_GUIDE.md`
+- LIBERO 테스트: `docs/setup/LIBERO_TEST_GUIDE.md`
+- 모델 통합 현황: `docs/development/TODO_MODEL_INTEGRATION.md`
+- 연구 문서: `references/` 폴더
