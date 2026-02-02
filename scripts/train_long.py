@@ -66,7 +66,22 @@ def main():
     parser.add_argument('--loss-decay', type=float, default=0.7,
                         help='Loss weight decay (default: 0.7)')
 
+    # Multi-GPU
+    parser.add_argument('--no-multi-gpu', action='store_true',
+                        help='Disable multi-GPU training (use single GPU)')
+
     args = parser.parse_args()
+
+    # Print GPU info
+    import torch
+    print("\n" + "="*60)
+    print("GPU Information")
+    print("="*60)
+    num_gpus = torch.cuda.device_count()
+    for i in range(num_gpus):
+        props = torch.cuda.get_device_properties(i)
+        print(f"  GPU {i}: {props.name} ({props.total_memory / 1e9:.1f} GB)")
+    print(f"  Multi-GPU: {'Disabled' if args.no_multi_gpu else f'Enabled ({num_gpus} GPUs)'}")
 
     # Auto-calculate save interval for ~12 checkpoints
     if args.save_interval is None:
@@ -154,6 +169,7 @@ def main():
         eval_dataset=eval_dataset,
         eval_interval=args.eval_interval,
         resume_from=args.resume,
+        multi_gpu=not args.no_multi_gpu,
     )
 
     print("\n" + "="*60)

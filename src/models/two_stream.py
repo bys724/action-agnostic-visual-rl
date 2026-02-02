@@ -56,7 +56,8 @@ class TwoStreamPreprocessing(nn.Module):
     def compute_luminance(self, img):
         """Compute luminance using BT.709 weights."""
         # img: [B, 3, H, W], range [0, 1]
-        w = self.lum_weights.view(1, 3, 1, 1)
+        # Ensure weights are on the same device as input (for DataParallel)
+        w = self.lum_weights.to(img.device).view(1, 3, 1, 1)
         lum = (img * w).sum(dim=1, keepdim=True)  # [B, 1, H, W]
         return lum
 
@@ -94,9 +95,9 @@ class TwoStreamPreprocessing(nn.Module):
         std = lum.std(dim=(2, 3), keepdim=True) + 1e-6
         lum_norm = torch.clamp((lum - mean) / std, -3, 3)
 
-        # 3. Sobel gradients
-        grad_x = F.conv2d(lum_norm, self.sobel_x, padding=1)
-        grad_y = F.conv2d(lum_norm, self.sobel_y, padding=1)
+        # 3. Sobel gradients (ensure filters are on same device for DataParallel)
+        grad_x = F.conv2d(lum_norm, self.sobel_x.to(lum_norm.device), padding=1)
+        grad_y = F.conv2d(lum_norm, self.sobel_y.to(lum_norm.device), padding=1)
 
         # 4. Magnitude normalization (preserve direction + sharpness)
         magnitude = torch.sqrt(grad_x**2 + grad_y**2)
@@ -189,10 +190,10 @@ class TwoStreamViTEncoder(nn.Module):
         """Forward through a single ViT, returning CLS + patches."""
         # Patch embedding
         x = vit.patch_embed(x)  # [B, D, H', W']
-        x = x.flatten(2).transpose(1, 2)  # [B, N, D]
+        x = x.flatten(2).transpose(1, 2).contiguous()  # [B, N, D]
 
-        # Add CLS token
-        cls_token = vit.cls_token.expand(x.shape[0], -1, -1)
+        # Add CLS token (use repeat for DataParallel compatibility)
+        cls_token = vit.cls_token.repeat(x.shape[0], 1, 1)
         x = torch.cat([cls_token, x], dim=1)  # [B, N+1, D]
 
         # Add positional embedding
@@ -366,22 +367,24 @@ class InterleavedTwoStreamViT(nn.Module):
             p_tokens: [B, N+1, D]
         """
         B = m_channels.shape[0]
+        device = m_channels.device  # For DataParallel compatibility
 
-        # Patch embedding
+        # Patch embedding (contiguous() for DataParallel memory alignment)
         m_patches = self.patch_embed_m(m_channels)  # [B, D, H', W']
-        m_patches = m_patches.flatten(2).transpose(1, 2)  # [B, N, D]
+        m_patches = m_patches.flatten(2).transpose(1, 2).contiguous()  # [B, N, D]
 
         p_patches = self.patch_embed_p(p_channels)
-        p_patches = p_patches.flatten(2).transpose(1, 2)  # [B, N, D]
+        p_patches = p_patches.flatten(2).transpose(1, 2).contiguous()  # [B, N, D]
 
-        # Add CLS token
-        cls_m = self.cls_token_m.expand(B, -1, -1)  # [B, 1, D]
-        cls_p = self.cls_token_p.expand(B, -1, -1)
+        # Add CLS token (use repeat instead of expand for DataParallel compatibility)
+        # expand() shares memory which can cause device issues with DataParallel
+        cls_m = self.cls_token_m.repeat(B, 1, 1)  # [B, 1, D]
+        cls_p = self.cls_token_p.repeat(B, 1, 1)
 
         m_tokens = torch.cat([cls_m, m_patches], dim=1)  # [B, N+1, D]
         p_tokens = torch.cat([cls_p, p_patches], dim=1)
 
-        # Add position embedding
+        # Add position embedding (broadcast is safe, no memory sharing issues)
         m_tokens = m_tokens + self.pos_embed_m
         p_tokens = p_tokens + self.pos_embed_p
 
@@ -648,8 +651,9 @@ class VideoDecoder(nn.Module):
         x = self.input_proj(patches)  # [B, 196, 512]
 
         # Reshape to spatial feature map (14x14)
+        # Note: contiguous() is required for DataParallel to ensure proper memory alignment
         H = W = int(N ** 0.5)  # 14
-        x = x.permute(0, 2, 1).view(B, 512, H, W)  # [B, 512, 14, 14]
+        x = x.permute(0, 2, 1).contiguous().view(B, 512, H, W)  # [B, 512, 14, 14]
 
         # Upsample
         for dec_block in self.decoder_blocks:
@@ -1129,7 +1133,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
     Evaluate model on validation/test dataset.
 
     Args:
-        model: TwoStreamVideoPredictor
+        model: TwoStreamVideoPredictor (or DataParallel wrapped)
         eval_dataset: EgoDexDataset or similar
         device: Device
         batch_size: Batch size for evaluation
@@ -1139,6 +1143,10 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
         dict: {'loss': float, 'weighted_loss': float}
     """
     model.eval()
+
+    # Handle DataParallel: get the underlying model for forward pass
+    # DataParallel handles device placement automatically
+    eval_model = model
 
     # 샘플 수 제한
     eval_size = min(num_samples, len(eval_dataset))
@@ -1285,6 +1293,7 @@ def train(
     eval_dataset=None,
     eval_interval=1,
     resume_from=None,
+    multi_gpu=True,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -1293,7 +1302,7 @@ def train(
         model: TwoStreamVideoPredictor
         train_dataset: BridgeDataset or EgoDexDataset (for training)
         num_epochs: Number of training epochs
-        batch_size: Batch size
+        batch_size: Batch size (per GPU if multi_gpu=True)
         lr: Learning rate
         device: Device to train on
         checkpoint_dir: Base directory for checkpoints (auto-creates timestamped subfolder)
@@ -1301,12 +1310,25 @@ def train(
         eval_dataset: EgoDexDataset (for evaluation, optional)
         eval_interval: Evaluate every N epochs
         resume_from: Path to checkpoint to resume training from
+        multi_gpu: Use DataParallel if multiple GPUs available
     """
     from datetime import datetime
     from pathlib import Path
     import json
 
-    model = model.to(device)
+    # Multi-GPU setup
+    use_multi_gpu = multi_gpu and torch.cuda.device_count() > 1
+    if use_multi_gpu:
+        print(f"Using {torch.cuda.device_count()} GPUs with DataParallel")
+        model = model.to(device)
+        model = torch.nn.DataParallel(model)
+        # Adjust batch size for multi-GPU (batch_size is per-GPU)
+        effective_batch_size = batch_size * torch.cuda.device_count()
+        print(f"  Per-GPU batch size: {batch_size}")
+        print(f"  Effective batch size: {effective_batch_size}")
+    else:
+        model = model.to(device)
+        effective_batch_size = batch_size
 
     # Setup checkpoint directory with timestamp
     run_dir = None
@@ -1318,9 +1340,9 @@ def train(
 
     dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=batch_size,
+        batch_size=effective_batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=8 if use_multi_gpu else 4,
         pin_memory=True,
     )
 
@@ -1335,7 +1357,9 @@ def train(
     if resume_from:
         print(f"Resuming from {resume_from}")
         checkpoint = torch.load(resume_from, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        # Handle DataParallel: load into model.module if wrapped
+        model_to_load = model.module if use_multi_gpu else model
+        model_to_load.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         if 'history' in checkpoint:
@@ -1385,9 +1409,11 @@ def train(
 
         # Save checkpoint
         if run_dir:
+            # Handle DataParallel: save model.module.state_dict() if wrapped
+            model_to_save = model.module if use_multi_gpu else model
             checkpoint_data = {
                 'epoch': epoch,
-                'model_state_dict': model.state_dict(),
+                'model_state_dict': model_to_save.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
                 'train_loss': avg_loss,
