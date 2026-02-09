@@ -1171,122 +1171,78 @@ Phase 3: Full System
 ## 실험 계획
 
 **전략**: EgoDex (human hands) pretraining → LIBERO (robot arm) transfer
-**핵심**: Progressive validation (빠른 검증 → 느린 검증)
+**실행**: H100 code completion (~3 days) → AWS full-scale experiment (~1 week)
 
-> [!example]- 🔬 4-Stage Validation
+> [!example]- 🔬 Two-Phase Experimental Strategy
 >
-> ### Stage 0: Sanity Check (학습 중)
+> ### Phase 1: H100 Code Completion & Validation (~3 days)
 >
-> **목적**: 학습이 제대로 되는가?
+> **목적**: 모든 코드 완성 + 빠른 검증 (Bridge V2)
 >
+> **Task 1: Baseline Implementation**
 > ```
-> - Training loss 수렴
-> - Video prediction 샘플 시각화
-> - Gradient norm 안정성
+> 1. VideoMAE (masked reconstruction)
+> 2. Single-stream (future prediction)
+> 3. Two-stream (future prediction, ours)
 >
-> ❌ 이상 → Hyperparameter 조정
-> ✅ 정상 → Stage 1
+> 각 baseline: forward/backward, multi-GPU, checkpoint
 > ```
 >
-> **비용**: 0 (학습 중 자동 확인)
-
+> **Task 2: Short Pretraining (Bridge V2, 5-10 epochs)**
+> ```
+> 3개 encoder 각각 pretrain
+> 학습 안정성, loss 수렴 확인
+> ```
+>
+> **Task 3: Quick LIBERO Test**
+> ```
+> - OpenVLA encoder 교체 코드 작성
+> - Bridge V2 subset (10-20% demos)으로 짧게 fine-tune
+> - 학습 곡선 비교: loss, convergence speed
+> - Sanity check: Two-stream이 reasonable하게 좋은가?
+> ```
+>
+> **Go/No-Go**:
+> - ✅ 코드 정상, Two-stream reasonable → AWS로
+> - ❌ 이상 패턴 → H100에서 디버깅
 >
 > ---
 >
-> ### Stage 1: Intrinsic Evaluation (~1일)
+> ### Phase 2: AWS Full-Scale Experiment (~1 week)
 >
-> **목적**: 인코더 자체 품질 검증
+> **완성된 코드 실행만 (코딩 없음)**
 >
-> **1.1 Video Prediction Quality**
+> **Stage 1: EgoDex Full Pretraining**
 > ```
-> Dataset: EgoDex test set
-> Metric: PSNR, SSIM, LPIPS
-> Baseline: Random, MAE
->
-> Go/No-Go: PSNR > MAE baseline
+> 3개 encoder (VideoMAE, Single-stream, Two-stream)
+> Dataset: EgoDex (829h, 194 tasks)
 > ```
 >
-> **1.2 Linear Probing**
+> **Stage 2: LIBERO Full Evaluation**
 > ```
-> Freeze encoder → train linear head
-> Task: EgoDex hand action classification
->
-> Go/No-Go: Accuracy > 70%
-> ```
->
-> **결과 해석**:
-> - ❌ 둘 다 낮음 → Pretraining 실패, LIBERO 갈 필요 없음
-> - ✅ 둘 다 통과 → Stage 2
->
-> ---
->
-> ### Stage 2: Component Ablation (~3일)
->
-> **목적**: 어떤 component가 중요한가?
->
-> ```
-> Architecture variants (짧은 pretrain, 10 epoch):
-> A: Random init
-> B: Single-stream
-> C: Two-stream (no exchange)
-> D: Two-stream + exchange (ours)
->
-> 각각 Stage 1 metric으로 평가
->
-> Go/No-Go: D가 A,B,C보다 우수
-> ```
->
-> **결과 해석**:
-> - ❌ D가 안 좋음 → Architecture 재설계
-> - ✅ D가 최고 → Stage 3 (D만 full training)
->
-> ---
->
-> ### Stage 3: LIBERO Transfer (~1주)
->
-> **목적**: 로봇 제어 성능 검증
->
-> **Experiment A: Encoder Comparison**
-> ```
-> OpenVLA encoder 교체하여 LIBERO 평가:
->
+> OpenVLA + 각 encoder:
 > 1. OpenVLA original (SigLIP)
-> 2. MAE pretrained (ImageNet)
-> 3. DINO pretrained (ImageNet)
-> 4. Ours (EgoDex) ⭐
+> 2. OpenVLA + VideoMAE
+> 3. OpenVLA + Single-stream
+> 4. OpenVLA + Two-stream ⭐
 >
-> Evaluate: LIBERO-Spatial, LIBERO-Object, LIBERO-Long
-> Metric: Success rate (%)
->
-> Go/No-Go: Ours > OpenVLA original
+> Metric: Success rate (LIBERO-Spatial, Object, Long)
 > ```
 >
-> **Experiment B: Learning Method Ablation**
+> **Stage 3: Component Ablation (문제 발생 시)**
 > ```
-> Two-stream architecture 고정, EgoDex pretrain 방법만 변경:
->
-> 1. No pretraining (random init)
-> 2. MAE-style pixel prediction
-> 3. Video prediction (joint training)
-> 4. Video prediction + teacher-student (ours) ⭐
->
-> LIBERO success rate 비교
-> ```
->
-> **Experiment C: Data Efficiency (선택)**
-> ```
-> EgoDex pretrain 후:
-> - 10%, 25%, 50%, 100% LIBERO demos
-> → Human data bootstrap 효과
+> Intermediate CLS, skip connection, distillation
+> → Stage 2에서 이상 시에만
 > ```
 >
 > ---
 >
 > ### 핵심 원칙
 >
-> 1. **Fast Fail**: Stage 1에서 걸러내기 (비용 최소화)
-> 2. **Progressive Validation**: 각 단계 go/no-go decision
-> 3. **No Blind Training**: LIBERO 전에 2번 검증 (Stage 1, 2)
+> 1. **H100 = Code**: 모든 실험 코드 완성 + early signal
+> 2. **AWS = Execution**: 완성된 코드로 full-scale만
+> 3. **3-way Comparison**: VideoMAE vs Single-stream vs Two-stream
+> 4. **Fast Fail**: H100에서 문제 발견 시 즉시 수정
 
 ---
 

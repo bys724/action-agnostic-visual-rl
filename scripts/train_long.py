@@ -1,13 +1,21 @@
 #!/usr/bin/env python
 """
-Long training script for Two-Stream Vision Model.
+Training script for Video Prediction Models.
+
+Supports three models:
+    1. two-stream: Two-Stream Interleaved ViT (ours)
+    2. single-stream: Single ViT encoder
+    3. videomae: Masked autoencoder
 
 Usage (in Docker container):
-    python scripts/train_long.py --epochs 1000 --save-interval 83 --checkpoint-dir /workspace/checkpoints
+    # Two-Stream (default)
+    python scripts/train_long.py --model two-stream --epochs 100
 
-For ~3 day training with 12 checkpoints:
-    - Estimate epochs per hour based on short test
-    - Set save_interval = total_epochs // 12
+    # Single-Stream baseline
+    python scripts/train_long.py --model single-stream --epochs 100
+
+    # VideoMAE baseline
+    python scripts/train_long.py --model videomae --epochs 100
 """
 
 import argparse
@@ -20,10 +28,19 @@ from src.models.two_stream import (
     EgoDexDataset,
     train,
 )
+from src.models.baselines import (
+    VideoMAEPredictor,
+    SingleStreamVideoPredictor,
+)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Long training for Two-Stream model')
+    parser = argparse.ArgumentParser(description='Training for Video Prediction Models')
+
+    # Model selection
+    parser.add_argument('--model', type=str, default='two-stream',
+                        choices=['two-stream', 'single-stream', 'videomae'],
+                        help='Model type (default: two-stream)')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -49,8 +66,8 @@ def main():
                         help='Max videos for EgoDex (None = all)')
 
     # Checkpoint parameters
-    parser.add_argument('--checkpoint-dir', type=str, default='/workspace/data/checkpoints/two_stream',
-                        help='Checkpoint directory')
+    parser.add_argument('--checkpoint-dir', type=str, default=None,
+                        help='Checkpoint directory (default: /workspace/data/checkpoints/<model>)')
     parser.add_argument('--save-interval', type=int, default=None,
                         help='Save checkpoint every N epochs (default: epochs//12)')
     parser.add_argument('--eval-interval', type=int, default=10,
@@ -83,6 +100,12 @@ def main():
         print(f"  GPU {i}: {props.name} ({props.total_memory / 1e9:.1f} GB)")
     print(f"  Multi-GPU: {'Disabled' if args.no_multi_gpu else f'Enabled ({num_gpus} GPUs)'}")
 
+    # Auto-set checkpoint directory based on model name
+    if args.checkpoint_dir is None:
+        model_name = args.model.replace('-', '_')
+        args.checkpoint_dir = f'/workspace/data/checkpoints/{model_name}'
+        print(f"Auto checkpoint_dir: {args.checkpoint_dir}")
+
     # Auto-calculate save interval for ~12 checkpoints
     if args.save_interval is None:
         args.save_interval = max(1, args.epochs // 12)
@@ -90,9 +113,17 @@ def main():
 
     # Create model
     print("\n" + "="*60)
-    print("Creating TwoStreamVideoPredictor model...")
+    print(f"Creating model: {args.model}")
     print("="*60)
-    model = TwoStreamVideoPredictor()
+
+    if args.model == 'two-stream':
+        model = TwoStreamVideoPredictor()
+    elif args.model == 'single-stream':
+        model = SingleStreamVideoPredictor()
+    elif args.model == 'videomae':
+        model = VideoMAEPredictor()
+    else:
+        raise ValueError(f"Unknown model: {args.model}")
 
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
@@ -140,6 +171,7 @@ def main():
     print("\n" + "="*60)
     print("Training Configuration")
     print("="*60)
+    print(f"  Model: {args.model}")
     print(f"  Epochs: {args.epochs}")
     print(f"  Batch size: {args.batch_size}")
     print(f"  Learning rate: {args.lr}")
