@@ -360,6 +360,36 @@ class VideoMAEForBridge(nn.Module):
 
         return mask, ids_restore
 
+    def encode(self, video: torch.Tensor) -> torch.Tensor:
+        """
+        Encode video without masking (for downstream tasks like OpenVLA).
+
+        Args:
+            video: [B, T, C, H, W] or [B, C, T, H, W] - video input
+
+        Returns:
+            embeddings: [B, num_patches, embed_dim] - patch embeddings
+        """
+        # Handle input format
+        if video.shape[2] == 3:  # [B, T, C, H, W]
+            video = video.permute(0, 2, 1, 3, 4)  # -> [B, C, T, H, W]
+
+        B = video.shape[0]
+
+        # Patch embedding (without masking)
+        x = self.encoder.patch_embed(video)  # [B, num_patches, D]
+
+        # Add position embedding
+        pos_embed = self.encoder.pos_embed.type_as(x).to(x.device).clone().detach()
+        x = x + pos_embed
+
+        # Transformer blocks
+        for blk in self.encoder.blocks:
+            x = blk(x)
+
+        x = self.encoder.norm(x)
+        return x  # [B, num_patches, embed_dim]
+
     def forward(self, img_t, img_tk):
         """
         Forward pass.
