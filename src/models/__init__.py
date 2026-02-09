@@ -6,10 +6,8 @@ Core:
 - two_stream_preprocessing.py: M/P 채널 전처리
 - action_decoder.py: Action Decoder
 
-Legacy:
-- visual_encoder.py: 시각 인코더 (DINOv2, CLIP 기반)
-- behavior_encoder.py: Task-conditioned Behavior Encoder
-- custom_vla.py: 커스텀 VLA 모델
+Optional:
+- behavior_encoder.py: Task-conditioned Behavior Encoder (향후 실험용)
 """
 
 # Core - Two-Stream Interleaved ViT
@@ -29,10 +27,8 @@ from .action_decoder import (
     FullPipeline,
 )
 
-# Legacy
-from .visual_encoder import VisualEncoder, MomentumEncoder
+# Optional - 향후 실험용
 from .behavior_encoder import BehaviorEncoder, BehaviorEncoderConfig, TextEncoder
-from .custom_vla import CustomVLA
 
 __all__ = [
     # Core
@@ -43,9 +39,8 @@ __all__ = [
     "ActionDecoder",
     "ActionDecoderConfig",
     "FullPipeline",
-    # Legacy
-    "VisualEncoder",
+    # Optional
     "BehaviorEncoder",
+    "BehaviorEncoderConfig",
     "TextEncoder",
-    "CustomVLA",
 ]
