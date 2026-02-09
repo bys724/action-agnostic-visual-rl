@@ -365,6 +365,7 @@ class InterleavedTwoStreamViT(nn.Module):
         Returns:
             m_tokens: [B, N+1, D]
             p_tokens: [B, N+1, D]
+            p_cls_intermediates: dict with 'stage1', 'stage2', 'final' CLS tokens [B, D]
         """
         B = m_channels.shape[0]
         device = m_channels.device  # For DataParallel compatibility
@@ -388,6 +389,9 @@ class InterleavedTwoStreamViT(nn.Module):
         m_tokens = m_tokens + self.pos_embed_m
         p_tokens = p_tokens + self.pos_embed_p
 
+        # Store intermediate P CLS tokens for decoder
+        p_cls_intermediates = {}
+
         # Interleaved processing
         for stage in range(self.num_stages):
             # Process M channel blocks
@@ -397,6 +401,12 @@ class InterleavedTwoStreamViT(nn.Module):
             # Process P channel blocks
             for block in self.blocks_p[stage]:
                 p_tokens = block(p_tokens)
+
+            # Save intermediate P CLS (after block processing, before exchange)
+            if stage == 0:
+                p_cls_intermediates['stage1'] = p_tokens[:, 0].clone()  # [B, D]
+            elif stage == 1:
+                p_cls_intermediates['stage2'] = p_tokens[:, 0].clone()  # [B, D]
 
             # CLS exchange (마지막 stage 제외)
             if stage < self.num_stages - 1:
@@ -416,7 +426,10 @@ class InterleavedTwoStreamViT(nn.Module):
         m_tokens = self.norm_m(m_tokens)
         p_tokens = self.norm_p(p_tokens)
 
-        return m_tokens, p_tokens
+        # Save final P CLS (after norm)
+        p_cls_intermediates['final'] = p_tokens[:, 0].clone()  # [B, D]
+
+        return m_tokens, p_tokens, p_cls_intermediates
 
 
 # =============================================================================
@@ -556,17 +569,24 @@ class TwoStreamEncoder(nn.Module):
         Returns:
             cls_fused: [B, D] - global change representation
             patches_fused: [B, N, D] - spatial change representation
+            p_cls_intermediates: dict with 'stage1', 'stage2', 'final' CLS [B, D]
+                                 (only for interleaved encoder, None otherwise)
         """
         # Step 1: Preprocessing
         m_ch, p_ch = self.preprocess(img_prev, img_curr)
 
         # Step 2: Encode
-        m_tokens, p_tokens = self.encoder(m_ch, p_ch)
+        p_cls_intermediates = None
+        if self.encoder_type == "interleaved":
+            m_tokens, p_tokens, p_cls_intermediates = self.encoder(m_ch, p_ch)
+        else:
+            # Separate encoder doesn't support intermediate CLS yet
+            m_tokens, p_tokens = self.encoder(m_ch, p_ch)
 
         # Step 3: Fuse
         cls_fused, patches_fused = self.fusion(m_tokens, p_tokens)
 
-        return cls_fused, patches_fused
+        return cls_fused, patches_fused, p_cls_intermediates
 
 
 # =============================================================================
@@ -575,13 +595,25 @@ class TwoStreamEncoder(nn.Module):
 
 class VideoDecoder(nn.Module):
     """
-    Pure embedding-to-image decoder.
+    Video prediction decoder with skip connections and multi-scale CLS injection.
 
-    이전 이미지 없이, 인코더의 출력(patches)만으로 이미지 생성.
-    이렇게 하면 인코더가 더 완전한 표현을 학습하도록 강제됨.
+    Architecture:
+    - Skip connection from img_t (downsampled to 56x56)
+    - Multi-scale CLS injection via FiLM-like modulation
+    - 4 upsampling levels: 14→28→56→112→224
 
-    Input: patches [B, 196, D] (14x14 spatial tokens from encoder)
-    Output: img_pred [B, 3, 224, 224]
+    CLS Injection Strategy (coarse-to-fine):
+    - Level 1 (14→28): final CLS (abstract/high-level)
+    - Level 2 (28→56): stage2 CLS (mid-level) + skip from img_t
+    - Level 3 (56→112): stage1 CLS (concrete/low-level)
+    - Level 4 (112→224): No CLS (detail refinement)
+
+    Input:
+        patches: [B, 196, D] (14x14 spatial tokens from encoder)
+        img_t: [B, 3, 224, 224] (current frame for skip connection)
+        p_cls_intermediates: dict with 'stage1', 'stage2', 'final' CLS [B, D]
+    Output:
+        img_pred: [B, 3, 224, 224]
     """
 
     def __init__(
@@ -599,34 +631,55 @@ class VideoDecoder(nn.Module):
             nn.GELU(),
         )
 
-        # Decoder blocks (upsampling path)
-        # 14x14 -> 28 -> 56 -> 112 -> 224
-        self.decoder_blocks = nn.ModuleList([
-            # 14x14 -> 28x28
-            nn.Sequential(
-                nn.ConvTranspose2d(512, 256, 4, stride=2, padding=1),
-                nn.BatchNorm2d(256),
-                nn.GELU(),
-            ),
-            # 28x28 -> 56x56
-            nn.Sequential(
-                nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),
-                nn.BatchNorm2d(128),
-                nn.GELU(),
-            ),
-            # 56x56 -> 112x112
-            nn.Sequential(
-                nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),
-                nn.BatchNorm2d(64),
-                nn.GELU(),
-            ),
-            # 112x112 -> 224x224
-            nn.Sequential(
-                nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),
-                nn.BatchNorm2d(32),
-                nn.GELU(),
-            ),
-        ])
+        # Skip connection encoder: img_t (224x224) -> features (56x56)
+        self.skip_encoder = nn.Sequential(
+            nn.Conv2d(3, 32, 7, stride=2, padding=3),   # 224→112
+            nn.BatchNorm2d(32),
+            nn.GELU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1),  # 112→56
+            nn.BatchNorm2d(64),
+            nn.GELU(),
+        )
+
+        # CLS projection layers (embed_dim -> channel dim for FiLM modulation)
+        self.cls_proj_1 = nn.Linear(embed_dim, 256)  # for level 1 output
+        self.cls_proj_2 = nn.Linear(embed_dim, 128)  # for level 2 output
+        self.cls_proj_3 = nn.Linear(embed_dim, 64)   # for level 3 output
+
+        # Upsampling blocks
+        # Level 1: 14x14 -> 28x28 (512 -> 256)
+        self.up1 = nn.Sequential(
+            nn.ConvTranspose2d(512, 256, 4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.GELU(),
+        )
+
+        # Level 2: 28x28 -> 56x56 (256 -> 128)
+        self.up2 = nn.Sequential(
+            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+        )
+        # Skip merge: concat(128 + 64) -> 128
+        self.skip_merge = nn.Sequential(
+            nn.Conv2d(128 + 64, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+        )
+
+        # Level 3: 56x56 -> 112x112 (128 -> 64)
+        self.up3 = nn.Sequential(
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.GELU(),
+        )
+
+        # Level 4: 112x112 -> 224x224 (64 -> 32, no CLS)
+        self.up4 = nn.Sequential(
+            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.GELU(),
+        )
 
         # Final output
         self.output_conv = nn.Sequential(
@@ -635,29 +688,69 @@ class VideoDecoder(nn.Module):
             nn.Conv2d(32, out_channels, 1),
         )
 
-    def forward(self, patches):
+    def inject_cls(self, feature_map, cls_token, proj_layer):
         """
-        Generate image from patch embeddings only.
+        FiLM-like CLS injection (additive modulation).
+
+        Args:
+            feature_map: [B, C, H, W]
+            cls_token: [B, D] - CLS embedding
+            proj_layer: nn.Linear(D, C)
+
+        Returns:
+            modulated_feature: [B, C, H, W]
+        """
+        B, C, H, W = feature_map.shape
+        cls_proj = proj_layer(cls_token)  # [B, C]
+        cls_proj = cls_proj.view(B, C, 1, 1)  # [B, C, 1, 1]
+        return feature_map + cls_proj
+
+    def forward(self, patches, img_t=None, p_cls_intermediates=None):
+        """
+        Generate future frame from patch embeddings with skip and CLS injection.
 
         Args:
             patches: [B, 196, D] - patch embeddings from encoder (14x14 tokens)
+            img_t: [B, 3, 224, 224] - current frame for skip connection (optional)
+            p_cls_intermediates: dict with 'stage1', 'stage2', 'final' CLS [B, D] (optional)
 
         Returns:
-            img_pred: [B, 3, 224, 224] - predicted image
+            img_pred: [B, 3, 224, 224] - predicted future frame
         """
         B, N, D = patches.shape
+        H = W = int(N ** 0.5)  # 14
 
         # Project to decoder dimension
         x = self.input_proj(patches)  # [B, 196, 512]
-
-        # Reshape to spatial feature map (14x14)
-        # Note: contiguous() is required for DataParallel to ensure proper memory alignment
-        H = W = int(N ** 0.5)  # 14
         x = x.permute(0, 2, 1).contiguous().view(B, 512, H, W)  # [B, 512, 14, 14]
 
-        # Upsample
-        for dec_block in self.decoder_blocks:
-            x = dec_block(x)
+        # Compute skip features from img_t (-> 56x56)
+        skip_feat = None
+        if img_t is not None:
+            skip_feat = self.skip_encoder(img_t)  # [B, 64, 56, 56]
+
+        # Level 1: 14 -> 28 (+ final CLS)
+        x = self.up1(x)  # [B, 256, 28, 28]
+        if p_cls_intermediates is not None and 'final' in p_cls_intermediates:
+            x = self.inject_cls(x, p_cls_intermediates['final'], self.cls_proj_1)
+
+        # Level 2: 28 -> 56 (+ stage2 CLS)
+        x = self.up2(x)  # [B, 128, 56, 56]
+        if p_cls_intermediates is not None and 'stage2' in p_cls_intermediates:
+            x = self.inject_cls(x, p_cls_intermediates['stage2'], self.cls_proj_2)
+
+        # Merge skip connection at 56x56
+        if skip_feat is not None:
+            x = torch.cat([x, skip_feat], dim=1)  # [B, 192, 56, 56]
+            x = self.skip_merge(x)  # [B, 128, 56, 56]
+
+        # Level 3: 56 -> 112 (+ stage1 CLS)
+        x = self.up3(x)  # [B, 64, 112, 112]
+        if p_cls_intermediates is not None and 'stage1' in p_cls_intermediates:
+            x = self.inject_cls(x, p_cls_intermediates['stage1'], self.cls_proj_3)
+
+        # Level 4: 112 -> 224 (no CLS, detail refinement)
+        x = self.up4(x)  # [B, 32, 224, 224]
 
         # Final output
         img_pred = torch.sigmoid(self.output_conv(x))
@@ -722,11 +815,11 @@ class TwoStreamVideoPredictor(nn.Module):
             img_pred: [B, 3, H, W] - predicted future frame
             cls_emb: [B, D] - CLS embedding (for downstream tasks)
         """
-        # Encode: two frames -> embeddings
-        cls_emb, patches = self.encoder(img_t, img_tk)
+        # Encode: two frames -> embeddings + intermediate CLS
+        cls_emb, patches, p_cls_intermediates = self.encoder(img_t, img_tk)
 
-        # Decode: patches only -> future frame (no img_t!)
-        img_pred = self.decoder(patches)
+        # Decode: patches + img_t skip + multi-scale CLS -> future frame
+        img_pred = self.decoder(patches, img_t, p_cls_intermediates)
 
         return img_pred, cls_emb
 
@@ -1512,10 +1605,14 @@ if __name__ == "__main__":
         img_prev = torch.rand(2, 3, 224, 224, device=device)
         img_curr = torch.rand(2, 3, 224, 224, device=device)
 
-        cls_out, patches_out = encoder(img_prev, img_curr)
+        cls_out, patches_out, p_cls_intermediates = encoder(img_prev, img_curr)
 
         print(f"Input:  img_prev {img_prev.shape}, img_curr {img_curr.shape}")
         print(f"Output: cls {cls_out.shape}, patches {patches_out.shape}")
+        if p_cls_intermediates is not None:
+            print(f"Intermediate CLS: {list(p_cls_intermediates.keys())}")
+            for k, v in p_cls_intermediates.items():
+                print(f"  {k}: {v.shape}")
 
         # Gradient check
         loss = cls_out.sum() + patches_out.sum()
@@ -1528,20 +1625,27 @@ if __name__ == "__main__":
 
     elif args.test == "decoder":
         # =================================================================
-        # Test Decoder only
+        # Test Decoder only (with new interface)
         # =================================================================
         print("=" * 60)
-        print("Testing VideoDecoder")
+        print("Testing VideoDecoder (with skip + multi-scale CLS)")
         print("=" * 60)
 
-        decoder = VideoDecoder(change_dim=768).to(device)
+        decoder = VideoDecoder(embed_dim=768).to(device)
 
+        # Simulate encoder outputs
+        patches = torch.rand(2, 196, 768, device=device)  # 14x14 patches
         img_t = torch.rand(2, 3, 224, 224, device=device)
-        change_emb = torch.rand(2, 768, device=device)
+        p_cls_intermediates = {
+            'stage1': torch.rand(2, 768, device=device),
+            'stage2': torch.rand(2, 768, device=device),
+            'final': torch.rand(2, 768, device=device),
+        }
 
-        img_pred = decoder(img_t, change_emb)
+        img_pred = decoder(patches, img_t, p_cls_intermediates)
 
-        print(f"Input:  img_t {img_t.shape}, change_emb {change_emb.shape}")
+        print(f"Input:  patches {patches.shape}, img_t {img_t.shape}")
+        print(f"        p_cls_intermediates: {list(p_cls_intermediates.keys())}")
         print(f"Output: img_pred {img_pred.shape}")
         print(f"Output range: [{img_pred.min():.3f}, {img_pred.max():.3f}]")
 
@@ -1578,8 +1682,11 @@ if __name__ == "__main__":
         print(f"Preprocessed: M {m_ch.shape}, P {p_ch.shape}")
 
         # Encode
-        m_tokens, p_tokens = encoder(m_ch, p_ch)
+        m_tokens, p_tokens, p_cls_intermediates = encoder(m_ch, p_ch)
         print(f"Encoded: m_tokens {m_tokens.shape}, p_tokens {p_tokens.shape}")
+        print(f"Intermediate CLS: {list(p_cls_intermediates.keys())}")
+        for k, v in p_cls_intermediates.items():
+            print(f"  {k}: {v.shape}")
 
         # Structure info
         print(f"\nArchitecture:")
