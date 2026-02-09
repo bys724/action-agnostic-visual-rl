@@ -134,9 +134,9 @@ class LIBERODataset(Dataset):
         with h5py.File(file_path, "r") as f:
             demo_group = f[f"data/{demo_key}"]
 
-            # Get current observation image
-            img_t = demo_group["obs/agentview_image"][step_idx]  # [H, W, C]
-            img_tk = demo_group["obs/agentview_image"][step_idx + 1]  # Next frame
+            # Get current observation image (LIBERO uses 'agentview_rgb', 128x128)
+            img_t = demo_group["obs/agentview_rgb"][step_idx]  # [H, W, C]
+            img_tk = demo_group["obs/agentview_rgb"][step_idx + 1]  # Next frame
 
             # Get action
             action = demo_group["actions"][step_idx]  # [7]
