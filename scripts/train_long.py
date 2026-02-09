@@ -28,10 +28,8 @@ from src.models.two_stream import (
     EgoDexDataset,
     train,
 )
-from src.models.baselines import (
-    VideoMAEPredictor,
-    SingleStreamVideoPredictor,
-)
+from src.models.baselines import SingleStreamVideoPredictor
+from src.models.videomae_wrapper import VideoMAEForBridge
 
 
 def main():
@@ -121,7 +119,7 @@ def main():
     elif args.model == 'single-stream':
         model = SingleStreamVideoPredictor()
     elif args.model == 'videomae':
-        model = VideoMAEPredictor()
+        model = VideoMAEForBridge(model_size='base')
     else:
         raise ValueError(f"Unknown model: {args.model}")
 

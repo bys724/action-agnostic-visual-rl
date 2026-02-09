@@ -7,3 +7,6 @@
 [submodule "third_party/openpi"]
 	path = third_party/openpi
 	url = https://github.com/Physical-Intelligence/openpi.git
+[submodule "external/VideoMAE"]
+	path = external/VideoMAE
+	url = https://github.com/MCG-NJU/VideoMAE.git
