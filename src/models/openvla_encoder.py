@@ -298,7 +298,15 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
 
     @classmethod
     def from_checkpoint(cls, checkpoint_path: str, device: str = "cuda"):
-        """Load encoder from SingleStreamVideoPredictor checkpoint."""
+        """
+        Load encoder from SingleStreamVideoPredictor checkpoint.
+
+        Expected checkpoint structure:
+        - patch_embed.weight: [embed_dim, 6, patch_size, patch_size] (6-channel input)
+        - blocks.*, cls_token, pos_embed, norm.*
+
+        NOTE: Checkpoints with 3-channel patch_embed are NOT compatible.
+        """
         checkpoint = torch.load(checkpoint_path, map_location=device)
         config = checkpoint.get("config", {})
 
@@ -310,14 +318,41 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
 
         state_dict = checkpoint.get("model_state_dict", checkpoint)
 
-        # Map weights (exclude decoder)
+        # Check input channel compatibility
+        if "patch_embed.weight" in state_dict:
+            ckpt_in_channels = state_dict["patch_embed.weight"].shape[1]
+            if ckpt_in_channels != 6:
+                print(f"WARNING: Checkpoint uses {ckpt_in_channels}-channel input, "
+                      f"but SingleStreamEncoder requires 6 channels.")
+                print("         Returning encoder with random initialization.")
+                encoder.to(device)
+                encoder.eval()
+                return encoder
+
+        # Map weights (exclude decoder and mask_token)
         encoder_state = {}
         for key, value in state_dict.items():
             if key.startswith("decoder."):
                 continue
+            if key == "mask_token":  # Skip VideoMAE-style mask token
+                continue
             encoder_state[key] = value
 
-        encoder.load_state_dict(encoder_state, strict=False)
+        # Load weights
+        missing, unexpected = encoder.load_state_dict(encoder_state, strict=False)
+
+        if missing:
+            print(f"Warning: Missing keys: {len(missing)}")
+            for k in missing[:5]:
+                print(f"  - {k}")
+        if unexpected:
+            print(f"Warning: Unexpected keys: {len(unexpected)}")
+            for k in unexpected[:5]:
+                print(f"  - {k}")
+
+        if not missing and not unexpected:
+            print(f"Successfully loaded {len(encoder_state)} weights from checkpoint")
+
         encoder.to(device)
         encoder.eval()
 
@@ -390,7 +425,15 @@ class VideoMAEEncoderForOpenVLA(nn.Module):
 
     @classmethod
     def from_checkpoint(cls, checkpoint_path: str, device: str = "cuda"):
-        """Load encoder from VideoMAEForBridge checkpoint."""
+        """
+        Load encoder from VideoMAEForBridge checkpoint.
+
+        Expected checkpoint structure:
+        - encoder.blocks.0.attn.qkv.*, encoder.blocks.0.mlp.fc1.* (VideoMAE style)
+
+        NOTE: Checkpoints with blocks.0.linear1.*, blocks.0.self_attn.* are
+        SingleStream-style and NOT compatible with VideoMAE architecture.
+        """
         checkpoint = torch.load(checkpoint_path, map_location=device)
         config = checkpoint.get("config", {})
 
@@ -398,13 +441,47 @@ class VideoMAEEncoderForOpenVLA(nn.Module):
 
         state_dict = checkpoint.get("model_state_dict", checkpoint)
 
-        # Load only encoder weights
+        # Check checkpoint architecture compatibility
+        has_videomae_style = any("attn.qkv" in k or "mlp.fc1" in k for k in state_dict.keys())
+        has_singlestream_style = any("linear1" in k or "self_attn.in_proj" in k for k in state_dict.keys())
+
+        if has_singlestream_style and not has_videomae_style:
+            print("WARNING: Checkpoint uses SingleStream architecture (linear1, self_attn)")
+            print("         This is NOT compatible with VideoMAE architecture.")
+            print("         Use SingleStreamEncoderForOpenVLA.from_checkpoint() instead.")
+            print("         Returning encoder with random initialization.")
+            encoder.to(device)
+            encoder.eval()
+            return encoder
+
+        # Map weights from VideoMAEForBridge to VideoMAEEncoderForOpenVLA
+        # Checkpoint: encoder.blocks.0.* -> Target: model.encoder.blocks.0.*
         encoder_state = {}
         for key, value in state_dict.items():
-            if key.startswith("model.encoder.") or key.startswith("model.patch_embed."):
-                encoder_state[key] = value
+            if key.startswith("encoder."):
+                new_key = "model." + key
+                encoder_state[new_key] = value
+            elif key.startswith("decoder.") or key == "mask_token":
+                continue  # Skip decoder and mask token
 
-        encoder.load_state_dict(encoder_state, strict=False)
+        # Load weights
+        missing, unexpected = encoder.load_state_dict(encoder_state, strict=False)
+
+        loaded = len(encoder_state)
+        if missing:
+            print(f"Warning: Missing keys: {len(missing)}")
+            for k in missing[:5]:
+                print(f"  - {k}")
+        if unexpected:
+            print(f"Warning: Unexpected keys: {len(unexpected)}")
+            for k in unexpected[:5]:
+                print(f"  - {k}")
+
+        if not missing and not unexpected and loaded > 0:
+            print(f"Successfully loaded {loaded} weights from checkpoint")
+        elif loaded == 0:
+            print("Warning: No matching weights found in checkpoint")
+
         encoder.to(device)
         encoder.eval()
 
