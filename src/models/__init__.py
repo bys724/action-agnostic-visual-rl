@@ -6,6 +6,7 @@ Core:
 - baselines.py: Baseline models (Single-Stream)
 - videomae_wrapper.py: VideoMAE wrapper
 - openvla_encoder.py: OpenVLA 호환 encoder wrappers
+- action_head.py: Action head for LIBERO fine-tuning/evaluation
 
 Legacy (호환성):
 - two_stream_vit.py: Two-Stream Interleaved ViT
@@ -31,6 +32,9 @@ from .openvla_encoder import (
     SingleStreamEncoderForOpenVLA,
     VideoMAEEncoderForOpenVLA,
 )
+
+# Action Head for LIBERO evaluation
+from .action_head import ActionHead, EncoderWithActionHead
 
 # Legacy - Two-Stream Interleaved ViT
 from .two_stream_vit import (
@@ -61,6 +65,9 @@ __all__ = [
     "TwoStreamEncoderForOpenVLA",
     "SingleStreamEncoderForOpenVLA",
     "VideoMAEEncoderForOpenVLA",
+    # Action Head (LIBERO evaluation)
+    "ActionHead",
+    "EncoderWithActionHead",
     # Legacy
     "TwoStreamInterleavedViT",
     "TwoStreamViTConfig",

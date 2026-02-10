@@ -1,15 +1,14 @@
 # LIBERO Evaluation Environment
-# Python 3.8 required for LIBERO compatibility
+# Based on CUDA 11.3 for PyTorch 1.11 compatibility
+# Python 3.8 is default on Ubuntu 20.04
 
-FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Add deadsnakes PPA for Python 3.8
-RUN apt-get update && apt-get install -y software-properties-common && \
-    add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update && apt-get install -y \
-    python3.8 python3.8-dev python3.8-venv python3.8-distutils \
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    python3.8 python3.8-dev python3.8-venv python3-pip \
     git wget curl vim \
     make g++ clang \
     libosmesa6-dev libgl1-mesa-glx libegl1 \
@@ -17,19 +16,14 @@ RUN apt-get update && apt-get install -y software-properties-common && \
     libglib2.0-0 libsm6 libxrender1 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pip for Python 3.8 (use 3.8-specific URL)
-RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python3.8
-
 # Set Python 3.8 as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1 && \
-    update-alternatives --install /usr/bin/pip pip /usr/local/bin/pip3.8 1
-
-RUN python -m pip install --upgrade pip
+    python -m pip install --upgrade pip
 
 WORKDIR /workspace
 
-# PyTorch with CUDA (older version for LIBERO compatibility)
+# PyTorch 1.11.0 with CUDA 11.3 (LIBERO requirement)
 RUN pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 \
     --extra-index-url https://download.pytorch.org/whl/cu113
 
@@ -49,13 +43,19 @@ RUN pip install --no-cache-dir \
     imageio imageio-ffmpeg \
     tqdm tyro pyyaml \
     requests websocket-client \
-    pandas
+    pandas h5py
+
+# Custom encoder dependencies (for two-stream, videomae evaluation)
+RUN pip install --no-cache-dir \
+    transformers>=4.30.0 \
+    timm>=0.9.0 \
+    einops
 
 # Clone and install LIBERO with all dependencies
 RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git /opt/libero && \
     cd /opt/libero && \
     pip install 'setuptools<66' && \
-    pip install bddl easydict h5py cloudpickle 'gym>=0.21.0,<0.26.0' && \
+    pip install bddl easydict cloudpickle 'gym>=0.21.0,<0.26.0' && \
     pip install .
 
 # Add LIBERO to PYTHONPATH

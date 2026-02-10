@@ -2,25 +2,24 @@
 """
 LIBERO Benchmark Evaluation Script
 
-OpenVLA와 Pi0 모델을 LIBERO 벤치마크에서 평가합니다.
+OpenVLA, Pi0, Custom encoder 모델을 LIBERO 벤치마크에서 평가합니다.
 - OpenVLA: REST API 사용
 - Pi0: WebSocket API 사용 (openpi 프로토콜)
+- Custom: 로컬 encoder + action head (two-stream, single-stream, videomae)
 """
 
 import argparse
 import collections
-import dataclasses
 import json
 import logging
 import math
 import pathlib
-import time
+import sys
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import imageio
 import numpy as np
-import pandas as pd
 import requests
 from PIL import Image
 import io
@@ -34,6 +33,14 @@ try:
 except ImportError:
     LIBERO_AVAILABLE = False
     logging.warning("LIBERO not available. Install LIBERO or run in LIBERO container.")
+
+# Custom encoder imports (optional)
+try:
+    import torch
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 
 # Task suite configurations
@@ -113,6 +120,101 @@ class OpenVLAClient:
         action = np.array(result["action"], dtype=np.float32)
 
         return {"actions": action[np.newaxis, :]}  # Add action horizon dim
+
+
+class CustomEncoderClient:
+    """
+    Custom encoder client for LIBERO evaluation.
+
+    Loads a fine-tuned encoder + action head locally and runs inference
+    without requiring a server.
+    """
+
+    def __init__(
+        self,
+        checkpoint_path: str,
+        encoder_type: str = "two-stream",
+        device: str = "cuda",
+        img_size: int = 224,
+    ):
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch not available. Install: pip install torch")
+
+        self.device = device
+        self.img_size = img_size
+        self.encoder_type = encoder_type
+
+        logging.info(f"Loading custom encoder from: {checkpoint_path}")
+        logging.info(f"Encoder type: {encoder_type}, Device: {device}")
+
+        # Load model
+        sys.path.insert(0, "/workspace")
+        from src.models.action_head import EncoderWithActionHead
+
+        self.model = EncoderWithActionHead.from_checkpoint(
+            checkpoint_path=checkpoint_path,
+            encoder_type=encoder_type,
+            device=device,
+        )
+        self.model.eval()
+        logging.info("Custom encoder loaded successfully")
+
+        # Track previous observation for frame pair
+        self._prev_image = None
+
+    def _preprocess_image(self, img: np.ndarray) -> torch.Tensor:
+        """Preprocess image: resize, normalize, convert to tensor."""
+        # img: [H, W, C] uint8
+        if img.dtype != np.uint8:
+            img = (img * 255).astype(np.uint8)
+
+        img = img.astype(np.float32) / 255.0  # [0, 1]
+
+        # Convert to tensor and resize
+        img_tensor = torch.from_numpy(img).permute(2, 0, 1)  # [C, H, W]
+        if img.shape[0] != self.img_size or img.shape[1] != self.img_size:
+            img_tensor = F.interpolate(
+                img_tensor.unsqueeze(0),
+                size=(self.img_size, self.img_size),
+                mode="bilinear",
+                align_corners=False,
+            ).squeeze(0)
+
+        return img_tensor
+
+    def infer(self, obs: Dict[str, Any]) -> Dict[str, Any]:
+        """Run inference on observation."""
+        # Get current image (rotate 180 degrees as per LIBERO convention)
+        curr_image = np.ascontiguousarray(obs["observation/image"][::-1, ::-1])
+
+        # Use previous image or current if first frame
+        if self._prev_image is None:
+            prev_image = curr_image.copy()
+        else:
+            prev_image = self._prev_image
+
+        # Store for next iteration
+        self._prev_image = curr_image.copy()
+
+        # Preprocess images
+        prev_tensor = self._preprocess_image(prev_image)
+        curr_tensor = self._preprocess_image(curr_image)
+
+        # Stack as 6-channel input [prev, curr]
+        pixel_values = torch.cat([prev_tensor, curr_tensor], dim=0)  # [6, H, W]
+        pixel_values = pixel_values.unsqueeze(0).to(self.device)  # [1, 6, H, W]
+
+        # Inference
+        with torch.no_grad():
+            action = self.model(pixel_values)  # [1, 7]
+
+        action_np = action.cpu().numpy().squeeze(0)  # [7]
+
+        return {"actions": action_np[np.newaxis, :]}  # Add action horizon dim
+
+    def reset(self):
+        """Reset internal state for new episode."""
+        self._prev_image = None
 
 
 class Pi0Client:
@@ -302,6 +404,10 @@ def evaluate_libero(
             action_plan = collections.deque()
             obs = env.set_init_state(initial_states[episode_idx])
 
+            # Reset client state for new episode (for CustomEncoderClient)
+            if hasattr(client, "reset"):
+                client.reset()
+
             t = 0
             replay_images = []
             done = False
@@ -404,12 +510,19 @@ def main():
 
     # Model selection
     parser.add_argument("--model", type=str, default="openvla",
-                        choices=["openvla", "pi0"],
+                        choices=["openvla", "pi0", "custom"],
                         help="Model to evaluate")
     parser.add_argument("--host", type=str, default="localhost",
-                        help="Policy server host")
+                        help="Policy server host (for openvla/pi0)")
     parser.add_argument("--port", type=int, default=None,
                         help="Policy server port (default: 8001 for OpenVLA, 8000 for Pi0)")
+
+    # Custom encoder options
+    parser.add_argument("--encoder", type=str, default="two-stream",
+                        choices=["two-stream", "single-stream", "videomae"],
+                        help="Encoder type (for --model custom)")
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Path to fine-tuned checkpoint (for --model custom)")
 
     # Task configuration
     parser.add_argument("--task-suite", type=str, default="libero_spatial",
@@ -441,18 +554,38 @@ def main():
     if args.port is None:
         args.port = 8001 if args.model == "openvla" else 8000
     if args.replan_steps is None:
-        args.replan_steps = 1 if args.model == "openvla" else 5
+        if args.model == "openvla":
+            args.replan_steps = 1
+        elif args.model == "pi0":
+            args.replan_steps = 5
+        else:  # custom
+            args.replan_steps = 1
 
     # Create client
     if args.model == "openvla":
         client = OpenVLAClient(args.host, args.port)
-    else:
+    elif args.model == "pi0":
         client = Pi0Client(args.host, args.port)
+    elif args.model == "custom":
+        if args.checkpoint is None:
+            print("Error: --checkpoint is required for --model custom")
+            sys.exit(1)
+        client = CustomEncoderClient(
+            checkpoint_path=args.checkpoint,
+            encoder_type=args.encoder,
+            device="cuda" if TORCH_AVAILABLE and torch.cuda.is_available() else "cpu",
+        )
+    else:
+        raise ValueError(f"Unknown model: {args.model}")
 
     print("=" * 70)
     print(f"LIBERO Benchmark Evaluation")
     print(f"Model: {args.model}")
-    print(f"Server: {args.host}:{args.port}")
+    if args.model == "custom":
+        print(f"Encoder: {args.encoder}")
+        print(f"Checkpoint: {args.checkpoint}")
+    else:
+        print(f"Server: {args.host}:{args.port}")
     print(f"Task Suite: {args.task_suite}")
     print(f"Trials per task: {args.num_trials}")
     print(f"Replan steps: {args.replan_steps}")
@@ -474,7 +607,6 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results["metadata"] = {
         "model": args.model,
-        "server": f"{args.host}:{args.port}",
         "seed": args.seed,
         "replan_steps": args.replan_steps,
         "num_trials_per_task": args.num_trials,
@@ -483,12 +615,20 @@ def main():
         "max_steps": TASK_SUITE_CONFIG[args.task_suite]["max_steps"],
         "timestamp": timestamp,
     }
+    if args.model == "custom":
+        results["metadata"]["encoder"] = args.encoder
+        results["metadata"]["checkpoint"] = args.checkpoint
+    else:
+        results["metadata"]["server"] = f"{args.host}:{args.port}"
 
     # Save results
     output_path = pathlib.Path(args.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    result_file = output_path / f"{args.model}_{args.task_suite}_{timestamp}.json"
+    if args.model == "custom":
+        result_file = output_path / f"custom_{args.encoder}_{args.task_suite}_{timestamp}.json"
+    else:
+        result_file = output_path / f"{args.model}_{args.task_suite}_{timestamp}.json"
 
     with open(result_file, "w") as f:
         json.dump(results, f, indent=2)

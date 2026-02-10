@@ -66,11 +66,26 @@ self.PaliGemma = nnx.Dict(llm=llm, img=img)
 
 ## 향후 작업
 
+### 즉시 (재부팅 후)
+- [ ] NVIDIA 드라이버 재시작 후 LIBERO 컨테이너 테스트
+  ```bash
+  docker compose up -d libero
+  docker exec libero-eval python -c "import torch; print(torch.cuda.is_available())"
+  docker exec libero-eval python -c "from libero.libero import benchmark; print('OK')"
+  ```
+- [ ] Custom encoder로 LIBERO 평가 테스트
+  ```bash
+  docker exec libero-eval python src/eval_libero.py \
+      --model custom --encoder two-stream \
+      --checkpoint /workspace/data/checkpoints/libero_two-stream_20260210_013836/best.pt \
+      --task-suite libero_spatial --num-trials 1
+  ```
+
 ### 비전 인코더 교체 실험
 - [ ] Bridge V2 데이터셋으로 커스텀 비전 인코더 학습
-- [ ] OpenVLA 비전 인코더 교체 실험
+- [ ] LIBERO에서 Custom encoder vs OpenVLA 성능 비교
 - [ ] Pi0 비전 인코더 교체 실험
-- [ ] LIBERO 벤치마크에서 성능 비교
+- [ ] 결과 분석 및 논문 작성
 
 ### 체크포인트 관리
 - [ ] 체크포인트 자동 다운로드 스크립트 개선

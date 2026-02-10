@@ -134,6 +134,7 @@ services:
   # ═══════════════════════════════════════════════════════════════
   # LIBERO 평가 환경
   # LIBERO 벤치마크용 시뮬레이션 환경 (Python 3.8, robosuite)
+  # CUDA 11.3 + PyTorch 1.11 (LIBERO 공식 요구사항)
   # ═══════════════════════════════════════════════════════════════
   libero:
     build:
@@ -141,7 +142,6 @@ services:
       dockerfile: docker/libero/Dockerfile
     image: libero-env:latest
     container_name: libero-eval
-    runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -157,6 +157,13 @@ services:
     stdin_open: true
     tty: true
     shm_size: '16gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command: bash
 
   # ═══════════════════════════════════════════════════════════════
