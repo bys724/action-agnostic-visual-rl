@@ -1,14 +1,14 @@
 # LIBERO Evaluation Environment
-# Based on CUDA 11.3 for PyTorch 1.11 compatibility
-# Python 3.8 is default on Ubuntu 20.04
+# Based on CUDA 12.1 for H100 (sm_90) compatibility
+# Python 3.10 is default on Ubuntu 22.04
 
-FROM nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
-    python3.8 python3.8-dev python3.8-venv python3-pip \
+    python3 python3-dev python3-venv python3-pip \
     git wget curl vim \
     make g++ clang \
     libosmesa6-dev libgl1-mesa-glx libegl1 \
@@ -16,24 +16,23 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 libsm6 libxrender1 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python 3.8 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1 && \
+# Set Python 3.10 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
     python -m pip install --upgrade pip
 
 WORKDIR /workspace
 
-# PyTorch 1.11.0 with CUDA 11.3 (LIBERO requirement)
-RUN pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 \
-    --extra-index-url https://download.pytorch.org/whl/cu113
+# PyTorch 2.1.0 with CUDA 12.1 (H100 compatible)
+RUN pip install torch==2.1.0+cu121 torchvision==0.16.0+cu121 torchaudio==2.1.0+cu121 \
+    --extra-index-url https://download.pytorch.org/whl/cu121
 
 # LIBERO core dependencies
 RUN pip install --no-cache-dir \
-    numpy==1.22.4 \
+    numpy==1.24.4 \
     scipy==1.10.1 \
     mujoco==3.2.3 \
     robosuite==1.4.1 \
-    numba==0.53.1 \
+    numba==0.58.1 \
     opencv-python==4.6.0.66 \
     pillow==10.4.0 \
     matplotlib==3.5.3
@@ -47,14 +46,13 @@ RUN pip install --no-cache-dir \
 
 # Custom encoder dependencies (for two-stream, videomae evaluation)
 RUN pip install --no-cache-dir \
-    transformers>=4.30.0 \
+    'transformers>=4.30.0,<4.43.0' \
     timm>=0.9.0 \
     einops
 
 # Clone and install LIBERO with all dependencies
 RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git /opt/libero && \
     cd /opt/libero && \
-    pip install 'setuptools<66' && \
     pip install bddl easydict cloudpickle 'gym>=0.21.0,<0.26.0' && \
     pip install .
 
