@@ -129,6 +129,12 @@ class TwoStreamEncoderForOpenVLA(nn.Module):
 
         Returns:
             TwoStreamEncoderForOpenVLA instance with loaded weights
+
+        Note:
+            TwoStreamVideoPredictor checkpoint has structure:
+            - encoder.preprocess.* -> maps to preprocessing.*
+            - encoder.encoder.* -> maps to encoder.*
+            - encoder.fusion.* -> maps to fusion.*
         """
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -151,18 +157,39 @@ class TwoStreamEncoderForOpenVLA(nn.Module):
         # Load weights (filter to only encoder-related weights)
         state_dict = checkpoint.get("model_state_dict", checkpoint)
 
-        # Map weights from TwoStreamVideoPredictor to encoder
+        # Map weights from TwoStreamVideoPredictor to TwoStreamEncoderForOpenVLA
+        # Checkpoint structure: encoder.{preprocess|encoder|fusion}.*
+        # Target structure: {preprocessing|encoder|fusion}.*
         encoder_state = {}
         for key, value in state_dict.items():
-            if key.startswith("preprocessing."):
-                encoder_state[key] = value
-            elif key.startswith("encoder."):
-                encoder_state[key] = value
-            elif key.startswith("fusion."):
-                encoder_state[key] = value
+            if key.startswith("encoder.preprocess."):
+                # encoder.preprocess.* -> preprocessing.*
+                new_key = key.replace("encoder.preprocess.", "preprocessing.")
+                encoder_state[new_key] = value
+            elif key.startswith("encoder.encoder."):
+                # encoder.encoder.* -> encoder.*
+                new_key = key.replace("encoder.encoder.", "encoder.")
+                encoder_state[new_key] = value
+            elif key.startswith("encoder.fusion."):
+                # encoder.fusion.* -> fusion.*
+                new_key = key.replace("encoder.fusion.", "fusion.")
+                encoder_state[new_key] = value
 
-        # Load with strict=False to allow missing decoder weights
-        encoder.load_state_dict(encoder_state, strict=False)
+        # Load with strict=True to verify all weights are loaded correctly
+        missing, unexpected = encoder.load_state_dict(encoder_state, strict=False)
+
+        if missing:
+            print(f"Warning: Missing keys: {len(missing)}")
+            for k in missing[:5]:
+                print(f"  - {k}")
+        if unexpected:
+            print(f"Warning: Unexpected keys: {len(unexpected)}")
+            for k in unexpected[:5]:
+                print(f"  - {k}")
+
+        if not missing and not unexpected:
+            print(f"Successfully loaded {len(encoder_state)} weights from checkpoint")
+
         encoder.to(device)
         encoder.eval()
 

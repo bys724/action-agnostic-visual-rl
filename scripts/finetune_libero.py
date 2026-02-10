@@ -395,46 +395,35 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # Create encoder
+    # Create encoder (optionally with pre-trained weights)
     print(f"\nCreating {args.encoder} encoder...")
+    use_pretrain = args.checkpoint and not args.no_pretrain
+
     if args.encoder == "two-stream":
-        encoder = TwoStreamEncoderForOpenVLA()
+        if use_pretrain:
+            print(f"Loading pre-trained weights from: {args.checkpoint}")
+            encoder = TwoStreamEncoderForOpenVLA.from_checkpoint(
+                args.checkpoint, device=str(device)
+            )
+        else:
+            print("Initializing encoder from scratch (no pre-training)")
+            encoder = TwoStreamEncoderForOpenVLA()
     elif args.encoder == "single-stream":
-        encoder = SingleStreamEncoderForOpenVLA()
+        if use_pretrain:
+            encoder = SingleStreamEncoderForOpenVLA.from_checkpoint(
+                args.checkpoint, device=str(device)
+            )
+        else:
+            encoder = SingleStreamEncoderForOpenVLA()
     elif args.encoder == "videomae":
-        encoder = VideoMAEEncoderForOpenVLA()
+        if use_pretrain:
+            encoder = VideoMAEEncoderForOpenVLA.from_checkpoint(
+                args.checkpoint, device=str(device)
+            )
+        else:
+            encoder = VideoMAEEncoderForOpenVLA()
     else:
         raise ValueError(f"Unknown encoder: {args.encoder}")
-
-    # Load pre-trained weights
-    if args.checkpoint and not args.no_pretrain:
-        print(f"Loading checkpoint: {args.checkpoint}")
-        checkpoint = torch.load(args.checkpoint, map_location=device)
-        state_dict = checkpoint.get("model_state_dict", checkpoint)
-
-        # Map weights (filter encoder-related only)
-        encoder_state = {}
-        for key, value in state_dict.items():
-            # Handle different checkpoint formats
-            if key.startswith("module."):
-                key = key[7:]  # Remove DataParallel prefix
-
-            if key.startswith("preprocessing.") or \
-               key.startswith("encoder.") or \
-               key.startswith("fusion."):
-                encoder_state[key] = value
-            elif key.startswith("patch_embed") or \
-                 key.startswith("cls_token") or \
-                 key.startswith("pos_embed") or \
-                 key.startswith("blocks.") or \
-                 key.startswith("norm"):
-                encoder_state[key] = value
-
-        if encoder_state:
-            encoder.load_state_dict(encoder_state, strict=False)
-            print(f"Loaded {len(encoder_state)} weight tensors")
-        else:
-            print("Warning: No matching weights found in checkpoint")
 
     # Create model with action head
     model = EncoderWithActionHead(
