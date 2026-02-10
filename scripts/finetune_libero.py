@@ -60,7 +60,15 @@ class LIBERODataset(Dataset):
     """
     LIBERO dataset loader for fine-tuning.
 
-    Loads consecutive frame pairs (obs, next_obs) and actions from HDF5 files.
+    Loads consecutive frame pairs (prev_obs, curr_obs) and actions from HDF5 files.
+
+    Design rationale:
+    - At inference time, we only have access to past and current observations
+    - The encoder sees (past → current) temporal change
+    - Action prediction is based on this observed change
+
+    Input format: [img_prev, img_curr] stacked as 6 channels
+    Output: action at current timestep
     """
 
     def __init__(
@@ -114,8 +122,8 @@ class LIBERODataset(Dataset):
                     demo_group = f[f"data/{demo_key}"]
                     num_samples = demo_group.attrs.get("num_samples", 0)
 
-                    # Each step becomes a sample (except last, needs next_obs)
-                    for step_idx in range(num_samples - 1):
+                    # Each step becomes a sample (except first, needs prev_obs)
+                    for step_idx in range(1, num_samples):
                         self.samples.append((
                             str(hdf5_path),
                             demo_key,
@@ -134,19 +142,21 @@ class LIBERODataset(Dataset):
         with h5py.File(file_path, "r") as f:
             demo_group = f[f"data/{demo_key}"]
 
-            # Get current observation image (LIBERO uses 'agentview_rgb', 128x128)
-            img_t = demo_group["obs/agentview_rgb"][step_idx]  # [H, W, C]
-            img_tk = demo_group["obs/agentview_rgb"][step_idx + 1]  # Next frame
+            # Get observation images (past, current) for action prediction
+            # At inference, we can only see past and current, not future
+            img_prev = demo_group["obs/agentview_rgb"][step_idx - 1]  # [H, W, C] - past
+            img_curr = demo_group["obs/agentview_rgb"][step_idx]      # [H, W, C] - current
 
-            # Get action
+            # Get action to take at current step
             action = demo_group["actions"][step_idx]  # [7]
 
         # Preprocess images
-        img_t = self._preprocess_image(img_t)
-        img_tk = self._preprocess_image(img_tk)
+        img_prev = self._preprocess_image(img_prev)
+        img_curr = self._preprocess_image(img_curr)
 
-        # Stack as 6-channel input for encoder
-        pixel_values = torch.cat([img_t, img_tk], dim=0)  # [6, H, W]
+        # Stack as 6-channel input for encoder: [past, current]
+        # Encoder sees (past → current) change and predicts current action
+        pixel_values = torch.cat([img_prev, img_curr], dim=0)  # [6, H, W]
 
         return {
             "pixel_values": pixel_values,  # [6, H, W]
