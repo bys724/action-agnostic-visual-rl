@@ -124,7 +124,7 @@ class TwoStreamPreprocessing(nn.Module):
             p_channels: [B, 5, H, W] - spatial structure + color
         """
         m_channels = self.magnocellular_channel(img_prev, img_curr)
-        p_channels = self.parvocellular_channel(img_curr)
+        p_channels = self.parvocellular_channel(img_prev)  # 현재 프레임 기반 (미래 노출 없음)
 
         return m_channels, p_channels
 
