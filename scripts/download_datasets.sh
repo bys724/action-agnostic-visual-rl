@@ -1,60 +1,70 @@
 #!/bin/bash
-# BridgeData V2 & DROID 데이터셋 다운로드 스크립트
-# Usage: ./download_datasets.sh [bridge|droid|all]
+# Dataset download script: BridgeData V2, LIBERO
+# Usage: ./download_datasets.sh [bridge|libero|all]
+#
+# Resumable: wget -c (BridgeV2) and huggingface-cli (LIBERO) both support resume.
+# Re-run this script after spot interruption to continue where it left off.
+#
+# Environment variables:
+#   DATA_DIR   Base data directory (default: /workspace/data/datasets)
+#   LOG_DIR    Log directory (default: /workspace/data/logs)
 
 set -e
 
-DATA_DIR="/home/etri/action-agnostic-visual-rl/data/datasets"
-LOG_DIR="/home/etri/action-agnostic-visual-rl/logs"
-mkdir -p "$LOG_DIR"
+DATA_DIR="${DATA_DIR:-/workspace/data/datasets}"
+LOG_DIR="${LOG_DIR:-/workspace/data/logs}"
+mkdir -p "$DATA_DIR" "$LOG_DIR"
 
 # BridgeData V2 다운로드
 download_bridge() {
-    echo "=== BridgeData V2 다운로드 시작 ==="
+    echo "=== BridgeData V2 download ==="
     BRIDGE_DIR="$DATA_DIR/bridge_v2"
     mkdir -p "$BRIDGE_DIR"
     cd "$BRIDGE_DIR"
 
-    # demos_8_17.zip (~411GB) - 메인 데모 데이터
-    if [ ! -f "demos_8_17.zip" ] && [ ! -d "demos" ]; then
-        echo "[1/2] demos_8_17.zip 다운로드 중 (~411GB)..."
+    # demos_8_17.zip (~411GB), -c: resume on re-run
+    if [ ! -d "demos" ]; then
+        echo "[1/2] Downloading demos_8_17.zip (~411GB)..."
         wget -c --progress=bar:force:noscroll \
             "https://rail.eecs.berkeley.edu/datasets/bridge_release/data/demos_8_17.zip" \
-            -O demos_8_17.zip 2>&1 | tee "$LOG_DIR/bridge_demos_download.log"
+            -O demos_8_17.zip 2>&1 | tee "$LOG_DIR/bridge_demos.log"
     else
-        echo "[1/2] demos_8_17.zip 이미 존재함, 스킵"
+        echo "[1/2] demos/ already extracted, skipping"
     fi
 
-    # scripted_6_18.zip (~30GB) - 스크립트 정책 데이터
-    if [ ! -f "scripted_6_18.zip" ] && [ ! -d "scripted" ]; then
-        echo "[2/2] scripted_6_18.zip 다운로드 중 (~30GB)..."
+    # scripted_6_18.zip (~30GB), -c: resume on re-run
+    if [ ! -d "scripted" ]; then
+        echo "[2/2] Downloading scripted_6_18.zip (~30GB)..."
         wget -c --progress=bar:force:noscroll \
             "https://rail.eecs.berkeley.edu/datasets/bridge_release/data/scripted_6_18.zip" \
-            -O scripted_6_18.zip 2>&1 | tee "$LOG_DIR/bridge_scripted_download.log"
+            -O scripted_6_18.zip 2>&1 | tee "$LOG_DIR/bridge_scripted.log"
     else
-        echo "[2/2] scripted_6_18.zip 이미 존재함, 스킵"
+        echo "[2/2] scripted/ already extracted, skipping"
     fi
 
-    echo "=== BridgeData V2 다운로드 완료 ==="
-    echo "압축 해제: unzip demos_8_17.zip && unzip scripted_6_18.zip"
+    echo "=== BridgeData V2 download complete ==="
+    echo "  Extract: cd $BRIDGE_DIR && unzip demos_8_17.zip && unzip scripted_6_18.zip"
 }
 
-# DROID 다운로드 (gsutil 필요)
-download_droid() {
-    echo "=== DROID 데이터셋 다운로드 시작 ==="
-    DROID_DIR="$DATA_DIR/droid"
-    mkdir -p "$DROID_DIR"
+# LIBERO 다운로드 (OpenVLA modified RLDS format, ~10GB)
+# huggingface-cli resumes automatically on re-run
+download_libero() {
+    echo "=== LIBERO download (openvla/modified_libero_rlds) ==="
+    LIBERO_DIR="$DATA_DIR/libero"
+    mkdir -p "$LIBERO_DIR"
 
-    if ! command -v gsutil &> /dev/null; then
-        echo "Error: gsutil이 설치되지 않았습니다."
-        echo "설치: pip install gsutil 또는 apt install google-cloud-sdk"
-        exit 1
+    if ! command -v huggingface-cli &> /dev/null; then
+        echo "Installing huggingface_hub..."
+        pip install -q huggingface_hub
     fi
 
-    echo "DROID RLDS 다운로드 중 (~1.7TB)..."
-    gsutil -m cp -r gs://gresearch/robotics/droid "$DROID_DIR/" 2>&1 | tee "$LOG_DIR/droid_download.log"
+    echo "Downloading to $LIBERO_DIR/modified_libero_rlds (~10GB)..."
+    huggingface-cli download openvla/modified_libero_rlds \
+        --repo-type dataset \
+        --local-dir "$LIBERO_DIR/modified_libero_rlds" \
+        2>&1 | tee "$LOG_DIR/libero.log"
 
-    echo "=== DROID 다운로드 완료 ==="
+    echo "=== LIBERO download complete ==="
 }
 
 # 메인
@@ -62,19 +72,24 @@ case "${1:-bridge}" in
     bridge)
         download_bridge
         ;;
-    droid)
-        download_droid
+    libero)
+        download_libero
         ;;
     all)
-        download_bridge
-        download_droid
+        # 병렬 다운로드
+        download_bridge &
+        BRIDGE_PID=$!
+        download_libero &
+        LIBERO_PID=$!
+        wait $BRIDGE_PID
+        wait $LIBERO_PID
         ;;
     *)
-        echo "Usage: $0 [bridge|droid|all]"
+        echo "Usage: $0 [bridge|libero|all]"
         exit 1
         ;;
 esac
 
 echo ""
-echo "다운로드 로그: $LOG_DIR/"
-echo "데이터 위치: $DATA_DIR/"
+echo "Logs: $LOG_DIR/"
+echo "Data: $DATA_DIR/"

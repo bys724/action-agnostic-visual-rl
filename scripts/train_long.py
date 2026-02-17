@@ -85,7 +85,24 @@ def main():
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
 
+    # AWS / Post-training
+    parser.add_argument('--s3-bucket', type=str, default=None,
+                        help='S3 bucket to sync checkpoints after training (e.g. bys724-research-2026)')
+    parser.add_argument('--s3-prefix', type=str, default='checkpoints',
+                        help='S3 prefix for checkpoint upload (default: checkpoints)')
+    parser.add_argument('--shutdown', action='store_true',
+                        help='Shutdown EC2 instance after training completes')
+
     args = parser.parse_args()
+
+    # Auto-detect latest checkpoint (spot instance resume)
+    if args.resume is None:
+        import glob
+        checkpoint_dir = args.checkpoint_dir or f'/workspace/data/checkpoints/{args.model.replace("-", "_")}'
+        candidates = glob.glob(f"{checkpoint_dir}/*/latest.pt")
+        if candidates:
+            args.resume = sorted(candidates)[-1]
+            print(f"[Spot Resume] Auto-detected checkpoint: {args.resume}")
 
     # Print GPU info
     import torch
@@ -208,6 +225,27 @@ def main():
     print(f"Final train loss: {history['train_loss'][-1]:.6f}")
     if history['eval_loss']:
         print(f"Final eval loss: {history['eval_loss'][-1]:.6f}")
+
+    # S3 upload
+    if args.s3_bucket and args.checkpoint_dir:
+        import subprocess
+        model_name = args.model.replace('-', '_')
+        s3_dest = f"s3://{args.s3_bucket}/{args.s3_prefix}/{model_name}/"
+        print(f"\nUploading checkpoints to {s3_dest} ...")
+        result = subprocess.run(
+            ["aws", "s3", "sync", args.checkpoint_dir, s3_dest],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print("S3 upload complete.")
+        else:
+            print(f"S3 upload failed:\n{result.stderr}")
+
+    # Auto shutdown
+    if args.shutdown:
+        import subprocess
+        print("\nShutting down instance in 60 seconds (Ctrl+C to cancel)...")
+        subprocess.run(["sudo", "shutdown", "-h", "+1"])
 
 
 if __name__ == '__main__':
