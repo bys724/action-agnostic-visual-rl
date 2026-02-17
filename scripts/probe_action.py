@@ -282,8 +282,12 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor) -> torch.Tensor
     Returns:
         embeddings: [B, D]
     """
-    if name in ("two-stream", "single-stream", "videomae"):
-        # Custom encoders: [B, 6, 224, 224] → [B, num_patches, D] → mean pool → [B, D]
+    if name in ("two-stream", "single-stream"):
+        # CLS 토큰 사용 (global representation)
+        return encoder.get_cls_embedding(pixel_values)  # [B, D]
+
+    elif name == "videomae":
+        # VideoMAE는 CLS 토큰 없음 → patch mean pooling
         patch_emb = encoder(pixel_values)  # [B, N, D]
         return patch_emb.mean(dim=1)  # [B, D]
 

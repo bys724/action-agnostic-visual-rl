@@ -56,20 +56,19 @@
 # Output: Reconstruction loss
 ```
 
-**1.2 Single-Stream Baseline**
+**1.2 Single-Stream Baseline** ✅ 구현 완료
 ```python
-# P-stream only (spatial structure)
-# Reuse Two-Stream encoder code with flag
-# Task: Future frame prediction
-# Output: img_t+k from img_tk only
+# 입력: M(4ch) + P(5ch) = 9ch (Two-stream과 동일 전처리, 숏컷 없음)
+# 단일 ViT, CLS 교환 없음
+# 비교 목적: M/P 분리 구조 + CLS 교환의 효과 ablation
+# P-stream: img_t 기반 (미래 프레임 노출 없음)
 ```
 
-**1.3 Two-Stream (Update)**
+**1.3 Two-Stream** ✅ 구현 완료
 ```python
-# M-stream + P-stream
-# Update decoder: intermediate CLS + skip connection
-# Task: Future frame prediction
-# Output: img_t+k from img_t + img_tk
+# M-stream(4ch) + P-stream(5ch), 별도 ViT, 중간 CLS 교환 3회
+# Decoder: intermediate CLS injection + skip connection
+# P-stream: img_t 기반 (현재 상태만 제공)
 ```
 
 ### Task 2: Short Pretraining (Bridge V2, 5-10 epochs)

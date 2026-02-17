@@ -26,7 +26,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .two_stream import TwoStreamPreprocessing, InterleavedTwoStreamViT, PixelwiseFusion
-from .baselines import SingleStreamVideoPredictor
+from .baselines import SingleStreamVideoPredictor  # noqa: F401 (kept for backward compat)
 from .videomae_wrapper import VideoMAEForBridge
 
 
@@ -200,7 +200,10 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
     """
     Single-Stream encoder wrapped for OpenVLA compatibility.
 
-    Input: [B, 6, 224, 224] - two RGB images stacked channel-wise
+    Two-stream과 동일한 M+P 전처리(9ch)를 사용하되, 단일 ViT로 처리.
+    숏컷(img_tk 직접 노출) 없이 M/P 분리 구조의 효과만 ablation.
+
+    Input: [B, 6, 224, 224] - two RGB images stacked (img_t + img_tk)
     Output: [B, num_patches, embed_dim] - patch embeddings
     """
 
@@ -217,9 +220,12 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
         self._embed_dim = embed_dim
         self.num_patches = (img_size // patch_size) ** 2
 
-        # Single-stream patch embedding (6 channels)
+        # Two-stream과 동일한 전처리
+        self.preprocessing = TwoStreamPreprocessing()
+
+        # Patch embedding (9 channels: M(4) + P(5))
         self.patch_embed = nn.Conv2d(
-            6, embed_dim,
+            9, embed_dim,
             kernel_size=patch_size,
             stride=patch_size
         )
@@ -250,6 +256,30 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
     def embed_dim(self) -> int:
         return self._embed_dim
 
+    def _encode(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        """공통 인코딩 로직. [B, N+1, D] 반환 (CLS 포함)."""
+        B = pixel_values.shape[0]
+
+        # 6ch 입력 → M(4ch) + P(5ch) 전처리
+        img_t = pixel_values[:, :3]
+        img_tk = pixel_values[:, 3:]
+        m_ch = self.preprocessing.magnocellular_channel(img_t, img_tk)  # [B, 4, H, W]
+        p_ch = self.preprocessing.parvocellular_channel(img_t)           # [B, 5, H, W]
+        x_9ch = torch.cat([m_ch, p_ch], dim=1)                           # [B, 9, H, W]
+
+        # Patch embedding
+        x = self.patch_embed(x_9ch)  # [B, D, H', W']
+        x = x.flatten(2).transpose(1, 2).contiguous()  # [B, N, D]
+
+        # Add CLS token
+        cls_token = self.cls_token.repeat(B, 1, 1)
+        x = torch.cat([cls_token, x], dim=1)  # [B, N+1, D]
+        x = x + self.pos_embed
+
+        for block in self.blocks:
+            x = block(x)
+        return self.norm(x)  # [B, N+1, D]
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -258,43 +288,11 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
         Returns:
             patch_embeddings: [B, num_patches, embed_dim]
         """
-        B = pixel_values.shape[0]
-
-        # Patch embedding
-        x = self.patch_embed(pixel_values)  # [B, D, H', W']
-        x = x.flatten(2).transpose(1, 2).contiguous()  # [B, N, D]
-
-        # Add CLS token
-        cls_token = self.cls_token.repeat(B, 1, 1)
-        x = torch.cat([cls_token, x], dim=1)  # [B, N+1, D]
-
-        # Add position embedding
-        x = x + self.pos_embed
-
-        # Transformer blocks
-        for block in self.blocks:
-            x = block(x)
-        x = self.norm(x)
-
-        # Return patch embeddings only (exclude CLS)
-        return x[:, 1:]  # [B, N, D]
+        return self._encode(pixel_values)[:, 1:]  # [B, N, D]
 
     def get_cls_embedding(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """Get CLS embedding."""
-        B = pixel_values.shape[0]
-
-        x = self.patch_embed(pixel_values)
-        x = x.flatten(2).transpose(1, 2).contiguous()
-
-        cls_token = self.cls_token.repeat(B, 1, 1)
-        x = torch.cat([cls_token, x], dim=1)
-        x = x + self.pos_embed
-
-        for block in self.blocks:
-            x = block(x)
-        x = self.norm(x)
-
-        return x[:, 0]  # [B, D]
+        return self._encode(pixel_values)[:, 0]  # [B, D]
 
     @classmethod
     def from_checkpoint(cls, checkpoint_path: str, device: str = "cuda"):
@@ -318,12 +316,14 @@ class SingleStreamEncoderForOpenVLA(nn.Module):
 
         state_dict = checkpoint.get("model_state_dict", checkpoint)
 
-        # Check input channel compatibility
+        # Check input channel compatibility (9ch: M(4) + P(5))
         if "patch_embed.weight" in state_dict:
             ckpt_in_channels = state_dict["patch_embed.weight"].shape[1]
-            if ckpt_in_channels != 6:
+            if ckpt_in_channels != 9:
                 print(f"WARNING: Checkpoint uses {ckpt_in_channels}-channel input, "
-                      f"but SingleStreamEncoder requires 6 channels.")
+                      f"but SingleStreamEncoder requires 9 channels (M+P).")
+                if ckpt_in_channels == 6:
+                    print("         This checkpoint was trained with old 6-ch concat design.")
                 print("         Returning encoder with random initialization.")
                 encoder.to(device)
                 encoder.eval()

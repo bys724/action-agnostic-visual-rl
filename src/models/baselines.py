@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .two_stream import TwoStreamPreprocessing
+
 
 # =============================================================================
 # Single-Stream: Future Prediction with Single ViT
@@ -24,10 +26,12 @@ class SingleStreamVideoPredictor(nn.Module):
     """
     Single-stream baseline for future prediction.
 
-    Strategy: Concatenate img_t and img_tk as 6-channel input.
-    Single ViT encodes both, decoder predicts img_tk.
+    Strategy: 두 프레임을 Two-stream과 동일하게 M+P 채널로 전처리(9ch)하되,
+    단일 ViT로 처리 (스트림 분리 없음, CLS 교환 없음).
 
-    This tests whether Two-Stream separation provides benefit.
+    Two-stream과 비교:
+    - 동일 입력: M(4ch) + P(5ch) = 9ch (숏컷 없음)
+    - 차이: M/P 분리 및 CLS 교환 없음 → 분리 구조의 효과만 ablation
 
     Input: img_t, img_tk
     Output: img_pred, cls_emb
@@ -47,9 +51,12 @@ class SingleStreamVideoPredictor(nn.Module):
         self.embed_dim = embed_dim
         self.num_patches = (img_size // patch_size) ** 2
 
-        # Patch embedding (6 channels: concat of img_t and img_tk)
+        # Two-stream과 동일한 전처리 (M: 4ch, P: 5ch)
+        self.preprocessing = TwoStreamPreprocessing()
+
+        # Patch embedding (9 channels: M(4) + P(5))
         self.patch_embed = nn.Conv2d(
-            6, embed_dim,
+            9, embed_dim,
             kernel_size=patch_size,
             stride=patch_size
         )
@@ -93,8 +100,10 @@ class SingleStreamVideoPredictor(nn.Module):
         """
         B = img_t.shape[0]
 
-        # Concatenate frames (6 channels)
-        x = torch.cat([img_t, img_tk], dim=1)  # [B, 6, H, W]
+        # Two-stream과 동일한 전처리 (9ch: M+P, 숏컷 없음)
+        m_ch = self.preprocessing.magnocellular_channel(img_t, img_tk)  # [B, 4, H, W]
+        p_ch = self.preprocessing.parvocellular_channel(img_t)           # [B, 5, H, W]
+        x = torch.cat([m_ch, p_ch], dim=1)                               # [B, 9, H, W]
 
         # Patch embedding
         x = self.patch_embed(x)  # [B, D, H', W']
