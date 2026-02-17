@@ -64,10 +64,19 @@ echo "  full split  : s3://${S3_BUCKET}/datasets/egodex-full/ → ${EGODEX_ROOT}
 mkdir -p "${EGODEX_ROOT}/test"
 
 if $SANITY; then
-    # sanity: test split 일부만 (5개 task)
-    echo "  [Sanity mode] Syncing only first 5 tasks of test split..."
-    TASKS=$(aws s3 ls "s3://${S3_BUCKET}/datasets/egodex-test/" | awk '{print $2}' | head -5)
-    for TASK in $TASKS; do
+    # sanity: train용 part1 5개 task + eval용 test 3개 task
+    echo "  [Sanity mode] Syncing 5 tasks from egodex-full/part1/ (train) and 3 tasks from egodex-test/ (eval)..."
+    mkdir -p "${EGODEX_ROOT}/part1"
+
+    TRAIN_TASKS=$(aws s3 ls "s3://${S3_BUCKET}/datasets/egodex-full/part1/" | awk '{print $2}' | head -5)
+    for TASK in $TRAIN_TASKS; do
+        aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-full/part1/${TASK}" \
+                    "${EGODEX_ROOT}/part1/${TASK}" \
+                    --quiet
+    done
+
+    EVAL_TASKS=$(aws s3 ls "s3://${S3_BUCKET}/datasets/egodex-test/" | awk '{print $2}' | head -3)
+    for TASK in $EVAL_TASKS; do
         aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-test/${TASK}" \
                     "${EGODEX_ROOT}/test/${TASK}" \
                     --quiet
