@@ -23,7 +23,7 @@ CHECKPOINT_DIR="/workspace/data/checkpoints"
 CODE_DIR="${CODE_DIR:-/workspace}"
 LOG_DIR="/workspace/data/logs"
 EPOCHS=30  # 50 → 30 (faster iteration, can extend later)
-BATCH_SIZE=32
+BATCH_SIZE=24  # g5.8xlarge (3 GPUs) → 8 per GPU
 SANITY=false
 SHUTDOWN=true
 MODEL=""  # 빈 값 = 전체 3개 모델 순차 학습
