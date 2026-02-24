@@ -73,9 +73,18 @@ class EgoDexProbingDataset(Dataset):
     MP4 비디오 + HDF5 손 포즈를 동시 로드.
     gap=1 고정 (연속 프레임 간 action 예측).
 
+    Temporal Alignment:
+        Input:  (img_t, img_t+1) - 관찰된 변화
+        Target: delta_t = pos_t+1 - pos_t - 이 변화를 만든 action
+
+        의미: "변화 임베딩이 action을 역추론할 수 있는가?"
+              → Frozen encoder로 R² > 0.7이면
+              → 임베딩이 action-informative함을 증명
+              → VLM이 임베딩만으로 action planning 가능
+
     Returns:
         pixel_values: [6, 224, 224] - img_t + img_t+1 채널 concat
-        action: [18] - 6관절 × 3D position delta
+        action: [18] - 6관절 × 3D position delta (≈ velocity)
     """
 
     def __init__(

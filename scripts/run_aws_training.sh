@@ -22,7 +22,7 @@ EGODEX_ROOT="${EGODEX_ROOT:-/workspace/data/egodex}"
 CHECKPOINT_DIR="/workspace/data/checkpoints"
 CODE_DIR="${CODE_DIR:-/workspace}"
 LOG_DIR="/workspace/data/logs"
-EPOCHS=50
+EPOCHS=30  # 50 → 30 (faster iteration, can extend later)
 BATCH_SIZE=32
 SANITY=false
 SHUTDOWN=true
@@ -101,6 +101,22 @@ fi
 
 echo "  EgoDex sync complete."
 
+# ── Background S3 Sync (Spot instance 대응) ───────────────────────────────────
+echo ""
+echo "Starting background S3 sync for checkpoint safety..."
+(
+  while true; do
+    sleep 600  # 10분마다 sync
+    if [ -d "$CHECKPOINT_DIR" ]; then
+      aws s3 sync "$CHECKPOINT_DIR" "s3://${S3_BUCKET}/checkpoints/" --quiet --exclude "*.log"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Checkpoint synced to S3" >> "$LOG_DIR/s3_sync.log"
+    fi
+  done
+) &
+SYNC_PID=$!
+echo "  Background sync started (PID: $SYNC_PID)"
+echo "  Syncing every 10 minutes to s3://${S3_BUCKET}/checkpoints/"
+
 # ── 학습 실행 ─────────────────────────────────────────────────────────────────
 echo ""
 echo "=== [3/4] Starting pretraining ==="
@@ -108,10 +124,46 @@ echo "=== [3/4] Starting pretraining ==="
 run_training() {
     local MODEL_NAME="$1"
     local EXTRA_ARGS="${2:-}"
-    local LOG_FILE="$LOG_DIR/train_${MODEL_NAME//-/_}.log"
+    local MODEL_SLUG="${MODEL_NAME//-/_}"
+    local LOG_FILE="$LOG_DIR/train_${MODEL_SLUG}.log"
+    local MODEL_CHECKPOINT_DIR="${CHECKPOINT_DIR}/${MODEL_SLUG}"
 
     echo ""
     echo "--- Training: $MODEL_NAME ---"
+
+    # Auto-resume: S3 또는 로컬에서 최신 checkpoint 찾기
+    RESUME_ARG=""
+
+    # 1. 로컬에서 latest.pt 찾기
+    if [ -d "$MODEL_CHECKPOINT_DIR" ]; then
+        LATEST_LOCAL=$(find "$MODEL_CHECKPOINT_DIR" -name "latest.pt" -type f 2>/dev/null | sort -r | head -1)
+        if [ -n "$LATEST_LOCAL" ]; then
+            echo "  Found local checkpoint: $LATEST_LOCAL"
+            RESUME_ARG="--resume $LATEST_LOCAL"
+        fi
+    fi
+
+    # 2. S3에서 checkpoint 다운로드 시도 (로컬에 없으면)
+    if [ -z "$RESUME_ARG" ] && [ -n "$S3_BUCKET" ]; then
+        echo "  Checking S3 for existing checkpoints..."
+        S3_PATH="s3://${S3_BUCKET}/checkpoints/${MODEL_SLUG}/"
+
+        # S3에 checkpoint가 있는지 확인
+        if aws s3 ls "$S3_PATH" >/dev/null 2>&1; then
+            echo "  Found checkpoints in S3, downloading..."
+            mkdir -p "$MODEL_CHECKPOINT_DIR"
+            aws s3 sync "$S3_PATH" "$MODEL_CHECKPOINT_DIR" --quiet
+
+            # 다운로드된 latest.pt 찾기
+            LATEST_LOCAL=$(find "$MODEL_CHECKPOINT_DIR" -name "latest.pt" -type f 2>/dev/null | sort -r | head -1)
+            if [ -n "$LATEST_LOCAL" ]; then
+                echo "  Resuming from S3 checkpoint: $LATEST_LOCAL"
+                RESUME_ARG="--resume $LATEST_LOCAL"
+            fi
+        else
+            echo "  No existing checkpoints found in S3, starting from scratch"
+        fi
+    fi
 
     if $SANITY; then
         EXTRA_ARGS="$EXTRA_ARGS --max-videos 5"
@@ -123,9 +175,10 @@ run_training() {
         --egodex-root "$EGODEX_ROOT" \
         --epochs "$EPOCHS" \
         --batch-size "$BATCH_SIZE" \
-        --checkpoint-dir "${CHECKPOINT_DIR}/${MODEL_NAME//-/_}" \
+        --checkpoint-dir "$MODEL_CHECKPOINT_DIR" \
         --s3-bucket "$S3_BUCKET" \
         --s3-prefix "checkpoints" \
+        $RESUME_ARG \
         $EXTRA_ARGS \
         2>&1 | tee "$LOG_FILE"
 
@@ -144,7 +197,18 @@ fi
 # ── 완료 및 종료 ──────────────────────────────────────────────────────────────
 echo ""
 echo "=== [4/4] All training complete ==="
+
+# Background sync 종료 및 최종 sync
+if [ -n "$SYNC_PID" ]; then
+    echo "Stopping background sync..."
+    kill $SYNC_PID 2>/dev/null
+
+    echo "Performing final checkpoint sync to S3..."
+    aws s3 sync "$CHECKPOINT_DIR" "s3://${S3_BUCKET}/checkpoints/" --exclude "*.log"
+fi
+
 echo "  Checkpoints: s3://${S3_BUCKET}/checkpoints/"
+echo "  View sync log: $LOG_DIR/s3_sync.log"
 
 if $SHUTDOWN; then
     echo "  Shutting down instance in 60 seconds (Ctrl+C to cancel)..."
