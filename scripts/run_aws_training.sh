@@ -169,7 +169,7 @@ run_training() {
         EXTRA_ARGS="$EXTRA_ARGS --max-videos 5"
     fi
 
-    python "$CODE_DIR/scripts/train_long.py" \
+    python3 "$CODE_DIR/scripts/train_long.py" \
         --model "$MODEL_NAME" \
         --train-data egodex \
         --egodex-root "$EGODEX_ROOT" \
