@@ -162,7 +162,7 @@ def main():
     else:  # egodex
         train_dataset = EgoDexDataset(
             data_root=args.egodex_root,
-            split='train',  # Use train split for training
+            split='part1',  # Use part1 for training (can extend to part1-5 later)
             max_gap=args.max_gap,
             sample_decay=args.sample_decay,
             loss_decay=args.loss_decay,
