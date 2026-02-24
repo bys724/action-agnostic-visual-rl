@@ -20,7 +20,7 @@ set -e
 S3_BUCKET="${S3_BUCKET:-bys724-research-2026}"
 EGODEX_ROOT="${EGODEX_ROOT:-/workspace/data/egodex}"
 CHECKPOINT_DIR="/workspace/data/checkpoints"
-CODE_DIR="${CODE_DIR:-/workspace}"
+CODE_DIR="${CODE_DIR:-/workspace/action-agnostic-visual-rl}"
 LOG_DIR="/workspace/data/logs"
 EPOCHS=30  # 50 → 30 (faster iteration, can extend later)
 BATCH_SIZE=24  # g5.8xlarge (3 GPUs) → 8 per GPU
