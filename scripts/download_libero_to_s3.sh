@@ -66,7 +66,7 @@ for DATASET in "${DATASETS[@]}"; do
     fi
 
     # Download dataset
-    python benchmark_scripts/download_libero_datasets.py \
+    python3 benchmark_scripts/download_libero_datasets.py \
         --datasets "${DATASET}" \
         --folder "${LOCAL_DATA_DIR}/datasets" || {
         echo "Warning: Failed to download ${DATASET}, continuing..."
@@ -109,6 +109,13 @@ else
         git lfs install
     fi
 
+    # Clean up existing directory if present
+    if [ -d "${LOCAL_DATA_DIR}/openvla_rlds" ]; then
+        echo "Cleaning up existing openvla_rlds directory..."
+        rm -rf "${LOCAL_DATA_DIR}/openvla_rlds"
+    fi
+    mkdir -p "${LOCAL_DATA_DIR}/openvla_rlds"
+
     # Clone HuggingFace dataset repository
     cd "${LOCAL_DATA_DIR}/openvla_rlds"
 
@@ -119,6 +126,7 @@ else
             --local-dir . \
             --quiet || {
             echo "Warning: huggingface-cli download failed, trying git clone..."
+            rm -rf .git  # Clean any partial git data
             git clone https://huggingface.co/datasets/openvla/modified_libero_rlds .
         }
     else
