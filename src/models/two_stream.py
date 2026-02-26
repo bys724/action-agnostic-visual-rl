@@ -1445,7 +1445,13 @@ def train(
     # Resume from checkpoint if specified
     start_epoch = 1
     best_eval_loss = float('inf')
-    history = {'train_loss': [], 'eval_loss': []}
+    history = {
+        'train_loss': [],
+        'eval_loss': [],
+        'epoch_time': [],        # Seconds per epoch
+        'samples_per_sec': [],   # Training throughput
+        'timestamps': [],        # ISO timestamp at epoch end
+    }
 
     if resume_from:
         print(f"Resuming from {resume_from}")
@@ -1457,6 +1463,10 @@ def train(
         start_epoch = checkpoint['epoch'] + 1
         if 'history' in checkpoint:
             history = checkpoint['history']
+            # Ensure new metrics exist in resumed history
+            history.setdefault('epoch_time', [])
+            history.setdefault('samples_per_sec', [])
+            history.setdefault('timestamps', [])
         if 'best_eval_loss' in checkpoint:
             best_eval_loss = checkpoint['best_eval_loss']
         print(f"  Resumed from epoch {checkpoint['epoch']}")
@@ -1486,7 +1496,11 @@ def train(
         with open(run_dir / 'config.json', 'w') as f:
             json.dump(config, f, indent=2)
 
+    import time
+
     for epoch in range(start_epoch, num_epochs + 1):
+        epoch_start_time = time.time()
+
         # Train
         avg_loss = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset)
         scheduler.step()
@@ -1499,6 +1513,27 @@ def train(
             eval_loss = eval_result['loss']
             history['eval_loss'].append(eval_loss)
             print(f"  [Eval] Loss: {eval_loss:.4f}, Weighted: {eval_result['weighted_loss']:.4f}")
+
+        # Track time metrics
+        epoch_end_time = time.time()
+        epoch_duration = epoch_end_time - epoch_start_time
+        samples_per_sec = len(train_dataset) / epoch_duration
+        current_timestamp = datetime.now().isoformat()
+
+        history['epoch_time'].append(epoch_duration)
+        history['samples_per_sec'].append(samples_per_sec)
+        history['timestamps'].append(current_timestamp)
+
+        # Print time metrics
+        print(f"  [Time] Epoch: {epoch_duration:.1f}s, Throughput: {samples_per_sec:.1f} samples/sec")
+
+        # Estimate remaining time
+        if epoch < num_epochs:
+            avg_epoch_time = sum(history['epoch_time']) / len(history['epoch_time'])
+            remaining_epochs = num_epochs - epoch
+            eta_seconds = avg_epoch_time * remaining_epochs
+            eta_hours = eta_seconds / 3600
+            print(f"  [ETA] {remaining_epochs} epochs remaining, ~{eta_hours:.1f}h ({eta_seconds/60:.0f}min)")
 
         # Save checkpoint
         if run_dir:
