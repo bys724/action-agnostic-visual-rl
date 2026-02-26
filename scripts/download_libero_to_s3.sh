@@ -65,8 +65,8 @@ for DATASET in "${DATASETS[@]}"; do
         continue
     fi
 
-    # Download dataset
-    python3 benchmark_scripts/download_libero_datasets.py \
+    # Download dataset (non-interactive)
+    echo "N" | python3 benchmark_scripts/download_libero_datasets.py \
         --datasets "${DATASET}" \
         --folder "${LOCAL_DATA_DIR}/datasets" || {
         echo "Warning: Failed to download ${DATASET}, continuing..."
