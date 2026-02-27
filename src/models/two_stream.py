@@ -1259,22 +1259,29 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
         img_tk = torch.stack([d[1] for d in batch_data]).to(device)
         gaps = np.array([d[2] for d in batch_data])
 
-        # Forward
-        img_pred, _ = model(img_t, img_tk)
-        per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
-        per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))
-
-        # Gap-dependent weights
-        if hasattr(eval_dataset, 'get_loss_weight'):
-            weights = torch.tensor(
-                [eval_dataset.get_loss_weight(int(g)) for g in gaps],
-                device=device, dtype=per_sample_loss.dtype
-            )
+        # Forward (handle VideoMAE vs prediction models)
+        if hasattr(model, 'compute_loss') and callable(getattr(model, 'compute_loss')):
+            # VideoMAE: masked reconstruction
+            loss, img_pred = model.compute_loss(img_t, img_tk)
+            weighted_loss = loss
+            unweighted_loss = loss
         else:
-            weights = torch.ones_like(per_sample_loss)
+            # Two-stream/Single-stream: future prediction
+            img_pred, _ = model(img_t, img_tk)
+            per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
+            per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))
 
-        weighted_loss = (per_sample_loss * weights).mean()
-        unweighted_loss = per_sample_loss.mean()
+            # Gap-dependent weights
+            if hasattr(eval_dataset, 'get_loss_weight'):
+                weights = torch.tensor(
+                    [eval_dataset.get_loss_weight(int(g)) for g in gaps],
+                    device=device, dtype=per_sample_loss.dtype
+                )
+            else:
+                weights = torch.ones_like(per_sample_loss)
+
+            weighted_loss = (per_sample_loss * weights).mean()
+            unweighted_loss = per_sample_loss.mean()
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -1327,23 +1334,31 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
 
         optimizer.zero_grad()
 
-        # Compute per-sample loss
-        img_pred, change_emb = model(img_t, img_tk)
-        per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
-        per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))  # [B]
-
-        # Apply gap-dependent weights
-        if dataset is not None and hasattr(dataset, 'get_loss_weight'):
-            weights = torch.tensor(
-                [dataset.get_loss_weight(int(g)) for g in gaps],
-                device=device, dtype=per_sample_loss.dtype
-            )
+        # Compute loss based on model type
+        # VideoMAE uses masked reconstruction, others use future prediction
+        if hasattr(model, 'compute_loss') and callable(getattr(model, 'compute_loss')):
+            # VideoMAE: masked reconstruction loss (already scalar)
+            loss, img_pred = model.compute_loss(img_t, img_tk)
+            weighted_loss = loss
+            unweighted_loss = loss
         else:
-            weights = torch.ones_like(per_sample_loss)
+            # Two-stream/Single-stream: future prediction with gap weighting
+            img_pred, change_emb = model(img_t, img_tk)
+            per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
+            per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))  # [B]
 
-        # Weighted loss
-        weighted_loss = (per_sample_loss * weights).mean()
-        unweighted_loss = per_sample_loss.mean()
+            # Apply gap-dependent weights
+            if dataset is not None and hasattr(dataset, 'get_loss_weight'):
+                weights = torch.tensor(
+                    [dataset.get_loss_weight(int(g)) for g in gaps],
+                    device=device, dtype=per_sample_loss.dtype
+                )
+            else:
+                weights = torch.ones_like(per_sample_loss)
+
+            # Weighted loss
+            weighted_loss = (per_sample_loss * weights).mean()
+            unweighted_loss = per_sample_loss.mean()
 
         weighted_loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

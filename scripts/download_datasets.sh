@@ -58,6 +58,9 @@ download_libero() {
         pip install -q huggingface_hub
     fi
 
+    # Add .local/bin to PATH for pip-installed executables
+    export PATH="$HOME/.local/bin:$PATH"
+
     echo "Downloading to $LIBERO_DIR/modified_libero_rlds (~10GB)..."
     huggingface-cli download openvla/modified_libero_rlds \
         --repo-type dataset \
