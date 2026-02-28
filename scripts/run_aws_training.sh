@@ -89,11 +89,16 @@ else
                 --quiet &
     TEST_SYNC_PID=$!
 
-    # full split sync (foreground, 학습 전 완료 필요)
-    echo "  Syncing full split (1.84TB, this will take a while)..."
-    aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-full/" \
-                "${EGODEX_ROOT}/" \
-                --quiet
+    # part1 sync (only if not already present)
+    if [ -d "${EGODEX_ROOT}/part1" ] && [ "$(ls -A ${EGODEX_ROOT}/part1)" ]; then
+        echo "  part1 already exists ($(du -sh ${EGODEX_ROOT}/part1 | cut -f1)), skipping download..."
+    else
+        echo "  Syncing part1 from S3..."
+        mkdir -p "${EGODEX_ROOT}/part1"
+        aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-full/part1/" \
+                    "${EGODEX_ROOT}/part1/" \
+                    --quiet
+    fi
 
     echo "  Waiting for test split sync to complete..."
     wait $TEST_SYNC_PID
