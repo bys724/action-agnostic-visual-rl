@@ -188,15 +188,28 @@ aws cloudwatch put-metric-alarm \
 }]'
 # 결과: 월 $200 EBS 비용 발생
 
-# ✅ 올바른 설정
+# ❌ 너무 작음 (500GB는 부족)
 --block-device-mappings '[{
   "DeviceName": "/dev/sda1",
   "Ebs": {
-    "VolumeSize": 500,  # 500GB (충분)
+    "VolumeSize": 500,  # 500GB → EgoDex part1 (336GB) + LIBERO (15GB) + 시스템으로 가득 참
+    "VolumeType": "gp3",
+    "DeleteOnTermination": true
+  }
+}]'
+# 문제: PyTorch temp 파일 생성 불가, 학습 시작 실패
+
+# ✅ 올바른 설정 (2026-02-28 업데이트)
+--block-device-mappings '[{
+  "DeviceName": "/dev/sda1",
+  "Ebs": {
+    "VolumeSize": 1024,  # 1TB (충분한 여유 공간)
     "VolumeType": "gp3",
     "DeleteOnTermination": true  # ✅ 인스턴스와 함께 삭제
   }
 }]'
+# EgoDex part1 (336GB) + LIBERO (15GB) + system (~50GB) + temp/cache (~100GB) = ~500GB 사용
+# 1TB → 충분한 여유 확보
 ```
 
 ### S3 기반 데이터 관리
@@ -273,7 +286,7 @@ aws ec2 run-instances \
   --block-device-mappings '[{
     "DeviceName": "/dev/sda1",
     "Ebs": {
-      "VolumeSize": 500,
+      "VolumeSize": 1024,
       "VolumeType": "gp3",
       "DeleteOnTermination": true
     }
