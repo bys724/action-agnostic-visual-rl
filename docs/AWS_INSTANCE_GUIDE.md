@@ -49,6 +49,73 @@ which python3
 
 ---
 
+## Python Environment Setup (2026-03-01 경험)
+
+### ⚠️ Deep Learning AMI의 함정
+
+**문제**: "Deep Learning OSS Nvidia Driver AMI"는 **드라이버만** 제공하고 Python ML 패키지는 미설치!
+
+```bash
+# 잘못된 가정
+python3 -c "import torch"  # ❌ ModuleNotFoundError: No module named 'torch'
+pip3 list | grep torch     # ❌ 없음
+```
+
+### ✅ 올바른 Python 환경
+
+AMI에는 `/opt/pytorch` 가상환경이 미리 설치되어 있음:
+
+```bash
+# 1. PyTorch 환경 확인
+/opt/pytorch/bin/python3 -c "import torch; print(torch.__version__)"
+# PyTorch: 2.7.0+cu128
+# CUDA available: True
+# GPU count: 4
+
+# 2. 필요한 패키지 설치
+/opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
+```
+
+### run_aws_training.sh 수정
+
+스크립트에서 `/opt/pytorch/bin/python3` 사용하도록 수정 필요:
+
+```bash
+# scripts/run_aws_training.sh 수정
+sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+```
+
+### 필수 패키지 체크리스트
+
+학습 시작 전 반드시 설치:
+
+```bash
+# Core (우리 프로젝트 필수)
+/opt/pytorch/bin/pip install \
+  timm \           # Vision models
+  transformers \   # CLIP, DINOv2
+  tqdm \           # Progress bar
+  matplotlib \     # Visualization
+  tensorboard \    # Logging
+  opencv-python    # VideoMAE dependency
+```
+
+### 자동화 스크립트 (추천)
+
+인스턴스 시작 후 자동으로 환경 설정:
+
+```bash
+# scripts/setup_aws_env.sh (미래 작업)
+#!/bin/bash
+/opt/pytorch/bin/pip install -q timm transformers tqdm matplotlib tensorboard opencv-python
+cd /workspace/action-agnostic-visual-rl
+sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+git submodule update --init --recursive external/VideoMAE
+echo "Environment ready!"
+```
+
+---
+
 ## Instance Types & Quota
 
 ### G Instance Types (GPU)
@@ -269,6 +336,79 @@ aws ec2 import-key-pair \
 **원인**: G Spot quota = 0
 **해결**: On-demand 인스턴스 사용
 
+### Issue 4: ModuleNotFoundError: No module named 'torch' (2026-03-01)
+
+**원인**: Deep Learning AMI는 드라이버만 제공, Python 패키지 미설치
+**증상**:
+```bash
+python3 -c "import torch"
+# ModuleNotFoundError: No module named 'torch'
+```
+
+**해결**:
+1. `/opt/pytorch` 가상환경 사용
+2. 필요한 패키지 설치
+3. 스크립트 수정
+
+```bash
+# 1. PyTorch 환경 확인
+/opt/pytorch/bin/python3 -c "import torch; print(torch.__version__)"
+
+# 2. 패키지 설치
+/opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
+
+# 3. run_aws_training.sh 수정
+cd /workspace/action-agnostic-visual-rl
+sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+```
+
+### Issue 5: ModuleNotFoundError: No module named 'modeling_finetune' (2026-03-01)
+
+**원인**: VideoMAE 서브모듈 미초기화
+**증상**:
+```python
+from modeling_finetune import Block, get_sinusoid_encoding_table
+ModuleNotFoundError: No module named 'modeling_finetune'
+```
+
+**해결**:
+```bash
+# VideoMAE 서브모듈 초기화
+cd /workspace/action-agnostic-visual-rl
+git submodule update --init --recursive external/VideoMAE
+```
+
+**예방**: 새 인스턴스 시작 시 항상 서브모듈 초기화
+
+### Issue 6: ModuleNotFoundError: No module named 'cv2' (2026-03-01)
+
+**원인**: OpenCV 미설치 (VideoMAE dependency)
+**해결**:
+```bash
+/opt/pytorch/bin/pip install opencv-python
+```
+
+### Issue 7: Instance auto-stopped after training start (2026-03-01)
+
+**원인**:
+1. Python 환경 문제로 학습 스크립트 즉시 실패
+2. `run_aws_training.sh`의 auto-shutdown 로직 트리거
+3. 인스턴스 stopped
+
+**증상**:
+- SSH 연결 실패 (Operation timed out)
+- 인스턴스 상태: stopped
+- 학습 로그에 에러만 있고 실제 학습 없음
+
+**해결**:
+1. 인스턴스 재시작: `aws ec2 start-instances --instance-ids i-xxxxx`
+2. Python 환경 문제 해결 (Issue 4, 5, 6)
+3. `--no-shutdown` 플래그 사용 (디버깅 중)
+
+**예방**:
+- 새 인스턴스는 항상 `--no-shutdown`으로 테스트 먼저
+- Sanity test 후 자동 종료 활성화
+
 ---
 
 ## Quick Reference
@@ -294,17 +434,35 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ml-training}]'
 ```
 
-### Connect
+### Connect & Setup
 
 ```bash
+# 1. SSH 접속
 ssh -i ~/.ssh/ml-research-key.pem ubuntu@<PUBLIC_IP>
+
+# 2. 코드 가져오기
+sudo mkdir -p /workspace && sudo chown ubuntu:ubuntu /workspace
+cd /workspace
+git clone https://github.com/bys724/action-agnostic-visual-rl.git
+cd action-agnostic-visual-rl
+
+# 3. Python 환경 설정 (필수!)
+/opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
+sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+
+# 4. 서브모듈 초기화 (VideoMAE)
+git submodule update --init --recursive external/VideoMAE
 ```
 
 ### Start Training
 
 ```bash
-cd /workspace
-git clone <repo>
-cd action-agnostic-visual-rl
+# Sanity test 먼저 (5 videos, 1 epoch, auto-shutdown 비활성화)
+./scripts/run_aws_training.sh --sanity --no-shutdown
+
+# 전체 학습 (3 models × 30 epochs)
 ./scripts/run_aws_training.sh
+
+# 특정 모델만
+./scripts/run_aws_training.sh --model two-stream
 ```
