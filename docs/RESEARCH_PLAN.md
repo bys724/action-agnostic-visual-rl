@@ -1,10 +1,11 @@
 # Action-Agnostic Visual RL Research Plan
 
+**마지막 업데이트**: 2026-03-02
 **연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
 
 ---
 
-## Phase 1: EgoDex Part1 Pretraining (현재)
+## Phase 1: EgoDex Part1 Pretraining (현재 - 2026-03-02)
 
 ### 목표
 - EgoDex part1 (~336GB)에서 3가지 모델 사전학습
@@ -21,15 +22,27 @@
 
 ### 학습 설정
 
-```python
-# scripts/train_long.py
+```bash
+# scripts/run_full_training.sh
+인스턴스: g5.12xlarge (4x A10G, 48 vCPU, 192GB RAM)
 epochs = 30
-batch_size = 24  # g5.12xlarge (4x A10G) → 6/GPU
+batch_size = 24 (per-GPU) → effective: 96
+num_workers = 32 (최적화됨)
 max_gap = 10
-sample_decay = 0.8
-loss_decay = 0.5
-dataset = "EgoDex part1"
+sample_decay = 0.3
+loss_decay = 0.7
+dataset = "EgoDex part1" (46,234 videos, 4.6M samples)
 ```
+
+### 성능 최적화 (2026-03-02)
+
+**문제**: 초기 학습 속도 너무 느림 (33시간/epoch)
+**해결**:
+1. VideoCapture 재사용: 샘플당 2번 → 1번
+2. num_workers 증가: 8 → 32
+3. persistent_workers 추가
+
+**결과**: 5.5~11시간/epoch 예상 (3-6배 개선)
 
 ### 기대 결과
 - 3개 모델 모두 수렴

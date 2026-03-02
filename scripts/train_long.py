@@ -20,7 +20,12 @@ Usage (in Docker container):
 
 import argparse
 import sys
-sys.path.insert(0, '/workspace')
+import os
+
+# Add project root to path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+sys.path.insert(0, project_root)
 
 from src.models.two_stream import (
     TwoStreamVideoPredictor,

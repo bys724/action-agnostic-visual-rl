@@ -409,6 +409,71 @@ git submodule update --init --recursive external/VideoMAE
 - 새 인스턴스는 항상 `--no-shutdown`으로 테스트 먼저
 - Sanity test 후 자동 종료 활성화
 
+### Issue 8: Slow training speed - DataLoader bottleneck (2026-03-02)
+
+**증상**:
+```
+처리 속도: 0.402 batches/sec (38.5 samples/sec)
+Epoch당 소요 시간: 33.3시간 (예상 40일)
+CPU 사용률: 162% (48 코어 중 16.7%)
+```
+
+**원인**:
+1. **VideoCapture 반복 생성**: 매 샘플당 `cv2.VideoCapture()` 2번 호출
+   - Epoch당 924만 번 VideoCapture 생성
+   - VideoCapture당 13ms 소요
+2. **낮은 DataLoader workers**: `num_workers=8` (CPU 48코어 대비 부족)
+
+**해결**:
+
+```python
+# src/models/two_stream.py
+
+# 1. VideoCapture 재사용 최적화
+def _load_frame_pair(self, video_path, frame_idx1, frame_idx2):
+    """한 번의 VideoCapture로 두 프레임 로드"""
+    cap = cv2.VideoCapture(str(video_path))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx1)
+    ret1, frame1 = cap.read()
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx2)
+    ret2, frame2 = cap.read()
+    cap.release()
+    # ... preprocessing
+    return img1, img2
+
+# 2. num_workers 증가 + persistent_workers
+dataloader = torch.utils.data.DataLoader(
+    train_dataset,
+    batch_size=effective_batch_size,
+    shuffle=True,
+    num_workers=32,  # 8 → 32
+    pin_memory=True,
+    persistent_workers=True,  # 추가
+)
+```
+
+**예상 효과**:
+- VideoCapture 재사용: 2배 개선
+- num_workers 증가: 2-3배 개선
+- 종합: 33.3시간/epoch → 5.5~11시간/epoch
+
+**모니터링**:
+```bash
+# CPU 사용률 확인
+ssh ubuntu@<IP> "top -b -n 1 | head -20"
+
+# DataLoader worker 프로세스 확인
+ps aux | grep pt_data
+
+# 학습 진행률
+tail -f /workspace/data/logs/train_two_stream.log
+```
+
+**예방**:
+- 새 데이터셋 추가 시 DataLoader 성능 프로파일링 필수
+- `test_dataloader.py`로 최적 num_workers 사전 확인
+- GPU 대기 시간 모니터링 (GPU util < 80% → DataLoader 병목)
+
 ---
 
 ## Quick Reference

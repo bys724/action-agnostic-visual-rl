@@ -1025,6 +1025,64 @@ class EgoDexDataset(torch.utils.data.Dataset):
             self.video_info[video_path] = num_frames
         return self.video_info[video_path]
 
+    def _load_frame_pair(self, video_path, frame_idx1, frame_idx2):
+        """
+        비디오에서 두 프레임을 한 번의 VideoCapture로 로드 (최적화).
+
+        Args:
+            video_path: 비디오 파일 경로
+            frame_idx1: 첫 번째 프레임 인덱스
+            frame_idx2: 두 번째 프레임 인덱스
+
+        Returns:
+            (img1, img2): 두 개의 프레임 텐서 [C, H, W]
+        """
+        import cv2
+
+        # 캐시 확인
+        cache_key1 = (video_path, frame_idx1)
+        cache_key2 = (video_path, frame_idx2)
+
+        if self.cache_frames:
+            if cache_key1 in self._frame_cache and cache_key2 in self._frame_cache:
+                return self._frame_cache[cache_key1], self._frame_cache[cache_key2]
+
+        # VideoCapture 한 번만 생성
+        cap = cv2.VideoCapture(str(video_path))
+
+        # 첫 번째 프레임
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx1)
+        ret1, frame1 = cap.read()
+
+        # 두 번째 프레임
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx2)
+        ret2, frame2 = cap.read()
+
+        cap.release()
+
+        if not ret1:
+            raise ValueError(f"Failed to read frame {frame_idx1} from {video_path}")
+        if not ret2:
+            raise ValueError(f"Failed to read frame {frame_idx2} from {video_path}")
+
+        # 전처리 (BGR -> RGB, resize, normalize)
+        def preprocess_frame(frame):
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.resize(frame, (self.img_size, self.img_size))
+            frame = torch.from_numpy(frame).float() / 255.0  # [H, W, C]
+            frame = frame.permute(2, 0, 1)  # [C, H, W]
+            return frame
+
+        img1 = preprocess_frame(frame1)
+        img2 = preprocess_frame(frame2)
+
+        # 캐싱
+        if self.cache_frames:
+            self._frame_cache[cache_key1] = img1
+            self._frame_cache[cache_key2] = img2
+
+        return img1, img2
+
     def _load_frame(self, video_path, frame_idx):
         """비디오에서 특정 프레임 로드."""
         import cv2
@@ -1086,9 +1144,8 @@ class EgoDexDataset(torch.utils.data.Dataset):
         frame_t = np.random.randint(0, max_start + 1)
         frame_tk = frame_t + gap
 
-        # 프레임 로드
-        img_t = self._load_frame(video_path, frame_t)
-        img_tk = self._load_frame(video_path, frame_tk)
+        # 프레임 로드 (최적화: 한 번의 VideoCapture로 두 프레임 로드)
+        img_t, img_tk = self._load_frame_pair(video_path, frame_t, frame_tk)
 
         return img_t, img_tk, gap
 
@@ -1450,8 +1507,9 @@ def train(
         train_dataset,
         batch_size=effective_batch_size,
         shuffle=True,
-        num_workers=8 if use_multi_gpu else 4,
+        num_workers=32 if use_multi_gpu else 16,
         pin_memory=True,
+        persistent_workers=True,
     )
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
