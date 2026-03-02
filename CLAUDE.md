@@ -96,6 +96,11 @@ docker exec libero-eval python src/eval_libero.py \
 2. **간결한 코드**: 실험 우선, 과도한 추상화 피하기
 3. **환경 분리**: AWS (pretraining) vs Docker (evaluation)
 4. **검증 필수**: 새 스크립트는 sanity test로 검증 후 배포
+5. **Best Practice 참고 필수**:
+   - 새로운 구현 전에 **반드시** 공식 문서/권장 방법/샘플 코드 조사
+   - 특히 데이터 로딩, 학습 파이프라인 등 성능에 영향을 주는 부분
+   - 검색 키워드 예시: "pytorch video dataset best practices", "efficient video loading"
+   - 비효율적 구현으로 재작업하지 않도록 사전 조사 우선
 
 ## 현재 Phase (2026-03-01)
 
