@@ -49,6 +49,60 @@ which python3
 
 ---
 
+## S3 Upload Optimization (2026-03-03)
+
+### ⚠️ 필수: 병렬 업로드 설정
+
+**문제**: AWS CLI 기본 설정은 단일 스레드로 느리게 업로드
+- 기본 속도: ~1.3 MiB/s
+- 대량 파일 업로드 시 수십 시간 소요
+
+**해결**: 병렬 업로드 설정 (모든 환경에서 필수)
+
+```bash
+# AWS CLI 병렬 설정
+aws configure set default.s3.max_concurrent_requests 100
+aws configure set default.s3.multipart_threshold 64MB
+aws configure set default.s3.multipart_chunksize 16MB
+
+# 설정 확인
+cat ~/.aws/config
+```
+
+**효과**:
+- 속도: 1.3 MiB/s → 3-5 MiB/s (2-4배 개선)
+- 15M 파일 업로드: 47시간 → 18시간
+
+**적용 환경**:
+- ✅ AWS EC2 인스턴스
+- ✅ 로컬 워크스테이션
+- ✅ 맥북
+
+각 머신마다 독립적으로 설정 필요 (한 번만 설정하면 영구 유지)
+
+### 대용량 이미지 데이터셋 업로드 Best Practice
+
+**권장**: 개별 파일로 업로드 (압축 X)
+- 학습 시 랜덤 액세스 가능
+- DataLoader 병렬 로딩 가능
+- 부분 다운로드/복구 용이
+
+**비권장**: tar/zip 압축 후 업로드
+- 학습 전 압축 해제 필요
+- 전체 다운로드 필수
+- 백업/아카이브 용도로만 적합
+
+**업로드 명령**:
+```bash
+# 개별 파일 병렬 업로드
+aws s3 sync /path/to/egodex_frames s3://bucket/egodex_frames_part1 \
+  --storage-class INTELLIGENT_TIERING
+
+# 예상 시간: 217GB (15M 파일) → 약 18시간 @ 3.4 MiB/s
+```
+
+---
+
 ## Python Environment Setup (2026-03-01 경험)
 
 ### ⚠️ Deep Learning AMI의 함정
