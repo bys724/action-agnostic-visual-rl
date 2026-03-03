@@ -71,6 +71,8 @@ def main():
                         help='Image size (default: 224)')
     parser.add_argument('--num-workers', type=int, default=None,
                         help='Number of parallel workers (default: CPU count)')
+    parser.add_argument('--yes', action='store_true',
+                        help='Skip confirmation prompt')
 
     args = parser.parse_args()
 
@@ -94,10 +96,11 @@ def main():
     print(f"Workers: {num_workers}")
 
     # 확인
-    response = input(f"\nExtract frames from {len(video_paths):,} videos? [y/N]: ")
-    if response.lower() != 'y':
-        print("Cancelled.")
-        sys.exit(0)
+    if not args.yes:
+        response = input(f"\nExtract frames from {len(video_paths):,} videos? [y/N]: ")
+        if response.lower() != 'y':
+            print("Cancelled.")
+            sys.exit(0)
 
     # 병렬 추출
     extract_args = [(vp, output_dir, args.img_size) for vp in video_paths]
