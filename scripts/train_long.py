@@ -29,10 +29,7 @@ sys.path.insert(0, project_root)
 
 from src.models import TwoStreamModel, SingleStreamModel, VideoMAEModel
 from src.datasets import EgoDexDataset, BridgeDataset
-
-# Import training utilities from old two_stream for now
-# TODO: Move to separate training utils module
-from src.models.two_stream_old import train
+from src.training import train
 
 
 def main():
