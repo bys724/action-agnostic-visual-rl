@@ -8,6 +8,9 @@ Progressive implementation:
 3. Pixel-wise Fusion
 4. Video Prediction Decoder
 5. Training Pipeline
+
+NOTE: EgoDexDataset and BridgeDataset are now in src/datasets/ module.
+      For backward compatibility, they are re-exported from this file.
 """
 
 import numpy as np
@@ -15,6 +18,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import timm
+
+# Datasets moved to separate module - re-export for backward compatibility
+try:
+    from ..datasets import EgoDexDataset, BridgeDataset
+except ImportError:
+    # Fallback: define them here if datasets module not available
+    pass
 
 
 # =============================================================================

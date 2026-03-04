@@ -83,11 +83,12 @@ docker exec libero-eval python src/eval_libero.py \
 |------|------|------|
 | `scripts/train_long.py` | EgoDex 사전학습 | AWS |
 | `scripts/run_aws_training.sh` | AWS 학습 자동화 | AWS |
-| `scripts/action_probing.py` | Action probing 평가 | 로컬/AWS |
+| `scripts/probe_action.py` | Action probing 평가 | 로컬/AWS |
 | `src/models/two_stream.py` | Two-Stream 모델 | 공통 |
 | `src/models/baselines.py` | Single-Stream 모델 | 공통 |
 | `src/models/videomae_wrapper.py` | VideoMAE wrapper | 공통 |
 | `src/models/openvla_encoder.py` | OpenVLA 인코더 wrapper | 공통 |
+| `src/datasets/egodex.py` | EgoDex 데이터셋 | 공통 |
 | `src/eval_libero.py` | LIBERO 평가 | Docker |
 
 ## 개발 원칙

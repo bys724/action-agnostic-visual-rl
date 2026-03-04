@@ -36,14 +36,18 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 
 ```
 ├── src/
-│   ├── models/          # 모델 구현
+│   ├── models/          # 모델 구현 (Two-Stream, Single-Stream, VideoMAE)
+│   ├── datasets/        # 데이터셋 (EgoDex, Bridge V2)
 │   └── eval_libero.py   # LIBERO 평가
 ├── scripts/
-│   ├── train_long.py    # EgoDex 학습
-│   └── run_aws_training.sh
+│   ├── train_long.py    # EgoDex 사전학습
+│   ├── run_aws_training.sh  # AWS 학습 자동화
+│   ├── probe_action.py  # Action probing
+│   └── setup/           # 설정 스크립트
 ├── docs/
 │   ├── RESEARCH_PLAN.md       # 연구 계획
-│   └── AWS_INSTANCE_GUIDE.md  # AWS 설정
+│   ├── AWS_INSTANCE_GUIDE.md  # AWS 설정
+│   └── archive/         # 과거 문서 아카이브
 └── data/                # 데이터셋, 체크포인트 (gitignore)
 ```
 
@@ -54,12 +58,14 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 - **AWS 가이드**: [`docs/AWS_INSTANCE_GUIDE.md`](docs/AWS_INSTANCE_GUIDE.md)
 - **LIBERO 평가**: [`docs/setup/LIBERO_TEST_GUIDE.md`](docs/setup/LIBERO_TEST_GUIDE.md)
 
-## 현재 진행 상황 (2026-03-01)
+## 현재 진행 상황 (2026-03-04)
 
 - [x] Two-Stream/Single-Stream/VideoMAE 구현
 - [x] AWS 학습 파이프라인 구축
 - [x] LIBERO 평가 환경 구축
-- [ ] EgoDex part1 사전학습 (진행 중)
+- [x] 코드베이스 리팩토링 (데이터셋 분리, 문서 정리)
+- [ ] EgoDex part1 프레임 추출 (진행 중, 로컬 워크스테이션)
+- [ ] EgoDex part1 사전학습
 - [ ] Action probing 실험
 - [ ] LIBERO fine-tuning & 평가
 

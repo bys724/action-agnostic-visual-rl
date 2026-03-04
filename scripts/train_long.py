@@ -27,14 +27,10 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models.two_stream import (
-    TwoStreamVideoPredictor,
-    BridgeDataset,
-    EgoDexDataset,
-    train,
-)
+from src.models.two_stream import TwoStreamVideoPredictor, train
 from src.models.baselines import SingleStreamVideoPredictor
 from src.models.videomae_wrapper import VideoMAEForBridge
+from src.datasets import EgoDexDataset, BridgeDataset
 
 
 def main():
