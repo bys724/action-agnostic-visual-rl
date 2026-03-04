@@ -81,14 +81,16 @@ docker exec libero-eval python src/eval_libero.py \
 
 | 파일 | 용도 | 환경 |
 |------|------|------|
-| `scripts/train_long.py` | EgoDex 사전학습 | AWS |
-| `scripts/run_aws_training.sh` | AWS 학습 자동화 | AWS |
-| `scripts/probe_action.py` | Action probing 평가 | 로컬/AWS |
+| `scripts/train.py` | 메인 학습 스크립트 | 범용 (로컬/AWS) |
+| `scripts/train_aws.sh` | AWS 학습 자동화 (S3 sync) | AWS |
+| `scripts/eval/probe_action.py` | Action probing 평가 | 로컬/AWS |
+| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | Docker |
+| `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | 로컬 워크스테이션 |
 | `src/models/two_stream.py` | Two-Stream 모델 | 공통 |
-| `src/models/baselines.py` | Single-Stream 모델 | 공통 |
-| `src/models/videomae_wrapper.py` | VideoMAE wrapper | 공통 |
-| `src/models/openvla_encoder.py` | OpenVLA 인코더 wrapper | 공통 |
+| `src/models/single_stream.py` | Single-Stream 모델 | 공통 |
+| `src/models/videomae.py` | VideoMAE 모델 | 공통 |
 | `src/datasets/egodex.py` | EgoDex 데이터셋 | 공통 |
+| `src/training.py` | 학습 유틸리티 | 공통 |
 | `src/eval_libero.py` | LIBERO 평가 | Docker |
 
 ## 개발 원칙

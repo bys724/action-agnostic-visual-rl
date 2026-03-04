@@ -14,7 +14,17 @@
 
 ```bash
 # AWS EC2 인스턴스에서
-./scripts/run_aws_training.sh  # 3개 모델 순차 학습
+bash scripts/train_aws.sh  # 3개 모델 순차 학습 + S3 sync
+bash scripts/train_aws.sh --model two-stream  # 특정 모델만
+
+# 로컬/범용
+python scripts/train.py --model two-stream --epochs 100
+```
+
+### Action Probing (Evaluation)
+
+```bash
+python scripts/eval/probe_action.py --checkpoint data/checkpoints/two_stream/latest.pt
 ```
 
 ### LIBERO Evaluation (Docker)
@@ -38,12 +48,18 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 ├── src/
 │   ├── models/          # 모델 구현 (Two-Stream, Single-Stream, VideoMAE)
 │   ├── datasets/        # 데이터셋 (EgoDex, Bridge V2)
+│   ├── training.py      # 학습 유틸리티
 │   └── eval_libero.py   # LIBERO 평가
 ├── scripts/
-│   ├── train_long.py    # EgoDex 사전학습
-│   ├── run_aws_training.sh  # AWS 학습 자동화
-│   ├── probe_action.py  # Action probing
-│   └── setup/           # 설정 스크립트
+│   ├── train.py         # 메인 학습 스크립트 (범용)
+│   ├── train_aws.sh     # AWS 학습 자동화 (S3 sync 포함)
+│   ├── eval/            # 평가 스크립트
+│   │   ├── probe_action.py
+│   │   └── finetune_libero.py
+│   ├── data/            # 데이터 전처리
+│   │   └── extract_frames.py
+│   ├── setup/           # 환경 설정
+│   └── legacy/          # 참고용 레거시 스크립트
 ├── docs/
 │   ├── RESEARCH_PLAN.md       # 연구 계획
 │   ├── AWS_INSTANCE_GUIDE.md  # AWS 설정
