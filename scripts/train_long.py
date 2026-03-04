@@ -27,10 +27,12 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models.two_stream import TwoStreamVideoPredictor, train
-from src.models.baselines import SingleStreamVideoPredictor
-from src.models.videomae_wrapper import VideoMAEForBridge
+from src.models import TwoStreamModel, SingleStreamModel, VideoMAEModel
 from src.datasets import EgoDexDataset, BridgeDataset
+
+# Import training utilities from old two_stream for now
+# TODO: Move to separate training utils module
+from src.models.two_stream_old import train
 
 
 def main():
@@ -133,11 +135,11 @@ def main():
     print("="*60)
 
     if args.model == 'two-stream':
-        model = TwoStreamVideoPredictor()
+        model = TwoStreamModel()
     elif args.model == 'single-stream':
-        model = SingleStreamVideoPredictor()
+        model = SingleStreamModel()
     elif args.model == 'videomae':
-        model = VideoMAEForBridge(model_size='base')
+        model = VideoMAEModel()
     else:
         raise ValueError(f"Unknown model: {args.model}")
 

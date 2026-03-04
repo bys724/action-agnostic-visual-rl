@@ -1,83 +1,33 @@
 """
-모델 모듈
+Models for action-agnostic visual representation learning.
 
-Core:
-- two_stream.py: Two-Stream Video Predictor (통합 버전)
-- baselines.py: Baseline models (Single-Stream)
-- videomae_wrapper.py: VideoMAE wrapper
-- openvla_encoder.py: OpenVLA 호환 encoder wrappers
-- action_head.py: Action head for LIBERO fine-tuning/evaluation
+This module provides three models for future frame prediction:
+- TwoStreamModel: M/P channel separation with CLS exchange (ours)
+- SingleStreamModel: Single ViT baseline
+- VideoMAEModel: Masked autoencoding baseline
 
-Legacy (호환성):
-- two_stream_vit.py: Two-Stream Interleaved ViT
-- two_stream_preprocessing.py: M/P 채널 전처리
-- action_decoder.py: Action Decoder
-- behavior_encoder.py: Task-conditioned Behavior Encoder
+Each model provides:
+- Training interface: model.forward() and model.compute_loss()
+- Encoder for VLA integration: <Model>Encoder class
 """
 
-# Core - Video Prediction Models
-from .two_stream import (
-    TwoStreamVideoPredictor,
-    TwoStreamPreprocessing as TwoStreamPreprocessingNew,
-    InterleavedTwoStreamViT,
-    PixelwiseFusion,
-    VideoDecoder,
-)
-from .baselines import SingleStreamVideoPredictor
-from .videomae_wrapper import VideoMAEForBridge
+# Core models for training
+from .two_stream import TwoStreamModel, TwoStreamEncoder
+from .single_stream import SingleStreamModel, SingleStreamEncoder
+from .videomae import VideoMAEModel, VideoMAEEncoder
 
-# OpenVLA Encoder Wrappers
-from .openvla_encoder import (
-    TwoStreamEncoderForOpenVLA,
-    SingleStreamEncoderForOpenVLA,
-    VideoMAEEncoderForOpenVLA,
-)
-
-# Action Head for LIBERO evaluation
-from .action_head import ActionHead, EncoderWithActionHead
-
-# Legacy - Two-Stream Interleaved ViT
-from .two_stream_vit import (
-    TwoStreamInterleavedViT,
-    TwoStreamViTConfig,
-    ChannelViT,
-)
-from .two_stream_preprocessing import (
-    TwoStreamPreprocessing,
-    TwoStreamViTAdapter,
-    TwoStreamProcessor,
-)
-from .action_decoder import (
-    ActionDecoder,
-    ActionDecoderConfig,
-    FullPipeline,
-)
-
-# Optional - 향후 실험용
-from .behavior_encoder import BehaviorEncoder, BehaviorEncoderConfig, TextEncoder
+# Common preprocessing
+from .common import TwoStreamPreprocessing
 
 __all__ = [
-    # Core - Video Prediction
-    "TwoStreamVideoPredictor",
-    "SingleStreamVideoPredictor",
-    "VideoMAEForBridge",
-    # OpenVLA Encoders
-    "TwoStreamEncoderForOpenVLA",
-    "SingleStreamEncoderForOpenVLA",
-    "VideoMAEEncoderForOpenVLA",
-    # Action Head (LIBERO evaluation)
-    "ActionHead",
-    "EncoderWithActionHead",
-    # Legacy
-    "TwoStreamInterleavedViT",
-    "TwoStreamViTConfig",
-    "ChannelViT",
+    # Training models
+    "TwoStreamModel",
+    "SingleStreamModel",
+    "VideoMAEModel",
+    # VLA encoders
+    "TwoStreamEncoder",
+    "SingleStreamEncoder",
+    "VideoMAEEncoder",
+    # Common components
     "TwoStreamPreprocessing",
-    "ActionDecoder",
-    "ActionDecoderConfig",
-    "FullPipeline",
-    # Optional
-    "BehaviorEncoder",
-    "BehaviorEncoderConfig",
-    "TextEncoder",
 ]
