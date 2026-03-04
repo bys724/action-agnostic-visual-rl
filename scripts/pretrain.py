@@ -29,7 +29,7 @@ sys.path.insert(0, project_root)
 
 from src.models import TwoStreamModel, SingleStreamModel, VideoMAEModel
 from src.datasets import EgoDexDataset, BridgeDataset
-from src.training import train
+from src.training.pretrain import train
 
 
 def main():

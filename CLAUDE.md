@@ -23,9 +23,13 @@
 
 ## 워크플로우
 
-### 1. EgoDex Pretraining (AWS EC2)
+### 1. EgoDex Pre-training (AWS EC2)
 
 3개 모델 사전학습: Two-Stream, Single-Stream, VideoMAE
+
+**학습 목적**: 행동 라벨 없이 비디오만으로 범용 시각 표현 학습
+- Two-Stream/Single-Stream: 미래 프레임 예측
+- VideoMAE: 마스크된 패치 복원
 
 ```bash
 # AWS 인스턴스 SSH 접속
@@ -37,9 +41,9 @@ cd /workspace/action-agnostic-visual-rl
 git submodule update --init --recursive external/VideoMAE
 
 # 학습 실행
-./scripts/run_aws_training.sh  # 3개 모델 순차 학습
-./scripts/run_aws_training.sh --model two-stream  # 특정 모델만
-./scripts/run_aws_training.sh --sanity --no-shutdown  # Sanity test
+bash scripts/pretrain_aws.sh  # 3개 모델 순차 학습
+bash scripts/pretrain_aws.sh --model two-stream  # 특정 모델만
+bash scripts/pretrain_aws.sh --sanity --no-shutdown  # Sanity test
 ```
 
 **주의사항**:
@@ -79,19 +83,20 @@ docker exec libero-eval python src/eval_libero.py \
 
 ## 주요 파일
 
-| 파일 | 용도 | 환경 |
-|------|------|------|
-| `scripts/train.py` | 메인 학습 스크립트 | 범용 (로컬/AWS) |
-| `scripts/train_aws.sh` | AWS 학습 자동화 (S3 sync) | AWS |
-| `scripts/eval/probe_action.py` | Action probing 평가 | 로컬/AWS |
-| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | Docker |
-| `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | 로컬 워크스테이션 |
-| `src/models/two_stream.py` | Two-Stream 모델 | 공통 |
-| `src/models/single_stream.py` | Single-Stream 모델 | 공통 |
-| `src/models/videomae.py` | VideoMAE 모델 | 공통 |
-| `src/datasets/egodex.py` | EgoDex 데이터셋 | 공통 |
-| `src/training.py` | 학습 유틸리티 | 공통 |
-| `src/eval_libero.py` | LIBERO 평가 | Docker |
+| 파일 | 용도 | 학습 방식 |
+|------|------|----------|
+| `scripts/pretrain.py` | Pre-training 스크립트 | Self-supervised (비디오만) |
+| `scripts/pretrain_aws.sh` | AWS pre-training 자동화 | Self-supervised (비디오만) |
+| `scripts/eval/probe_action.py` | Action probing 평가 | 분석 전용 |
+| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | Supervised (비디오+행동) |
+| `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | 데이터 전처리 |
+| `src/models/two_stream.py` | Two-Stream 모델 | 미래 프레임 예측 |
+| `src/models/single_stream.py` | Single-Stream 모델 | 미래 프레임 예측 |
+| `src/models/videomae.py` | VideoMAE 모델 | 마스크 복원 |
+| `src/datasets/egodex.py` | EgoDex 데이터셋 | Pre-training용 |
+| `src/training/pretrain.py` | Pre-training 루프 | Self-supervised |
+| `src/training/TODO.md` | Fine-tuning 구현 계획 | 미래 작업 |
+| `src/eval_libero.py` | LIBERO 평가 | Evaluation |
 
 ## 개발 원칙
 

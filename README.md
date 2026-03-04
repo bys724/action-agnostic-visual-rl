@@ -10,15 +10,15 @@
 
 ## 빠른 시작
 
-### EgoDex Pretraining (AWS)
+### EgoDex Pre-training (AWS)
 
 ```bash
 # AWS EC2 인스턴스에서
-bash scripts/train_aws.sh  # 3개 모델 순차 학습 + S3 sync
-bash scripts/train_aws.sh --model two-stream  # 특정 모델만
+bash scripts/pretrain_aws.sh  # 3개 모델 순차 학습 + S3 sync
+bash scripts/pretrain_aws.sh --model two-stream  # 특정 모델만
 
 # 로컬/범용
-python scripts/train.py --model two-stream --epochs 100
+python scripts/pretrain.py --model two-stream --epochs 100
 ```
 
 ### Action Probing (Evaluation)
@@ -48,11 +48,13 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 ├── src/
 │   ├── models/          # 모델 구현 (Two-Stream, Single-Stream, VideoMAE)
 │   ├── datasets/        # 데이터셋 (EgoDex, Bridge V2)
-│   ├── training.py      # 학습 유틸리티
+│   ├── training/        # 학습 유틸리티
+│   │   ├── pretrain.py  # Pre-training 루프 (구현 완료)
+│   │   └── TODO.md      # Fine-tuning 구현 계획
 │   └── eval_libero.py   # LIBERO 평가
 ├── scripts/
-│   ├── train.py         # 메인 학습 스크립트 (범용)
-│   ├── train_aws.sh     # AWS 학습 자동화 (S3 sync 포함)
+│   ├── pretrain.py      # Pre-training 스크립트 (범용)
+│   ├── pretrain_aws.sh  # AWS pre-training (S3 sync)
 │   ├── eval/            # 평가 스크립트
 │   │   ├── probe_action.py
 │   │   └── finetune_libero.py

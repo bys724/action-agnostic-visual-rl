@@ -175,7 +175,7 @@ run_training() {
     fi
 
     export PYTHONPATH="$CODE_DIR:$PYTHONPATH"
-    python3 "$CODE_DIR/scripts/train_long.py" \
+    python3 "$CODE_DIR/scripts/pretrain.py" \
         --model "$MODEL_NAME" \
         --train-data egodex \
         --egodex-root "$EGODEX_ROOT" \
