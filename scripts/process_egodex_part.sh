@@ -36,7 +36,7 @@ log "Download complete. Size: $(du -sh "$LOCAL_RAW" | cut -f1)"
 log "=== Step 2/4: Extracting frames ==="
 VIDEO_COUNT=$(find "$LOCAL_RAW" -name "*.mp4" | wc -l)
 log "Videos found: $VIDEO_COUNT"
-python3 "$SCRIPT_DIR/extract_frames.py" \
+python3 "$SCRIPT_DIR/data/extract_frames.py" \
     --egodex-root "$PROJECT_DIR/data/egodex" \
     --split "$PART" \
     --output-dir "$LOCAL_FRAMES" \
