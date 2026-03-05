@@ -41,7 +41,13 @@ def extract_video_frames(args):
             if not ret:
                 break
 
-            # 리사이즈
+            # 센터 크롭 (긴 변의 양쪽을 잘라 정사각형으로) → 리사이즈
+            h, w = frame.shape[:2]
+            if h != w:
+                s = min(h, w)
+                y = (h - s) // 2
+                x = (w - s) // 2
+                frame = frame[y:y+s, x:x+s]
             frame = cv2.resize(frame, (img_size, img_size))
 
             # 저장
@@ -67,8 +73,8 @@ def main():
                         help='Split to process (part1, part2, etc.)')
     parser.add_argument('--output-dir', type=str, required=True,
                         help='Output directory for frames')
-    parser.add_argument('--img-size', type=int, default=224,
-                        help='Image size (default: 224)')
+    parser.add_argument('--img-size', type=int, default=256,
+                        help='Image size (default: 256)')
     parser.add_argument('--num-workers', type=int, default=None,
                         help='Number of parallel workers (default: CPU count)')
     parser.add_argument('--yes', action='store_true',

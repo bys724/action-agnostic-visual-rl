@@ -9,7 +9,8 @@ EgoDex Dataset for video prediction training.
             - frame_000001.jpg
             - ...
 
-프레임은 미리 추출되어 JPEG로 저장됨 (224x224, 95% quality).
+프레임은 미리 추출되어 JPEG로 저장됨 (256x256 센터크롭, 95% quality).
+학습 시 RandomCrop(224), 평가 시 CenterCrop(224) 적용.
 VideoCapture 대신 이미지 파일 직접 로드로 학습 속도 대폭 개선.
 """
 
@@ -20,6 +21,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision import transforms
 
 
 class EgoDexDataset(Dataset):
@@ -35,6 +37,7 @@ class EgoDexDataset(Dataset):
         loss_decay: float = 0.7,
         max_videos: Optional[int] = None,
         cache_frames: bool = False,
+        train: bool = True,
     ):
         """
         Initialize EgoDex Dataset.
@@ -43,17 +46,24 @@ class EgoDexDataset(Dataset):
             data_root: 추출된 프레임 루트 경로 (e.g. /workspace/data/egodex_frames)
             split: "test" 또는 "train" (part1-5)
             max_gap: 최대 프레임 간격
-            img_size: 출력 이미지 크기 (프레임은 이미 224x224로 추출되어 있음)
+            img_size: 출력 이미지 크기 (프레임은 256x256으로 추출, 학습 시 RandomCrop)
             sample_decay: 샘플링 확률 감쇠율
             loss_decay: Loss 가중치 감쇠율
             max_videos: 디버깅용 최대 비디오 수
             cache_frames: 프레임 캐싱 여부
+            train: True면 RandomCrop, False면 CenterCrop
         """
         self.data_root = Path(data_root)
         self.split = split
         self.max_gap = max_gap
         self.img_size = img_size
         self.cache_frames = cache_frames
+
+        # 학습 시 RandomCrop, 평가 시 CenterCrop (프레임은 256x256으로 추출됨)
+        if train:
+            self.spatial_transform = transforms.RandomCrop(img_size)
+        else:
+            self.spatial_transform = transforms.CenterCrop(img_size)
 
         # Multi-gap 설정
         gaps = np.arange(1, max_gap + 1)
@@ -124,18 +134,24 @@ class EgoDexDataset(Dataset):
         if not frame_path2.exists():
             raise ValueError(f"Frame not found: {frame_path2}")
 
-        # 프레임 로드 및 전처리
-        def load_frame(path: Path) -> torch.Tensor:
+        # 프레임 로드 및 전처리 (프레임 쌍에 동일한 crop 적용)
+        def load_as_tensor(path: Path) -> torch.Tensor:
             img = Image.open(path).convert("RGB")
-            # 이미 224x224로 추출되어 있지만, img_size가 다를 수 있으므로 resize
-            if img.size != (self.img_size, self.img_size):
-                img = img.resize((self.img_size, self.img_size), Image.BILINEAR)
             img = torch.from_numpy(np.array(img)).float() / 255.0  # [H, W, C]
             img = img.permute(2, 0, 1)  # [C, H, W]
             return img
 
-        img1 = load_frame(frame_path1)
-        img2 = load_frame(frame_path2)
+        img1 = load_as_tensor(frame_path1)
+        img2 = load_as_tensor(frame_path2)
+
+        # 프레임 쌍에 동일한 crop 적용 (temporal consistency 유지)
+        if isinstance(self.spatial_transform, transforms.RandomCrop):
+            crop_params = transforms.RandomCrop.get_params(img1, (self.img_size, self.img_size))
+            img1 = transforms.functional.crop(img1, *crop_params)
+            img2 = transforms.functional.crop(img2, *crop_params)
+        else:
+            img1 = self.spatial_transform(img1)
+            img2 = self.spatial_transform(img2)
 
         # 캐싱
         if self.cache_frames:
@@ -145,7 +161,7 @@ class EgoDexDataset(Dataset):
         return img1, img2
 
     def _load_frame(self, frame_dir: Path, frame_idx: int) -> torch.Tensor:
-        """프레임 디렉토리에서 특정 프레임 로드."""
+        """프레임 디렉토리에서 특정 프레임 로드 (단일 프레임, spatial_transform 적용)."""
         cache_key = (frame_dir, frame_idx)
         if self.cache_frames and cache_key in self._frame_cache:
             return self._frame_cache[cache_key]
@@ -155,10 +171,9 @@ class EgoDexDataset(Dataset):
             raise ValueError(f"Frame not found: {frame_path}")
 
         img = Image.open(frame_path).convert("RGB")
-        if img.size != (self.img_size, self.img_size):
-            img = img.resize((self.img_size, self.img_size), Image.BILINEAR)
         img = torch.from_numpy(np.array(img)).float() / 255.0  # [H, W, C]
         img = img.permute(2, 0, 1)  # [C, H, W]
+        img = self.spatial_transform(img)
 
         if self.cache_frames:
             self._frame_cache[cache_key] = img
