@@ -76,14 +76,15 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 - **AWS 가이드**: [`docs/AWS_INSTANCE_GUIDE.md`](docs/AWS_INSTANCE_GUIDE.md)
 - **LIBERO 평가**: [`docs/setup/LIBERO_TEST_GUIDE.md`](docs/setup/LIBERO_TEST_GUIDE.md)
 
-## 현재 진행 상황 (2026-03-04)
+## 현재 진행 상황 (2026-03-06)
 
 - [x] Two-Stream/Single-Stream/VideoMAE 구현
 - [x] AWS 학습 파이프라인 구축
 - [x] LIBERO 평가 환경 구축
 - [x] 코드베이스 리팩토링 (데이터셋 분리, 문서 정리)
-- [ ] EgoDex part1 프레임 추출 (진행 중, 로컬 워크스테이션)
-- [ ] EgoDex part1 사전학습
+- [x] 프레임 전처리 방침 확정 (256x256 저장, 학습 시 RandomCrop 224)
+- [ ] EgoDex part1~5 프레임 추출 + S3 업로드 (진행 중)
+- [ ] AWS에서 3개 모델 사전학습
 - [ ] Action probing 실험
 - [ ] LIBERO fine-tuning & 평가
 

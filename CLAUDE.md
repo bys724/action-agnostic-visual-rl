@@ -90,6 +90,8 @@ docker exec libero-eval python src/eval_libero.py \
 | `scripts/eval/probe_action.py` | Action probing 평가 | 분석 전용 |
 | `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | Supervised (비디오+행동) |
 | `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | 데이터 전처리 |
+| `scripts/data/extract_bridge_frames.py` | Bridge V2 프레임 추출 | 데이터 전처리 |
+| `scripts/process_egodex_part.sh` | EgoDex S3 다운로드→추출→업로드 | 데이터 파이프라인 |
 | `src/models/two_stream.py` | Two-Stream 모델 | 미래 프레임 예측 |
 | `src/models/single_stream.py` | Single-Stream 모델 | 미래 프레임 예측 |
 | `src/models/videomae.py` | VideoMAE 모델 | 마스크 복원 |
@@ -110,15 +112,38 @@ docker exec libero-eval python src/eval_libero.py \
    - 검색 키워드 예시: "pytorch video dataset best practices", "efficient video loading"
    - 비효율적 구현으로 재작업하지 않도록 사전 조사 우선
 
-## 현재 Phase (2026-03-01)
+## 데이터셋 전처리 워크플로우
 
-**Phase 1: EgoDex Part1 Pretraining** (진행 중)
+새 데이터셋을 학습에 사용하기 전, 아래 프로세스를 따름:
 
-- Instance: g5.12xlarge (35.86.118.174)
-- Dataset: EgoDex part1 (336GB)
-- Status: Two-Stream epoch 2/30 진행 중
+### 1. 샘플 테스트
+- 소수 영상(3~5개)으로 crop/resize 옵션별 결과 비교
+- 다양한 task에서 샘플링하여 대표성 확보
 
-**다음 단계**: Phase 2 Action Probing
+### 2. 결과 기록
+- 비교 이미지 + 결정 근거를 `docs/preprocessing/` 하위에 기록
+- 예: `docs/preprocessing/egodex.md`, `docs/preprocessing/bridge_v2.md`
+
+### 3. 전체 추출
+- 결정된 설정으로 전체 데이터셋 프레임 추출
+- 추출 스크립트: `scripts/data/extract_frames.py` (또는 데이터셋별 스크립트)
+
+### 4. 업로드 및 검증
+- S3 업로드 후 샘플 다운로드하여 품질 확인
+
+### 기존 사례
+- **EgoDex**: 센터크롭(1080x1080) → 256x256 (`docs/preprocessing/egodex/`)
+- **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
+
+## 현재 Phase (2026-03-06)
+
+**Phase 1: EgoDex 데이터 전처리** (진행 중)
+
+- 로컬 워크스테이션에서 프레임 추출 → S3 업로드
+- part1 추출 완료 (254GB), S3 재업로드 필요
+- part2 추출 진행 중, part3~5 대기
+
+**다음 단계**: AWS에서 사전학습 시작 → Phase 2 Action Probing
 
 자세한 일정은 `docs/RESEARCH_PLAN.md` 참고
 
@@ -130,6 +155,5 @@ docker exec libero-eval python src/eval_libero.py \
 - `docs/PROBING_GUIDE.md` - Action probing
 - `docs/setup/LIBERO_TEST_GUIDE.md` - LIBERO 평가
 
-### Legacy (참고용)
-- `docs/legacy/SIMPLER_GUIDE.md` - SIMPLER 환경 (deprecated)
-- `docs/development/TODO_MODEL_INTEGRATION.md` - 모델 통합 TODO (archive)
+### Archive (참고용)
+- `docs/archive/` - 과거 코드 리뷰, 개발 상태, 마이그레이션 기록

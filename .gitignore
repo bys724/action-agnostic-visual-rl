@@ -32,12 +32,12 @@ data/*
 *.pkl
 *.pickle
 
-# 대용량 데이터셋
-droid/
-bridge_v2/
-openx/
-trajectories/
-results/
+# 대용량 데이터셋 (루트 레벨)
+/droid/
+/bridge_v2/
+/openx/
+/trajectories/
+/results/
 
 # 모델 체크포인트  
 checkpoints/
@@ -68,3 +68,6 @@ checkpoints/
 tmp/
 temp/
 *.tmp
+
+# 전처리 비교 샘플 이미지 (문서만 추적, 이미지는 제외)
+docs/preprocessing/*/samples/

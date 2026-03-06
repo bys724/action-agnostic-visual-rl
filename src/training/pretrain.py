@@ -51,15 +51,19 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
         optimizer.zero_grad()
 
         # Compute loss based on model type
-        # VideoMAE uses masked reconstruction, others use future prediction
-        if hasattr(model, 'compute_loss') and callable(getattr(model, 'compute_loss')):
+        # VideoMAE: masked reconstruction (no gap weighting)
+        # Two-stream/Single-stream: future prediction with gap weighting
+        actual_model = model.module if hasattr(model, 'module') else model
+        model_name = type(actual_model).__name__
+
+        if model_name == 'VideoMAEModel':
             # VideoMAE: masked reconstruction loss (already scalar)
-            loss, img_pred = model.compute_loss(img_t, img_tk)
+            loss, img_pred = actual_model.compute_loss(img_t, img_tk)
             weighted_loss = loss
             unweighted_loss = loss
         else:
             # Two-stream/Single-stream: future prediction with gap weighting
-            img_pred, change_emb = model(img_t, img_tk)
+            img_pred, _ = model(img_t, img_tk)
             per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
             per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))  # [B]
 
@@ -140,10 +144,13 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
         gaps = np.array([d[2] for d in batch_data])
 
         # Forward (handle VideoMAE vs prediction models)
+        actual_model = model.module if hasattr(model, 'module') else model
+        model_name = type(actual_model).__name__
+
         with torch.no_grad():
-            if hasattr(model, 'compute_loss') and callable(getattr(model, 'compute_loss')):
+            if model_name == 'VideoMAEModel':
                 # VideoMAE: masked reconstruction
-                loss, img_pred = model.compute_loss(img_t, img_tk)
+                loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
             else:

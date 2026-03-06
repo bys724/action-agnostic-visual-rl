@@ -1,5 +1,5 @@
 #!/bin/bash
-# EgoDex 파트별 처리: S3 다운로드 → 프레임 추출 → S3 업로드 → 로컬 삭제
+# EgoDex 파트별 처리: S3 다운로드 → 프레임 추출(센터크롭 256x256) → S3 업로드 → 로컬 삭제
 #
 # Usage:
 #   ./scripts/process_egodex_part.sh part2
@@ -26,13 +26,17 @@ LOCAL_FRAMES="$PROJECT_DIR/data/egodex_frames_$PART"
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
-# Step 1: S3에서 원본 다운로드
+# Step 1: S3에서 원본 다운로드 (이미 있으면 생략)
 log "=== Step 1/4: Downloading $PART from S3 ==="
-mkdir -p "$LOCAL_RAW"
-$AWS s3 sync "$S3_SRC" "$LOCAL_RAW/" --quiet
+if [ -d "$LOCAL_RAW" ] && [ "$(ls -A "$LOCAL_RAW" 2>/dev/null)" ]; then
+    log "Raw data already exists locally, skipping download"
+else
+    mkdir -p "$LOCAL_RAW"
+    $AWS s3 sync "$S3_SRC" "$LOCAL_RAW/" --quiet
+fi
 log "Download complete. Size: $(du -sh "$LOCAL_RAW" | cut -f1)"
 
-# Step 2: 프레임 추출
+# Step 2: 프레임 추출 (65:35 비대칭 크롭, 256x256)
 log "=== Step 2/4: Extracting frames ==="
 VIDEO_COUNT=$(find "$LOCAL_RAW" -name "*.mp4" | wc -l)
 log "Videos found: $VIDEO_COUNT"
@@ -43,26 +47,16 @@ python3 "$SCRIPT_DIR/data/extract_frames.py" \
     --yes
 log "Extraction complete. Size: $(du -sh "$LOCAL_FRAMES" | cut -f1)"
 
-# Step 3: 추출 프레임 S3 업로드 (task 단위 병렬 업로드 — s3 sync는 소규모 파일 수천만개에 극도로 느림)
+# Step 3: S3 업로드 (task 단위 순차 — 동시 업로드는 실패 위험)
 log "=== Step 3/4: Uploading frames to $S3_DST ==="
-UPLOAD_PIDS=()
 for TASK_DIR in "$LOCAL_FRAMES"/*/; do
     TASK_NAME=$(basename "$TASK_DIR")
     log "  Uploading task: $TASK_NAME"
-    $AWS s3 cp "$TASK_DIR" "$S3_DST$TASK_NAME/" --recursive --quiet &
-    UPLOAD_PIDS+=($!)
-done
-# 모든 업로드 완료 대기
-UPLOAD_FAIL=0
-for PID in "${UPLOAD_PIDS[@]}"; do
-    if ! wait "$PID"; then
-        UPLOAD_FAIL=1
+    if ! $AWS s3 cp "$TASK_DIR" "$S3_DST$TASK_NAME/" --recursive --quiet; then
+        log "  Retry: $TASK_NAME"
+        $AWS s3 cp "$TASK_DIR" "$S3_DST$TASK_NAME/" --recursive --quiet
     fi
 done
-if [[ $UPLOAD_FAIL -ne 0 ]]; then
-    log "ERROR: Some uploads failed. Skipping cleanup."
-    exit 1
-fi
 log "Upload complete."
 
 # Step 4: 로컬 정리

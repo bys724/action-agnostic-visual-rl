@@ -1,11 +1,11 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-03-02
+**마지막 업데이트**: 2026-03-06
 **연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
 
 ---
 
-## Phase 1: EgoDex Part1 Pretraining (현재 - 2026-03-02)
+## Phase 1: EgoDex Part1 Pretraining (현재)
 
 ### 목표
 - EgoDex part1 (~336GB)에서 3가지 모델 사전학습
@@ -141,28 +141,26 @@ loss, img_pred = model.compute_loss(img_t, img_tk)  # 75% masking
 
 ---
 
-## 현재 상태 (2026-02-28)
+## 현재 상태 (2026-03-06)
 
 ### 완료
-- [x] Two-Stream 구현
-- [x] Single-Stream 구현
-- [x] VideoMAE wrapper 구현
-- [x] EgoDex part1 S3 업로드 완료
-- [x] Training script 작성 (`scripts/train_long.py`)
-- [x] AWS 학습 스크립트 (`scripts/run_aws_training.sh`)
-- [x] Part1 skip logic 추가 (불필요한 1.84TB 다운로드 방지)
+- [x] Two-Stream / Single-Stream / VideoMAE 구현
+- [x] Training script 작성 (`scripts/pretrain.py`, `scripts/pretrain_aws.sh`)
+- [x] EgoDex 프레임 추출 파이프라인 (`scripts/process_egodex_part.sh`)
+- [x] Bridge V2 프레임 추출 스크립트
+- [x] 프레임 전처리 방침 확정 (256x256 저장, 학습 시 RandomCrop 224)
+- [x] AWS 학습 환경 검증 (g5.12xlarge, sanity test 통과)
 
 ### 진행 중
-- [ ] 새 인스턴스 시작 (EBS 1TB)
-- [ ] Single-stream 학습 시작
-- [ ] Two-stream 학습
-- [ ] VideoMAE 학습
+- [ ] EgoDex part1~5 프레임 추출 및 S3 업로드 (로컬 워크스테이션)
+  - part1: 추출 완료(254GB), S3 재업로드 필요
+  - part2: 추출 진행 중
+  - part3~5: 대기
 
 ### 다음 단계
+- [ ] AWS에서 3개 모델 사전학습 시작
 - [ ] Action probing 코드 작성
-- [ ] Baseline 모델 다운로드
 - [ ] Bridge V2 action probing
-- [ ] 결과 분석 및 논문 작성
 
 ---
 
@@ -212,4 +210,4 @@ loss, img_pred = model.compute_loss(img_t, img_tk)  # 75% masking
 - Spatial augmentation은 Phase 3에서 추가
 - 문서는 실험 진행에 따라 업데이트
 
-**Last Updated**: 2026-02-28
+**Last Updated**: 2026-03-06

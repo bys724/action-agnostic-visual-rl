@@ -468,7 +468,7 @@ class VideoMAEModel(nn.Module):
         return loss, predicted_patches
 
 
-class VideoMAEEncoder(nn.Module):
+class VideoMAEEncoderForVLA(nn.Module):
     """
     VideoMAE encoder wrapper for VLA integration.
 
@@ -495,7 +495,7 @@ class VideoMAEEncoder(nn.Module):
         self._embed_dim = embed_dim
         self.num_patches = (image_size // patch_size) ** 2
 
-        # Build encoder
+        # Build encoder (uses the internal VideoMAEEncoder class)
         self.encoder = VideoMAEEncoder(
             image_size=image_size,
             patch_size=patch_size,

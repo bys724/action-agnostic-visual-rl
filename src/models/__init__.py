@@ -14,7 +14,7 @@ Each model provides:
 # Core models for training
 from .two_stream import TwoStreamModel, TwoStreamEncoder
 from .single_stream import SingleStreamModel, SingleStreamEncoder
-from .videomae import VideoMAEModel, VideoMAEEncoder
+from .videomae import VideoMAEModel, VideoMAEEncoderForVLA as VideoMAEEncoder
 
 # Common preprocessing
 from .common import TwoStreamPreprocessing
