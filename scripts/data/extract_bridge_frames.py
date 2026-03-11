@@ -96,9 +96,12 @@ def main():
     output_dir = Path(args.output_dir)
 
     # images0 디렉토리 탐색
+    # ZIP 구조: raw/rss/..., raw/bridge_data_v1/... 등 여러 하위 구조
     search_root = bridge_root / "raw" / "bridge_data_v2"
     if not search_root.exists():
-        search_root = bridge_root
+        # fallback: raw/ 디렉토리가 있으면 그 안에서 탐색
+        raw_dir = bridge_root / "raw"
+        search_root = raw_dir if raw_dir.exists() else bridge_root
 
     print(f"Scanning {search_root} for trajectories...")
     traj_dirs = sorted(search_root.glob("**/images0"))

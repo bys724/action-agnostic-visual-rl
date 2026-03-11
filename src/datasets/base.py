@@ -1,0 +1,145 @@
+"""
+비디오 프레임 데이터셋 베이스 클래스.
+
+공통 로직:
+- Multi-gap temporal sampling (짧은 gap에 높은 확률)
+- Gap 기반 loss weighting (먼 프레임에 낮은 가중치)
+- 사전 추출된 프레임(frame_XXXXXX.jpg) 로딩 + synchronized spatial crop
+- 프레임 수 캐싱
+
+서브클래스는 _scan_frame_dirs()만 구현하면 됨.
+"""
+
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import numpy as np
+import torch
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+
+
+class VideoFrameDataset(ABC, Dataset):
+    """사전 추출된 프레임(256x256) 기반 비디오 데이터셋."""
+
+    def __init__(
+        self,
+        data_root: str,
+        max_gap: int = 10,
+        img_size: int = 224,
+        sample_decay: float = 0.3,
+        loss_decay: float = 0.7,
+        samples_per_video: int = 100,
+        train: bool = True,
+        max_videos: Optional[int] = None,
+        cache_frames: bool = False,
+    ):
+        self.data_root = Path(data_root)
+        self.max_gap = max_gap
+        self.img_size = img_size
+        self.samples_per_video = samples_per_video
+        self.cache_frames = cache_frames
+
+        # Spatial transform: 256x256 → 224x224
+        if train:
+            self.spatial_transform = transforms.RandomCrop(img_size)
+        else:
+            self.spatial_transform = transforms.CenterCrop(img_size)
+
+        # Multi-gap sampling 확률 (짧은 gap이 높은 확률)
+        gaps = np.arange(1, max_gap + 1)
+        raw_probs = np.exp(-sample_decay * (gaps - 1))
+        self.sample_probs = raw_probs / raw_probs.sum()
+        self.loss_weights = np.exp(-loss_decay * (gaps - 1))
+
+        # 프레임 디렉토리 탐색 (서브클래스 구현)
+        self.frame_dirs = self._scan_frame_dirs()
+        if max_videos:
+            self.frame_dirs = self.frame_dirs[:max_videos]
+
+        # 캐시
+        self._video_info = {}  # {path: num_frames}
+        self._frame_cache = {}  # {(path, idx): tensor}
+
+    @abstractmethod
+    def _scan_frame_dirs(self) -> List[Path]:
+        """프레임 디렉토리 목록 반환. 각 디렉토리에 frame_XXXXXX.jpg 파일들이 있어야 함."""
+        ...
+
+    def _get_num_frames(self, frame_dir: Path) -> int:
+        """프레임 수 반환 (캐싱)."""
+        if frame_dir not in self._video_info:
+            self._video_info[frame_dir] = len(list(frame_dir.glob("frame_*.jpg")))
+        return self._video_info[frame_dir]
+
+    def _load_image(self, path: Path) -> torch.Tensor:
+        """JPEG → [C, H, W] float32 텐서."""
+        img = Image.open(path).convert("RGB")
+        img = torch.from_numpy(np.array(img)).float() / 255.0
+        return img.permute(2, 0, 1)
+
+    def _load_frame_pair(
+        self, frame_dir: Path, idx1: int, idx2: int
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """두 프레임을 로드하고 동일한 spatial crop 적용."""
+        path1 = frame_dir / f"frame_{idx1:06d}.jpg"
+        path2 = frame_dir / f"frame_{idx2:06d}.jpg"
+
+        # 캐시 확인
+        if self.cache_frames:
+            key1, key2 = (frame_dir, idx1), (frame_dir, idx2)
+            if key1 in self._frame_cache and key2 in self._frame_cache:
+                return self._frame_cache[key1], self._frame_cache[key2]
+
+        img1 = self._load_image(path1)
+        img2 = self._load_image(path2)
+
+        # 프레임 쌍에 동일한 crop 적용 (temporal consistency)
+        if isinstance(self.spatial_transform, transforms.RandomCrop):
+            params = transforms.RandomCrop.get_params(
+                img1, (self.img_size, self.img_size)
+            )
+            img1 = transforms.functional.crop(img1, *params)
+            img2 = transforms.functional.crop(img2, *params)
+        else:
+            img1 = self.spatial_transform(img1)
+            img2 = self.spatial_transform(img2)
+
+        if self.cache_frames:
+            self._frame_cache[(frame_dir, idx1)] = img1
+            self._frame_cache[(frame_dir, idx2)] = img2
+
+        return img1, img2
+
+    def get_loss_weight(self, gap: int) -> float:
+        """Gap에 대한 loss 가중치."""
+        if gap < 1 or gap > self.max_gap:
+            return 1.0
+        return self.loss_weights[gap - 1]
+
+    def __len__(self) -> int:
+        return len(self.frame_dirs) * self.samples_per_video
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]:
+        video_idx = idx % len(self.frame_dirs)
+        frame_dir = self.frame_dirs[video_idx]
+        num_frames = self._get_num_frames(frame_dir)
+
+        # Gap 샘플링
+        gap = np.random.choice(
+            np.arange(1, self.max_gap + 1), p=self.sample_probs
+        )
+
+        # 시작 프레임 샘플링
+        max_start = max(0, num_frames - gap - 1)
+        if max_start <= 0:
+            gap = 1
+            max_start = max(0, num_frames - 2)
+
+        frame_t = np.random.randint(0, max_start + 1)
+        frame_tk = frame_t + gap
+
+        img_t, img_tk = self._load_frame_pair(frame_dir, frame_t, frame_tk)
+        return img_t, img_tk, gap
