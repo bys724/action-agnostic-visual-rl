@@ -2,7 +2,7 @@
 # AWS EC2 EgoDex Pretraining Launcher
 #
 # Usage:
-#   ./run_aws_training.sh [--sanity] [--model MODEL] [--no-shutdown]
+#   bash scripts/pretrain_aws.sh [--sanity] [--model MODEL] [--no-shutdown]
 #
 # Options:
 #   --sanity       Quick sanity test (5 videos, 1 epoch each)
@@ -55,50 +55,59 @@ echo "=== [1/4] Pulling latest code ==="
 cd "$CODE_DIR"
 git pull origin main || echo "Warning: git pull failed (continuing with existing code)"
 
-# ── EgoDex S3 sync ────────────────────────────────────────────────────────────
+# ── EgoDex 프레임 S3 sync ─────────────────────────────────────────────────────
+# 사전 추출된 프레임(256x256 JPG)을 S3에서 다운로드
+# S3 구조: egodex_frames_partN/task_name/video_name/frame_XXXXXX.jpg
+#          egodex_frames_test/task_name/video_name/frame_XXXXXX.jpg
 echo ""
-echo "=== [2/4] Syncing EgoDex dataset from S3 ==="
-echo "  test split  : s3://${S3_BUCKET}/datasets/egodex-test/ → ${EGODEX_ROOT}/test/"
-echo "  full split  : s3://${S3_BUCKET}/datasets/egodex-full/ → ${EGODEX_ROOT}/"
+echo "=== [2/4] Syncing EgoDex frames from S3 ==="
 
-mkdir -p "${EGODEX_ROOT}/test"
+# 학습에 사용할 part 목록 (콤마 구분, 기본: part1만)
+# 예: TRAIN_PARTS=part1,part2,part3 ./scripts/pretrain_aws.sh
+TRAIN_PARTS="${TRAIN_PARTS:-part1}"
 
 if $SANITY; then
-    # sanity: train용 part1 5개 task + eval용 test 3개 task
-    echo "  [Sanity mode] Syncing 5 tasks from egodex-full/part1/ (train) and 3 tasks from egodex-test/ (eval)..."
-    mkdir -p "${EGODEX_ROOT}/part1"
+    # sanity: train용 part1에서 5개 task + eval용 test에서 3개 task
+    echo "  [Sanity mode] Syncing 5 train tasks + 3 eval tasks..."
+    mkdir -p "${EGODEX_ROOT}/test"
 
-    TRAIN_TASKS=$(aws s3 ls "s3://${S3_BUCKET}/datasets/egodex-full/part1/" | awk '{print $2}' | head -5)
+    FIRST_PART="${TRAIN_PARTS%%,*}"
+    mkdir -p "${EGODEX_ROOT}/${FIRST_PART}"
+    TRAIN_TASKS=$(aws s3 ls "s3://${S3_BUCKET}/egodex_frames_${FIRST_PART}/" | awk '{print $2}' | head -5)
     for TASK in $TRAIN_TASKS; do
-        aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-full/part1/${TASK}" \
-                    "${EGODEX_ROOT}/part1/${TASK}" \
+        aws s3 sync "s3://${S3_BUCKET}/egodex_frames_${FIRST_PART}/${TASK}" \
+                    "${EGODEX_ROOT}/${FIRST_PART}/${TASK}" \
                     --quiet
     done
 
-    EVAL_TASKS=$(aws s3 ls "s3://${S3_BUCKET}/datasets/egodex-test/" | awk '{print $2}' | head -3)
+    EVAL_TASKS=$(aws s3 ls "s3://${S3_BUCKET}/egodex_frames_test/" | awk '{print $2}' | head -3)
     for TASK in $EVAL_TASKS; do
-        aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-test/${TASK}" \
+        aws s3 sync "s3://${S3_BUCKET}/egodex_frames_test/${TASK}" \
                     "${EGODEX_ROOT}/test/${TASK}" \
                     --quiet
     done
 else
     # test split sync (background)
+    mkdir -p "${EGODEX_ROOT}/test"
     echo "  Syncing test split in background..."
-    aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-test/" \
+    aws s3 sync "s3://${S3_BUCKET}/egodex_frames_test/" \
                 "${EGODEX_ROOT}/test/" \
                 --quiet &
     TEST_SYNC_PID=$!
 
-    # part1 sync (only if not already present)
-    if [ -d "${EGODEX_ROOT}/part1" ] && [ "$(ls -A ${EGODEX_ROOT}/part1)" ]; then
-        echo "  part1 already exists ($(du -sh ${EGODEX_ROOT}/part1 | cut -f1)), skipping download..."
-    else
-        echo "  Syncing part1 from S3..."
-        mkdir -p "${EGODEX_ROOT}/part1"
-        aws s3 sync "s3://${S3_BUCKET}/datasets/egodex-full/part1/" \
-                    "${EGODEX_ROOT}/part1/" \
-                    --quiet
-    fi
+    # train parts sync (TRAIN_PARTS는 콤마 구분)
+    for PART in ${TRAIN_PARTS//,/ }; do
+        PART_DIR="${EGODEX_ROOT}/${PART}"
+        if [ -d "$PART_DIR" ] && [ "$(ls -A "$PART_DIR" 2>/dev/null)" ]; then
+            echo "  ${PART} already exists ($(du -sh "$PART_DIR" | cut -f1)), skipping..."
+        else
+            echo "  Syncing ${PART} from s3://${S3_BUCKET}/egodex_frames_${PART}/ ..."
+            mkdir -p "$PART_DIR"
+            aws s3 sync "s3://${S3_BUCKET}/egodex_frames_${PART}/" \
+                        "$PART_DIR/" \
+                        --quiet
+        fi
+    done
 
     echo "  Waiting for test split sync to complete..."
     wait $TEST_SYNC_PID
@@ -174,11 +183,14 @@ run_training() {
         EXTRA_ARGS="$EXTRA_ARGS --max-videos 5"
     fi
 
+    # Deep Learning AMI: /opt/pytorch 가상환경의 python 사용
+    PYTHON="${PYTHON:-/opt/pytorch/bin/python3}"
     export PYTHONPATH="$CODE_DIR:$PYTHONPATH"
-    python3 "$CODE_DIR/scripts/pretrain.py" \
+    $PYTHON "$CODE_DIR/scripts/pretrain.py" \
         --model "$MODEL_NAME" \
         --train-data egodex \
         --egodex-root "$EGODEX_ROOT" \
+        --egodex-splits "$TRAIN_PARTS" \
         --epochs "$EPOCHS" \
         --batch-size "$BATCH_SIZE" \
         --checkpoint-dir "$MODEL_CHECKPOINT_DIR" \

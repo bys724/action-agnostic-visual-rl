@@ -47,9 +47,18 @@ class EgoDexDataset(VideoFrameDataset):
         print(f"EgoDexDataset: {len(self.frame_dirs)} videos, split={split}")
 
     def _scan_frame_dirs(self) -> List[Path]:
-        """task_name/video_name/ 구조 탐색."""
+        """task_name/video_name/ 구조 탐색.
+
+        data_root 구조에 따라 split 처리:
+        - data_root/task_name/video_name/ → split 무시 (단일 split 디렉토리를 직접 지정한 경우)
+        - data_root/split/task_name/video_name/ → split 하위에서 탐색
+        """
+        # split 하위 디렉토리가 있으면 거기서 탐색
+        split_dir = self.data_root / self.split
+        scan_root = split_dir if split_dir.is_dir() else self.data_root
+
         dirs = []
-        for task_dir in sorted(self.data_root.glob("*")):
+        for task_dir in sorted(scan_root.glob("*")):
             if not task_dir.is_dir():
                 continue
             for video_dir in sorted(task_dir.glob("*")):

@@ -61,13 +61,13 @@ git clone <your-repo>
 cd action-agnostic-visual-rl
 
 # Sanity test (5분, 환경 검증)
-./scripts/run_aws_training.sh --sanity --model two-stream --no-shutdown
+bash scripts/pretrain_aws.sh --sanity --model two-stream --no-shutdown
 
 # 전체 학습 (3개 모델 순차, ~54시간)
-./scripts/run_aws_training.sh
+bash scripts/pretrain_aws.sh
 
 # 또는 단일 모델만
-./scripts/run_aws_training.sh --model two-stream
+bash scripts/pretrain_aws.sh --model two-stream
 ```
 
 ### 예상 일정 (Epochs=30)

@@ -49,8 +49,7 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 │   ├── models/          # 모델 구현 (Two-Stream, Single-Stream, VideoMAE)
 │   ├── datasets/        # 데이터셋 (EgoDex, Bridge V2)
 │   ├── training/        # 학습 유틸리티
-│   │   ├── pretrain.py  # Pre-training 루프 (구현 완료)
-│   │   └── TODO.md      # Fine-tuning 구현 계획
+│   │   └── pretrain.py  # Pre-training 루프
 │   └── eval_libero.py   # LIBERO 평가
 ├── scripts/
 │   ├── pretrain.py      # Pre-training 스크립트 (범용)
@@ -76,15 +75,15 @@ docker exec libero-eval python src/eval_libero.py --model openvla
 - **AWS 가이드**: [`docs/AWS_INSTANCE_GUIDE.md`](docs/AWS_INSTANCE_GUIDE.md)
 - **LIBERO 평가**: [`docs/setup/LIBERO_TEST_GUIDE.md`](docs/setup/LIBERO_TEST_GUIDE.md)
 
-## 현재 진행 상황 (2026-03-06)
+## 현재 진행 상황 (2026-03-13)
 
-- [x] Two-Stream/Single-Stream/VideoMAE 구현
-- [x] AWS 학습 파이프라인 구축
-- [x] LIBERO 평가 환경 구축
-- [x] 코드베이스 리팩토링 (데이터셋 분리, 문서 정리)
-- [x] 프레임 전처리 방침 확정 (256x256 저장, 학습 시 RandomCrop 224)
-- [ ] EgoDex part1~5 프레임 추출 + S3 업로드 (진행 중)
-- [ ] AWS에서 3개 모델 사전학습
+- [x] Two-Stream/Single-Stream/VideoMAE 구현 + VideoMAE 공식 정합성 검증
+- [x] AWS 학습 파이프라인 구축 (S3 프레임 경로 반영)
+- [x] 프레임 전처리 확정 (256x256 저장 → 학습 시 RandomCrop 224)
+- [x] Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
+- [x] EgoDex part2, part3 프레임 S3 업로드 완료
+- [ ] EgoDex part1 S3 업로드 (거의 완료)
+- [ ] AWS Phase 1 사전학습 시작
 - [ ] Action probing 실험
 - [ ] LIBERO fine-tuning & 평가
 

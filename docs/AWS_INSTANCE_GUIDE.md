@@ -130,13 +130,13 @@ AMI에는 `/opt/pytorch` 가상환경이 미리 설치되어 있음:
 /opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
 ```
 
-### run_aws_training.sh 수정
+### pretrain_aws.sh 설정
 
-스크립트에서 `/opt/pytorch/bin/python3` 사용하도록 수정 필요:
+스크립트는 이미 `PYTHON` 환경변수로 `/opt/pytorch/bin/python3`를 사용하도록 설정됨:
 
 ```bash
-# scripts/run_aws_training.sh 수정
-sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+# scripts/pretrain_aws.sh 내부
+PYTHON="${PYTHON:-/opt/pytorch/bin/python3}"
 ```
 
 ### 필수 패키지 체크리스트
@@ -163,7 +163,7 @@ sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
 #!/bin/bash
 /opt/pytorch/bin/pip install -q timm transformers tqdm matplotlib tensorboard opencv-python
 cd /workspace/action-agnostic-visual-rl
-sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/pretrain_aws.sh
 git submodule update --init --recursive external/VideoMAE
 echo "Environment ready!"
 ```
@@ -207,10 +207,10 @@ aws service-quotas get-service-quota \
 
 ### 학습 완료 후 자동 종료
 
-`run_aws_training.sh`에 이미 구현되어 있음:
+`pretrain_aws.sh`에 이미 구현되어 있음:
 
 ```bash
-# scripts/run_aws_training.sh 마지막 부분
+# scripts/pretrain_aws.sh 마지막 부분
 if $SHUTDOWN; then
     echo "Shutting down instance in 60 seconds (Ctrl+C to cancel)..."
     sleep 60
@@ -222,10 +222,10 @@ fi
 
 ```bash
 # 자동 종료 활성화 (기본값)
-./scripts/run_aws_training.sh
+bash scripts/pretrain_aws.sh
 
 # 자동 종료 비활성화 (디버깅용)
-./scripts/run_aws_training.sh --no-shutdown
+bash scripts/pretrain_aws.sh --no-shutdown
 ```
 
 ### Instance Termination Protection
@@ -338,7 +338,7 @@ aws cloudwatch put-metric-alarm \
 데이터는 S3에 보관하고 EC2는 캐시로만 사용:
 
 ```bash
-# run_aws_training.sh가 자동으로 수행
+# pretrain_aws.sh가 자동으로 수행
 # 1. S3에서 데이터 다운로드
 # 2. 학습 진행
 # 3. Checkpoint S3 업로드
@@ -411,9 +411,9 @@ python3 -c "import torch"
 # 2. 패키지 설치
 /opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
 
-# 3. run_aws_training.sh 수정
+# 3. pretrain_aws.sh 수정
 cd /workspace/action-agnostic-visual-rl
-sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
+sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/pretrain_aws.sh
 ```
 
 ### Issue 5: ModuleNotFoundError: No module named 'modeling_finetune' (2026-03-01)
@@ -446,7 +446,7 @@ git submodule update --init --recursive external/VideoMAE
 
 **원인**:
 1. Python 환경 문제로 학습 스크립트 즉시 실패
-2. `run_aws_training.sh`의 auto-shutdown 로직 트리거
+2. `pretrain_aws.sh`의 auto-shutdown 로직 트리거
 3. 인스턴스 stopped
 
 **증상**:
@@ -567,8 +567,6 @@ cd action-agnostic-visual-rl
 
 # 3. Python 환경 설정 (필수!)
 /opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
-sed -i 's|python3|/opt/pytorch/bin/python3|g' scripts/run_aws_training.sh
-
 # 4. 서브모듈 초기화 (VideoMAE)
 git submodule update --init --recursive external/VideoMAE
 ```
@@ -577,11 +575,11 @@ git submodule update --init --recursive external/VideoMAE
 
 ```bash
 # Sanity test 먼저 (5 videos, 1 epoch, auto-shutdown 비활성화)
-./scripts/run_aws_training.sh --sanity --no-shutdown
+bash scripts/pretrain_aws.sh --sanity --no-shutdown
 
 # 전체 학습 (3 models × 30 epochs)
-./scripts/run_aws_training.sh
+bash scripts/pretrain_aws.sh
 
 # 특정 모델만
-./scripts/run_aws_training.sh --model two-stream
+bash scripts/pretrain_aws.sh --model two-stream
 ```

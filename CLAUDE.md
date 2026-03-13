@@ -135,15 +135,15 @@ docker exec libero-eval python src/eval_libero.py \
 - **EgoDex**: 센터크롭(1080x1080) → 256x256 (`docs/preprocessing/egodex/`)
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
 
-## 현재 Phase (2026-03-06)
+## 현재 Phase (2026-03-13)
 
-**Phase 1: EgoDex 데이터 전처리** (진행 중)
+**Phase 1 준비 완료** — AWS 사전학습 대기 중
 
-- 로컬 워크스테이션에서 프레임 추출 → S3 업로드
-- part1 추출 완료 (254GB), S3 재업로드 필요
-- part2 추출 진행 중, part3~5 대기
+- EgoDex part1 S3 업로드 거의 완료, part2/3 완료
+- Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
+- VideoMAE 공식 코드 정합성 검증 완료
 
-**다음 단계**: AWS에서 사전학습 시작 → Phase 2 Action Probing
+**다음 단계**: AWS에서 3개 모델 사전학습 → Action Probing
 
 자세한 일정은 `docs/RESEARCH_PLAN.md` 참고
 

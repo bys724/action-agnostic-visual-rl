@@ -62,6 +62,8 @@ def main():
                         help='Max trajectories for Bridge (None = all)')
     parser.add_argument('--max-videos', type=int, default=None,
                         help='Max videos for EgoDex (None = all)')
+    parser.add_argument('--egodex-splits', type=str, default='part1',
+                        help='EgoDex splits to use, comma-separated (default: part1, e.g. part1,part2,part3)')
 
     # Checkpoint parameters
     parser.add_argument('--checkpoint-dir', type=str, default=None,
@@ -160,14 +162,24 @@ def main():
             max_trajectories=args.max_trajectories,
         )
     else:  # egodex
-        train_dataset = EgoDexDataset(
-            data_root=args.egodex_root,
-            split='part1',  # Use part1 for training (can extend to part1-5 later)
-            max_gap=args.max_gap,
-            sample_decay=args.sample_decay,
-            loss_decay=args.loss_decay,
-            max_videos=args.max_videos,
-        )
+        splits = [s.strip() for s in args.egodex_splits.split(',')]
+        split_datasets = []
+        for split in splits:
+            ds = EgoDexDataset(
+                data_root=args.egodex_root,
+                split=split,
+                max_gap=args.max_gap,
+                sample_decay=args.sample_decay,
+                loss_decay=args.loss_decay,
+                max_videos=args.max_videos,
+            )
+            split_datasets.append(ds)
+        if len(split_datasets) == 1:
+            train_dataset = split_datasets[0]
+        else:
+            from torch.utils.data import ConcatDataset
+            train_dataset = ConcatDataset(split_datasets)
+            print(f"  Combined {len(splits)} splits: {splits} → {len(train_dataset)} samples")
 
     # Create evaluation dataset (always use EgoDex test)
     print("\n" + "="*60)

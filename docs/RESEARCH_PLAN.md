@@ -1,213 +1,126 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-03-06
+**마지막 업데이트**: 2026-03-13
 **연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
 
 ---
 
-## Phase 1: EgoDex Part1 Pretraining (현재)
+## 실험 로드맵 (단계별 Go/No-Go)
 
-### 목표
-- EgoDex part1 (~336GB)에서 3가지 모델 사전학습
-- 학습 안정성 및 수렴 여부 확인
-- Action probing 준비
+### Phase 1: EgoDex 사전학습 → Action Probing (EgoDex)
 
-### 모델
+**목표**: 세 모델의 표현 품질 비교 (hand pose linear probe)
+
+1. EgoDex part1로 3개 모델 사전학습 (AWS g5.12xlarge)
+2. 인코더 freeze → EgoDex test에서 hand pose linear probe
+3. 기대 결과: **Two-Stream > Single-Stream > VideoMAE**
+
+**Go/No-Go**:
+- YES (순서 맞음) → M/P 분리 + interleaved 구조 효과 확인. Phase 2로
+- NO → 모델 구조 또는 학습 디버깅 필요
+
+### Phase 2: Action Probing (Bridge V2)
+
+**목표**: EgoDex 표현의 로봇 도메인 전이 가능성 검증
+
+1. 같은 인코더로 Bridge V2에서 로봇 행동 linear probe
+2. Baseline 비교: DINOv2, CLIP, R3M
+
+**Go/No-Go**:
+- YES (baseline 대비 competitive) → cross-domain transfer 가능. Phase 3A로
+- NO (도메인 갭 확인) → 실패는 아님. Phase 3B로
+
+### Phase 3A: LIBERO Fine-tuning (EgoDex-only 사전학습)
+
+**목표**: EgoDex 인코더로 로봇 조작 직접 평가
+
+1. EgoDex 사전학습 인코더로 LIBERO fine-tune
+2. Baseline 비교: scratch, ImageNet pretrained
+
+**Go/No-Go**:
+- YES → 논문 메인 결과
+- NO → Phase 3B 필요
+
+### Phase 3B: 혼합 사전학습 (필요 시에만)
+
+Phase 3A 실패 시 실행. 3가지 사전학습 조건 비교:
+
+| 사전학습 데이터 | Probing (Bridge) | LIBERO |
+|---------------|-----------------|--------|
+| EgoDex only | Phase 2 결과 | Phase 3A 결과 |
+| Bridge only | 새로 실험 | 새로 실험 |
+| EgoDex + Bridge | 새로 실험 | 새로 실험 |
+
+**원칙**: "EgoDex만으로 충분한가?"를 먼저 증명하고, 부족할 때만 데이터 추가.
+처음부터 혼합하면 기여 분리 불가.
+
+---
+
+## 모델
 
 | 모델 | 학습 방식 | 목적 |
 |-----|----------|------|
-| Two-Stream | Future prediction | 제안 모델 (M/P 채널) |
-| Single-Stream | Future prediction | Baseline |
-| VideoMAE | Masked reconstruction (75%) | Comparison |
+| Two-Stream | Future prediction (M/P 채널 분리 + CLS 교환) | 제안 모델 |
+| Single-Stream | Future prediction (9ch 단일 ViT) | Baseline (구조 효과 검증) |
+| VideoMAE | Masked reconstruction (75%, 공식 Base 설정) | Comparison |
 
-### 학습 설정
+### 비교 의미
+- Single-Stream vs VideoMAE → 학습 방식 차이 (prediction vs reconstruction)
+- Two-Stream vs Single-Stream → 같은 M/P 입력, 구조 차이 (interleaved vs single)
+
+---
+
+## 학습 설정
+
+```
+인스턴스: g5.12xlarge (4x A10G, 48 vCPU, 192GB RAM)
+epochs: 30
+batch_size: 24 (per-GPU) → effective: 96
+max_gap: 10, sample_decay: 0.3, loss_decay: 0.7
+데이터: EgoDex frames (S3: egodex_frames_partN/)
+```
 
 ```bash
-# scripts/run_full_training.sh
-인스턴스: g5.12xlarge (4x A10G, 48 vCPU, 192GB RAM)
-epochs = 30
-batch_size = 24 (per-GPU) → effective: 96
-num_workers = 32 (최적화됨)
-max_gap = 10
-sample_decay = 0.3
-loss_decay = 0.7
-dataset = "EgoDex part1" (46,234 videos, 4.6M samples)
+bash scripts/pretrain_aws.sh                          # 3개 모델 순차
+bash scripts/pretrain_aws.sh --model two-stream        # 특정 모델만
+bash scripts/pretrain_aws.sh --sanity --no-shutdown     # Sanity test
+TRAIN_PARTS=part1,part2,part3 bash scripts/pretrain_aws.sh  # 여러 part
 ```
 
-### 성능 최적화 (2026-03-02)
-
-**문제**: 초기 학습 속도 너무 느림 (33시간/epoch)
-**해결**:
-1. VideoCapture 재사용: 샘플당 2번 → 1번
-2. num_workers 증가: 8 → 32
-3. persistent_workers 추가
-
-**결과**: 5.5~11시간/epoch 예상 (3-6배 개선)
-
-### 기대 결과
-- 3개 모델 모두 수렴
-- Training curve 비교
-- Part1만으로 충분한지 검증
-
 ---
 
-## Phase 2: Action Probing
-
-### 목표
-학습된 표현이 action 정보를 포함하는지 검증
-
-### 방법
-1. 인코더 freeze
-2. Linear probe로 Bridge V2 action 예측
-3. Baseline 모델과 비교
-
-### Baseline 모델
-- DINOv2 (ImageNet)
-- CLIP (WebData)
-- R3M (Ego4D)
-- (Optional) RT-2, OpenVLA 인코더
-
-### 평가 지표
-- Action prediction accuracy
-- Task success rate
-- Generalization to unseen tasks
-
----
-
-## Phase 3: Full EgoDex Training (미래)
-
-### 데이터셋
-- EgoDex part1-5 (1.84TB)
-- 더 많은 task diversity
-
-### 개선 사항
-- Spatial augmentation 추가
-  - Random crop
-  - Color jitter
-  - Horizontal flip
-- Extended training (100 epochs)
-- Larger batch size
-
----
-
-## Phase 4: LIBERO Integration (미래)
-
-### 목표
-OpenVLA/Pi0 인코더를 학습된 표현으로 대체
-
-### 실험
-1. OpenVLA vision encoder → Two-Stream
-2. Pi0 vision encoder → Two-Stream
-3. LIBERO 4개 suite에서 fine-tuning
-4. 원본 모델과 성능 비교
-
----
-
-## 핵심 구현 결정
-
-### 모델별 학습 방식
-
-**Two-Stream/Single-Stream**:
-```python
-# Future prediction with gap weighting
-img_pred, change_emb = model(img_t, img_tk)
-loss = F.mse_loss(img_pred, img_tk)
-weighted_loss = (loss * gap_weights).mean()
-```
-
-**VideoMAE**:
-```python
-# Official masked reconstruction
-loss, img_pred = model.compute_loss(img_t, img_tk)  # 75% masking
-```
-
-**이유**: 각 SSL 방법론의 best practice 유지 → 공정한 비교
-
-### AWS Infrastructure
-
-**Instance**: g5.12xlarge
-- 4x NVIDIA A10G
-- 48 vCPU, 192GB RAM
-- us-west-2 (Oregon)
-
-**Storage**:
-- EBS 1TB (code, checkpoints, logs)
-- S3 (datasets, backup)
-
-**Cost Optimization**:
-- Auto-shutdown after training
-- S3 sync every 10min
-- On-demand (Spot quota = 0)
-
----
-
-## 현재 상태 (2026-03-06)
+## 현재 상태 (2026-03-13)
 
 ### 완료
-- [x] Two-Stream / Single-Stream / VideoMAE 구현
-- [x] Training script 작성 (`scripts/pretrain.py`, `scripts/pretrain_aws.sh`)
-- [x] EgoDex 프레임 추출 파이프라인 (`scripts/process_egodex_part.sh`)
-- [x] Bridge V2 프레임 추출 스크립트
-- [x] 프레임 전처리 방침 확정 (256x256 저장, 학습 시 RandomCrop 224)
-- [x] AWS 학습 환경 검증 (g5.12xlarge, sanity test 통과)
+- [x] Three-model 구현 + VideoMAE 공식 정합성 검증
+- [x] 학습 파이프라인 (pretrain.py, pretrain_aws.sh)
+- [x] 프레임 전처리 확정 (256x256 저장 → 학습 시 RandomCrop 224)
+- [x] Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
+- [x] EgoDex part2, part3 프레임 S3 업로드 완료
+- [x] AWS 스크립트 S3 프레임 경로 반영 + 멀티 split 지원
 
 ### 진행 중
-- [ ] EgoDex part1~5 프레임 추출 및 S3 업로드 (로컬 워크스테이션)
-  - part1: 추출 완료(254GB), S3 재업로드 필요
-  - part2: 추출 진행 중
-  - part3~5: 대기
+- [ ] EgoDex part1 S3 업로드 (거의 완료)
+- [ ] EgoDex part4, part5 S3 업로드 (일부 task 누락 — part1 후 재실행)
+- [ ] DROID 데이터셋 다운로드 (48%, ~2일)
 
 ### 다음 단계
-- [ ] AWS에서 3개 모델 사전학습 시작
+- [ ] AWS Phase 1 사전학습 시작 (part1)
 - [ ] Action probing 코드 작성
-- [ ] Bridge V2 action probing
 
 ---
 
-## 실험 검증 계획
-
-### 1. 움직임 정보 인코딩 검증
-
-| 실험 | 방법 | 성공 기준 |
-|-----|------|----------|
-| Optical Flow Probe | Linear probe로 flow 예측 | DINOv2 대비 20%+ 낮은 EPE |
-| Temporal Order | 프레임 순서 분류 | 90%+ 정확도 |
-| Action Clustering | CLS 임베딩 t-SNE | Task별 클러스터 형성 |
-
-### 2. Ablation Study
+## Ablation Study (Phase 1 이후)
 
 | 변형 | 설명 |
 |-----|------|
 | M-only | P 채널 제거 |
 | P-only | M 채널 제거 |
 | No Exchange | CLS 교환 없이 concat만 |
-| Early Fusion | 6ch 단일 ViT |
 
 ---
 
-## Timeline
+## 참고 문서
 
-### Week 1-2: Part1 Pretraining
-- 3개 모델 학습 완료
-- Training curve 분석
-- Checkpoint S3 저장
-
-### Week 3-4: Action Probing
-- Linear probe 구현
-- Bridge V2 실험
-- Baseline 비교
-
-### Week 5-6: Analysis
-- 결과 분석
-- 논문 초안 작성
-- 추가 실험 계획
-
----
-
-## Notes
-
-- Phase 1은 feasibility check - 빠른 iteration 우선
-- Spatial augmentation은 Phase 3에서 추가
-- 문서는 실험 진행에 따라 업데이트
-
-**Last Updated**: 2026-03-06
+- [`docs/AWS_INSTANCE_GUIDE.md`](AWS_INSTANCE_GUIDE.md) — AWS 환경 설정
+- [`docs/PROBING_GUIDE.md`](PROBING_GUIDE.md) — Action probing 계획
