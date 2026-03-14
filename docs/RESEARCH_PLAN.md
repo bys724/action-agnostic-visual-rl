@@ -1,6 +1,6 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-03-13
+**마지막 업데이트**: 2026-03-14
 **연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
 
 ---
@@ -10,14 +10,28 @@
 ### Phase 1: EgoDex 사전학습 → Action Probing (EgoDex)
 
 **목표**: 세 모델의 표현 품질 비교 (hand pose linear probe)
+**비용**: ~$250-700 (part1, 30ep, g5.12xlarge)
 
 1. EgoDex part1로 3개 모델 사전학습 (AWS g5.12xlarge)
 2. 인코더 freeze → EgoDex test에서 hand pose linear probe
 3. 기대 결과: **Two-Stream > Single-Stream > VideoMAE**
 
 **Go/No-Go**:
-- YES (순서 맞음) → M/P 분리 + interleaved 구조 효과 확인. Phase 2로
+- YES (순서 맞음) → 구조 효과 확인. Phase 1.5로
 - NO → 모델 구조 또는 학습 디버깅 필요
+
+### Phase 1.5: 데이터 스케일업 (Go 시에만)
+
+**목표**: 전체 EgoDex로 표현 품질 극대화
+**비용**: ~$2,000-3,000 (part1~5, 50+ep)
+**전제**: Phase 1에서 모델 구조 효과가 검증된 상태
+
+1. EgoDex part1~5 전체로 best 모델 재학습 (epoch 확대)
+2. 같은 hand pose probe로 Phase 1 대비 성능 향상 확인
+
+**Go/No-Go**:
+- 스케일업 효과 확인 → 이 체크포인트로 Phase 2 진행
+- 효과 미미 → part1 체크포인트로 Phase 2 진행 (데이터 추가 불필요)
 
 ### Phase 2: Action Probing (Bridge V2)
 
@@ -89,23 +103,23 @@ TRAIN_PARTS=part1,part2,part3 bash scripts/pretrain_aws.sh  # 여러 part
 
 ---
 
-## 현재 상태 (2026-03-13)
+## 현재 상태 (2026-03-14)
 
 ### 완료
 - [x] Three-model 구현 + VideoMAE 공식 정합성 검증
 - [x] 학습 파이프라인 (pretrain.py, pretrain_aws.sh)
 - [x] 프레임 전처리 확정 (256x256 저장 → 학습 시 RandomCrop 224)
 - [x] Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
-- [x] EgoDex part2, part3 프레임 S3 업로드 완료
+- [x] EgoDex part1~5, test 프레임 S3 업로드 완료
 - [x] AWS 스크립트 S3 프레임 경로 반영 + 멀티 split 지원
+- [x] 학습 코드 점검: scheduler resume 버그 수정, TensorBoard 로깅 추가
 
 ### 진행 중
-- [ ] EgoDex part1 S3 업로드 (거의 완료)
-- [ ] EgoDex part4, part5 S3 업로드 (일부 task 누락 — part1 후 재실행)
+- [ ] AWS Phase 1 사전학습 실행 (part1, 30ep)
 - [ ] DROID 데이터셋 다운로드 (48%, ~2일)
 
 ### 다음 단계
-- [ ] AWS Phase 1 사전학습 시작 (part1)
+- [ ] Phase 1 결과 분석 → Go/No-Go 판단
 - [ ] Action probing 코드 작성
 
 ---

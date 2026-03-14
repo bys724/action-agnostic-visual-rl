@@ -14,6 +14,12 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    HAS_TENSORBOARD = True
+except ImportError:
+    HAS_TENSORBOARD = False
+
 
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
     """
@@ -277,6 +283,8 @@ def train(
         model_to_load = model.module if use_multi_gpu else model
         model_to_load.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         if 'history' in checkpoint:
             history = checkpoint['history']
@@ -286,7 +294,7 @@ def train(
             history.setdefault('timestamps', [])
         if 'best_eval_loss' in checkpoint:
             best_eval_loss = checkpoint['best_eval_loss']
-        print(f"  Resumed from epoch {checkpoint['epoch']}")
+        print(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
 
     print(f"\nTraining for {num_epochs} epochs (starting from epoch {start_epoch})")
     print(f"  Train dataset: {len(train_dataset)} samples")
@@ -297,6 +305,12 @@ def train(
     if save_interval:
         print(f"  Save interval: every {save_interval} epochs")
     print()
+
+    # TensorBoard
+    writer = None
+    if run_dir and HAS_TENSORBOARD:
+        writer = SummaryWriter(log_dir=str(run_dir / 'tb'))
+        print(f"TensorBoard: {run_dir / 'tb'}")
 
     # Save config
     if run_dir:
@@ -340,7 +354,8 @@ def train(
         history['timestamps'].append(current_timestamp)
 
         # Print time metrics
-        print(f"  [Time] Epoch: {epoch_duration:.1f}s, Throughput: {samples_per_sec:.1f} samples/sec")
+        current_lr = scheduler.get_last_lr()[0]
+        print(f"  [Time] Epoch: {epoch_duration:.1f}s, Throughput: {samples_per_sec:.1f} samples/sec, LR: {current_lr:.2e}")
 
         # Estimate remaining time
         if epoch < num_epochs:
@@ -349,6 +364,16 @@ def train(
             eta_seconds = avg_epoch_time * remaining_epochs
             eta_hours = eta_seconds / 3600
             print(f"  [ETA] {remaining_epochs} epochs remaining, ~{eta_hours:.1f}h ({eta_seconds/60:.0f}min)")
+
+        # TensorBoard logging
+        if writer:
+            writer.add_scalar('loss/train', avg_loss, epoch)
+            if eval_loss is not None:
+                writer.add_scalar('loss/eval', eval_loss, epoch)
+            writer.add_scalar('lr', current_lr, epoch)
+            writer.add_scalar('perf/samples_per_sec', samples_per_sec, epoch)
+            writer.add_scalar('perf/epoch_time_sec', epoch_duration, epoch)
+            writer.flush()
 
         # Save checkpoint
         if run_dir:
@@ -388,5 +413,8 @@ def train(
     if run_dir:
         with open(run_dir / 'history.json', 'w') as f:
             json.dump(history, f, indent=2)
+
+    if writer:
+        writer.close()
 
     return model, history
