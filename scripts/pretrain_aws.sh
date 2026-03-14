@@ -16,6 +16,11 @@
 
 set -e
 
+# ── S3 병렬 설정 (소량 파일 다운로드 속도 개선) ────────────────────────────────
+aws configure set default.s3.max_concurrent_requests 100
+aws configure set default.s3.multipart_threshold 64MB
+aws configure set default.s3.multipart_chunksize 16MB
+
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 S3_BUCKET="${S3_BUCKET:-bys724-research-2026}"
 EGODEX_ROOT="${EGODEX_ROOT:-/workspace/data/egodex}"
