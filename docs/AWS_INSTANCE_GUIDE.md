@@ -80,25 +80,33 @@ cat ~/.aws/config
 
 각 머신마다 독립적으로 설정 필요 (한 번만 설정하면 영구 유지)
 
-### 대용량 이미지 데이터셋 업로드 Best Practice
+### 대용량 이미지 데이터셋 관리
 
-**권장**: 개별 파일로 업로드 (압축 X)
+**S3 저장**: 개별 파일로 업로드 (기본)
 - 학습 시 랜덤 액세스 가능
 - DataLoader 병렬 로딩 가능
 - 부분 다운로드/복구 용이
 
-**비권장**: tar/zip 압축 후 업로드
-- 학습 전 압축 해제 필요
-- 전체 다운로드 필수
-- 백업/아카이브 용도로만 적합
+**EC2 전송**: tar 아카이브 병행 (필수!)
+- 소량 파일(JPG) 수십만 개를 개별 s3 sync하면 파일당 HTTP 오버헤드로 극도로 느림
+- 2026-03-14 경험: part1 (26개 task, ~270GB) 개별 sync에 23시간 소요
+- tar로 묶어 S3에 추가 업로드 → EC2에서 1개 파일 다운로드 → 로컬 해제
 
-**업로드 명령**:
 ```bash
-# 개별 파일 병렬 업로드
+# 워크스테이션에서 tar 생성 + S3 업로드 (1회)
+tar cf egodex_frames_part1.tar -C /path/to egodex_frames_part1/
+aws s3 cp egodex_frames_part1.tar s3://bucket/egodex_tars/
+
+# EC2에서 tar 다운로드 + 해제
+aws s3 cp s3://bucket/egodex_tars/egodex_frames_part1.tar /workspace/data/
+tar xf /workspace/data/egodex_frames_part1.tar -C /workspace/data/egodex/
+rm /workspace/data/egodex_frames_part1.tar
+```
+
+**개별 파일 업로드** (tar 없을 때 fallback):
+```bash
 aws s3 sync /path/to/egodex_frames s3://bucket/egodex_frames_part1 \
   --storage-class INTELLIGENT_TIERING
-
-# 예상 시간: 217GB (15M 파일) → 약 18시간 @ 3.4 MiB/s
 ```
 
 ---

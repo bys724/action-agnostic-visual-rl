@@ -60,16 +60,55 @@ echo "=== [1/4] Pulling latest code ==="
 cd "$CODE_DIR"
 git pull origin main || echo "Warning: git pull failed (continuing with existing code)"
 
-# ── EgoDex 프레임 S3 sync ─────────────────────────────────────────────────────
-# 사전 추출된 프레임(256x256 JPG)을 S3에서 다운로드
-# S3 구조: egodex_frames_partN/task_name/video_name/frame_XXXXXX.jpg
-#          egodex_frames_test/task_name/video_name/frame_XXXXXX.jpg
+# ── EgoDex 프레임 S3 다운로드 ──────────────────────────────────────────────────
+# tar 아카이브가 S3에 있으면 tar 다운로드→해제 (빠름)
+# 없으면 기존 s3 sync fallback (느림 — 소량 파일 수십만 개의 HTTP 오버헤드)
+#
+# S3 구조:
+#   개별 파일: egodex_frames_partN/task_name/video_name/frame_XXXXXX.jpg
+#   tar 아카이브: egodex_tars/egodex_frames_partN.tar (전송 최적화용)
 echo ""
 echo "=== [2/4] Syncing EgoDex frames from S3 ==="
 
 # 학습에 사용할 part 목록 (콤마 구분, 기본: part1만)
 # 예: TRAIN_PARTS=part1,part2,part3 ./scripts/pretrain_aws.sh
 TRAIN_PARTS="${TRAIN_PARTS:-part1}"
+
+# tar 다운로드 + 해제 함수
+# 성공 시 return 0, tar 없으면 return 1
+sync_part_tar() {
+    local PART="$1"
+    local TAR_S3="s3://${S3_BUCKET}/egodex_tars/egodex_frames_${PART}.tar"
+    local TAR_LOCAL="/tmp/egodex_frames_${PART}.tar"
+
+    # S3에 tar가 있는지 확인
+    if ! aws s3 ls "$TAR_S3" >/dev/null 2>&1; then
+        return 1
+    fi
+
+    echo "  [tar] Downloading ${TAR_S3} ..."
+    aws s3 cp "$TAR_S3" "$TAR_LOCAL"
+
+    echo "  [tar] Extracting to ${EGODEX_ROOT}/ ..."
+    mkdir -p "${EGODEX_ROOT}"
+    tar xf "$TAR_LOCAL" -C "${EGODEX_ROOT}/"
+
+    echo "  [tar] Cleaning up tar file..."
+    rm -f "$TAR_LOCAL"
+    return 0
+}
+
+# 개별 파일 s3 sync fallback
+sync_part_individual() {
+    local PART="$1"
+    local PART_DIR="${EGODEX_ROOT}/${PART}"
+    echo "  [sync] Syncing ${PART} from s3://${S3_BUCKET}/egodex_frames_${PART}/ ..."
+    echo "  [sync] WARNING: 소량 파일 개별 전송 — 느릴 수 있음. tar 업로드 권장."
+    mkdir -p "$PART_DIR"
+    aws s3 sync "s3://${S3_BUCKET}/egodex_frames_${PART}/" \
+                "$PART_DIR/" \
+                --quiet
+}
 
 if $SANITY; then
     # sanity: train용 part1에서 5개 task + eval용 test에서 3개 task
@@ -95,10 +134,14 @@ else
     # test split sync (background)
     mkdir -p "${EGODEX_ROOT}/test"
     echo "  Syncing test split in background..."
-    aws s3 sync "s3://${S3_BUCKET}/egodex_frames_test/" \
-                "${EGODEX_ROOT}/test/" \
-                --quiet &
-    TEST_SYNC_PID=$!
+    if ! sync_part_tar "test" 2>/dev/null; then
+        aws s3 sync "s3://${S3_BUCKET}/egodex_frames_test/" \
+                    "${EGODEX_ROOT}/test/" \
+                    --quiet &
+        TEST_SYNC_PID=$!
+    else
+        TEST_SYNC_PID=""
+    fi
 
     # train parts sync (TRAIN_PARTS는 콤마 구분)
     for PART in ${TRAIN_PARTS//,/ }; do
@@ -106,16 +149,17 @@ else
         if [ -d "$PART_DIR" ] && [ "$(ls -A "$PART_DIR" 2>/dev/null)" ]; then
             echo "  ${PART} already exists ($(du -sh "$PART_DIR" | cut -f1)), skipping..."
         else
-            echo "  Syncing ${PART} from s3://${S3_BUCKET}/egodex_frames_${PART}/ ..."
-            mkdir -p "$PART_DIR"
-            aws s3 sync "s3://${S3_BUCKET}/egodex_frames_${PART}/" \
-                        "$PART_DIR/" \
-                        --quiet
+            # tar 우선, 없으면 개별 sync fallback
+            if ! sync_part_tar "$PART"; then
+                sync_part_individual "$PART"
+            fi
         fi
     done
 
-    echo "  Waiting for test split sync to complete..."
-    wait $TEST_SYNC_PID
+    if [ -n "$TEST_SYNC_PID" ]; then
+        echo "  Waiting for test split sync to complete..."
+        wait $TEST_SYNC_PID
+    fi
 fi
 
 echo "  EgoDex sync complete."
