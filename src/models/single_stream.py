@@ -81,14 +81,9 @@ class SingleStreamModel(nn.Module):
 
     def _build_decoder(self, image_size: int, patch_size: int) -> nn.Module:
         """Build U-Net style decoder for image reconstruction."""
-        num_patches_per_side = image_size // patch_size
+        self.num_patches_per_side = image_size // patch_size
 
-        decoder = nn.Sequential(
-            # Reshape patches to spatial grid
-            nn.Unflatten(1, (num_patches_per_side, num_patches_per_side)),
-            nn.Unflatten(0, (-1, self.embed_dim)),
-
-            # Upsample to image size
+        upsampler = nn.Sequential(
             nn.ConvTranspose2d(self.embed_dim, 512, kernel_size=4, stride=2, padding=1),
             nn.GroupNorm(32, 512),
             nn.GELU(),
@@ -105,7 +100,7 @@ class SingleStreamModel(nn.Module):
             nn.Sigmoid(),
         )
 
-        return decoder
+        return upsampler
 
     def _init_weights(self):
         """Initialize weights following ViT convention."""
@@ -149,8 +144,11 @@ class SingleStreamModel(nn.Module):
         cls_embedding = encoded[:, 0]  # [B, D]
         patch_tokens = encoded[:, 1:]  # [B, N, D]
 
-        # 6. Decode to image
-        predicted_image = self.decoder(patch_tokens)
+        # 6. Decode to image: [B, N, D] → [B, D, P, P] → upsample
+        P = self.num_patches_per_side
+        x = patch_tokens.view(-1, P, P, patch_tokens.size(-1))  # [B, P, P, D]
+        x = x.permute(0, 3, 1, 2)                               # [B, D, P, P]
+        predicted_image = self.decoder(x)
 
         return predicted_image, cls_embedding
 

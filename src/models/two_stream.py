@@ -309,11 +309,11 @@ class VideoDecoder(nn.Module):
         self.num_patches_per_side = image_size // patch_size
 
         # For separate fusion (2D input)
-        self.decoder_separate = nn.Sequential(
+        self.proj = nn.Sequential(
             nn.Linear(embed_dim * 2, embed_dim),
             nn.GELU(),
-            nn.Unflatten(1, (self.num_patches_per_side, self.num_patches_per_side)),
-            nn.Unflatten(0, (-1, embed_dim)),
+        )
+        self.upsampler = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, 512, kernel_size=4, stride=2, padding=1),
             nn.GroupNorm(32, 512),
             nn.GELU(),
@@ -335,12 +335,16 @@ class VideoDecoder(nn.Module):
         Decode patches to image.
 
         Args:
-            patch_embeddings: [B, N, D] or [B, N, 2D]
+            patch_embeddings: [B, N, 2D]
 
         Returns:
             predicted_image: [B, 3, H, W]
         """
-        return self.decoder_separate(patch_embeddings)
+        P = self.num_patches_per_side
+        x = self.proj(patch_embeddings)       # [B, N, D]
+        x = x.view(-1, P, P, x.size(-1))     # [B, P, P, D]
+        x = x.permute(0, 3, 1, 2)            # [B, D, P, P]
+        return self.upsampler(x)
 
 
 class TwoStreamModel(nn.Module):
