@@ -281,20 +281,26 @@ def train(
         checkpoint = torch.load(resume_from, map_location=device)
         # Handle DataParallel: load into model.module if wrapped
         model_to_load = model.module if use_multi_gpu else model
-        model_to_load.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        if 'scheduler_state_dict' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
-        if 'history' in checkpoint:
-            history = checkpoint['history']
-            # Ensure new metrics exist in resumed history
-            history.setdefault('epoch_time', [])
-            history.setdefault('samples_per_sec', [])
-            history.setdefault('timestamps', [])
-        if 'best_eval_loss' in checkpoint:
-            best_eval_loss = checkpoint['best_eval_loss']
-        print(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
+        try:
+            model_to_load.load_state_dict(checkpoint['model_state_dict'])
+        except RuntimeError as e:
+            print(f"  WARNING: Checkpoint incompatible — {e}")
+            print(f"  Starting from scratch (ignoring old checkpoint)")
+            resume_from = None
+        if resume_from:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            if 'scheduler_state_dict' in checkpoint:
+                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            start_epoch = checkpoint['epoch'] + 1
+            if 'history' in checkpoint:
+                history = checkpoint['history']
+                # Ensure new metrics exist in resumed history
+                history.setdefault('epoch_time', [])
+                history.setdefault('samples_per_sec', [])
+                history.setdefault('timestamps', [])
+            if 'best_eval_loss' in checkpoint:
+                best_eval_loss = checkpoint['best_eval_loss']
+            print(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
 
     print(f"\nTraining for {num_epochs} epochs (starting from epoch {start_epoch})")
     print(f"  Train dataset: {len(train_dataset)} samples")

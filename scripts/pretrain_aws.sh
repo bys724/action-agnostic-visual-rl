@@ -253,10 +253,25 @@ run_training() {
 }
 
 if [[ -z "$MODEL" ]]; then
-    # 3개 모델 순차 학습
-    run_training "two-stream"
-    run_training "single-stream"
-    run_training "videomae"
+    # 3개 모델 병렬 학습 (각 모델에 별도 GPU 배정)
+    NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l)
+    echo "Available GPUs: $NUM_GPUS"
+
+    if [ "$NUM_GPUS" -ge 3 ]; then
+        echo "Running 3 models in parallel (GPU 0, 1, 2)..."
+        CUDA_VISIBLE_DEVICES=0 run_training "two-stream" "--no-multi-gpu" &
+        PID_TWO=$!
+        CUDA_VISIBLE_DEVICES=1 run_training "single-stream" "--no-multi-gpu" &
+        PID_SINGLE=$!
+        CUDA_VISIBLE_DEVICES=2 run_training "videomae" "--no-multi-gpu" &
+        PID_MAE=$!
+        wait $PID_TWO $PID_SINGLE $PID_MAE
+    else
+        # GPU가 3개 미만이면 순차 실행
+        run_training "two-stream"
+        run_training "single-stream"
+        run_training "videomae"
+    fi
 else
     run_training "$MODEL"
 fi
