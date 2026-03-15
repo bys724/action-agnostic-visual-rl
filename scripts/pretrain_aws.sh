@@ -257,7 +257,16 @@ if [[ -z "$MODEL" ]]; then
     NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l)
     echo "Available GPUs: $NUM_GPUS"
 
-    if [ "$NUM_GPUS" -ge 3 ]; then
+    if [ "$NUM_GPUS" -ge 4 ]; then
+        echo "Running 3 models in parallel (two-stream: GPU 0,3 / single-stream: GPU 1 / videomae: GPU 2)"
+        CUDA_VISIBLE_DEVICES=0,3 run_training "two-stream" &
+        PID_TWO=$!
+        CUDA_VISIBLE_DEVICES=1 run_training "single-stream" "--no-multi-gpu" &
+        PID_SINGLE=$!
+        CUDA_VISIBLE_DEVICES=2 run_training "videomae" "--no-multi-gpu" &
+        PID_MAE=$!
+        wait $PID_TWO $PID_SINGLE $PID_MAE
+    elif [ "$NUM_GPUS" -ge 3 ]; then
         echo "Running 3 models in parallel (GPU 0, 1, 2)..."
         CUDA_VISIBLE_DEVICES=0 run_training "two-stream" "--no-multi-gpu" &
         PID_TWO=$!
