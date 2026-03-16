@@ -171,9 +171,93 @@ elif [[ "$1" == "bridge_v2" ]]; then
     $AWS s3 rm "$S3_FRAMES_SRC" --recursive --quiet
     log "=== Done: Bridge V2 ==="
 
+elif [[ "$1" == "droid" ]]; then
+    # DROID: 카메라별(ext1, ext2, wrist) × 5000 에피소드 청크로 tar
+    LOCAL_FRAMES="$DATA_DIR/droid_frames"
+    S3_TAR_DST="$S3_BUCKET/droid_tarballs/"
+    TAR_WORK="$TAR_DIR/droid"
+
+    if [ ! -d "$LOCAL_FRAMES" ]; then
+        echo "Error: $LOCAL_FRAMES not found. Run extract_droid_frames.py first."
+        exit 1
+    fi
+
+    mkdir -p "$TAR_WORK"
+
+    for CAM in ext1 ext2 wrist; do
+        CAM_DIR="$LOCAL_FRAMES/$CAM"
+        if [ ! -d "$CAM_DIR" ]; then
+            log "Warning: $CAM_DIR not found, skipping."
+            continue
+        fi
+
+        log "=== DROID $CAM: tar + upload (5000 ep per chunk) ==="
+
+        EP_LIST=$(mktemp)
+        ls -d "$CAM_DIR"/ep_*/ 2>/dev/null | sort > "$EP_LIST"
+        TOTAL=$(wc -l < "$EP_LIST")
+        CHUNK_SIZE=5000
+        CHUNK_IDX=0
+        EPS=()
+
+        while IFS= read -r LINE; do
+            EPS+=("$LINE")
+            if [[ ${#EPS[@]} -ge $CHUNK_SIZE ]]; then
+                CHUNK_NAME="${CAM}_chunk_$(printf '%03d' $CHUNK_IDX)"
+                TAR_FILE="$TAR_WORK/$CHUNK_NAME.tar"
+
+                if $AWS s3 ls "$S3_TAR_DST$CHUNK_NAME.tar" &>/dev/null; then
+                    log "  Skip (already uploaded): $CHUNK_NAME"
+                else
+                    START=$((CHUNK_IDX * CHUNK_SIZE + 1))
+                    END=$((START + ${#EPS[@]} - 1))
+                    log "  Tar: $CHUNK_NAME (ep $START-$END of $TOTAL)"
+
+                    EP_NAMES=()
+                    for E in "${EPS[@]}"; do
+                        EP_NAMES+=("$(basename "$E")")
+                    done
+                    tar cf "$TAR_FILE" -C "$CAM_DIR" "${EP_NAMES[@]}"
+
+                    TAR_SIZE=$(du -sh "$TAR_FILE" | cut -f1)
+                    log "  Upload ($TAR_SIZE): $CHUNK_NAME.tar"
+                    $AWS s3 cp "$TAR_FILE" "$S3_TAR_DST$CHUNK_NAME.tar" --quiet
+                    rm -f "$TAR_FILE"
+                fi
+
+                CHUNK_IDX=$((CHUNK_IDX + 1))
+                EPS=()
+            fi
+        done < "$EP_LIST"
+
+        # 남은 에피소드 처리
+        if [[ ${#EPS[@]} -gt 0 ]]; then
+            CHUNK_NAME="${CAM}_chunk_$(printf '%03d' $CHUNK_IDX)"
+            TAR_FILE="$TAR_WORK/$CHUNK_NAME.tar"
+
+            if ! $AWS s3 ls "$S3_TAR_DST$CHUNK_NAME.tar" &>/dev/null; then
+                EP_NAMES=()
+                for E in "${EPS[@]}"; do
+                    EP_NAMES+=("$(basename "$E")")
+                done
+                log "  Tar: $CHUNK_NAME (last ${#EPS[@]} episodes)"
+                tar cf "$TAR_FILE" -C "$CAM_DIR" "${EP_NAMES[@]}"
+                TAR_SIZE=$(du -sh "$TAR_FILE" | cut -f1)
+                log "  Upload ($TAR_SIZE): $CHUNK_NAME.tar"
+                $AWS s3 cp "$TAR_FILE" "$S3_TAR_DST$CHUNK_NAME.tar" --quiet
+                rm -f "$TAR_FILE"
+            fi
+        fi
+
+        rm -f "$EP_LIST"
+    done
+
+    log "=== Done: DROID ==="
+
 else
     echo "Usage:"
     echo "  $0 egodex <partN> [--download]"
     echo "  $0 bridge_v2"
+    echo "  $0 droid"
     exit 1
 fi

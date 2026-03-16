@@ -46,16 +46,16 @@ echo ""
 
 mkdir -p "$DEST"
 
-# gsutil cp -r: resumable download 지원
-# -m: 멀티스레드 병렬 다운로드
-# 실패 시 자동 재시도 (최대 5회)
+# gsutil rsync: 이미 있는 파일은 건너뛰고 나머지만 다운로드
+# -m: 멀티스레드 병렬, -r: 재귀
+# cp -r과 달리 중단 후 재개 시 중복 전송 없음
 MAX_RETRIES=5
 RETRY=0
 
 while [ $RETRY -lt $MAX_RETRIES ]; do
     echo "[$(date '+%H:%M:%S')] Download attempt $((RETRY + 1))/$MAX_RETRIES" | tee -a "$LOG"
 
-    if gsutil -m cp -r "$SRC/*" "$DEST/" 2>&1 | tee -a "$LOG"; then
+    if gsutil -m rsync -r "$SRC" "$DEST/" 2>&1 | tee -a "$LOG"; then
         echo "[$(date '+%H:%M:%S')] Download complete!" | tee -a "$LOG"
         echo "[$(date '+%H:%M:%S')] Location: $DEST" | tee -a "$LOG"
         du -sh "$DEST" | tee -a "$LOG"
