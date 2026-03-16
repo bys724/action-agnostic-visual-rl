@@ -2,8 +2,8 @@
 비디오 프레임 데이터셋 베이스 클래스.
 
 공통 로직:
-- Multi-gap temporal sampling (짧은 gap에 높은 확률)
-- Gap 기반 loss weighting (먼 프레임에 낮은 가중치)
+- Multi-gap temporal sampling (uniform 또는 exponential decay)
+- Gap 기반 loss weighting (uniform 또는 exponential decay)
 - 사전 추출된 프레임(frame_XXXXXX.jpg) 로딩 + synchronized spatial crop
 - 프레임 수 캐싱
 
@@ -27,10 +27,10 @@ class VideoFrameDataset(ABC, Dataset):
     def __init__(
         self,
         data_root: str,
-        max_gap: int = 10,
+        max_gap: int = 30,
         img_size: int = 224,
-        sample_decay: float = 0.3,
-        loss_decay: float = 0.7,
+        sample_decay: float = 0.0,
+        loss_decay: float = 0.0,
         samples_per_video: int = 100,
         train: bool = True,
         max_videos: Optional[int] = None,
@@ -48,11 +48,19 @@ class VideoFrameDataset(ABC, Dataset):
         else:
             self.spatial_transform = transforms.CenterCrop(img_size)
 
-        # Multi-gap sampling 확률 (짧은 gap이 높은 확률)
+        # Gap sampling 확률 (decay=0 → uniform)
         gaps = np.arange(1, max_gap + 1)
-        raw_probs = np.exp(-sample_decay * (gaps - 1))
+        if sample_decay > 0:
+            raw_probs = np.exp(-sample_decay * (gaps - 1))
+        else:
+            raw_probs = np.ones_like(gaps, dtype=float)
         self.sample_probs = raw_probs / raw_probs.sum()
-        self.loss_weights = np.exp(-loss_decay * (gaps - 1))
+
+        # Loss weights (decay=0 → uniform weight=1.0)
+        if loss_decay > 0:
+            self.loss_weights = np.exp(-loss_decay * (gaps - 1))
+        else:
+            self.loss_weights = np.ones_like(gaps, dtype=float)
 
         # 프레임 디렉토리 탐색 (서브클래스 구현)
         self.frame_dirs = self._scan_frame_dirs()

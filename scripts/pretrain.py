@@ -76,12 +76,12 @@ def main():
                         help='Resume from checkpoint path')
 
     # Multi-gap sampling parameters
-    parser.add_argument('--max-gap', type=int, default=10,
-                        help='Max frame gap (default: 10, for multi-scale temporal learning)')
-    parser.add_argument('--sample-decay', type=float, default=0.3,
-                        help='Sample probability decay (default: 0.3)')
-    parser.add_argument('--loss-decay', type=float, default=0.7,
-                        help='Loss weight decay (default: 0.7)')
+    parser.add_argument('--max-gap', type=int, default=30,
+                        help='Max frame gap (default: 30, ~1sec at 30fps)')
+    parser.add_argument('--sample-decay', type=float, default=0.0,
+                        help='Sample probability decay (0=uniform, >0=exponential)')
+    parser.add_argument('--loss-decay', type=float, default=0.0,
+                        help='Loss weight decay (0=uniform, >0=exponential)')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
