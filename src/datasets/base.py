@@ -104,13 +104,17 @@ class VideoFrameDataset(ABC, Dataset):
         img1 = self._load_image(path1)
         img2 = self._load_image(path2)
 
-        # 프레임 쌍에 동일한 crop 적용 (temporal consistency)
+        # 프레임 쌍에 독립적인 random crop 적용
+        # → pixel-level 정렬을 깨서 더 높은 수준의 표현 학습 유도
         if isinstance(self.spatial_transform, transforms.RandomCrop):
-            params = transforms.RandomCrop.get_params(
+            params1 = transforms.RandomCrop.get_params(
                 img1, (self.img_size, self.img_size)
             )
-            img1 = transforms.functional.crop(img1, *params)
-            img2 = transforms.functional.crop(img2, *params)
+            params2 = transforms.RandomCrop.get_params(
+                img2, (self.img_size, self.img_size)
+            )
+            img1 = transforms.functional.crop(img1, *params1)
+            img2 = transforms.functional.crop(img2, *params2)
         else:
             img1 = self.spatial_transform(img1)
             img2 = self.spatial_transform(img2)
