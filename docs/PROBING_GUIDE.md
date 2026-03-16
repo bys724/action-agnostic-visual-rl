@@ -21,10 +21,15 @@ Phase 2: Action Probing (Linear Evaluation)
   │   ├─ Linear Probe → action_t (변화를 만든 action)
   │   └─ 증명: 임베딩이 action-informative함
   │
-  └─ Bridge Probing (cross-embodiment)
+  ├─ DROID Probing (cross-domain, primary)
+  │   ├─ Input: Same frozen encoder
+  │   ├─ Output: Robot actions (7-DoF, Franka)
+  │   └─ 증명: 로봇 도메인으로 cross-domain transfer 가능
+  │
+  └─ Bridge Probing (cross-embodiment, secondary)
       ├─ Input: Same frozen encoder
-      ├─ Output: Robot actions (7-DoF)
-      └─ 증명: Cross-embodiment transfer 가능
+      ├─ Output: Robot actions (7-DoF, WidowX)
+      └─ 증명: 다른 로봇에도 transfer 가능 (필요 시 추가)
 
 Phase 3: VLM/VLA Training (Future)
   ├─ Encoder: (img_prev, img_curr) → embedding_t
@@ -132,7 +137,30 @@ Per-joint R²:
   ...
 ```
 
-### 2.2 Bridge Probing (Cross-Embodiment)
+### 2.2 DROID Probing (Cross-Domain, Primary)
+
+```bash
+# Two-Stream on DROID
+python scripts/probe_action_droid.py \
+    --encoder two-stream \
+    --checkpoint /workspace/data/checkpoints/two_stream/best_model.pt \
+    --droid-frames /workspace/data/droid_frames \
+    --epochs 20 \
+    --probe linear
+
+# Baselines
+python scripts/probe_action_droid.py --encoder clip --probe linear
+python scripts/probe_action_droid.py --encoder dinov2 --probe linear
+```
+
+DROID 데이터:
+- 3카메라 (ext1, ext2, wrist) → ext1을 기본 사용
+- 95,658 에피소드, Franka Panda, 7-DoF joint velocity
+- 프레임: 256x256 리사이즈 (crop 없음, 180x320 원본)
+
+### 2.3 Bridge Probing (Cross-Embodiment, Secondary)
+
+DROID probing 결과가 충분하면 생략 가능. 리뷰어가 로봇 다양성을 요구할 경우 추가.
 
 ```bash
 # Two-Stream on Bridge
@@ -142,28 +170,6 @@ python scripts/probe_action_bridge.py \
     --bridge-root /workspace/data/datasets/bridge_v2 \
     --epochs 20 \
     --probe linear
-
-# Single-Stream on Bridge
-python scripts/probe_action_bridge.py \
-    --encoder single-stream \
-    --checkpoint /workspace/data/checkpoints/single_stream/best_model.pt \
-    --bridge-root /workspace/data/datasets/bridge_v2 \
-    --probe linear
-
-# Baselines
-python scripts/probe_action_bridge.py --encoder clip --probe linear
-python scripts/probe_action_bridge.py --encoder dinov2 --probe linear
-```
-
-**출력 예시**:
-```
-RESULTS (Bridge V2)
-==================================================
-Encoder:    two-stream
-Probe:      linear
-R²:         0.7641  PASS (threshold: 0.7)
-MSE:        0.001234
-Cosine Sim: 0.8876
 ```
 
 ## 결과 해석
@@ -172,22 +178,23 @@ Cosine Sim: 0.8876
 
 **예상 결과**:
 
-| Encoder | EgoDex R² | Bridge R² | Cross-Embodiment Gap |
-|---------|-----------|-----------|----------------------|
-| Two-Stream | **0.82** | **0.76** | **0.06** ✅ |
-| Single-Stream | 0.78 | 0.68 | 0.10 ⚠️ |
-| VideoMAE | 0.75 | 0.62 | 0.13 ⚠️ |
-| CLIP | 0.68 | 0.55 | 0.13 ❌ |
-| DINOv2 | 0.71 | 0.58 | 0.13 ❌ |
+| Encoder | EgoDex R² | DROID R² | Bridge R² | Cross-Domain Gap |
+|---------|-----------|----------|-----------|------------------|
+| Two-Stream | **0.82** | **0.78** | **0.76** | **0.04~0.06** ✅ |
+| Single-Stream | 0.78 | 0.70 | 0.68 | 0.08~0.10 ⚠️ |
+| VideoMAE | 0.75 | 0.65 | 0.62 | 0.10~0.13 ⚠️ |
+| CLIP | 0.68 | 0.58 | 0.55 | 0.10~0.13 ❌ |
+| DINOv2 | 0.71 | 0.61 | 0.58 | 0.10~0.13 ❌ |
 
 **Key Insights**:
 1. **Within-domain**: Two-Stream이 가장 높은 R² → Action-agnostic 학습이 action 정보 인코딩
-2. **Cross-embodiment**: Two-Stream의 gap이 가장 작음 → M/P 분리가 embodiment-invariant 표현 학습
-3. **Baseline comparison**: Pretrained vision models보다 우수 → Task-specific pretraining 효과
+2. **Cross-domain (DROID)**: 사람 손 → 로봇 팔 전이 가능 확인
+3. **Cross-embodiment (Bridge)**: Franka뿐 아니라 WidowX에도 전이 (추가 증거)
+4. **Baseline comparison**: Pretrained vision models보다 우수 → Task-specific pretraining 효과
 
 ### 논문 Claim
 
-> "Our two-stream architecture learns action-agnostic visual representations that **implicitly encode motion information** (EgoDex R²=0.82) and **transfer across embodiments** (Bridge R²=0.76, gap=0.06). This demonstrates that separating temporal (M) and spatial (P) pathways creates more generalizable representations than single-stream baselines."
+> "Our two-stream architecture learns action-agnostic visual representations that **implicitly encode motion information** (EgoDex R²=0.82) and **transfer across robot domains** (DROID R²=0.78). This demonstrates that separating temporal (M) and spatial (P) pathways creates more generalizable representations than single-stream baselines."
 
 ## 결과 저장
 

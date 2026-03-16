@@ -58,10 +58,14 @@ bash scripts/pretrain_aws.sh --sanity --no-shutdown  # Sanity test
 학습된 표현이 행동 정보를 인코딩하는지 검증
 
 ```bash
-# Bridge V2 데이터셋으로 linear probe
-python scripts/action_probing.py \
+# DROID 데이터셋으로 linear probe (primary)
+python scripts/eval/probe_action.py \
     --checkpoint data/checkpoints/two_stream/latest.pt \
-    --dataset bridge_v2
+    --dataset droid
+
+# Bridge V2 (secondary, cross-embodiment 보강용)
+python scripts/eval/probe_action_bridge.py \
+    --checkpoint data/checkpoints/two_stream/latest.pt
 ```
 
 자세한 내용은 `docs/PROBING_GUIDE.md` 참고
@@ -91,13 +95,15 @@ docker exec libero-eval python src/eval_libero.py \
 | `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | Supervised (비디오+행동) |
 | `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | 데이터 전처리 |
 | `scripts/data/extract_bridge_frames.py` | Bridge V2 프레임 추출 | 데이터 전처리 |
+| `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 (TFRecord→JPG) | 데이터 전처리 |
 | `scripts/process_egodex_part.sh` | EgoDex S3 다운로드→추출→업로드 | 데이터 파이프라인 |
+| `scripts/process_egodex_all.sh` | EgoDex 전체 part 순차 처리 | 데이터 파이프라인 |
+| `scripts/process_droid.sh` | DROID 추출→tar→S3 업로드 | 데이터 파이프라인 |
 | `src/models/two_stream.py` | Two-Stream 모델 | 미래 프레임 예측 |
 | `src/models/single_stream.py` | Single-Stream 모델 | 미래 프레임 예측 |
 | `src/models/videomae.py` | VideoMAE 모델 | 마스크 복원 |
 | `src/datasets/egodex.py` | EgoDex 데이터셋 | Pre-training용 |
 | `src/training/pretrain.py` | Pre-training 루프 | Self-supervised |
-| `src/training/TODO.md` | Fine-tuning 구현 계획 | 미래 작업 |
 | `src/eval_libero.py` | LIBERO 평가 | Evaluation |
 
 ## 개발 원칙
@@ -134,13 +140,15 @@ docker exec libero-eval python src/eval_libero.py \
 ### 기존 사례
 - **EgoDex**: 센터크롭(1080x1080) → 256x256 (`docs/preprocessing/egodex/`)
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
+- **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
 
-## 현재 Phase (2026-03-14)
+## 현재 Phase (2026-03-16)
 
 **Phase 1 실행 중** — AWS g5.12xlarge에서 사전학습
 
-- EgoDex part1~5 + test S3 업로드 완료
+- EgoDex part1~5 + test S3 업로드 완료 (tarball 변환 진행 중)
 - Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
+- DROID v1.0.1 다운로드 완료, 프레임 추출 진행 중 (3카메라, 95,658 ep)
 - 학습 코드 점검 완료: scheduler resume 버그 수정, TensorBoard 로깅 추가
 
 **다음 단계**: Phase 1 결과 분석 → Go/No-Go → Phase 1.5 또는 Phase 2

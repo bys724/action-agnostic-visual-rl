@@ -11,6 +11,6 @@
 ## 미구현
 
 - Fine-tuning 학습 루프 (encoder freeze → action head 학습)
-- Action probing 스크립트
+- Action probing 스크립트 (DROID primary, Bridge V2 secondary)
 
 실험 로드맵 및 우선순위는 `docs/RESEARCH_PLAN.md` 참고.
