@@ -23,35 +23,30 @@
 
 ## 워크플로우
 
-### 1. EgoDex Pre-training (AWS EC2)
+### 1. EgoDex Pre-training
 
-3개 모델 사전학습: Two-Stream, Single-Stream, VideoMAE
+2개 모델 사전학습: Two-Stream, VideoMAE (Single-Stream 제외)
 
 **학습 목적**: 행동 라벨 없이 비디오만으로 범용 시각 표현 학습
-- Two-Stream/Single-Stream: 미래 프레임 예측
+- Two-Stream: 미래 프레임 예측
 - VideoMAE: 마스크된 패치 복원
 
 ```bash
-# AWS 인스턴스 SSH 접속
-ssh ubuntu@<INSTANCE_IP>
-cd /workspace/action-agnostic-visual-rl
+# H100 워크스테이션 (권장) — Docker dev 환경
+docker compose up -d dev
+docker exec -it dev-env bash
+bash scripts/pretrain_local.sh                     # two-stream → videomae 순차
+bash scripts/pretrain_local.sh --model two-stream   # 특정 모델만
+bash scripts/pretrain_local.sh --sanity             # Sanity test
 
-# 환경 설정 (Deep Learning AMI)
-/opt/pytorch/bin/pip install timm transformers tqdm matplotlib tensorboard opencv-python
-git submodule update --init --recursive external/VideoMAE
-
-# 학습 실행
-bash scripts/pretrain_aws.sh  # 3개 모델 순차 학습
-bash scripts/pretrain_aws.sh --model two-stream  # 특정 모델만
-bash scripts/pretrain_aws.sh --sanity --no-shutdown  # Sanity test
+# AWS EC2 (대안)
+bash scripts/pretrain_aws.sh --model two-stream
 ```
 
-**주의사항**:
-- Deep Learning AMI는 드라이버만 제공 → `/opt/pytorch` 가상환경 필수
-- System `python3` 사용 금지 (패키지 없음)
-- VideoMAE 서브모듈 초기화 필수
-
-자세한 내용은 `docs/AWS_INSTANCE_GUIDE.md` 참고
+**데이터 다운로드** (EgoDex CDN 직접):
+```bash
+bash scripts/download_egodex.sh part2 part3 part5
+```
 
 ### 2. Action Probing (사전학습 완료 후)
 
@@ -87,30 +82,31 @@ docker exec libero-eval python src/eval_libero.py \
 
 ## 주요 파일
 
-| 파일 | 용도 | 학습 방식 |
-|------|------|----------|
-| `scripts/pretrain.py` | Pre-training 스크립트 | Self-supervised (비디오만) |
-| `scripts/pretrain_aws.sh` | AWS pre-training 자동화 | Self-supervised (비디오만) |
-| `scripts/eval/probe_action.py` | Action probing 평가 | 분석 전용 |
-| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | Supervised (비디오+행동) |
-| `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | 데이터 전처리 |
-| `scripts/data/extract_bridge_frames.py` | Bridge V2 프레임 추출 | 데이터 전처리 |
-| `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 (TFRecord→JPG) | 데이터 전처리 |
-| `scripts/process_egodex_part.sh` | EgoDex S3 다운로드→추출→업로드 | 데이터 파이프라인 |
-| `scripts/process_egodex_all.sh` | EgoDex 전체 part 순차 처리 | 데이터 파이프라인 |
-| `scripts/process_droid.sh` | DROID 추출→tar→S3 업로드 | 데이터 파이프라인 |
+| 파일 | 용도 | 비고 |
+|------|------|------|
+| `scripts/pretrain.py` | Pre-training 메인 스크립트 | Self-supervised |
+| `scripts/pretrain_local.sh` | H100 로컬 학습 런처 | 권장 |
+| `scripts/pretrain_aws.sh` | AWS EC2 학습 런처 | 대안 |
+| `scripts/download_egodex.sh` | EgoDex CDN 다운로드+추출 | |
+| `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | |
+| `scripts/data/extract_bridge_frames.py` | Bridge V2 프레임 추출 | |
+| `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 (TFRecord→JPG) | |
+| `scripts/eval/probe_action.py` | Action probing 평가 | |
+| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | |
 | `src/models/two_stream.py` | Two-Stream 모델 | 미래 프레임 예측 |
-| `src/models/single_stream.py` | Single-Stream 모델 | 미래 프레임 예측 |
 | `src/models/videomae.py` | VideoMAE 모델 | 마스크 복원 |
-| `src/datasets/egodex.py` | EgoDex 데이터셋 | Pre-training용 |
-| `src/training/pretrain.py` | Pre-training 루프 | Self-supervised |
-| `src/eval_libero.py` | LIBERO 평가 | Evaluation |
+| `src/models/single_stream.py` | Single-Stream 모델 | 현재 미사용 |
+| `src/datasets/egodex.py` | EgoDex 데이터셋 | |
+| `src/datasets/droid.py` | DROID 데이터셋 | |
+| `src/datasets/bridge.py` | Bridge V2 데이터셋 | |
+| `src/training/pretrain.py` | Pre-training 루프 | |
+| `src/eval_libero.py` | LIBERO 평가 | |
 
 ## 개발 원칙
 
 1. **문서 업데이트 우선**: 새 문서보다 핵심 문서 업데이트
 2. **간결한 코드**: 실험 우선, 과도한 추상화 피하기
-3. **환경 분리**: AWS (pretraining) vs Docker (evaluation)
+3. **환경 분리**: H100 Docker (pretraining) vs Docker (evaluation), AWS는 대안
 4. **검증 필수**: 새 스크립트는 sanity test로 검증 후 배포
 5. **Best Practice 참고 필수**:
    - 새로운 구현 전에 **반드시** 공식 문서/권장 방법/샘플 코드 조사
@@ -142,16 +138,17 @@ docker exec libero-eval python src/eval_libero.py \
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
 - **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
 
-## 현재 Phase (2026-03-16)
+## 현재 Phase (2026-03-18)
 
-**Phase 1 실행 중** — AWS g5.12xlarge에서 사전학습
+**Phase 1 실행 중** — H100 워크스테이션으로 학습 환경 이전
 
-- EgoDex part1~5 + test S3 업로드 완료 (tarball 변환 진행 중)
-- Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
-- DROID v1.0.1 다운로드 완료, 프레임 추출 진행 중 (3카메라, 95,658 ep)
-- 학습 코드 점검 완료: scheduler resume 버그 수정, TensorBoard 로깅 추가
+- EgoDex part1, part4 프레임 로컬 추출 완료 (~515GB)
+- EgoDex part2, part3, part5 CDN 다운로드+추출 진행 중
+- DROID v1.0.1 TFRecord 다운로드 완료 (2048 shards, 1.70TB)
+- Docker dev 컨테이너 빌드 중 (Flash Attention OOM 방지 적용)
+- AWS 학습은 중단, H100 로컬 학습으로 전환
 
-**다음 단계**: Phase 1 결과 분석 → Go/No-Go → Phase 1.5 또는 Phase 2
+**다음 단계**: dev 컨테이너 빌드 완료 → Two-Stream + VideoMAE 로컬 학습 시작
 
 자세한 일정은 `docs/RESEARCH_PLAN.md` 참고
 
