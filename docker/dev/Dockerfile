@@ -56,7 +56,7 @@ RUN pip install --no-cache-dir \
 
 # Flash Attention 2 (H100 optimized)
 RUN pip install packaging ninja && \
-    pip install "flash-attn>=2.5.0" --no-build-isolation
+    MAX_JOBS=4 pip install "flash-attn>=2.5.0" --no-build-isolation
 
 # ============================================================
 # Efficient Training (Multi-GPU, LoRA)

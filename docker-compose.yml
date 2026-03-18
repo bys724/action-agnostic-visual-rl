@@ -114,6 +114,7 @@ services:
     volumes:
       - .:/workspace
       - ./data:/workspace/data
+      - /mnt/data:/mnt/data
       - ~/.cache/huggingface:/workspace/.cache/huggingface
     ports:
       - "6006:6006"   # TensorBoard
