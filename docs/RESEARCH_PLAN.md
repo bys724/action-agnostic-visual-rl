@@ -1,6 +1,6 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-03-16
+**마지막 업데이트**: 2026-03-19
 **연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
 
 ---
@@ -92,42 +92,49 @@ Phase 3A 실패 시 실행. 3가지 사전학습 조건 비교:
 ## 학습 설정
 
 ```
-인스턴스: g5.12xlarge (4x A10G, 48 vCPU, 192GB RAM)
+인스턴스: H100 워크스테이션 (x2, 81GB each) — 로컬 권장
 epochs: 30
-batch_size: 24 (per-GPU) → effective: 96
-max_gap: 10, sample_decay: 0.3, loss_decay: 0.7
-데이터: EgoDex frames (S3: egodex_frames_partN/)
+batch_size: 32 (per-GPU, H100 최적)
+max_gap: 30 (~1초), sample_decay: 0.3, loss_decay: 0.7
+데이터: EgoDex frames (로컬: /mnt/data/egodex_frames/)
 ```
 
 ```bash
-bash scripts/pretrain_aws.sh                          # 3개 모델 순차
-bash scripts/pretrain_aws.sh --model two-stream        # 특정 모델만
-bash scripts/pretrain_aws.sh --sanity --no-shutdown     # Sanity test
-TRAIN_PARTS=part1,part2,part3 bash scripts/pretrain_aws.sh  # 여러 part
+bash scripts/pretrain_local.sh                          # two-stream(GPU 0) + videomae(GPU 1) 병렬
+bash scripts/pretrain_local.sh --model two-stream        # 특정 모델만
+bash scripts/pretrain_local.sh --sanity                  # Sanity test
+bash scripts/pretrain_local.sh --splits part1            # 특정 split만
+
+# AWS EC2 (대안)
+bash scripts/pretrain_aws.sh --model two-stream
 ```
 
 ---
 
-## 현재 상태 (2026-03-16)
+## 현재 상태 (2026-03-19)
 
 ### 완료
-- [x] Three-model 구현 + VideoMAE 공식 정합성 검증
-- [x] 학습 파이프라인 (pretrain.py, pretrain_aws.sh)
-- [x] 프레임 전처리 확정 (256x256 저장 → 학습 시 RandomCrop 224)
-- [x] Bridge V2 프레임 S3 업로드 완료 (24,827 traj)
-- [x] EgoDex part1~5, test 프레임 S3 업로드 완료
-- [x] AWS 스크립트 S3 프레임 경로 반영 + 멀티 split 지원
-- [x] 학습 코드 점검: scheduler resume 버그 수정, TensorBoard 로깅 추가
-- [x] DROID 데이터셋 다운로드 완료 (v1.0.1, 95,658 ep, 1.7TB)
+- [x] Two-Stream + VideoMAE 구현 (Single-Stream은 ablation용, 현재 학습 제외)
+- [x] TwoStreamModel 아키텍처 개편: CLS bottleneck + 이중 디코더 (trivial solution 해결)
+  - 이전: patch-level PixelwiseFusion → decoder (trivial shortcut 가능)
+  - 현재: (m_cls + p_cls) / 2 → decoder_current + decoder_future (CLS 강제)
+- [x] VideoMAE 공식 정합성 검증
+- [x] 학습 파이프라인 (pretrain.py, pretrain_local.sh, pretrain_aws.sh)
+- [x] 프레임 전처리 확정 (256x256 저장 → 학습 시 RandomCrop 224, 독립 crop)
+- [x] EgoDex part1, part4 로컬 추출 완료 (~515GB)
+- [x] DROID v1.0.1 다운로드 완료 (2048 shards, 1.7TB)
 
 ### 진행 중
-- [ ] AWS Phase 1 사전학습 실행 (part1, 30ep)
-- [ ] DROID 프레임 추출 (3카메라 × 256x256, ~12h)
-- [ ] EgoDex tarball 변환 (part1 진행 중 → part4 → 나머지 순차)
+- [ ] **Two-Stream + VideoMAE 병렬 학습 중** (EgoDex part1, 30ep)
+  - Two-Stream: GPU 0, ~15일 예상 (3.3 batch/sec)
+  - VideoMAE: GPU 1, ~3.4일 예상 (14.7 batch/sec)
+  - 로그: `/mnt/data/logs/pretrain/train_*_20260319_082729.log`
+- [ ] EgoDex part2, 3, 5 CDN 다운로드 + 추출
+- [ ] DROID 프레임 추출 (TFRecord → JPG)
 
 ### 다음 단계
-- [ ] Phase 1 결과 분석 → Go/No-Go 판단
-- [ ] DROID action probing 코드 작성
+- [ ] VideoMAE 학습 완료 후 action probing 먼저 실행
+- [ ] Two-Stream 학습 완료 후 Phase 1 Go/No-Go 판단
 
 ---
 

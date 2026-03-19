@@ -5,10 +5,13 @@ Architecture:
 - M Channel (Magnocellular): Temporal change detection
 - P Channel (Parvocellular): Spatial structure + color
 - Interleaved ViT with CLS token exchange
-- Future frame prediction task
+- Dual reconstruction: CLS bottleneck decodes both current and future frames
 
-This model separates motion and form processing pathways,
-inspired by biological vision systems.
+CLS bottleneck prevents trivial patch-level shortcuts:
+only (m_cls + p_cls) / 2 is passed to both decoders,
+forcing the model to encode both temporal states into a single 768-dim vector.
+
+Inspired by biological M/P visual pathways.
 """
 
 import torch
@@ -291,11 +294,13 @@ class PixelwiseFusion(nn.Module):
         return cls_embedding, patch_embeddings
 
 
-class VideoDecoder(nn.Module):
+class CLSDecoder(nn.Module):
     """
-    Decode patch embeddings to future frame prediction.
+    Decode CLS embedding to image via spatial expansion + upsampling.
 
-    Uses U-Net style architecture with transposed convolutions.
+    CLS [B, D] → expand to patch grid [B, D, P, P] → upsample to [B, 3, H, W].
+    This forces the CLS bottleneck: reconstruction must succeed from a single
+    global vector, preventing trivial patch-level shortcuts.
     """
 
     def __init__(
@@ -306,13 +311,13 @@ class VideoDecoder(nn.Module):
     ):
         super().__init__()
 
-        self.num_patches_per_side = image_size // patch_size
+        self.embed_dim = embed_dim
+        P = image_size // patch_size  # 14 for 224/16
+        self.num_patches_per_side = P
 
-        # For separate fusion (2D input)
-        self.proj = nn.Sequential(
-            nn.Linear(embed_dim * 2, embed_dim),
-            nn.GELU(),
-        )
+        # Upsample 14×14 → 224×224
+        # (CLS는 단순 repeat으로 공간 확장 — learned expand는 115M 파라미터 낭비이고
+        #  CNN이 공간 구조를 직접 생성하도록 강제하는 것이 bottleneck 효과에 더 부합)
         self.upsampler = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, 512, kernel_size=4, stride=2, padding=1),
             nn.GroupNorm(32, 512),
@@ -330,32 +335,28 @@ class VideoDecoder(nn.Module):
             nn.Sigmoid(),
         )
 
-    def forward(self, patch_embeddings: torch.Tensor) -> torch.Tensor:
+    def forward(self, cls_embedding: torch.Tensor) -> torch.Tensor:
         """
-        Decode patches to image.
-
         Args:
-            patch_embeddings: [B, N, 2D]
+            cls_embedding: [B, D]
 
         Returns:
-            predicted_image: [B, 3, H, W]
+            [B, 3, H, W]
         """
         P = self.num_patches_per_side
-        x = self.proj(patch_embeddings)       # [B, N, D]
-        x = x.view(-1, P, P, x.size(-1))     # [B, P, P, D]
-        x = x.permute(0, 3, 1, 2)            # [B, D, P, P]
+        x = cls_embedding.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, P, P)  # [B, D, P, P]
         return self.upsampler(x)
 
 
 class TwoStreamModel(nn.Module):
     """
-    Complete Two-Stream model for future frame prediction.
+    Complete Two-Stream model with dual CLS-bottleneck reconstruction.
 
     Pipeline:
     1. Preprocessing: RGB → M/P channels
     2. Encoder: Interleaved ViT with CLS exchange
-    3. Fusion: Combine M/P representations
-    4. Decoder: Predict future frame
+    3. CLS fusion: (m_cls + p_cls) / 2  →  single global vector [B, D]
+    4. Dual decoding: decoder_current → image_t, decoder_future → image_tk
 
     Args:
         embed_dim: Embedding dimension (default: 768)
@@ -388,16 +389,15 @@ class TwoStreamModel(nn.Module):
             image_size=image_size,
             patch_size=patch_size,
         )
-        self.fusion = PixelwiseFusion(embed_dim=embed_dim, fusion_type="separate")
-        self.decoder = VideoDecoder(
-            embed_dim=embed_dim,
-            image_size=image_size,
-            patch_size=patch_size,
-        )
+        # Two decoders share the same fused CLS bottleneck.
+        # decoder_current reconstructs image_t, decoder_future reconstructs image_tk.
+        # Both losses force the CLS to encode a compact representation of both frames.
+        self.decoder_current = CLSDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
+        self.decoder_future = CLSDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
 
     def forward(
         self, image_current: torch.Tensor, image_future: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass.
 
@@ -406,8 +406,9 @@ class TwoStreamModel(nn.Module):
             image_future: [B, 3, H, W], range [0, 1]
 
         Returns:
-            predicted_image: [B, 3, H, W] - predicted future frame
-            cls_embedding: [B, embed_dim] - combined CLS embedding
+            pred_current: [B, 3, H, W] - reconstructed current frame
+            pred_future: [B, 3, H, W] - predicted future frame
+            cls_embedding: [B, embed_dim] - fused CLS (M+P averaged)
         """
         # 1. Preprocessing
         m_channel, p_channel = self.preprocessing(image_current, image_future)
@@ -415,31 +416,28 @@ class TwoStreamModel(nn.Module):
         # 2. Encoding with CLS exchange
         m_tokens, p_tokens = self.encoder(m_channel, p_channel)
 
-        # 3. Fusion
-        cls_embedding, patch_embeddings = self.fusion(m_tokens, p_tokens)
+        # 3. CLS fusion (bottleneck): only global summaries go to decoder
+        cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2  # [B, D]
 
-        # 4. Decoding
-        predicted_image = self.decoder(patch_embeddings)
+        # 4. Dual decoding from the same CLS bottleneck
+        pred_current = self.decoder_current(cls_embedding)
+        pred_future = self.decoder_future(cls_embedding)
 
-        return predicted_image, cls_embedding
+        return pred_current, pred_future, cls_embedding
 
     def compute_loss(
         self, image_current: torch.Tensor, image_future: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute reconstruction loss.
-
-        Args:
-            image_current: [B, 3, H, W]
-            image_future: [B, 3, H, W]
+        Compute dual reconstruction loss (current + future).
 
         Returns:
-            loss: Scalar loss value
-            predicted_image: [B, 3, H, W]
+            loss: Scalar combined loss
+            pred_future: [B, 3, H, W] for visualization
         """
-        predicted_image, _ = self.forward(image_current, image_future)
-        loss = F.mse_loss(predicted_image, image_future)
-        return loss, predicted_image
+        pred_current, pred_future, _ = self.forward(image_current, image_future)
+        loss = (F.mse_loss(pred_current, image_current) + F.mse_loss(pred_future, image_future)) / 2
+        return loss, pred_future
 
 
 class TwoStreamEncoder(nn.Module):
@@ -498,10 +496,10 @@ class TwoStreamEncoder(nn.Module):
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
         state_dict = checkpoint.get("model_state_dict", checkpoint)
 
-        # Extract encoder weights only
+        # Extract encoder weights only (exclude both decoders)
         encoder_state = {
             k: v for k, v in state_dict.items()
-            if not k.startswith("decoder.")
+            if not k.startswith("decoder_current.") and not k.startswith("decoder_future.")
         }
 
         self.load_state_dict(encoder_state, strict=False)
