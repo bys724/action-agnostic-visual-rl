@@ -436,7 +436,7 @@ class TwoStreamModel(nn.Module):
             pred_future: [B, 3, H, W] for visualization
         """
         pred_current, pred_future, _ = self.forward(image_current, image_future)
-        loss = (F.mse_loss(pred_current, image_current) + F.mse_loss(pred_future, image_future)) / 2
+        loss = F.mse_loss(pred_future, image_future) + 0.1 * F.mse_loss(pred_current, image_current)
         return loss, pred_future
 
 

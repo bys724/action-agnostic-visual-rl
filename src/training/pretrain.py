@@ -39,6 +39,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
     model.train()
     total_loss = 0
     total_weighted_loss = 0
+    total_loss_current = 0
+    total_loss_future = 0
     num_batches = 0
     gap_counts = {}
 
@@ -67,8 +69,30 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
             loss, img_pred = actual_model.compute_loss(img_t, img_tk)
             weighted_loss = loss
             unweighted_loss = loss
+        elif model_name == 'TwoStreamModel':
+            # Two-stream: dual reconstruction (current + future) with gap weighting
+            # current는 보조 loss (0.1 가중치) — CLS에 현재 정보 유지 강제
+            pred_current, img_pred, _ = model(img_t, img_tk)
+            loss_future = F.mse_loss(img_pred, img_tk, reduction='none').mean(dim=(1, 2, 3))
+            loss_current = F.mse_loss(pred_current, img_t, reduction='none').mean(dim=(1, 2, 3))
+            per_sample_loss = loss_future + 0.1 * loss_current  # [B]
+
+            # 분리 loss 누적 (모니터링용)
+            total_loss_current += loss_current.mean().item()
+            total_loss_future += loss_future.mean().item()
+
+            if dataset is not None and hasattr(dataset, 'get_loss_weight'):
+                weights = torch.tensor(
+                    [dataset.get_loss_weight(int(g)) for g in gaps],
+                    device=device, dtype=per_sample_loss.dtype
+                )
+            else:
+                weights = torch.ones_like(per_sample_loss)
+
+            weighted_loss = (per_sample_loss * weights).mean()
+            unweighted_loss = per_sample_loss.mean()
         else:
-            # Two-stream/Single-stream: future prediction with gap weighting
+            # Single-stream: future prediction with gap weighting
             img_pred, _ = model(img_t, img_tk)
             per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
             per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))  # [B]
@@ -110,9 +134,17 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
     total_samples = sum(gap_counts.values())
     gap_dist = {k: f"{v/total_samples*100:.1f}%" for k, v in sorted(gap_counts.items())}
     print(f"Epoch {epoch}: Loss = {avg_loss:.4f}, Weighted = {avg_weighted:.4f}")
+    if total_loss_future > 0:
+        avg_future = total_loss_future / num_batches
+        avg_current = total_loss_current / num_batches
+        print(f"  Loss breakdown: future={avg_future:.4f}, current={avg_current:.4f}")
     print(f"  Gap distribution: {gap_dist}")
 
-    return avg_loss
+    result = {'loss': avg_loss, 'weighted_loss': avg_weighted}
+    if total_loss_future > 0:
+        result['loss_future'] = total_loss_future / num_batches
+        result['loss_current'] = total_loss_current / num_batches
+    return result
 
 
 def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
@@ -137,6 +169,8 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
 
     total_loss = 0
     total_weighted_loss = 0
+    total_loss_current = 0
+    total_loss_future = 0
     num_batches = 0
     gap_counts = {}
 
@@ -159,8 +193,28 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
+            elif model_name == 'TwoStreamModel':
+                # Two-stream: dual reconstruction
+                pred_current, img_pred, _ = model(img_t, img_tk)
+                loss_future = F.mse_loss(img_pred, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                loss_current = F.mse_loss(pred_current, img_t, reduction='none').mean(dim=(1, 2, 3))
+                per_sample_loss = loss_future + 0.1 * loss_current
+
+                total_loss_current += loss_current.mean().item()
+                total_loss_future += loss_future.mean().item()
+
+                if hasattr(eval_dataset, 'get_loss_weight'):
+                    weights = torch.tensor(
+                        [eval_dataset.get_loss_weight(int(g)) for g in gaps],
+                        device=device, dtype=per_sample_loss.dtype
+                    )
+                else:
+                    weights = torch.ones_like(per_sample_loss)
+
+                weighted_loss = (per_sample_loss * weights).mean()
+                unweighted_loss = per_sample_loss.mean()
             else:
-                # Two-stream/Single-stream: future prediction
+                # Single-stream: future prediction
                 img_pred, _ = model(img_t, img_tk)
                 per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
                 per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))
@@ -189,11 +243,15 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
 
     model.train()
 
-    return {
+    result = {
         'loss': avg_loss,
         'weighted_loss': avg_weighted,
         'gap_distribution': gap_counts,
     }
+    if total_loss_future > 0:
+        result['loss_future'] = total_loss_future / num_batches
+        result['loss_current'] = total_loss_current / num_batches
+    return result
 
 
 def train(
@@ -257,7 +315,7 @@ def train(
         train_dataset,
         batch_size=effective_batch_size,
         shuffle=True,
-        num_workers=32 if use_multi_gpu else 16,
+        num_workers=16,
         pin_memory=True,
         persistent_workers=True,
     )
@@ -337,7 +395,8 @@ def train(
         epoch_start_time = time.time()
 
         # Train
-        avg_loss = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset)
+        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset)
+        avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
 
@@ -374,6 +433,9 @@ def train(
         # TensorBoard logging
         if writer:
             writer.add_scalar('loss/train', avg_loss, epoch)
+            if 'loss_future' in train_result:
+                writer.add_scalar('loss/train_future', train_result['loss_future'], epoch)
+                writer.add_scalar('loss/train_current', train_result['loss_current'], epoch)
             if eval_loss is not None:
                 writer.add_scalar('loss/eval', eval_loss, epoch)
             writer.add_scalar('lr', current_lr, epoch)

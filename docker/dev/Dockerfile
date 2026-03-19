@@ -3,9 +3,8 @@
 #
 # 주요 기능:
 # - Vision Encoders: DINOv2, SigLIP, CLIP (timm, transformers)
-# - Language Models: Llama, T5 등 (transformers)
-# - 효율적 학습: DeepSpeed, FSDP, LoRA (PEFT)
-# - 실험 추적: WandB, TensorBoard
+# - 효율적 학습: DataParallel, multi-GPU
+# - 실험 추적: TensorBoard
 
 FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
 
@@ -28,6 +27,7 @@ WORKDIR /workspace
 
 # ============================================================
 # PyTorch 2.2 with CUDA 12.1 (H100 optimized)
+# 후속 패키지가 torch를 덮어쓰지 못하도록 --no-deps로 보호
 # ============================================================
 RUN pip install --no-cache-dir \
     torch==2.2.0 \
@@ -36,22 +36,16 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu121
 
 # ============================================================
-# HuggingFace Ecosystem (Pre-trained Models)
+# HuggingFace + Vision Models + Training Utils
+# --no-deps 없이 설치하되, torch 버전 고정을 위해 마지막에 재설치
 # ============================================================
 RUN pip install --no-cache-dir \
     transformers>=4.40.0 \
     accelerate>=0.30.0 \
-    datasets \
     huggingface_hub \
     safetensors \
-    tokenizers
-
-# ============================================================
-# Vision Models (DINOv2, CLIP, SigLIP)
-# ============================================================
-RUN pip install --no-cache-dir \
+    tokenizers \
     timm>=0.9.10 \
-    open_clip_torch \
     einops
 
 # Flash Attention 2 (H100 optimized)
@@ -59,51 +53,25 @@ RUN pip install packaging ninja && \
     MAX_JOBS=4 pip install "flash-attn>=2.5.0" --no-build-isolation
 
 # ============================================================
-# Efficient Training (Multi-GPU, LoRA)
+# Experiment Tracking & Data Processing
 # ============================================================
 RUN pip install --no-cache-dir \
-    deepspeed \
-    peft>=0.11.0 \
-    bitsandbytes
-
-# ============================================================
-# Experiment Tracking & Utilities
-# ============================================================
-RUN pip install --no-cache-dir \
-    wandb \
     tensorboard \
     tqdm \
-    rich \
-    omegaconf \
-    hydra-core
-
-# ============================================================
-# Data Processing
-# ============================================================
-RUN pip install --no-cache-dir \
-    numpy \
-    scipy \
-    pandas \
-    pillow \
-    opencv-python-headless \
-    albumentations \
-    webdataset
-
-# ============================================================
-# Development Tools
-# ============================================================
-RUN pip install --no-cache-dir \
-    jupyter \
-    jupyterlab \
-    ipywidgets \
     matplotlib \
-    seaborn
+    "numpy<2" \
+    scipy \
+    pillow \
+    opencv-python-headless
 
-RUN pip install --no-cache-dir \
-    pytest \
-    black \
-    isort \
-    mypy
+# ============================================================
+# PyTorch 버전 고정: 후속 패키지가 torch를 업그레이드했을 수 있으므로 재설치
+# ============================================================
+RUN pip install --no-cache-dir --force-reinstall \
+    torch==2.2.0 \
+    torchvision==0.17.0 \
+    torchaudio==2.2.0 \
+    --index-url https://download.pytorch.org/whl/cu121
 
 # ============================================================
 # Environment Configuration
@@ -114,9 +82,7 @@ ENV NCCL_DEBUG=INFO
 ENV NCCL_IB_DISABLE=1
 ENV HF_HOME=/workspace/.cache/huggingface
 
-# Ports
 EXPOSE 6006
-EXPOSE 8888
 
 WORKDIR /workspace
 

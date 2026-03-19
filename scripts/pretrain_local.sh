@@ -41,6 +41,9 @@ while [[ $# -gt 0 ]]; do
         --batch-size)
             BATCH_SIZE="$2"
             shift 2 ;;
+        --splits)
+            TRAIN_PARTS="$2"
+            shift 2 ;;
         *)
             echo "Unknown argument: $1"
             exit 1 ;;
@@ -68,17 +71,18 @@ if [ -d "$LOCAL_TEST" ] && [ ! -e "$EGODEX_ROOT/test" ]; then
     echo "Linked: $EGODEX_ROOT/test → $LOCAL_TEST"
 fi
 
-# 사용 가능한 split 확인
-TRAIN_PARTS=""
-for PART in part1 part4; do
-    if [ -d "$EGODEX_ROOT/$PART" ] && [ "$(ls -A "$EGODEX_ROOT/$PART" 2>/dev/null)" ]; then
-        if [ -n "$TRAIN_PARTS" ]; then
-            TRAIN_PARTS="$TRAIN_PARTS,$PART"
-        else
-            TRAIN_PARTS="$PART"
+# 사용 가능한 split 확인 (--splits로 명시한 경우 자동 감지 생략)
+if [ -z "$TRAIN_PARTS" ]; then
+    for PART in part1 part4; do
+        if [ -d "$EGODEX_ROOT/$PART" ] && [ "$(ls -A "$EGODEX_ROOT/$PART" 2>/dev/null)" ]; then
+            if [ -n "$TRAIN_PARTS" ]; then
+                TRAIN_PARTS="$TRAIN_PARTS,$PART"
+            else
+                TRAIN_PARTS="$PART"
+            fi
         fi
-    fi
-done
+    done
+fi
 
 echo "============================================================"
 echo "H100 Local Training"
@@ -116,7 +120,7 @@ run_training() {
         MULTI_GPU_ARG="--no-multi-gpu"
     fi
 
-    CUDA_VISIBLE_DEVICES="$GPU_IDS" python3 "$PROJECT_ROOT/scripts/pretrain.py" \
+    CUDA_VISIBLE_DEVICES="$GPU_IDS" python3 -u "$PROJECT_ROOT/scripts/pretrain.py" \
         --model "$MODEL_NAME" \
         --train-data egodex \
         --egodex-root "$EGODEX_ROOT" \
@@ -137,19 +141,17 @@ run_training() {
 # ── 실행 ──────────────────────────────────────────────────────────────────────
 if [[ -n "$MODEL" ]]; then
     # 단일 모델
-    if [[ "$MODEL" == "videomae" ]]; then
-        run_training "$MODEL" "0" "--no-multi-gpu"
-    else
-        run_training "$MODEL" "0,1"
-    fi
+    run_training "$MODEL" "0" "--no-multi-gpu"
 else
-    # two-stream + videomae 병렬 (H100 x2)
-    # two-stream: GPU 0,1 (DataParallel)
-    # videomae: GPU 1 (two-stream 끝난 후 → 순차 실행이 안전)
-    # H100 2장이라 병렬은 VRAM 충돌 위험 → 순차 실행
-    echo "Running two-stream then videomae (sequential, 2 GPUs)"
-    run_training "two-stream" "0,1"
-    run_training "videomae" "0" "--no-multi-gpu"
+    # 전략 A: two-stream(GPU 0) + videomae(GPU 1) 병렬 실행
+    echo "Running two-stream (GPU 0) and videomae (GPU 1) in parallel"
+    run_training "two-stream" "0" "--no-multi-gpu" &
+    PID_TWO_STREAM=$!
+    run_training "videomae" "1" "--no-multi-gpu" &
+    PID_VIDEOMAE=$!
+
+    wait $PID_TWO_STREAM
+    wait $PID_VIDEOMAE
 fi
 
 echo ""
