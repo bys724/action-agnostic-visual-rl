@@ -6,6 +6,7 @@ for TwoStreamModel, SingleStreamModel, and VideoMAEModel.
 """
 
 import json
+import random
 import time
 from datetime import datetime
 from pathlib import Path
@@ -255,6 +256,93 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
     return result
 
 
+def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=4):
+    """Epoch 끝에 예측 샘플 시각화를 저장.
+
+    run_dir/samples/epoch_XX.png 에 저장.
+    실패해도 학습을 중단하지 않음 (전체를 try/except로 보호).
+    """
+    was_training = model.training
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        model.eval()
+        actual_model = model.module if hasattr(model, 'module') else model
+        model_name = type(actual_model).__name__
+
+        samples_dir = run_dir / 'samples'
+        samples_dir.mkdir(exist_ok=True)
+
+        # 랜덤 샘플 추출
+        indices = random.sample(range(len(eval_dataset)), min(num_samples, len(eval_dataset)))
+
+        col_titles = ['Frame t', 'Frame t+k (target)', 'Predicted']
+        rows = []
+        with torch.no_grad():
+            for idx in indices:
+                try:
+                    img_t, img_tk, gap = eval_dataset[idx]
+                except Exception:
+                    continue
+                x = img_t.unsqueeze(0).to(device)
+                y = img_tk.unsqueeze(0).to(device)
+
+                if model_name == 'TwoStreamModel':
+                    pred_m, pred_p, _ = actual_model(x, y)
+                    pred_m = pred_m.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    pred_p = pred_p.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    imgs = [img_t, img_tk, pred_m, pred_p]
+                    col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
+                elif model_name == 'VideoMAEModel':
+                    _, pred = actual_model.compute_loss(x, y)
+                    pred = pred.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    imgs = [img_t, img_tk, pred]
+                else:
+                    pred, _ = actual_model(x, y)
+                    pred = pred.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    imgs = [img_t, img_tk, pred]
+
+                # tensor → numpy for display
+                processed = []
+                for img in imgs:
+                    if isinstance(img, torch.Tensor):
+                        img = img.permute(1, 2, 0).numpy().clip(0, 1)
+                    processed.append(img)
+                rows.append((processed, gap))
+
+        if not rows:
+            return
+
+        ncols = len(rows[0][0])
+        nrows = len(rows)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows))
+        if nrows == 1:
+            axes = [axes]
+
+        for row_idx, (imgs, gap) in enumerate(rows):
+            for col_idx, img in enumerate(imgs):
+                axes[row_idx][col_idx].imshow(img)
+                axes[row_idx][col_idx].axis('off')
+                if row_idx == 0:
+                    axes[row_idx][col_idx].set_title(col_titles[col_idx], fontsize=10)
+            axes[row_idx][0].set_ylabel(f'gap={gap}', fontsize=9, rotation=0, labelpad=40, va='center')
+
+        fig.suptitle(f'Epoch {epoch}', fontsize=13, y=1.01)
+        plt.tight_layout()
+        path = samples_dir / f'epoch_{epoch:03d}.png'
+        plt.savefig(path, dpi=100, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved samples: {path.name}")
+
+    except Exception as e:
+        print(f"  [WARNING] Sample visualization failed (epoch {epoch}): {e}")
+    finally:
+        if was_training:
+            model.train()
+
+
 def train(
     model,
     train_dataset,
@@ -401,13 +489,16 @@ def train(
         scheduler.step()
         history['train_loss'].append(avg_loss)
 
-        # Evaluate
+        # Evaluate (에러 시 학습 계속)
         eval_loss = None
         if eval_dataset and epoch % eval_interval == 0:
-            eval_result = evaluate(model, eval_dataset, device, batch_size=batch_size)
-            eval_loss = eval_result['loss']
-            history['eval_loss'].append(eval_loss)
-            print(f"  [Eval] Loss: {eval_loss:.4f}, Weighted: {eval_result['weighted_loss']:.4f}")
+            try:
+                eval_result = evaluate(model, eval_dataset, device, batch_size=batch_size)
+                eval_loss = eval_result['loss']
+                history['eval_loss'].append(eval_loss)
+                print(f"  [Eval] Loss: {eval_loss:.4f}, Weighted: {eval_result['weighted_loss']:.4f}")
+            except Exception as e:
+                print(f"  [WARNING] Evaluation failed (epoch {epoch}): {e}")
 
         # Track time metrics
         epoch_end_time = time.time()
@@ -443,6 +534,10 @@ def train(
             writer.add_scalar('perf/samples_per_sec', samples_per_sec, epoch)
             writer.add_scalar('perf/epoch_time_sec', epoch_duration, epoch)
             writer.flush()
+
+        # Save prediction samples every epoch
+        if run_dir and eval_dataset:
+            save_epoch_samples(model, eval_dataset, device, epoch, run_dir)
 
         # Save checkpoint
         if run_dir:
