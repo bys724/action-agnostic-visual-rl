@@ -47,25 +47,33 @@ def random_crop_pair(img_t, img_tk, crop_size=224):
 
 
 def find_frame_pairs(frames_dir, num_pairs=4, max_gap=10):
-    """프레임 디렉토리에서 랜덤 에피소드의 프레임 쌍 추출."""
-    episodes = [d for d in os.listdir(frames_dir)
-                if os.path.isdir(os.path.join(frames_dir, d))]
-    if not episodes:
-        raise ValueError(f"No episode directories found in {frames_dir}")
+    """프레임 디렉토리에서 랜덤 에피소드의 프레임 쌍 추출.
+
+    Supports both flat (episode_dir/frame.jpg) and nested (task/episode/frame.jpg) layouts.
+    """
+    # Collect all episode directories (dirs that contain .jpg files)
+    episode_dirs = []
+    for root, dirs, files in os.walk(frames_dir):
+        if any(f.endswith('.jpg') for f in files):
+            episode_dirs.append(root)
+
+    if not episode_dirs:
+        raise ValueError(f"No frame directories found in {frames_dir}")
 
     pairs = []
-    random.shuffle(episodes)
-    for ep in episodes:
-        ep_dir = os.path.join(frames_dir, ep)
+    random.shuffle(episode_dirs)
+    for ep_dir in episode_dirs:
         frames = sorted([f for f in os.listdir(ep_dir) if f.endswith('.jpg')])
         if len(frames) < max_gap + 1:
             continue
         idx = random.randint(0, len(frames) - max_gap - 1)
         gap = random.randint(1, max_gap)
+        # Use relative path from frames_dir as label
+        ep_label = os.path.relpath(ep_dir, frames_dir)
         pairs.append((
             os.path.join(ep_dir, frames[idx]),
             os.path.join(ep_dir, frames[idx + gap]),
-            ep, gap
+            ep_label, gap
         ))
         if len(pairs) >= num_pairs:
             break
@@ -74,31 +82,32 @@ def find_frame_pairs(frames_dir, num_pairs=4, max_gap=10):
 
 
 def run_inference(model, img_t, img_tk):
-    """[H,W,3] 텐서 2장 → 예측 이미지 [H,W,3] numpy."""
+    """[H,W,3] 텐서 2장 → (pred_m, pred_p) [H,W,3] numpy."""
     x = img_t.permute(2, 0, 1).unsqueeze(0).to(DEVICE)   # [1,3,H,W]
     y = img_tk.permute(2, 0, 1).unsqueeze(0).to(DEVICE)
     with torch.no_grad():
-        _, pred, _ = model(x, y)
-    pred = pred.squeeze(0).permute(1, 2, 0).cpu().numpy().clip(0, 1)
-    return pred
+        pred_m, pred_p, _ = model(x, y)
+    pred_m = pred_m.squeeze(0).permute(1, 2, 0).cpu().numpy().clip(0, 1)
+    pred_p = pred_p.squeeze(0).permute(1, 2, 0).cpu().numpy().clip(0, 1)
+    return pred_m, pred_p
 
 
 def visualize(pairs_data, output_path):
-    """pairs_data: list of (img_t, img_tk, pred, title)"""
+    """pairs_data: list of (img_t, img_tk, pred_m, pred_p, title)"""
     n = len(pairs_data)
-    fig, axes = plt.subplots(n, 3, figsize=(12, 4 * n))
+    fig, axes = plt.subplots(n, 4, figsize=(16, 4 * n))
     if n == 1:
         axes = [axes]
 
-    titles = ["Frame t (input)", "Frame t+k (target)", "Predicted t+k"]
-    for row, (img_t, img_tk, pred, title) in enumerate(pairs_data):
-        for col, (img, label) in enumerate(zip([img_t, img_tk, pred], titles)):
+    titles = ["Frame t (input)", "Frame t+k (target)", "Pred M (change)", "Pred P (appear)"]
+    for row, (img_t, img_tk, pred_m, pred_p, title) in enumerate(pairs_data):
+        for col, (img, label) in enumerate(zip([img_t, img_tk, pred_m, pred_p], titles)):
             axes[row][col].imshow(img)
             axes[row][col].set_title(label if row == 0 else "")
             axes[row][col].axis("off")
         axes[row][0].set_ylabel(title, fontsize=9, rotation=0, labelpad=80, va='center')
 
-    plt.suptitle("Two-Stream Model: DROID Inference (Unseen Data)", fontsize=13, y=1.01)
+    plt.suptitle("Two-Stream: Per-stream Future Prediction", fontsize=13, y=1.01)
     plt.tight_layout()
     plt.savefig(output_path, dpi=120, bbox_inches='tight')
     print(f"Saved: {output_path}")
@@ -132,16 +141,18 @@ def main():
         img_t = load_image(path_t)   # 256x256
         img_tk = load_image(path_tk)
         img_t, img_tk = random_crop_pair(img_t, img_tk)  # 독립적 224x224 crop
-        pred = run_inference(model, img_t, img_tk)
+        pred_m, pred_p = run_inference(model, img_t, img_tk)
 
-        mse = float(((pred - img_tk.numpy()) ** 2).mean())
-        print(f"  [{ep}] gap={gap}, MSE={mse:.4f}")
+        mse_m = float(((pred_m - img_tk.numpy()) ** 2).mean())
+        mse_p = float(((pred_p - img_tk.numpy()) ** 2).mean())
+        print(f"  [{ep}] gap={gap}, MSE_M={mse_m:.4f}, MSE_P={mse_p:.4f}")
 
         pairs_data.append((
             img_t.numpy(),
             img_tk.numpy(),
-            pred,
-            f"ep: {ep[:20]}  gap={gap}  MSE={mse:.4f}"
+            pred_m,
+            pred_p,
+            f"ep: {ep[:20]}  gap={gap}  M={mse_m:.4f} P={mse_p:.4f}"
         ))
 
     visualize(pairs_data, args.output)

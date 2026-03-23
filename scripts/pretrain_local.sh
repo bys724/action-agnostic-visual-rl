@@ -64,11 +64,11 @@ for PART_DIR in /mnt/data/egodex_frames_part*/; do
     fi
 done
 
-# test split (data/egodex/test → symlink)
-LOCAL_TEST="/home/etri/bys/action-agnostic-visual-rl/data/egodex/test"
-if [ -d "$LOCAL_TEST" ] && [ ! -e "$EGODEX_ROOT/test" ]; then
-    ln -sf "$LOCAL_TEST" "$EGODEX_ROOT/test"
-    echo "Linked: $EGODEX_ROOT/test → $LOCAL_TEST"
+# test split: 추출된 프레임 디렉토리 사용
+TEST_FRAMES="$EGODEX_ROOT/test_frames"
+if [ -d "$TEST_FRAMES" ] && [ ! -e "$EGODEX_ROOT/test" ]; then
+    ln -sf "$TEST_FRAMES" "$EGODEX_ROOT/test"
+    echo "Linked: $EGODEX_ROOT/test → $TEST_FRAMES"
 fi
 
 # 사용 가능한 split 확인 (--splits로 명시한 경우 자동 감지 생략)

@@ -70,16 +70,16 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
             weighted_loss = loss
             unweighted_loss = loss
         elif model_name == 'TwoStreamModel':
-            # Two-stream: dual reconstruction (current + future) with gap weighting
-            # current는 보조 loss (0.1 가중치) — CLS에 현재 정보 유지 강제
-            pred_current, img_pred, _ = model(img_t, img_tk)
-            loss_future = F.mse_loss(img_pred, img_tk, reduction='none').mean(dim=(1, 2, 3))
-            loss_current = F.mse_loss(pred_current, img_t, reduction='none').mean(dim=(1, 2, 3))
-            per_sample_loss = loss_future + 0.1 * loss_current  # [B]
+            # Two-stream: both streams predict future frame independently
+            pred_m, pred_p, _ = model(img_t, img_tk)
+            loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+            loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+            per_sample_loss = loss_m + loss_p  # [B]
+            img_pred = pred_p  # P stream prediction for visualization
 
             # 분리 loss 누적 (모니터링용)
-            total_loss_current += loss_current.mean().item()
-            total_loss_future += loss_future.mean().item()
+            total_loss_current += loss_m.mean().item()   # M stream loss
+            total_loss_future += loss_p.mean().item()    # P stream loss
 
             if dataset is not None and hasattr(dataset, 'get_loss_weight'):
                 weights = torch.tensor(
@@ -194,14 +194,15 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
                 weighted_loss = loss
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
-                # Two-stream: dual reconstruction
-                pred_current, img_pred, _ = model(img_t, img_tk)
-                loss_future = F.mse_loss(img_pred, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                loss_current = F.mse_loss(pred_current, img_t, reduction='none').mean(dim=(1, 2, 3))
-                per_sample_loss = loss_future + 0.1 * loss_current
+                # Two-stream: both streams predict future
+                pred_m, pred_p, _ = model(img_t, img_tk)
+                loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                per_sample_loss = loss_m + loss_p
+                img_pred = pred_p
 
-                total_loss_current += loss_current.mean().item()
-                total_loss_future += loss_future.mean().item()
+                total_loss_current += loss_m.mean().item()
+                total_loss_future += loss_p.mean().item()
 
                 if hasattr(eval_dataset, 'get_loss_weight'):
                     weights = torch.tensor(

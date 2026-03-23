@@ -138,14 +138,16 @@ docker exec libero-eval python src/eval_libero.py \
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
 - **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
 
-## 현재 Phase (2026-03-19)
+## 현재 Phase (2026-03-23)
 
-**Phase 1 실행 중** — Two-Stream + VideoMAE 병렬 학습 중
+**Phase 1 실행 중** — Two-Stream (v2) + VideoMAE 병렬 학습 중
 
-- Two-Stream(GPU 0) + VideoMAE(GPU 1) EgoDex part1 30ep 학습 진행 중
-- TwoStreamModel 아키텍처 개편 완료: CLS bottleneck + 이중 디코더 (trivial solution 해결)
-- EgoDex part1, part4 로컬 추출 완료 / part2, 3, 5 CDN 다운로드+추출 진행 중
-- DROID 프레임 추출 대기 중 (TFRecord 다운로드 완료, 1.7TB)
+- Two-Stream v2 아키텍처로 재학습 시작 (GPU 0, epoch 1부터)
+  - v1 CLS-only decoder → 평균 이미지 출력 문제 확인 → v2 per-stream PatchDecoder로 전환
+  - 아키텍처 다이어그램: `docs/architecture/two_stream_v2.png`
+- VideoMAE epoch 5에서 resume 학습 중 (GPU 1)
+- EgoDex part1, part4 로컬 추출 완료 / part2 부분 추출 / part3, 5 미착수
+- DROID 다운로드 재개 중 (1.8TB/3.4TB, ~53%)
 
 **다음 단계**: VideoMAE 완료(~3.4일) → action probing → Two-Stream 완료(~15일) → Phase 1 Go/No-Go
 
