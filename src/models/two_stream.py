@@ -7,6 +7,9 @@ Architecture:
 - Interleaved ViT with CLS token exchange
 - Per-stream future prediction: each stream uses own patches + fused CLS to predict future
 
+M channel (3ch): ΔL + Sobel(ΔL) — 밝기 변화 + 변화의 경계 형상
+P channel (5ch): Sobel + RGB — 현재 형상 + 외형
+
 Key design: M and P streams are kept separate in the decoder.
 Each decoder receives only its own stream's patch tokens + fused CLS as global context.
 Cross-stream info flows ONLY through CLS exchange in the encoder.
@@ -107,9 +110,9 @@ class InterleavedTwoStreamViT(nn.Module):
         self.num_stages = num_stages
         self.blocks_per_stage = depth // num_stages
 
-        # Patch embeddings for M (4ch) and P (5ch)
+        # Patch embeddings for M (3ch: ΔL + Sobel(ΔL)) and P (5ch: Sobel + RGB)
         self.patch_embed_m = nn.Conv2d(
-            in_channels=4,
+            in_channels=3,
             out_channels=embed_dim,
             kernel_size=patch_size,
             stride=patch_size,
@@ -188,7 +191,7 @@ class InterleavedTwoStreamViT(nn.Module):
         Encode M and P channels with interleaved CLS exchange.
 
         Args:
-            m_channel: [B, 4, H, W] - temporal change channel
+            m_channel: [B, 3, H, W] - temporal change channel
             p_channel: [B, 5, H, W] - spatial structure channel
 
         Returns:
