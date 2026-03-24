@@ -2,7 +2,7 @@
 Single-Stream Model: Baseline with single ViT encoder.
 
 Architecture:
-- Two-stream preprocessing (M + P channels = 9ch)
+- Two-stream preprocessing (M + P channels = 8ch)
 - Single ViT encoder (no stream separation)
 - Future frame prediction task
 
@@ -22,7 +22,7 @@ class SingleStreamModel(nn.Module):
     Single-stream baseline for future prediction.
 
     Uses same M/P preprocessing as Two-Stream but processes
-    all 9 channels with a single ViT encoder (no separation).
+    all 8 channels with a single ViT encoder (no separation).
 
     Args:
         embed_dim: Embedding dimension (default: 768)
@@ -50,9 +50,9 @@ class SingleStreamModel(nn.Module):
         # Preprocessing (shared with Two-Stream)
         self.preprocessing = TwoStreamPreprocessing()
 
-        # Patch embedding for 9 channels (M: 4ch + P: 5ch)
+        # Patch embedding for 8 channels (M: 3ch + P: 5ch)
         self.patch_embed = nn.Conv2d(
-            in_channels=9,
+            in_channels=8,
             out_channels=embed_dim,
             kernel_size=patch_size,
             stride=patch_size,

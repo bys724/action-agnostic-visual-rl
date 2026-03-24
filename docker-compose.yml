@@ -239,9 +239,9 @@ services:
 # 3. LAPA 서버 실행:
 #    docker compose up -d lapa
 #
-# 4. OpenVLA 평가 (API 모드):
-#    docker exec simpler-eval python src/eval_simpler.py \
-#      --model openvla --api-url http://localhost:8001
+# 4. OpenVLA 평가:
+#    docker exec libero-eval python src/eval_libero.py \
+#      --model openvla
 #
 # [LIBERO 벤치마크]
 # 5. LIBERO 환경 + OpenVLA-LIBERO 서버 실행:

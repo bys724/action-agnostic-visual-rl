@@ -143,21 +143,8 @@ docker exec libero-eval python src/eval_libero.py \
 
 ### 7.2 결과 비교
 
-```bash
-# 기본 비교 (자동으로 최신 결과 파일 탐색)
-python3 src/compare_results.py --results-dir data/libero/results \
-  --models openvla pi0 --task-suite libero_spatial
-
-# 마크다운 리포트 생성
-python3 src/compare_results.py --results-dir data/libero/results \
-  --models openvla pi0 --task-suite libero_spatial \
-  --output data/libero/results/comparison_report.md
-
-# 특정 파일 직접 지정
-python3 src/compare_results.py --files \
-  data/libero/results/openvla_libero_spatial_*.json \
-  data/libero/results/pi0_libero_spatial_*.json
-```
+결과 JSON 파일은 `data/libero/results/`에 저장됩니다.
+파일명: `{model}_{task_suite}_{timestamp}.json`
 
 ### 7.3 최신 결과 (libero_spatial, 10 trials/task)
 

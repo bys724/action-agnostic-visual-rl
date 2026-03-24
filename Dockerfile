@@ -105,7 +105,6 @@ RUN echo '# GPU Memory Management' >> /root/.bashrc && \
     echo '' >> /root/.bashrc && \
     echo '# Convenience aliases' >> /root/.bashrc && \
     echo 'alias ll="ls -la"' >> /root/.bashrc && \
-    echo 'alias test-simple="python src/eval_simpler.py --model simple --n-episodes 2"' >> /root/.bashrc && \
     echo 'alias test-all="./scripts/test_baseline.sh"' >> /root/.bashrc && \
     echo '' >> /root/.bashrc && \
     echo '# Welcome message' >> /root/.bashrc && \

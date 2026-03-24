@@ -144,7 +144,7 @@ def verify_installation():
     if all_good:
         print("\n✓ OpenVLA is ready to use!")
         print("\nTest with:")
-        print("  docker exec simpler-dev python src/eval_simpler.py --model openvla/openvla-7b --n-episodes 1 --max-steps 10")
+        print("  docker exec libero-eval python src/eval_libero.py --model openvla")
     else:
         print("\n⚠ Some components are missing. Please check the errors above.")
     

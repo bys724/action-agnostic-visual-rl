@@ -138,18 +138,19 @@ docker exec libero-eval python src/eval_libero.py \
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
 - **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
 
-## 현재 Phase (2026-03-23)
+## 현재 Phase (2026-03-24)
 
-**Phase 1 실행 중** — Two-Stream (v2) + VideoMAE 병렬 학습 중
+**Phase 1 실행 중** — Two-Stream v3 + VideoMAE 병렬 학습 중
 
-- Two-Stream v2 아키텍처로 재학습 시작 (GPU 0, epoch 1부터)
-  - v1 CLS-only decoder → 평균 이미지 출력 문제 확인 → v2 per-stream PatchDecoder로 전환
-  - 아키텍처 다이어그램: `docs/architecture/two_stream_v2.png`
-- VideoMAE epoch 5에서 resume 학습 중 (GPU 1)
-- EgoDex part1, part4 로컬 추출 완료 / part2 부분 추출 / part3, 5 미착수
-- DROID 다운로드 재개 중 (1.8TB/3.4TB, ~53%)
+- **Two-Stream 아키텍처 변천**:
+  - v1: CLS-only decoder → 평균 이미지만 출력 (실패, `docs/architecture/two_stream_v1_cls_only_result.png`)
+  - v2: per-stream PatchDecoder → 구조 복원 확인 (`docs/architecture/two_stream_v2_epoch1.png`)
+  - v3 (현재): M channel 재설계 (ΔL + Sobel(ΔL) = 3ch, RGB diff 제거)
+- Two-Stream v3 epoch 1부터 학습 시작 (GPU 0, ~15h/epoch)
+- VideoMAE epoch 8 완료, epoch 9 진행 중 (GPU 1, ~3.5h/epoch)
+- 아키텍처 다이어그램: `docs/architecture/two_stream_v2.png`
 
-**다음 단계**: VideoMAE 완료(~3.4일) → action probing → Two-Stream 완료(~15일) → Phase 1 Go/No-Go
+**다음 단계**: epoch별 시각화 결과 확인 → action probing → Phase 1 Go/No-Go
 
 자세한 일정은 `docs/RESEARCH_PLAN.md` 참고
 
@@ -163,3 +164,19 @@ docker exec libero-eval python src/eval_libero.py \
 
 ### Archive (참고용)
 - `docs/archive/` - 과거 코드 리뷰, 개발 상태, 마이그레이션 기록
+
+## 트러블슈팅 로그
+
+### EgoDex test symlink 문제 (2026-03-23)
+- **증상**: eval 시 `FileNotFoundError: .../part2/.../frame_000000.jpg`로 학습 크래시
+- **원인**: `pretrain_local.sh`가 test symlink을 `data/egodex/test/` (원본 hdf5/mp4)로 생성.
+  추출된 프레임은 `/mnt/data/egodex_frames/test_frames/`에 별도 존재.
+  학습 시작 시점에 잘못된 symlink으로 eval dataset 로드 → 프레임 없는 디렉토리 참조
+- **수정**: symlink을 `test_frames`로 교체, `pretrain_local.sh` 수정
+- **교훈**: 학습 시작 전 eval dataset 경로 확인 필수.
+  dataset 객체는 시작 시 경로를 캐싱하므로, 학습 중 symlink 수정해도 효과 없음 → 재시작 필요
+
+### 학습 프로세스 안정성 (2026-03-23)
+- `evaluate()`와 `save_epoch_samples()`를 try/except로 보호
+- eval/시각화 실패 시 WARNING 출력 후 학습 계속 (크래시 방지)
+- `model.train()` 복구를 finally 블록으로 보장

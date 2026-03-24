@@ -5,8 +5,8 @@ LAPA는 JAX/Flax 기반 모델로, 의존성 충돌 방지를 위해 API 모드 
 로컬 모드는 mock policy로 동작합니다.
 
 사용법:
-  API 모드 (권장): python src/eval_simpler.py --model lapa --api-url http://localhost:8002
   서버 시작: docker compose up -d lapa
+  평가: docker exec libero-eval python src/eval_libero.py --model lapa
 
 Reference: https://github.com/LatentActionPretraining/LAPA
 """
