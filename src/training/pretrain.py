@@ -296,9 +296,8 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     imgs = [img_t, img_tk, pred_m, pred_p]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
                 elif model_name == 'VideoMAEModel':
-                    _, pred = actual_model.compute_loss(x, y)
-                    pred = pred.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
-                    imgs = [img_t, img_tk, pred]
+                    # VideoMAE는 masked patch만 예측 → full image 시각화 생략
+                    continue
                 else:
                     pred, _ = actual_model(x, y)
                     pred = pred.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
