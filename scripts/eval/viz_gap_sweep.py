@@ -86,7 +86,8 @@ fig, axes = plt.subplots(nrows, 4, figsize=(16, 4 * nrows))
 if nrows == 1:
     axes = [axes]
 
-col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M (change)', 'Pred P (appear)']
+col_titles = ['Frame t', 'Frame t+k (target)',
+              'Pred M (ΔL + Sobel(ΔL))', 'Pred P (Sobel + RGB)']
 for row_idx, (gap, img_t, img_tk, pred_m, pred_p) in enumerate(rows):
     for col_idx, img in enumerate([img_t, img_tk, pred_m, pred_p]):
         axes[row_idx][col_idx].imshow(img)
@@ -96,7 +97,8 @@ for row_idx, (gap, img_t, img_tk, pred_m, pred_p) in enumerate(rows):
     axes[row_idx][0].set_ylabel(f'gap={gap}', fontsize=11, fontweight='bold',
                                  rotation=0, labelpad=50, va='center')
 
-fig.suptitle(f'Two-Stream v2 Epoch 1 — Gap Sweep\n{ep_name}', fontsize=13, y=1.02)
+ckpt_name = os.path.basename(CHECKPOINT)
+fig.suptitle(f'Two-Stream Gap Sweep — {ckpt_name}\n{ep_name}', fontsize=13, y=1.02)
 plt.tight_layout()
 plt.savefig(OUTPUT, dpi=120, bbox_inches='tight')
 plt.close()

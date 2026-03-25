@@ -22,7 +22,7 @@ except ImportError:
     HAS_TENSORBOARD = False
 
 
-def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
+def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -33,6 +33,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
         device: Device
         epoch: Current epoch number
         dataset: Dataset with get_loss_weight() method (optional)
+        scaler: GradScaler for AMP (None = FP32)
 
     Returns:
         avg_loss: Average unweighted loss for the epoch
@@ -59,61 +60,66 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None):
 
         optimizer.zero_grad()
 
+        # AMP autocast context
+        use_amp = scaler is not None
+        amp_ctx = torch.cuda.amp.autocast(dtype=torch.bfloat16) if use_amp else torch.cuda.amp.autocast(enabled=False)
+
         # Compute loss based on model type
-        # VideoMAE: masked reconstruction (no gap weighting)
-        # Two-stream/Single-stream: future prediction with gap weighting
         actual_model = model.module if hasattr(model, 'module') else model
         model_name = type(actual_model).__name__
 
-        if model_name == 'VideoMAEModel':
-            # VideoMAE: masked reconstruction loss (already scalar)
-            loss, img_pred = actual_model.compute_loss(img_t, img_tk)
-            weighted_loss = loss
-            unweighted_loss = loss
-        elif model_name == 'TwoStreamModel':
-            # Two-stream: both streams predict future frame independently
-            pred_m, pred_p, _ = model(img_t, img_tk)
-            loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-            loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
-            per_sample_loss = loss_m + loss_p  # [B]
-            img_pred = pred_p  # P stream prediction for visualization
+        with amp_ctx:
+            if model_name == 'VideoMAEModel':
+                loss, img_pred = actual_model.compute_loss(img_t, img_tk)
+                weighted_loss = loss
+                unweighted_loss = loss
+            elif model_name == 'TwoStreamModel':
+                pred_m, pred_p, _ = model(img_t, img_tk)
+                loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                per_sample_loss = loss_m + loss_p
+                img_pred = pred_p
 
-            # 분리 loss 누적 (모니터링용)
-            total_loss_current += loss_m.mean().item()   # M stream loss
-            total_loss_future += loss_p.mean().item()    # P stream loss
+                total_loss_current += loss_m.mean().item()
+                total_loss_future += loss_p.mean().item()
 
-            if dataset is not None and hasattr(dataset, 'get_loss_weight'):
-                weights = torch.tensor(
-                    [dataset.get_loss_weight(int(g)) for g in gaps],
-                    device=device, dtype=per_sample_loss.dtype
-                )
+                if dataset is not None and hasattr(dataset, 'get_loss_weight'):
+                    weights = torch.tensor(
+                        [dataset.get_loss_weight(int(g)) for g in gaps],
+                        device=device, dtype=per_sample_loss.dtype
+                    )
+                else:
+                    weights = torch.ones_like(per_sample_loss)
+
+                weighted_loss = (per_sample_loss * weights).mean()
+                unweighted_loss = per_sample_loss.mean()
             else:
-                weights = torch.ones_like(per_sample_loss)
+                img_pred, _ = model(img_t, img_tk)
+                per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
+                per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))
 
-            weighted_loss = (per_sample_loss * weights).mean()
-            unweighted_loss = per_sample_loss.mean()
+                if dataset is not None and hasattr(dataset, 'get_loss_weight'):
+                    weights = torch.tensor(
+                        [dataset.get_loss_weight(int(g)) for g in gaps],
+                        device=device, dtype=per_sample_loss.dtype
+                    )
+                else:
+                    weights = torch.ones_like(per_sample_loss)
+
+                weighted_loss = (per_sample_loss * weights).mean()
+                unweighted_loss = per_sample_loss.mean()
+
+        # Backward with AMP scaling
+        if use_amp:
+            scaler.scale(weighted_loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            scaler.step(optimizer)
+            scaler.update()
         else:
-            # Single-stream: future prediction with gap weighting
-            img_pred, _ = model(img_t, img_tk)
-            per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
-            per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))  # [B]
-
-            # Apply gap-dependent weights
-            if dataset is not None and hasattr(dataset, 'get_loss_weight'):
-                weights = torch.tensor(
-                    [dataset.get_loss_weight(int(g)) for g in gaps],
-                    device=device, dtype=per_sample_loss.dtype
-                )
-            else:
-                weights = torch.ones_like(per_sample_loss)
-
-            # Weighted loss
-            weighted_loss = (per_sample_loss * weights).mean()
-            unweighted_loss = per_sample_loss.mean()
-
-        weighted_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+            weighted_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -188,14 +194,12 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
         actual_model = model.module if hasattr(model, 'module') else model
         model_name = type(actual_model).__name__
 
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast(dtype=torch.bfloat16):
             if model_name == 'VideoMAEModel':
-                # VideoMAE: masked reconstruction
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
-                # Two-stream: both streams predict future
                 pred_m, pred_p, _ = model(img_t, img_tk)
                 loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
                 loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
@@ -411,6 +415,10 @@ def train(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
+    # AMP (BF16) — H100 Tensor Core 최적화
+    scaler = torch.cuda.amp.GradScaler()
+    print(f"AMP enabled (BF16)")
+
     # Resume from checkpoint if specified
     start_epoch = 1
     best_eval_loss = float('inf')
@@ -446,6 +454,8 @@ def train(
                 history.setdefault('timestamps', [])
             if 'best_eval_loss' in checkpoint:
                 best_eval_loss = checkpoint['best_eval_loss']
+            if 'scaler_state_dict' in checkpoint:
+                scaler.load_state_dict(checkpoint['scaler_state_dict'])
             print(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
 
     print(f"\nTraining for {num_epochs} epochs (starting from epoch {start_epoch})")
@@ -483,7 +493,7 @@ def train(
         epoch_start_time = time.time()
 
         # Train
-        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset)
+        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler)
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
@@ -547,6 +557,7 @@ def train(
                 'model_state_dict': model_to_save.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
+                'scaler_state_dict': scaler.state_dict(),
                 'train_loss': avg_loss,
                 'eval_loss': eval_loss,
                 'best_eval_loss': best_eval_loss,
