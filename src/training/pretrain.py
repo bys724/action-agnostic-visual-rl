@@ -22,6 +22,35 @@ except ImportError:
     HAS_TENSORBOARD = False
 
 
+def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
+    """Structural Similarity loss. Returns 1 - SSIM (lower is better).
+
+    Gaussian window로 local statistics를 계산하여
+    luminance, contrast, structure 유사도를 평가.
+    """
+    # Gaussian window
+    coords = torch.arange(window_size, dtype=pred.dtype, device=pred.device) - window_size // 2
+    g = torch.exp(-(coords ** 2) / (2 * 1.5 ** 2))
+    window = (g.unsqueeze(0) * g.unsqueeze(1))  # [K, K]
+    window = window / window.sum()
+    window = window.unsqueeze(0).unsqueeze(0).expand(pred.shape[1], -1, -1, -1)  # [C, 1, K, K]
+
+    pad = window_size // 2
+    mu1 = F.conv2d(pred, window, padding=pad, groups=pred.shape[1])
+    mu2 = F.conv2d(target, window, padding=pad, groups=target.shape[1])
+
+    mu1_sq, mu2_sq, mu1_mu2 = mu1 ** 2, mu2 ** 2, mu1 * mu2
+
+    sigma1_sq = F.conv2d(pred ** 2, window, padding=pad, groups=pred.shape[1]) - mu1_sq
+    sigma2_sq = F.conv2d(target ** 2, window, padding=pad, groups=target.shape[1]) - mu2_sq
+    sigma12 = F.conv2d(pred * target, window, padding=pad, groups=pred.shape[1]) - mu1_mu2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
+               ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+
+    return 1 - ssim_map.mean()
+
+
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None):
     """
     Train for one epoch with multi-gap weighted loss.
@@ -75,8 +104,11 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
                 pred_m, pred_p, _ = model(img_t, img_tk)
-                loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                # MSE + SSIM (구조적 유사도) 혼합 loss
+                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                loss_m = mse_m + 0.1 * ssim_loss(pred_m, img_tk)
+                loss_p = mse_p + 0.1 * ssim_loss(pred_p, img_tk)
                 per_sample_loss = loss_m + loss_p
                 img_pred = pred_p
 
@@ -201,8 +233,10 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
                 pred_m, pred_p, _ = model(img_t, img_tk)
-                loss_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                loss_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                loss_m = mse_m + 0.1 * ssim_loss(pred_m, img_tk)
+                loss_p = mse_p + 0.1 * ssim_loss(pred_p, img_tk)
                 per_sample_loss = loss_m + loss_p
                 img_pred = pred_p
 
