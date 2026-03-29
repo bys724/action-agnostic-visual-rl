@@ -1,0 +1,101 @@
+block-beta
+    columns 5
+
+    %% Row 1: Input
+    space Ft["Frame t"] space Ftk["Frame t+k"] space
+
+    %% Row 2: Preprocessing
+    space P_ch["P Channel\n5ch / Spatial"] space M_ch["M Channel\n3ch / Temporal"] space
+
+    %% Row 3: Stage 1 header
+    space:2 ST1["— Stage 1 —"]:1 space:2
+
+    %% Row 4: Stage 1 transformers
+    space P1["P Trans ×4"] space M1["M Trans ×4"] space
+
+    %% Row 5: CLS Exchange 1
+    space:2 EX1["CLS Exchange"]:1 space:2
+
+    %% Row 6: Stage 2 header
+    space:2 ST2["— Stage 2 —"]:1 space:2
+
+    %% Row 7: Stage 2 transformers
+    space P2["P Trans ×4"] space M2["M Trans ×4"] space
+
+    %% Row 8: CLS Exchange 2
+    space:2 EX2["CLS Exchange"]:1 space:2
+
+    %% Row 9: Stage 3 header
+    space:2 ST3["— Stage 3 —"]:1 space:2
+
+    %% Row 10: Stage 3 transformers
+    space P3["P Trans ×4"] space M3["M Trans ×4"] space
+
+    %% Row 11: CLS Exchange 3
+    space:2 EX3["CLS Exchange"]:1 space:2
+
+    %% Row 12: Outputs
+    PP["P patches"] space FUSED["Fused CLS\n(CLS_M+CLS_P)/2"] space MP["M patches"]
+
+    %% Row 13: Decoders
+    PD["P Decoder\nP patches + CLS\n→ future"] space VLA["Downstream\nFused CLS\n= visual repr."] space MD["M Decoder\nM patches + CLS\n→ future"]
+
+    %% Row 14: Loss
+    space:2 LOSS["Loss = MSE_P + MSE_M"]:1 space:2
+
+    %% Connections
+    Ft --> P_ch
+    Ft --> M_ch
+    Ftk --> M_ch
+
+    P_ch --> P1
+    M_ch --> M1
+    P1 --> EX1
+    M1 --> EX1
+    EX1 --> P2
+    EX1 --> M2
+    P2 --> EX2
+    M2 --> EX2
+    EX2 --> P3
+    EX2 --> M3
+    P3 --> EX3
+    M3 --> EX3
+
+    EX3 --> PP
+    EX3 --> FUSED
+    EX3 --> MP
+
+    PP --> PD
+    MP --> MD
+    FUSED --> PD
+    FUSED --> MD
+    FUSED --> VLA
+
+    PD --> LOSS
+    MD --> LOSS
+    Ftk --> LOSS
+
+    %% Styles
+    style Ft fill:#e3f2fd,stroke:#1565C0,color:#000
+    style Ftk fill:#e3f2fd,stroke:#1565C0,color:#000
+    style P_ch fill:#c8e6c9,stroke:#2E7D32,color:#000
+    style M_ch fill:#bbdefb,stroke:#1565C0,color:#000
+    style ST1 fill:#fff3e0,stroke:#E65100,color:#000
+    style ST2 fill:#fff3e0,stroke:#E65100,color:#000
+    style ST3 fill:#fff3e0,stroke:#E65100,color:#000
+    style P1 fill:#c8e6c9,stroke:#2E7D32,color:#000
+    style M1 fill:#bbdefb,stroke:#1565C0,color:#000
+    style P2 fill:#c8e6c9,stroke:#2E7D32,color:#000
+    style M2 fill:#bbdefb,stroke:#1565C0,color:#000
+    style P3 fill:#c8e6c9,stroke:#2E7D32,color:#000
+    style M3 fill:#bbdefb,stroke:#1565C0,color:#000
+    style EX1 fill:#ffeb3b,stroke:#f57f17,color:#000,stroke-width:2px
+    style EX2 fill:#ffeb3b,stroke:#f57f17,color:#000,stroke-width:2px
+    style EX3 fill:#ffeb3b,stroke:#f57f17,color:#000,stroke-width:2px
+    style PP fill:#c8e6c9,stroke:#2E7D32,color:#000
+    style MP fill:#bbdefb,stroke:#1565C0,color:#000
+    style FUSED fill:#ffcc80,stroke:#E65100,color:#000,stroke-width:2px
+    style PD fill:#e1bee7,stroke:#7B1FA2,color:#000
+    style MD fill:#e1bee7,stroke:#7B1FA2,color:#000
+    style LOSS fill:#ef9a9a,stroke:#c62828,color:#000
+    style VLA fill:#ce93d8,stroke:#6A1B9A,color:#000

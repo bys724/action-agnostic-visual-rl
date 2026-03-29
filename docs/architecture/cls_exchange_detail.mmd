@@ -1,0 +1,38 @@
+flowchart LR
+    subgraph BEFORE["Before"]
+        direction TB
+        M_stream["<b>M Stream</b>\n[CLS_M | p1..pN]"]
+        P_stream["<b>P Stream</b>\n[CLS_P | p1..pN]"]
+    end
+
+    subgraph CORE["CLSExchangeBlock"]
+        direction LR
+        CAT["Concat\n→ [B, 2, D]"]
+        EXCHANGE["<b>Self-Attention</b>\nCLS_M ↔ CLS_P\n+ Residual\n+ MLP + Residual"]
+        CAT --> EXCHANGE
+    end
+
+    subgraph AFTER["After"]
+        direction TB
+        M_new["<b>M Stream</b>\n[<b>CLS_M'</b> | p1..pN]\n<i>aware of P</i>"]
+        P_new["<b>P Stream</b>\n[<b>CLS_P'</b> | p1..pN]\n<i>aware of M</i>"]
+    end
+
+    M_stream -- "CLS_M" --> CAT
+    P_stream -- "CLS_P" --> CAT
+    EXCHANGE -- "CLS_M'" --> M_new
+    EXCHANGE -- "CLS_P'" --> P_new
+
+    %% ===== Styles =====
+    style BEFORE fill:#e8f4fd,stroke:#2196F3,color:#000
+    style AFTER fill:#e8f5e9,stroke:#4CAF50,color:#000
+    style CORE fill:#fff8e1,stroke:#f57f17,color:#000
+
+    style M_stream fill:#bbdefb,stroke:#1565C0,color:#000
+    style P_stream fill:#c8e6c9,stroke:#2E7D32,color:#000
+    style M_new fill:#bbdefb,stroke:#1565C0,color:#000
+    style P_new fill:#c8e6c9,stroke:#2E7D32,color:#000
+
+    style CAT fill:#fff9c4,stroke:#f9a825,color:#000
+    style EXCHANGE fill:#ffeb3b,stroke:#f57f17,color:#000,stroke-width:2px
+
