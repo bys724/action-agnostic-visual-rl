@@ -83,6 +83,10 @@ def main():
     parser.add_argument('--loss-decay', type=float, default=0.0,
                         help='Loss weight decay (0=uniform, >0=exponential)')
 
+    # Loss
+    parser.add_argument('--ssim', action='store_true',
+                        help='Add SSIM loss (MSE + 0.1 * SSIM)')
+
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -229,6 +233,7 @@ def main():
         eval_interval=args.eval_interval,
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
+        use_ssim=args.ssim,
     )
 
     print("\n" + "="*60)

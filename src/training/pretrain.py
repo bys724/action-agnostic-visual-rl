@@ -51,7 +51,7 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
     return 1 - ssim_map.mean()
 
 
-def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None):
+def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None, use_ssim=False):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -104,11 +104,15 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
                 pred_m, pred_p, _ = model(img_t, img_tk)
-                # MSE + SSIM (구조적 유사도) 혼합 loss
                 mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
                 mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                loss_m = mse_m + 0.1 * ssim_loss(pred_m, img_tk)
-                loss_p = mse_p + 0.1 * ssim_loss(pred_p, img_tk)
+                if use_ssim:
+                    # MSE + SSIM (구조적 유사도) 혼합 loss
+                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                    loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                else:
+                    loss_m = mse_m
+                    loss_p = mse_p
                 per_sample_loss = loss_m + loss_p
                 img_pred = pred_p
 
@@ -186,7 +190,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
     return result
 
 
-def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
+def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssim=False):
     """
     Evaluate model on validation/test dataset.
 
@@ -235,8 +239,12 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500):
                 pred_m, pred_p, _ = model(img_t, img_tk)
                 mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
                 mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                loss_m = mse_m + 0.1 * ssim_loss(pred_m, img_tk)
-                loss_p = mse_p + 0.1 * ssim_loss(pred_p, img_tk)
+                if use_ssim:
+                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                    loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                else:
+                    loss_m = mse_m
+                    loss_p = mse_p
                 per_sample_loss = loss_m + loss_p
                 img_pred = pred_p
 
@@ -393,6 +401,7 @@ def train(
     eval_interval=1,
     resume_from=None,
     multi_gpu=True,
+    use_ssim=False,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -410,6 +419,7 @@ def train(
         eval_interval: Evaluate every N epochs
         resume_from: Path to checkpoint to resume training from
         multi_gpu: Use DataParallel if multiple GPUs available
+        use_ssim: Add SSIM loss to MSE (for TwoStream)
 
     Returns:
         model: Trained model
@@ -527,7 +537,7 @@ def train(
         epoch_start_time = time.time()
 
         # Train
-        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler)
+        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler, use_ssim=use_ssim)
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
@@ -536,7 +546,7 @@ def train(
         eval_loss = None
         if eval_dataset and epoch % eval_interval == 0:
             try:
-                eval_result = evaluate(model, eval_dataset, device, batch_size=batch_size)
+                eval_result = evaluate(model, eval_dataset, device, batch_size=batch_size, use_ssim=use_ssim)
                 eval_loss = eval_result['loss']
                 history['eval_loss'].append(eval_loss)
                 print(f"  [Eval] Loss: {eval_loss:.4f}, Weighted: {eval_result['weighted_loss']:.4f}")
