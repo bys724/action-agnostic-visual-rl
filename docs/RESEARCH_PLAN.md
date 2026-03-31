@@ -124,17 +124,50 @@ bash scripts/pretrain_aws.sh --model two-stream
 - [x] EgoDex part1, part4 로컬 추출 완료 (~515GB)
 - [x] DROID v1.0.1 다운로드 완료 (2048 shards, 1.7TB)
 
+### 완료 (추가)
+- [x] Two-Stream v3 30 epoch 완료 (train loss 0.000885, eval loss 0.001870)
+- [x] Two-Stream v3 + SSIM 1 epoch 검증 완료 (학습 정상 확인, 풀 학습은 보류)
+- [x] VideoMAE 30 epoch 완료
+- [x] DROID 프레임 추출 완료 (ext1/ext2/wrist, 95,658 에피소드)
+- [x] Action probing 코드 개선 (MP4→JPG 프레임 로딩, --cls-mode 옵션)
+
+### Action Probing 초기 결과 (2026-03-31, 500 videos, linear probe, 20 epochs)
+
+**모델 간 공정 비교 (patch mean pool 기준)**:
+
+| Encoder | Split | R² | Cosine Sim | 비고 |
+|---------|-------|----|------------|------|
+| VideoMAE | part1 (학습) | 0.416 | 0.494 | |
+| Two-Stream (patch_mean) | part1 (학습) | 0.389 | 0.482 | gap 0.027 |
+| Two-Stream (patch_mean_p) | part1 (학습) | 0.401 | 0.490 | P stream만 |
+| Two-Stream (patch_mean) | part4 (미사용) | 0.237 | 0.369 | 일반화 |
+| VideoMAE | part4 (미사용) | 0.137 | 0.330 | 일반화 |
+
+**Two-Stream CLS 방식별 비교 (part1)**:
+
+| 방식 | R² | 설명 |
+|------|-----|------|
+| CLS average | 0.326 | (m_cls + p_cls) / 2 |
+| CLS concat | 0.157 | [m_cls; p_cls] |
+| CLS m_only | 0.153 | M stream CLS |
+| CLS p_only | 0.169 | P stream CLS |
+| patch_mean (M+P) | 0.389 | 전체 패치 mean pool |
+| patch_mean_m | 0.184 | M 패치만 |
+| patch_mean_p | 0.401 | P 패치만 |
+
+**해석**:
+1. patch mean pool 기준 VideoMAE와 Two-Stream 격차가 작음 (0.416 vs 0.389)
+2. **미사용 데이터(part4)에서 Two-Stream이 우세** (0.237 vs 0.137) → 일반화 성능
+3. CLS average(768-dim 1개)로 patch mean(196개 평균)의 83% 달성 → CLS exchange 효과
+4. P stream > M stream: 외형 정보가 hand pose probing에 더 유리
+5. 모든 조건에서 R² < 0.7 — 데이터 규모 확대/MLP probe 등으로 개선 여지
+
 ### 진행 중
-- [ ] **Two-Stream + VideoMAE 병렬 학습 중** (EgoDex part1, 30ep)
-  - Two-Stream: GPU 0, ~15일 예상 (3.3 batch/sec)
-  - VideoMAE: GPU 1, ~3.4일 예상 (14.7 batch/sec)
-  - 로그: `/mnt/data/logs/pretrain/train_*_20260319_082729.log`
 - [ ] EgoDex part2, 3, 5 CDN 다운로드 + 추출
-- [ ] DROID 프레임 추출 (TFRecord → JPG)
 
 ### 다음 단계
-- [ ] VideoMAE 학습 완료 후 action probing 먼저 실행
-- [ ] Two-Stream 학습 완료 후 Phase 1 Go/No-Go 판단
+- [ ] 데이터 규모 확대 probing (전체 비디오) 또는 MLP probe
+- [ ] DROID action probing (cross-domain)
 
 ---
 

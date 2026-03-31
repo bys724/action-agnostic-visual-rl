@@ -4,28 +4,32 @@ Action Probing Experiment
 
 논문 핵심 주장 검증: "action-agnostic으로 학습해도 행동 정보가 인코딩된다"
 
-EgoDex test 데이터의 (img_t, img_t+1)을 인코더에 넣고,
+EgoDex (img_t, img_t+1)을 인코더에 넣고,
 frozen embedding에서 linear probe로 hand pose delta(action)를 예측할 수 있는지 테스트.
 
 GO/NO-GO 기준: R² > 0.7
 
-인코더 5종:
-    - two-stream: TwoStreamEncoderForOpenVLA (체크포인트 필요)
-    - single-stream: SingleStreamEncoderForOpenVLA (체크포인트 필요)
-    - videomae: VideoMAEEncoderForOpenVLA (체크포인트 필요)
+인코더 4종:
+    - two-stream: TwoStreamEncoder (체크포인트 필요)
+    - videomae: VideoMAEEncoderForVLA (체크포인트 필요)
     - clip: CLIPVisionModel (HuggingFace, pretrained)
     - dinov2: Dinov2Model (HuggingFace, pretrained)
 
 Usage:
-    # 커스텀 인코더
-    python scripts/probe_action.py \\
+    # 학습 데이터(part1)에서 probing
+    python scripts/eval/probe_action.py \\
         --encoder two-stream \\
-        --checkpoint /path/to/best_model.pt \\
-        --egodex-root /workspace/data/egodex
+        --checkpoint /mnt/data/checkpoints/two_stream/.../best_model.pt \\
+        --egodex-root /mnt/data/egodex --egodex-split part1
+
+    # 미사용 데이터(part4)에서 probing
+    python scripts/eval/probe_action.py \\
+        --encoder two-stream \\
+        --checkpoint /mnt/data/checkpoints/two_stream/.../best_model.pt \\
+        --egodex-root /mnt/data/egodex --egodex-split part4
 
     # CLIP / DINOv2 baseline
-    python scripts/probe_action.py --encoder clip
-    python scripts/probe_action.py --encoder dinov2
+    python scripts/eval/probe_action.py --encoder clip --egodex-root /mnt/data/egodex --egodex-split part1
 """
 
 import argparse
@@ -43,6 +47,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
+# Support both docker (/workspace) and local execution
+_project_root = str(Path(__file__).resolve().parents[2])
+sys.path.insert(0, _project_root)
 sys.path.insert(0, "/workspace")
 
 # ============================================================================
@@ -90,27 +97,37 @@ class EgoDexProbingDataset(Dataset):
     def __init__(
         self,
         data_root: str,
-        video_paths: list,
+        frames_root: str,
+        video_ids: list,
+        split: str,
         img_size: int = 224,
     ):
-        self.data_root = Path(data_root)
+        """
+        Args:
+            data_root: EgoDex 원본 경로 (HDF5 포함, e.g. /mnt/data/egodex)
+            frames_root: 추출된 프레임 경로 (e.g. /mnt/data/egodex_frames)
+            video_ids: (task, video_id) 튜플 리스트
+            split: e.g. "part1", "part4"
+            img_size: 출력 이미지 크기
+        """
+        self.frames_root = Path(frames_root)
+        self.split = split
         self.img_size = img_size
 
-        # Build (video_path, frame_idx) pairs with valid actions
+        # Build (frame_dir, frame_idx, action) tuples
         self.samples = []
         skipped_conf = 0
         skipped_read = 0
 
-        for vp in video_paths:
-            video_path = Path(vp)
-            hdf5_path = video_path.with_suffix(".hdf5")
-            if not hdf5_path.exists():
+        for task, vid_id in video_ids:
+            hdf5_path = Path(data_root) / split / task / f"{vid_id}.hdf5"
+            frame_dir = self.frames_root / split / task / str(vid_id)
+
+            if not hdf5_path.exists() or not frame_dir.exists():
                 continue
 
-            # Load HDF5 once to build valid frame indices
             try:
                 with h5py.File(str(hdf5_path), "r") as f:
-                    # Load transforms and confidences for target joints
                     transforms = {}
                     confidences = {}
                     for joint in TARGET_JOINTS:
@@ -121,17 +138,12 @@ class EgoDexProbingDataset(Dataset):
                         transforms[joint] = f[t_key][()]  # (T, 4, 4)
                         confidences[joint] = f[c_key][()]  # (T,)
                     else:
-                        # All joints found - build frame pairs
                         num_frames = transforms[TARGET_JOINTS[0]].shape[0]
-
-                        # Get video frame count to avoid out-of-bounds
-                        cap = cv2.VideoCapture(str(video_path))
-                        vid_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                        cap.release()
-                        num_frames = min(num_frames, vid_frames)
+                        # 추출된 프레임 수로 상한 결정 (cv2.VideoCapture 불필요)
+                        num_extracted = len(list(frame_dir.glob("frame_*.jpg")))
+                        num_frames = min(num_frames, num_extracted)
 
                         for t in range(num_frames - 1):
-                            # Check confidence for both frames
                             valid = True
                             for joint in TARGET_JOINTS:
                                 if (confidences[joint][t] < CONFIDENCE_THRESHOLD or
@@ -143,7 +155,6 @@ class EgoDexProbingDataset(Dataset):
                                 skipped_conf += 1
                                 continue
 
-                            # Compute action (position delta)
                             action = np.zeros(ACTION_DIM, dtype=np.float32)
                             for i, joint in enumerate(TARGET_JOINTS):
                                 pos_t = transforms[joint][t, :3, 3]
@@ -151,32 +162,35 @@ class EgoDexProbingDataset(Dataset):
                                 action[i * 3 : (i + 1) * 3] = pos_t1 - pos_t
 
                             self.samples.append({
-                                "video_path": str(video_path),
+                                "frame_dir": str(frame_dir),
                                 "frame_idx": t,
                                 "action": action,
                             })
-            except Exception as e:
+            except Exception:
                 skipped_read += 1
                 continue
 
-        print(f"EgoDexProbingDataset: {len(self.samples)} samples from {len(video_paths)} videos")
+        print(f"EgoDexProbingDataset: {len(self.samples)} samples from {len(video_ids)} videos")
         if skipped_conf > 0:
             print(f"  Skipped (low confidence): {skipped_conf}")
         if skipped_read > 0:
             print(f"  Skipped (read error): {skipped_read}")
 
-    def _load_frame(self, video_path: str, frame_idx: int) -> torch.Tensor:
-        """Load a single frame from video."""
-        cap = cv2.VideoCapture(video_path)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        cap.release()
-
-        if not ret:
-            raise ValueError(f"Failed to read frame {frame_idx} from {video_path}")
+    def _load_frame(self, frame_dir: str, frame_idx: int) -> torch.Tensor:
+        """Load a pre-extracted JPG frame."""
+        frame_path = Path(frame_dir) / f"frame_{frame_idx:06d}.jpg"
+        frame = cv2.imread(str(frame_path))
+        if frame is None:
+            raise ValueError(f"Failed to read: {frame_path}")
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame = cv2.resize(frame, (self.img_size, self.img_size))
+        # 추출 프레임은 256x256, probing은 224x224 center crop
+        if frame.shape[0] != self.img_size:
+            h, w = frame.shape[:2]
+            top = (h - self.img_size) // 2
+            left = (w - self.img_size) // 2
+            frame = frame[top:top + self.img_size, left:left + self.img_size]
+
         frame = torch.from_numpy(frame).float() / 255.0  # [H, W, C]
         frame = frame.permute(2, 0, 1)  # [C, H, W]
         return frame
@@ -186,39 +200,61 @@ class EgoDexProbingDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
-        video_path = sample["video_path"]
+        frame_dir = sample["frame_dir"]
         t = sample["frame_idx"]
 
-        img_t = self._load_frame(video_path, t)
-        img_t1 = self._load_frame(video_path, t + 1)
+        img_t = self._load_frame(frame_dir, t)
+        img_t1 = self._load_frame(frame_dir, t + 1)
 
-        # Stack as 6-channel input
         pixel_values = torch.cat([img_t, img_t1], dim=0)  # [6, H, W]
         action = torch.from_numpy(sample["action"])  # [18]
 
         return {"pixel_values": pixel_values, "action": action}
 
 
-def build_datasets(egodex_root: str, max_videos: int = None, train_ratio: float = 0.8):
-    """Build train/eval datasets with video-level split."""
-    data_root = Path(egodex_root)
-    test_dir = data_root / "test"
+def build_datasets(
+    egodex_root: str,
+    frames_root: str,
+    egodex_split: str = "part1",
+    max_videos: int = None,
+    train_ratio: float = 0.8,
+):
+    """Build train/eval datasets with video-level split.
 
-    video_paths = sorted(test_dir.glob("**/*.mp4"))
+    Args:
+        egodex_root: 원본 경로 (HDF5 포함, e.g. /mnt/data/egodex)
+        frames_root: 추출된 프레임 경로 (e.g. /mnt/data/egodex_frames)
+        egodex_split: Which split to use (e.g. "part1", "part4")
+        max_videos: Limit number of videos (for debugging)
+        train_ratio: Train/eval split ratio
+    """
+    split_dir = Path(egodex_root) / egodex_split
+    if not split_dir.exists():
+        raise FileNotFoundError(f"Split directory not found: {split_dir}")
+
+    # (task, video_id) 쌍 수집
+    video_ids = []
+    for mp4_path in sorted(split_dir.glob("**/*.mp4")):
+        task = mp4_path.parent.name
+        vid_id = mp4_path.stem
+        video_ids.append((task, vid_id))
+
+    print(f"\nFound {len(video_ids)} videos in {split_dir}")
+
     if max_videos:
-        video_paths = video_paths[:max_videos]
+        video_ids = video_ids[:max_videos]
 
     # Video-level 80/20 split
-    n_train = int(len(video_paths) * train_ratio)
+    n_train = int(len(video_ids) * train_ratio)
     rng = np.random.RandomState(42)
-    indices = rng.permutation(len(video_paths))
-    train_videos = [video_paths[i] for i in indices[:n_train]]
-    eval_videos = [video_paths[i] for i in indices[n_train:]]
+    indices = rng.permutation(len(video_ids))
+    train_ids = [video_ids[i] for i in indices[:n_train]]
+    eval_ids = [video_ids[i] for i in indices[n_train:]]
 
-    print(f"\nDataset split: {len(train_videos)} train / {len(eval_videos)} eval videos")
+    print(f"Dataset split: {len(train_ids)} train / {len(eval_ids)} eval videos")
 
-    train_ds = EgoDexProbingDataset(egodex_root, train_videos)
-    eval_ds = EgoDexProbingDataset(egodex_root, eval_videos)
+    train_ds = EgoDexProbingDataset(egodex_root, frames_root, train_ids, egodex_split)
+    eval_ds = EgoDexProbingDataset(egodex_root, frames_root, eval_ids, egodex_split)
 
     return train_ds, eval_ds
 
@@ -227,7 +263,7 @@ def build_datasets(egodex_root: str, max_videos: int = None, train_ratio: float 
 # 2. Encoder loading
 # ============================================================================
 
-def load_encoder(name: str, checkpoint: str = None, device: str = "cuda"):
+def load_encoder(name: str, checkpoint: str = None, device: str = "cuda", cls_mode: str = "average"):
     """
     Load encoder by name.
 
@@ -235,28 +271,29 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda"):
         (encoder, embed_dim) - frozen encoder module and its output dimension
     """
     if name == "two-stream":
-        from src.models.openvla_encoder import TwoStreamEncoderForOpenVLA
+        from src.models.two_stream import TwoStreamEncoder
         assert checkpoint, "--checkpoint required for two-stream"
-        encoder = TwoStreamEncoderForOpenVLA.from_checkpoint(checkpoint, device=device)
-        embed_dim = encoder.embed_dim
-        return encoder, embed_dim
-
-    elif name == "single-stream":
-        from src.models.openvla_encoder import SingleStreamEncoderForOpenVLA
-        assert checkpoint, "--checkpoint required for single-stream"
-        encoder = SingleStreamEncoderForOpenVLA.from_checkpoint(checkpoint, device=device)
-        embed_dim = encoder.embed_dim
+        encoder = TwoStreamEncoder(checkpoint_path=checkpoint)
+        encoder.to(device)
+        encoder.eval()
+        base_dim = encoder._embed_dim  # 768
+        if cls_mode == "concat":
+            embed_dim = base_dim * 2  # 1536
+        else:  # average, m_only, p_only, patch_mean*
+            embed_dim = base_dim  # 768
         return encoder, embed_dim
 
     elif name == "videomae":
-        from src.models.openvla_encoder import VideoMAEEncoderForOpenVLA
+        from src.models.videomae import VideoMAEEncoderForVLA
         assert checkpoint, "--checkpoint required for videomae"
-        encoder = VideoMAEEncoderForOpenVLA.from_checkpoint(checkpoint, device=device)
+        encoder = VideoMAEEncoderForVLA(checkpoint_path=checkpoint)
+        encoder.to(device)
+        encoder.eval()
         embed_dim = encoder.embed_dim
         return encoder, embed_dim
 
     elif name == "clip":
-        from transformers import CLIPVisionModel, CLIPImageProcessor
+        from transformers import CLIPVisionModel
         model_id = "openai/clip-vit-base-patch16"
         encoder = CLIPVisionModel.from_pretrained(model_id)
         encoder.to(device)
@@ -266,7 +303,7 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda"):
         return encoder, embed_dim
 
     elif name == "dinov2":
-        from transformers import AutoModel, AutoImageProcessor
+        from transformers import AutoModel
         model_id = "facebook/dinov2-base"
         encoder = AutoModel.from_pretrained(model_id)
         encoder.to(device)
@@ -279,7 +316,7 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda"):
 
 
 @torch.no_grad()
-def encode_batch(encoder, name: str, pixel_values: torch.Tensor) -> torch.Tensor:
+def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str = "average") -> torch.Tensor:
     """
     Encode a batch of 6-channel images into embeddings.
 
@@ -287,13 +324,44 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor) -> torch.Tensor
         encoder: loaded encoder
         name: encoder name
         pixel_values: [B, 6, 224, 224]
+        cls_mode: Two-Stream CLS 조합 방식
+            "average" - (m_cls + p_cls) / 2 → [B, 768]
+            "concat"  - [m_cls; p_cls] → [B, 1536]
+            "m_only"  - m_cls only → [B, 768]
+            "p_only"  - p_cls only → [B, 768]
 
     Returns:
         embeddings: [B, D]
     """
-    if name in ("two-stream", "single-stream"):
-        # CLS 토큰 사용 (global representation)
-        return encoder.get_cls_embedding(pixel_values)  # [B, D]
+    if name == "two-stream":
+        image_current = pixel_values[:, :3]
+        image_future = pixel_values[:, 3:]
+        m_channel, p_channel = encoder.preprocessing(image_current, image_future)
+        m_tokens, p_tokens = encoder.encoder(m_channel, p_channel)
+        m_cls = m_tokens[:, 0]  # [B, D]
+        p_cls = p_tokens[:, 0]  # [B, D]
+
+        m_patches = m_tokens[:, 1:]  # [B, N, D]
+        p_patches = p_tokens[:, 1:]  # [B, N, D]
+
+        if cls_mode == "average":
+            return (m_cls + p_cls) / 2
+        elif cls_mode == "concat":
+            return torch.cat([m_cls, p_cls], dim=-1)  # [B, 2D]
+        elif cls_mode == "m_only":
+            return m_cls
+        elif cls_mode == "p_only":
+            return p_cls
+        elif cls_mode == "patch_mean":
+            # M+P patch mean pool → VideoMAE와 동일 조건
+            all_patches = torch.cat([m_patches, p_patches], dim=1)  # [B, 2N, D]
+            return all_patches.mean(dim=1)  # [B, D]
+        elif cls_mode == "patch_mean_m":
+            return m_patches.mean(dim=1)
+        elif cls_mode == "patch_mean_p":
+            return p_patches.mean(dim=1)
+        else:
+            raise ValueError(f"Unknown cls_mode: {cls_mode}")
 
     elif name == "videomae":
         # VideoMAE는 CLS 토큰 없음 → patch mean pooling
@@ -301,13 +369,9 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor) -> torch.Tensor
         return patch_emb.mean(dim=1)  # [B, D]
 
     elif name == "clip":
-        from transformers import CLIPImageProcessor
-        # Split into two frames
         img_t = pixel_values[:, :3]   # [B, 3, H, W]
         img_t1 = pixel_values[:, 3:]  # [B, 3, H, W]
 
-        # CLIP expects specific normalization - apply processor's normalization
-        # CLIPVisionModel accepts pixel_values directly (already [B,3,H,W])
         mean = torch.tensor([0.48145466, 0.4578275, 0.40821073], device=pixel_values.device).view(1, 3, 1, 1)
         std = torch.tensor([0.26862954, 0.26130258, 0.27577711], device=pixel_values.device).view(1, 3, 1, 1)
         img_t_norm = (img_t - mean) / std
@@ -321,7 +385,6 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor) -> torch.Tensor
         img_t = pixel_values[:, :3]
         img_t1 = pixel_values[:, 3:]
 
-        # DINOv2 normalization (ImageNet)
         mean = torch.tensor([0.485, 0.456, 0.406], device=pixel_values.device).view(1, 3, 1, 1)
         std = torch.tensor([0.229, 0.224, 0.225], device=pixel_values.device).view(1, 3, 1, 1)
         img_t_norm = (img_t - mean) / std
@@ -407,7 +470,7 @@ def compute_metrics(predictions: np.ndarray, targets: np.ndarray) -> dict:
 # 5. Training / Evaluation loop
 # ============================================================================
 
-def extract_embeddings(encoder, encoder_name, dataloader, device):
+def extract_embeddings(encoder, encoder_name, dataloader, device, cls_mode="average"):
     """Extract frozen embeddings for the entire dataset."""
     all_embeddings = []
     all_actions = []
@@ -417,7 +480,7 @@ def extract_embeddings(encoder, encoder_name, dataloader, device):
         pixel_values = batch["pixel_values"].to(device)
         actions = batch["action"]
 
-        emb = encode_batch(encoder, encoder_name, pixel_values)  # [B, D]
+        emb = encode_batch(encoder, encoder_name, pixel_values, cls_mode=cls_mode)
         all_embeddings.append(emb.cpu())
         all_actions.append(actions)
 
@@ -501,11 +564,15 @@ def main():
     parser = argparse.ArgumentParser(description="Action Probing Experiment")
 
     parser.add_argument("--encoder", type=str, required=True,
-                        choices=["two-stream", "single-stream", "videomae", "clip", "dinov2"])
+                        choices=["two-stream", "videomae", "clip", "dinov2"])
     parser.add_argument("--checkpoint", type=str, default=None,
-                        help="Encoder checkpoint path (required for custom encoders)")
-    parser.add_argument("--egodex-root", type=str, default="/workspace/data/egodex",
-                        help="EgoDex data root")
+                        help="Encoder checkpoint path (required for two-stream, videomae)")
+    parser.add_argument("--egodex-root", type=str, default="/mnt/data/egodex",
+                        help="EgoDex 원본 경로 (MP4+HDF5)")
+    parser.add_argument("--frames-root", type=str, default="/mnt/data/egodex_frames",
+                        help="추출된 프레임 경로 (JPG)")
+    parser.add_argument("--egodex-split", type=str, default="part1",
+                        help="EgoDex split to use (e.g. part1, part4)")
     parser.add_argument("--epochs", type=int, default=20,
                         help="Probing epochs (default: 20)")
     parser.add_argument("--batch-size", type=int, default=64,
@@ -517,6 +584,10 @@ def main():
                         help="Probe type (default: linear)")
     parser.add_argument("--max-videos", type=int, default=None,
                         help="Limit number of videos (for debugging)")
+    parser.add_argument("--cls-mode", type=str, default="average",
+                        choices=["average", "concat", "m_only", "p_only",
+                                 "patch_mean", "patch_mean_m", "patch_mean_p"],
+                        help="Two-Stream embedding 추출 방식 (default: average)")
     parser.add_argument("--output-dir", type=str, default="data/probing_results",
                         help="Output directory")
 
@@ -527,13 +598,15 @@ def main():
     print(f"Encoder: {args.encoder}")
     print(f"Probe: {args.probe}")
     print(f"Checkpoint: {args.checkpoint or '(pretrained)'}")
+    print(f"EgoDex split: {args.egodex_split}")
+    print(f"CLS mode: {args.cls_mode}")
 
     # ---- 1. Load encoder ----
     print("\n" + "=" * 60)
     print("Loading encoder...")
     print("=" * 60)
     t0 = time.time()
-    encoder, embed_dim = load_encoder(args.encoder, args.checkpoint, device)
+    encoder, embed_dim = load_encoder(args.encoder, args.checkpoint, device, cls_mode=args.cls_mode)
     # Freeze encoder
     for p in encoder.parameters():
         p.requires_grad = False
@@ -545,7 +618,7 @@ def main():
     print("Building datasets...")
     print("=" * 60)
     t0 = time.time()
-    train_ds, eval_ds = build_datasets(args.egodex_root, args.max_videos)
+    train_ds, eval_ds = build_datasets(args.egodex_root, args.frames_root, args.egodex_split, args.max_videos)
     print(f"Datasets built in {time.time() - t0:.1f}s")
 
     if len(train_ds) == 0 or len(eval_ds) == 0:
@@ -561,8 +634,8 @@ def main():
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
     eval_loader = DataLoader(eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    train_emb, train_act = extract_embeddings(encoder, args.encoder, train_loader, device)
-    eval_emb, eval_act = extract_embeddings(encoder, args.encoder, eval_loader, device)
+    train_emb, train_act = extract_embeddings(encoder, args.encoder, train_loader, device, cls_mode=args.cls_mode)
+    eval_emb, eval_act = extract_embeddings(encoder, args.encoder, eval_loader, device, cls_mode=args.cls_mode)
 
     print(f"Extracted in {time.time() - t0:.1f}s")
     print(f"  Train: {train_emb.shape} embeddings, {train_act.shape} actions")
@@ -604,6 +677,7 @@ def main():
     print("=" * 60)
     print(f"Encoder:    {args.encoder}")
     print(f"Probe:      {args.probe}")
+    print(f"Split:      {args.egodex_split}")
     print(f"R²:         {best_metrics['r2']:.4f}  {'PASS' if best_metrics['r2'] > 0.7 else 'FAIL'} (threshold: 0.7)")
     print(f"MSE:        {best_metrics['mse']:.6f}")
     print(f"Cosine Sim: {best_metrics['cosine_sim']:.4f}")
@@ -619,7 +693,9 @@ def main():
     result = {
         "encoder": args.encoder,
         "probe": args.probe,
+        "cls_mode": args.cls_mode,
         "checkpoint": args.checkpoint,
+        "egodex_split": args.egodex_split,
         "epochs": args.epochs,
         "lr": args.lr,
         "batch_size": args.batch_size,
@@ -631,7 +707,7 @@ def main():
         **best_metrics,
     }
 
-    result_path = output_dir / f"probe_{args.encoder}_{args.probe}_{timestamp}.json"
+    result_path = output_dir / f"probe_{args.encoder}_{args.cls_mode}_{args.probe}_{args.egodex_split}_{timestamp}.json"
     with open(result_path, "w") as f:
         json.dump(result, f, indent=2)
     print(f"\nResults saved: {result_path}")
