@@ -27,28 +27,37 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
 
     Gaussian window로 local statistics를 계산하여
     luminance, contrast, structure 유사도를 평가.
+    FP32 강제: AMP 환경에서 BF16 precision 문제 방지.
     """
-    # Gaussian window
-    coords = torch.arange(window_size, dtype=pred.dtype, device=pred.device) - window_size // 2
-    g = torch.exp(-(coords ** 2) / (2 * 1.5 ** 2))
-    window = (g.unsqueeze(0) * g.unsqueeze(1))  # [K, K]
-    window = window / window.sum()
-    window = window.unsqueeze(0).unsqueeze(0).expand(pred.shape[1], -1, -1, -1)  # [C, 1, K, K]
+    # AMP autocast 비활성화 + FP32 강제 (BF16에서 sigma_sq 음수 → NaN 방지)
+    with torch.cuda.amp.autocast(enabled=False):
+        pred = pred.float()
+        target = target.float()
 
-    pad = window_size // 2
-    mu1 = F.conv2d(pred, window, padding=pad, groups=pred.shape[1])
-    mu2 = F.conv2d(target, window, padding=pad, groups=target.shape[1])
+        # Gaussian window
+        coords = torch.arange(window_size, dtype=torch.float32, device=pred.device) - window_size // 2
+        g = torch.exp(-(coords ** 2) / (2 * 1.5 ** 2))
+        window = (g.unsqueeze(0) * g.unsqueeze(1))  # [K, K]
+        window = window / window.sum()
+        window = window.unsqueeze(0).unsqueeze(0).expand(pred.shape[1], -1, -1, -1)  # [C, 1, K, K]
 
-    mu1_sq, mu2_sq, mu1_mu2 = mu1 ** 2, mu2 ** 2, mu1 * mu2
+        pad = window_size // 2
+        mu1 = F.conv2d(pred, window, padding=pad, groups=pred.shape[1])
+        mu2 = F.conv2d(target, window, padding=pad, groups=target.shape[1])
 
-    sigma1_sq = F.conv2d(pred ** 2, window, padding=pad, groups=pred.shape[1]) - mu1_sq
-    sigma2_sq = F.conv2d(target ** 2, window, padding=pad, groups=target.shape[1]) - mu2_sq
-    sigma12 = F.conv2d(pred * target, window, padding=pad, groups=pred.shape[1]) - mu1_mu2
+        mu1_sq, mu2_sq, mu1_mu2 = mu1 ** 2, mu2 ** 2, mu1 * mu2
 
-    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
-               ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+        # clamp: E[X²] - E[X]² 계산에서 부동소수점 오차로 음수 가능
+        sigma1_sq = F.conv2d(pred ** 2, window, padding=pad, groups=pred.shape[1]) - mu1_sq
+        sigma2_sq = F.conv2d(target ** 2, window, padding=pad, groups=target.shape[1]) - mu2_sq
+        sigma1_sq = sigma1_sq.clamp(min=0)
+        sigma2_sq = sigma2_sq.clamp(min=0)
+        sigma12 = F.conv2d(pred * target, window, padding=pad, groups=pred.shape[1]) - mu1_mu2
 
-    return 1 - ssim_map.mean()
+        ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
+                   ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+
+        return 1 - ssim_map.mean()
 
 
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None, use_ssim=False):
@@ -460,8 +469,10 @@ def train(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
     # AMP (BF16) — H100 Tensor Core 최적화
-    scaler = torch.cuda.amp.GradScaler()
-    print(f"AMP enabled (BF16)")
+    # BF16은 FP32와 동일한 dynamic range → GradScaler 불필요
+    # GradScaler + BF16 조합은 mixed-precision loss (SSIM 등)에서 NaN 유발 가능
+    scaler = None
+    print(f"AMP enabled (BF16, no GradScaler)")
 
     # Resume from checkpoint if specified
     start_epoch = 1
@@ -498,7 +509,7 @@ def train(
                 history.setdefault('timestamps', [])
             if 'best_eval_loss' in checkpoint:
                 best_eval_loss = checkpoint['best_eval_loss']
-            if 'scaler_state_dict' in checkpoint:
+            if 'scaler_state_dict' in checkpoint and scaler is not None:
                 scaler.load_state_dict(checkpoint['scaler_state_dict'])
             print(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
 
@@ -601,7 +612,7 @@ def train(
                 'model_state_dict': model_to_save.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-                'scaler_state_dict': scaler.state_dict(),
+                'scaler_state_dict': scaler.state_dict() if scaler is not None else None,
                 'train_loss': avg_loss,
                 'eval_loss': eval_loss,
                 'best_eval_loss': best_eval_loss,
