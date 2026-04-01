@@ -162,12 +162,50 @@ bash scripts/pretrain_aws.sh --model two-stream
 4. P stream > M stream: 외형 정보가 hand pose probing에 더 유리
 5. 모든 조건에서 R² < 0.7 — 데이터 규모 확대/MLP probe 등으로 개선 여지
 
+### Gap별 Embedding 비교 (part4, 미사용 데이터, 2026-04-01)
+
+| Embedding | dim | gap=1 | gap=5 | gap=10 |
+|-----------|-----|-------|-------|--------|
+| TS CLS average | 768 | 0.159 | 0.354 | 0.364 |
+| TS CLS concat | 1536 | -0.150 | 0.330 | 0.353 |
+| TS m_only (CLS) | 768 | 0.046 | 0.276 | 0.359 |
+| TS p_only (CLS) | 768 | -0.266 | 0.311 | 0.325 |
+| TS patch_mean | 768 | 0.225 | 0.466 | 0.532 |
+| **TS patch_mean_concat** | **1536** | **0.117** | **0.489** | **0.585** |
+| VM patch_mean | 768 | 0.138 | 0.474 | 0.571 |
+
+**추가 해석**:
+1. **gap 효과**: gap=1의 delta는 노이즈 수준. gap=10에서 전반적으로 R²가 2~4배 상승
+2. **M stream의 temporal 특성**: gap=1 최하위(0.046) → gap=10 P를 추월(0.359 > 0.325). M/P 분리 설계가 의도대로 작동
+3. **patch_mean_concat(0.585) > VideoMAE(0.571)**: M/P 분리 보존 시 Two-Stream이 역전
+4. **CLS concat < CLS average**: CLS exchange로 이미 동질화되어 concat이 차원만 증가. CLS는 average 방식이 적합
+5. **CLS average(0.364)는 patch_mean(0.532)의 68%**: CLS bottleneck에 개선 여지
+
 ### 진행 중
+- [ ] Architecture ablation 학습 (A: d=6,s=3 / B: d=6,s=2 / C: d=4,s=2)
+  - A, B: epoch 1 거의 완료, C는 A/B 완료 후 자동 시작 예정
 - [ ] EgoDex part2, 3, 5 CDN 다운로드 + 추출
 
 ### 다음 단계
-- [ ] 데이터 규모 확대 probing (전체 비디오) 또는 MLP probe
-- [ ] DROID action probing (cross-domain)
+- [ ] Ablation A/B/C probing 비교 → depth vs exchange 효과 분리
+- [ ] DROID action probing (cross-domain, 로봇 7-DoF velocity)
+- [ ] Full training 설정 확정 → 본 학습 시작
+
+---
+
+## Architecture Ablation (진행 중)
+
+**목적**: depth(표현력)와 CLS exchange 빈도의 효과 분리
+
+| Config | depth | stages | blk/stage | exchange | Params |
+|--------|-------|--------|-----------|----------|--------|
+| 기존 | 12 | 3 | 4 | 3 | 193M |
+| A | 6 | 3 | 2 | 3 | 135M |
+| B | 6 | 2 | 3 | 2 | 128M |
+| C | 4 | 2 | 2 | 2 | 100M |
+
+- **A vs B** (같은 depth=6): exchange 빈도 효과 (3회 vs 2회)
+- **A vs C** (같은 exchange=2회): depth 효과 (6 vs 4) — B와 C 비교
 
 ---
 
@@ -178,6 +216,38 @@ bash scripts/pretrain_aws.sh --model two-stream
 | M-only | P 채널 제거 |
 | P-only | M 채널 제거 |
 | No Exchange | CLS 교환 없이 concat만 |
+
+---
+
+## 아이디어 후보 (검증 필요)
+
+### Cross-Stream Masked Reconstruction Loss
+
+**아이디어**: MAE 스타일의 마스킹 loss를 Two-Stream에 추가. M/P stream에서 서로 다른 위치를 마스킹하여 cross-stream 정보 교환 강화.
+
+**동기**:
+- 현재 CLS average가 patch_mean의 68% 수준 (0.364 vs 0.532) → CLS의 정보 밀도 부족
+- 마스킹이 CLS에 더 구체적인 spatial info를 압축하도록 유도할 수 있음
+
+**예상 작동 방식**:
+- M stream: 위치 {1,5,9} 마스킹, P stream: 위치 {3,7,11} 마스킹
+- 각 stream은 자신의 마스킹 부분을 복원할 때 (1) 주변 패치 context, (2) CLS 경유 cross-stream 정보 활용
+- 기존 future prediction loss와 병행
+
+**기대 효과**:
+1. 각 stream 내 local spatial reasoning 강화 (확실)
+2. CLS의 spatial info 밀도 향상 → CLS probing 성능 개선 (가능성)
+3. M/P 표현의 complementarity 강화 (가능성)
+
+**한계/주의점**:
+- 현재 cross-stream 정보는 CLS exchange만 통과 (patch-level cross-attention 없음)
+  → P의 특정 패치가 M의 같은 위치 복원을 "직접" 돕기 어려움
+- 이미 future prediction이라는 어려운 task가 있는데 masking 추가 시 학습 난이도 증가
+- 학습 안정성, loss 가중치 밸런싱 필요
+
+**실행 조건**: Architecture ablation + full training 설정 확정 후. 현재 변수가 많은 상태에서 추가하면 효과 분리 불가.
+
+**참고**: DINOv2의 iBOT loss도 masked patch prediction이지만 pixel reconstruction이 아닌 feature-level distillation. 우리는 pixel target이 있으므로 MAE 방식이 더 직접적.
 
 ---
 
