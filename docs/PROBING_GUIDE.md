@@ -172,79 +172,118 @@ python scripts/probe_action_bridge.py \
     --probe linear
 ```
 
-## 결과 해석
+## 초기 실험 결과 (2026-03-31, d=12 s=3, 30ep, 500 videos)
 
-### Success Criteria (R² > 0.7)
+### Baseline 비교 (part4, 미사용 데이터, gap=1)
 
-**예상 결과**:
+| Encoder | Embedding | R² | Cosine Sim |
+|---------|-----------|-----|------------|
+| Two-Stream | patch_mean | 0.249 | 0.363 |
+| Two-Stream | CLS average | 0.143 | 0.303 |
+| VideoMAE | patch_mean | 0.090 | 0.301 |
+| CLIP | CLS concat | -1.744 | 0.137 |
+| DINOv2 | CLS concat | -99.154 | 0.008 |
 
-| Encoder | EgoDex R² | DROID R² | Bridge R² | Cross-Domain Gap |
-|---------|-----------|----------|-----------|------------------|
-| Two-Stream | **0.82** | **0.78** | **0.76** | **0.04~0.06** ✅ |
-| Single-Stream | 0.78 | 0.70 | 0.68 | 0.08~0.10 ⚠️ |
-| VideoMAE | 0.75 | 0.65 | 0.62 | 0.10~0.13 ⚠️ |
-| CLIP | 0.68 | 0.58 | 0.55 | 0.10~0.13 ❌ |
-| DINOv2 | 0.71 | 0.61 | 0.58 | 0.10~0.13 ❌ |
+EgoDex 학습 모델 >> pretrained baseline. CLIP/DINOv2는 hand pose delta에 무용.
 
-**Key Insights**:
-1. **Within-domain**: Two-Stream이 가장 높은 R² → Action-agnostic 학습이 action 정보 인코딩
-2. **Cross-domain (DROID)**: 사람 손 → 로봇 팔 전이 가능 확인
-3. **Cross-embodiment (Bridge)**: Franka뿐 아니라 WidowX에도 전이 (추가 증거)
-4. **Baseline comparison**: Pretrained vision models보다 우수 → Task-specific pretraining 효과
+### Gap별 Embedding 비교 (part4, 미사용 데이터)
 
-### 논문 Claim
+| Embedding | dim | gap=1 | gap=5 | gap=10 |
+|-----------|-----|-------|-------|--------|
+| TS CLS average | 768 | 0.159 | 0.354 | 0.364 |
+| TS CLS concat | 1536 | -0.150 | 0.330 | 0.353 |
+| TS m_only (CLS) | 768 | 0.046 | 0.276 | 0.359 |
+| TS p_only (CLS) | 768 | -0.266 | 0.311 | 0.325 |
+| TS patch_mean | 768 | 0.225 | 0.466 | 0.532 |
+| **TS patch_mean_concat** | **1536** | **0.117** | **0.489** | **0.585** |
+| VM patch_mean | 768 | 0.138 | 0.474 | 0.571 |
 
-> "Our two-stream architecture learns action-agnostic visual representations that **implicitly encode motion information** (EgoDex R²=0.82) and **transfer across robot domains** (DROID R²=0.78). This demonstrates that separating temporal (M) and spatial (P) pathways creates more generalizable representations than single-stream baselines."
+### 해석
 
-## 결과 저장
+**1. Gap 효과**: gap=1의 delta는 노이즈 수준 (mean ~0.0006). gap이 커질수록 의미 있는 변화를 포착하게 되어 R²가 크게 상승. full training 후 평가 시 **gap=5, 10을 기본으로 사용**할 것.
 
-모든 probing 결과는 JSON으로 저장됩니다:
+**2. M stream의 temporal 특성**: gap=1에서 M은 최하위(0.046)지만 gap=10에서는 P를 추월(0.359 > 0.325). M channel이 temporal change를 인코딩하므로, 변화량이 작을 때는 정보가 빈약하지만 충분한 간격에서는 motion 정보가 드러남. **M/P 분리 설계가 의도대로 작동**한다는 근거.
 
-```
-data/probing_results/
-├── probe_two-stream_linear_20260224_143022.json     # EgoDex
-├── probe_single-stream_linear_20260224_150315.json
-├── probe_videomae_linear_20260224_153508.json
-├── probe_clip_linear_20260224_160112.json
-├── probe_dinov2_linear_20260224_162345.json
-├── probe_bridge_two-stream_linear_20260224_165432.json  # Bridge
-├── probe_bridge_single-stream_linear_20260224_172158.json
-└── ...
-```
+**3. patch_mean_concat > patch_mean**: M/P를 분리 보존한 concat(0.585)이 혼합 mean(0.532)보다 우수. Patch level에서 M/P는 서로 다른 정보를 담고 있어서 probe가 독립적으로 활용 가능.
 
-## Troubleshooting
+**4. CLS concat < CLS average**: CLS는 exchange를 거치며 이미 비슷해져서 concat이 차원만 늘림. CLS average가 768-dim으로 compact하면서 효율적 → VLA에서 CLS를 representation으로 쓸 때 average 방식이 적합.
 
-### EgoDex Probing 실패 (R² < 0.7)
+**5. Two-Stream vs VideoMAE**: patch_mean 기준 VideoMAE가 약간 우세(0.571 vs 0.532)하지만, patch_mean_concat 시 Two-Stream이 역전(0.585 vs 0.571). M/P 분리 구조의 이점이 적절한 embedding 추출 방식에서 드러남.
 
-**원인**:
-- Pretraining이 수렴하지 않음
-- Confidence threshold 너무 높음
+## 실행 방법
 
-**해결**:
-```python
-# probe_action.py Line 62 수정
-CONFIDENCE_THRESHOLD = 0.2  # 0.3 → 0.2
-```
+### 기본 사용
 
-### Bridge Probing 실패 (데이터 로드 에러)
-
-**원인**: Bridge action 파일 형식이 다를 수 있음
-
-**확인**:
 ```bash
-# Action 파일 구조 확인
-python -c "
-import pickle
-data = pickle.load(open('path/to/action.pkl', 'rb'))
-print(type(data), data.keys() if isinstance(data, dict) else data.shape)
-"
+# Docker 컨테이너 내에서 실행
+# Two-Stream probing (다양한 embedding/gap 조합)
+python scripts/eval/probe_action.py \
+    --encoder two-stream \
+    --checkpoint /mnt/data/checkpoints/two_stream/.../best_model.pt \
+    --egodex-root /mnt/data/egodex \
+    --frames-root /mnt/data/egodex_frames \
+    --egodex-split part4 \
+    --cls-mode patch_mean_concat \
+    --gap 10 \
+    --max-videos 500 --epochs 20
+
+# VideoMAE
+python scripts/eval/probe_action.py \
+    --encoder videomae \
+    --checkpoint /mnt/data/checkpoints/videomae/.../best_model.pt \
+    --egodex-root /mnt/data/egodex \
+    --frames-root /mnt/data/egodex_frames \
+    --egodex-split part4 \
+    --gap 10 \
+    --max-videos 500 --epochs 20
+
+# Baseline (CLIP, DINOv2)
+python scripts/eval/probe_action.py --encoder clip ...
+python scripts/eval/probe_action.py --encoder dinov2 ...
 ```
 
-**수정**: `probe_action_bridge.py` Line 73-78의 파일명/key 조정
+### 주요 옵션
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--cls-mode` | embedding 추출 방식 | average |
+| `--gap` | 프레임 간격 | 1 |
+| `--egodex-split` | 데이터 파티션 (part1~5) | part1 |
+| `--depth` | Two-Stream depth (ablation용) | 12 |
+| `--num-stages` | CLS exchange 횟수 (ablation용) | 3 |
+| `--max-videos` | 비디오 수 제한 (디버깅/간이실험) | None (전체) |
+
+### cls-mode 선택 가이드
+
+| cls-mode | 차원 | 용도 |
+|----------|------|------|
+| `average` | 768 | CLS (m+p)/2, compact representation |
+| `concat` | 1536 | CLS [m;p], stream 분리 비교용 |
+| `m_only` | 768 | M stream CLS만, temporal 분석 |
+| `p_only` | 768 | P stream CLS만, spatial 분석 |
+| `patch_mean` | 768 | M+P 패치 전체 mean pool |
+| `patch_mean_concat` | 1536 | M/P 패치 각각 mean → concat (최고 성능) |
+| `patch_mean_m` | 768 | M 패치만 mean pool |
+| `patch_mean_p` | 768 | P 패치만 mean pool |
+
+### Full training 후 권장 평가 프로토콜
+
+```bash
+# 1. 공정 비교: part4 (미사용), gap=10, patch_mean_concat
+#    → Two-Stream vs VideoMAE vs baseline 비교
+
+# 2. Ablation: 같은 조건에서 cls-mode별 비교
+#    → M/P 분리 효과, CLS vs patch 비교
+
+# 3. Gap sweep: gap=1,5,10,20,30
+#    → M stream의 temporal 특성 분석
+
+# 4. Architecture ablation: --depth/--num-stages 변경
+#    → 구조 효과 vs 파라미터 효과 분리
+```
 
 ## 다음 단계
 
-Probing 성공 후:
-1. **Full fine-tuning**: Downstream task (SIMPLER, LIBERO)에서 전체 fine-tuning
-2. **Visualization**: Attention maps, t-SNE로 표현 공간 분석
-3. **Ablation**: M/P 채널 각각만 사용 시 성능 비교
+1. Architecture ablation (d=6s=3, d=6s=2, d=4s=2) 학습 → probing 비교
+2. DROID action probing (cross-domain, 로봇 7-DoF velocity)
+3. Full training 후 전체 비디오로 최종 평가

@@ -83,6 +83,12 @@ def main():
     parser.add_argument('--loss-decay', type=float, default=0.0,
                         help='Loss weight decay (0=uniform, >0=exponential)')
 
+    # Architecture (Two-Stream)
+    parser.add_argument('--depth', type=int, default=12,
+                        help='Transformer depth per stream (default: 12)')
+    parser.add_argument('--num-stages', type=int, default=3,
+                        help='Number of CLS exchange stages (default: 3)')
+
     # Loss
     parser.add_argument('--ssim', action='store_true',
                         help='Add SSIM loss (MSE + 0.1 * SSIM)')
@@ -138,7 +144,7 @@ def main():
     print("="*60)
 
     if args.model == 'two-stream':
-        model = TwoStreamModel()
+        model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages)
     elif args.model == 'single-stream':
         model = SingleStreamModel()
     elif args.model == 'videomae':

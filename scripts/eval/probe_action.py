@@ -100,6 +100,7 @@ class EgoDexProbingDataset(Dataset):
         frames_root: str,
         video_ids: list,
         split: str,
+        gap: int = 1,
         img_size: int = 224,
     ):
         """
@@ -108,10 +109,12 @@ class EgoDexProbingDataset(Dataset):
             frames_root: 추출된 프레임 경로 (e.g. /mnt/data/egodex_frames)
             video_ids: (task, video_id) 튜플 리스트
             split: e.g. "part1", "part4"
+            gap: 프레임 간격 (1=연속, 5=5프레임 간격, ...)
             img_size: 출력 이미지 크기
         """
         self.frames_root = Path(frames_root)
         self.split = split
+        self.gap = gap
         self.img_size = img_size
 
         # Build (frame_dir, frame_idx, action) tuples
@@ -139,15 +142,14 @@ class EgoDexProbingDataset(Dataset):
                         confidences[joint] = f[c_key][()]  # (T,)
                     else:
                         num_frames = transforms[TARGET_JOINTS[0]].shape[0]
-                        # 추출된 프레임 수로 상한 결정 (cv2.VideoCapture 불필요)
                         num_extracted = len(list(frame_dir.glob("frame_*.jpg")))
                         num_frames = min(num_frames, num_extracted)
 
-                        for t in range(num_frames - 1):
+                        for t in range(num_frames - gap):
                             valid = True
                             for joint in TARGET_JOINTS:
                                 if (confidences[joint][t] < CONFIDENCE_THRESHOLD or
-                                        confidences[joint][t + 1] < CONFIDENCE_THRESHOLD):
+                                        confidences[joint][t + gap] < CONFIDENCE_THRESHOLD):
                                     valid = False
                                     break
 
@@ -158,8 +160,8 @@ class EgoDexProbingDataset(Dataset):
                             action = np.zeros(ACTION_DIM, dtype=np.float32)
                             for i, joint in enumerate(TARGET_JOINTS):
                                 pos_t = transforms[joint][t, :3, 3]
-                                pos_t1 = transforms[joint][t + 1, :3, 3]
-                                action[i * 3 : (i + 1) * 3] = pos_t1 - pos_t
+                                pos_tk = transforms[joint][t + gap, :3, 3]
+                                action[i * 3 : (i + 1) * 3] = pos_tk - pos_t
 
                             self.samples.append({
                                 "frame_dir": str(frame_dir),
@@ -204,7 +206,7 @@ class EgoDexProbingDataset(Dataset):
         t = sample["frame_idx"]
 
         img_t = self._load_frame(frame_dir, t)
-        img_t1 = self._load_frame(frame_dir, t + 1)
+        img_t1 = self._load_frame(frame_dir, t + self.gap)
 
         pixel_values = torch.cat([img_t, img_t1], dim=0)  # [6, H, W]
         action = torch.from_numpy(sample["action"])  # [18]
@@ -216,6 +218,7 @@ def build_datasets(
     egodex_root: str,
     frames_root: str,
     egodex_split: str = "part1",
+    gap: int = 1,
     max_videos: int = None,
     train_ratio: float = 0.8,
 ):
@@ -253,8 +256,8 @@ def build_datasets(
 
     print(f"Dataset split: {len(train_ids)} train / {len(eval_ids)} eval videos")
 
-    train_ds = EgoDexProbingDataset(egodex_root, frames_root, train_ids, egodex_split)
-    eval_ds = EgoDexProbingDataset(egodex_root, frames_root, eval_ids, egodex_split)
+    train_ds = EgoDexProbingDataset(egodex_root, frames_root, train_ids, egodex_split, gap=gap)
+    eval_ds = EgoDexProbingDataset(egodex_root, frames_root, eval_ids, egodex_split, gap=gap)
 
     return train_ds, eval_ds
 
@@ -263,7 +266,8 @@ def build_datasets(
 # 2. Encoder loading
 # ============================================================================
 
-def load_encoder(name: str, checkpoint: str = None, device: str = "cuda", cls_mode: str = "average"):
+def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
+                 cls_mode: str = "average", depth: int = 12, num_stages: int = 3):
     """
     Load encoder by name.
 
@@ -273,13 +277,15 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda", cls_mo
     if name == "two-stream":
         from src.models.two_stream import TwoStreamEncoder
         assert checkpoint, "--checkpoint required for two-stream"
-        encoder = TwoStreamEncoder(checkpoint_path=checkpoint)
+        encoder = TwoStreamEncoder(
+            checkpoint_path=checkpoint, depth=depth, num_stages=num_stages,
+        )
         encoder.to(device)
         encoder.eval()
         base_dim = encoder._embed_dim  # 768
-        if cls_mode == "concat":
+        if cls_mode in ("concat", "patch_mean_concat"):
             embed_dim = base_dim * 2  # 1536
-        else:  # average, m_only, p_only, patch_mean*
+        else:  # average, m_only, p_only, patch_mean, patch_mean_m/p
             embed_dim = base_dim  # 768
         return encoder, embed_dim
 
@@ -360,6 +366,11 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             return m_patches.mean(dim=1)
         elif cls_mode == "patch_mean_p":
             return p_patches.mean(dim=1)
+        elif cls_mode == "patch_mean_concat":
+            # M/P 각각 mean pool 후 concat → probe가 stream별 가중치 학습
+            m_mean = m_patches.mean(dim=1)  # [B, D]
+            p_mean = p_patches.mean(dim=1)  # [B, D]
+            return torch.cat([m_mean, p_mean], dim=-1)  # [B, 2D]
         else:
             raise ValueError(f"Unknown cls_mode: {cls_mode}")
 
@@ -377,8 +388,15 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
         img_t_norm = (img_t - mean) / std
         img_t1_norm = (img_t1 - mean) / std
 
-        out_t = encoder(pixel_values=img_t_norm).last_hidden_state[:, 0]   # CLS [B, 768]
-        out_t1 = encoder(pixel_values=img_t1_norm).last_hidden_state[:, 0]  # CLS [B, 768]
+        hidden_t = encoder(pixel_values=img_t_norm).last_hidden_state   # [B, N+1, 768]
+        hidden_t1 = encoder(pixel_values=img_t1_norm).last_hidden_state
+
+        if cls_mode == "patch_mean":
+            out_t = hidden_t[:, 1:].mean(dim=1)    # patch mean [B, 768]
+            out_t1 = hidden_t1[:, 1:].mean(dim=1)
+        else:
+            out_t = hidden_t[:, 0]    # CLS [B, 768]
+            out_t1 = hidden_t1[:, 0]
         return torch.cat([out_t, out_t1], dim=-1)  # [B, 1536]
 
     elif name == "dinov2":
@@ -390,8 +408,15 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
         img_t_norm = (img_t - mean) / std
         img_t1_norm = (img_t1 - mean) / std
 
-        out_t = encoder(pixel_values=img_t_norm).last_hidden_state[:, 0]   # CLS [B, 768]
-        out_t1 = encoder(pixel_values=img_t1_norm).last_hidden_state[:, 0]  # CLS [B, 768]
+        hidden_t = encoder(pixel_values=img_t_norm).last_hidden_state   # [B, N+1, 768]
+        hidden_t1 = encoder(pixel_values=img_t1_norm).last_hidden_state
+
+        if cls_mode == "patch_mean":
+            out_t = hidden_t[:, 1:].mean(dim=1)
+            out_t1 = hidden_t1[:, 1:].mean(dim=1)
+        else:
+            out_t = hidden_t[:, 0]
+            out_t1 = hidden_t1[:, 0]
         return torch.cat([out_t, out_t1], dim=-1)  # [B, 1536]
 
     else:
@@ -573,6 +598,8 @@ def main():
                         help="추출된 프레임 경로 (JPG)")
     parser.add_argument("--egodex-split", type=str, default="part1",
                         help="EgoDex split to use (e.g. part1, part4)")
+    parser.add_argument("--gap", type=int, default=1,
+                        help="Frame gap for action delta (default: 1)")
     parser.add_argument("--epochs", type=int, default=20,
                         help="Probing epochs (default: 20)")
     parser.add_argument("--batch-size", type=int, default=64,
@@ -586,8 +613,13 @@ def main():
                         help="Limit number of videos (for debugging)")
     parser.add_argument("--cls-mode", type=str, default="average",
                         choices=["average", "concat", "m_only", "p_only",
-                                 "patch_mean", "patch_mean_m", "patch_mean_p"],
+                                 "patch_mean", "patch_mean_m", "patch_mean_p",
+                                 "patch_mean_concat"],
                         help="Two-Stream embedding 추출 방식 (default: average)")
+    parser.add_argument("--depth", type=int, default=12,
+                        help="Two-Stream transformer depth (default: 12)")
+    parser.add_argument("--num-stages", type=int, default=3,
+                        help="Two-Stream CLS exchange stages (default: 3)")
     parser.add_argument("--output-dir", type=str, default="data/probing_results",
                         help="Output directory")
 
@@ -599,6 +631,7 @@ def main():
     print(f"Probe: {args.probe}")
     print(f"Checkpoint: {args.checkpoint or '(pretrained)'}")
     print(f"EgoDex split: {args.egodex_split}")
+    print(f"Gap: {args.gap}")
     print(f"CLS mode: {args.cls_mode}")
 
     # ---- 1. Load encoder ----
@@ -606,7 +639,10 @@ def main():
     print("Loading encoder...")
     print("=" * 60)
     t0 = time.time()
-    encoder, embed_dim = load_encoder(args.encoder, args.checkpoint, device, cls_mode=args.cls_mode)
+    encoder, embed_dim = load_encoder(
+        args.encoder, args.checkpoint, device,
+        cls_mode=args.cls_mode, depth=args.depth, num_stages=args.num_stages,
+    )
     # Freeze encoder
     for p in encoder.parameters():
         p.requires_grad = False
@@ -618,7 +654,7 @@ def main():
     print("Building datasets...")
     print("=" * 60)
     t0 = time.time()
-    train_ds, eval_ds = build_datasets(args.egodex_root, args.frames_root, args.egodex_split, args.max_videos)
+    train_ds, eval_ds = build_datasets(args.egodex_root, args.frames_root, args.egodex_split, gap=args.gap, max_videos=args.max_videos)
     print(f"Datasets built in {time.time() - t0:.1f}s")
 
     if len(train_ds) == 0 or len(eval_ds) == 0:
@@ -694,6 +730,7 @@ def main():
         "encoder": args.encoder,
         "probe": args.probe,
         "cls_mode": args.cls_mode,
+        "gap": args.gap,
         "checkpoint": args.checkpoint,
         "egodex_split": args.egodex_split,
         "epochs": args.epochs,
@@ -707,7 +744,7 @@ def main():
         **best_metrics,
     }
 
-    result_path = output_dir / f"probe_{args.encoder}_{args.cls_mode}_{args.probe}_{args.egodex_split}_{timestamp}.json"
+    result_path = output_dir / f"probe_{args.encoder}_{args.cls_mode}_gap{args.gap}_{args.egodex_split}_{timestamp}.json"
     with open(result_path, "w") as f:
         json.dump(result, f, indent=2)
     print(f"\nResults saved: {result_path}")
