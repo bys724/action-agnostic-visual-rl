@@ -245,9 +245,24 @@ bash scripts/pretrain_aws.sh --model two-stream
 - 이미 future prediction이라는 어려운 task가 있는데 masking 추가 시 학습 난이도 증가
 - 학습 안정성, loss 가중치 밸런싱 필요
 
+**마스킹 비율 가이드** (선행 연구 참고):
+- MAE: 75% (이미지, 높은 마스킹이 trivial shortcut 방지)
+- VideoMAE: 90~95% (비디오 시간축 중복이 크므로 더 공격적)
+- iBOT(DINOv2): ~50% (discriminative라 teacher 신호 보존 필요)
+- **우리 모델 권장 시작점: 30~50%**
+  - 마스킹이 보조 loss (메인은 future prediction)이므로 MAE만큼 공격적일 필요 없음
+  - 실험 조건: 0% (baseline), 30%, 50% → 경향 확인
+
+**3단계 랜덤성** (마스킹 포함 시 모델의 고유한 특성):
+1. Spatial: RandomCrop(224) — 매번 다른 영역
+2. Temporal: gap=1~30 — 매번 다른 시간 간격
+3. Structural: M/P 서로 다른 패치 마스킹 — 매번 다른 정보 가림
+→ 동일 데이터도 매번 다른 문제를 풀게 되어 overfitting 방지 + robustness 향상 기대.
+   단, 랜덤성 과다 시 학습 신호가 noisy해져 수렴 저하 가능 → 비율 튜닝 중요.
+
 **실행 조건**: Architecture ablation + full training 설정 확정 후. 현재 변수가 많은 상태에서 추가하면 효과 분리 불가.
 
-**참고**: DINOv2의 iBOT loss도 masked patch prediction이지만 pixel reconstruction이 아닌 feature-level distillation. 우리는 pixel target이 있으므로 MAE 방식이 더 직접적.
+**참고**: DINOv2의 iBOT loss도 masked patch prediction이지만 pixel reconstruction이 아닌 feature-level distillation (cross-entropy in feature space). 우리는 pixel target이 있으므로 MAE 방식(MSE in pixel space)이 더 직접적.
 
 ---
 
