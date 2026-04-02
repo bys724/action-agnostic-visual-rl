@@ -219,50 +219,61 @@ bash scripts/pretrain_aws.sh --model two-stream
 
 ---
 
-## 아이디어 후보 (검증 필요)
+## 아이디어: MAE-style Masked Auxiliary Loss (구현 예정)
 
-### Cross-Stream Masked Reconstruction Loss
+Architecture ablation 확정 후 구현.
 
-**아이디어**: MAE 스타일의 마스킹 loss를 Two-Stream에 추가. M/P stream에서 서로 다른 위치를 마스킹하여 cross-stream 정보 교환 강화.
+### 개요
 
-**동기**:
-- 현재 CLS average가 patch_mean의 68% 수준 (0.364 vs 0.532) → CLS의 정보 밀도 부족
-- 마스킹이 CLS에 더 구체적인 spatial info를 압축하도록 유도할 수 있음
+MAE 스타일의 마스킹 보조 loss를 Two-Stream에 추가. M/P stream 각각 독립적으로 랜덤 마스킹.
 
-**예상 작동 방식**:
-- M stream: 위치 {1,5,9} 마스킹, P stream: 위치 {3,7,11} 마스킹
-- 각 stream은 자신의 마스킹 부분을 복원할 때 (1) 주변 패치 context, (2) CLS 경유 cross-stream 정보 활용
-- 기존 future prediction loss와 병행
+### 구현 방향
 
-**기대 효과**:
+```
+인코더 (MAE 방식):
+  M: 196 patches → 독립 random mask (30%) → 137 visible만 처리
+  P: 196 patches → 독립 random mask (30%) → 137 visible만 처리
+  ※ M/P 마스킹 위치는 독립 (종속성 없음, 겹침도 자연 발생)
+  ※ CLS는 마스킹 안 함 (CLS exchange 품질 유지)
+      ↓ CLS exchange (visible + CLS만)
+디코더:
+  visible embeddings + learnable mask_token + positional embedding → future image 복원
+      ↓
+Loss:
+  L_total = L_future_prediction + α * L_masked_reconstruction
+  ※ L_masked: masked 위치의 복원 오차만 계산
+```
+
+### 동기
+- CLS average가 patch_mean의 68% 수준 (0.364 vs 0.532) → CLS 정보 밀도 부족
+- 인코더가 일부 패치만 보고도 전체를 이해해야 하므로 표현력 향상 (MAE 핵심 발견)
+- 부수 효과: 인코더 연산 ~30% 절약 (visible만 처리)
+
+### 기대 효과
 1. 각 stream 내 local spatial reasoning 강화 (확실)
 2. CLS의 spatial info 밀도 향상 → CLS probing 성능 개선 (가능성)
-3. M/P 표현의 complementarity 강화 (가능성)
+3. 3단계 랜덤성으로 overfitting 구조적 방지:
+   - Spatial: RandomCrop(224) — 매번 다른 영역
+   - Temporal: gap=1~30 — 매번 다른 시간 간격
+   - Structural: stream별 독립 랜덤 마스킹 — 매번 다른 정보 가림
 
-**한계/주의점**:
-- 현재 cross-stream 정보는 CLS exchange만 통과 (patch-level cross-attention 없음)
-  → P의 특정 패치가 M의 같은 위치 복원을 "직접" 돕기 어려움
-- 이미 future prediction이라는 어려운 task가 있는데 masking 추가 시 학습 난이도 증가
-- 학습 안정성, loss 가중치 밸런싱 필요
+### 마스킹 비율 가이드
+| 방법 | 비율 | 이유 |
+|------|------|------|
+| MAE | 75% | 이미지 redundancy 높음, 높은 마스킹이 핵심 |
+| VideoMAE | 90~95% | 비디오 시간축 중복이 더 큼 |
+| iBOT(DINOv2) | ~50% | discriminative, teacher 신호 보존 |
+| **우리 모델** | **30~50%** | 보조 loss이므로 공격적일 필요 없음 |
+- 실험 조건: 0% (baseline), 30%, 50%
 
-**마스킹 비율 가이드** (선행 연구 참고):
-- MAE: 75% (이미지, 높은 마스킹이 trivial shortcut 방지)
-- VideoMAE: 90~95% (비디오 시간축 중복이 크므로 더 공격적)
-- iBOT(DINOv2): ~50% (discriminative라 teacher 신호 보존 필요)
-- **우리 모델 권장 시작점: 30~50%**
-  - 마스킹이 보조 loss (메인은 future prediction)이므로 MAE만큼 공격적일 필요 없음
-  - 실험 조건: 0% (baseline), 30%, 50% → 경향 확인
+### 주의점
+- future prediction이 메인 task, masking은 보조 → α 가중치 튜닝 필요
+- 랜덤성 과다 시 학습 신호 noisy → 수렴 저하 가능
+- cross-stream 정보는 CLS exchange만 통과 (patch-level cross-attention 없음)
 
-**3단계 랜덤성** (마스킹 포함 시 모델의 고유한 특성):
-1. Spatial: RandomCrop(224) — 매번 다른 영역
-2. Temporal: gap=1~30 — 매번 다른 시간 간격
-3. Structural: M/P 서로 다른 패치 마스킹 — 매번 다른 정보 가림
-→ 동일 데이터도 매번 다른 문제를 풀게 되어 overfitting 방지 + robustness 향상 기대.
-   단, 랜덤성 과다 시 학습 신호가 noisy해져 수렴 저하 가능 → 비율 튜닝 중요.
-
-**실행 조건**: Architecture ablation + full training 설정 확정 후. 현재 변수가 많은 상태에서 추가하면 효과 분리 불가.
-
-**참고**: DINOv2의 iBOT loss도 masked patch prediction이지만 pixel reconstruction이 아닌 feature-level distillation (cross-entropy in feature space). 우리는 pixel target이 있으므로 MAE 방식(MSE in pixel space)이 더 직접적.
+### 참고
+DINOv2(iBOT)도 masked patch prediction이지만 pixel이 아닌 feature-level distillation.
+우리는 pixel reconstruction target이 있으므로 MAE 방식(MSE)이 직접적.
 
 ---
 
