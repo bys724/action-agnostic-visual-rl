@@ -219,30 +219,47 @@ def save_attention_map(attn_weights, save_path, title, patch_grid=14):
     plt.close()
 
 
-def save_attention_overlay(img_np, attn_weights, save_path, title, patch_grid=14):
-    """원본 이미지 위에 attention heatmap 오버레이."""
-    cls_attn = attn_weights[0, 0, 1:].numpy().reshape(patch_grid, patch_grid)
-
-    # Resize attention to image size
+def _resize_attn(cls_attn_2d, size=224):
+    """14x14 attention map → 224x224 리사이즈."""
     from PIL import Image as PILImage
-    attn_resized = np.array(PILImage.fromarray(
-        (cls_attn * 255 / cls_attn.max()).astype(np.uint8)
-    ).resize((224, 224), PILImage.BILINEAR)) / 255.0
+    attn_norm = (cls_attn_2d * 255 / (cls_attn_2d.max() + 1e-8)).astype(np.uint8)
+    return np.array(PILImage.fromarray(attn_norm).resize((size, size), PILImage.BILINEAR)) / 255.0
 
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-    axes[0].imshow(img_np)
-    axes[0].set_title('Input', fontsize=10)
+def save_attention_overlay(imgs_and_labels, attn_weights, save_path, title, patch_grid=14):
+    """여러 이미지에 attention heatmap 오버레이.
+
+    Args:
+        imgs_and_labels: [(img_np, label), ...] — 오버레이할 이미지 목록
+        attn_weights: [1, N+1, N+1] attention matrix
+        save_path: 저장 경로
+        title: 그림 제목
+    """
+    cls_attn = attn_weights[0, 0, 1:].numpy().reshape(patch_grid, patch_grid)
+    attn_resized = _resize_attn(cls_attn)
+
+    n_imgs = len(imgs_and_labels)
+    # columns: attention map + (image, overlay) per img
+    n_cols = 1 + n_imgs * 2
+    fig, axes = plt.subplots(1, n_cols, figsize=(4 * n_cols, 4))
+
+    # Attention heatmap
+    axes[0].imshow(cls_attn, cmap='hot', interpolation='bilinear')
+    axes[0].set_title('Attention (CLS→patches)', fontsize=10)
     axes[0].axis('off')
 
-    axes[1].imshow(cls_attn, cmap='hot', interpolation='bilinear')
-    axes[1].set_title('Attention (CLS→patches)', fontsize=10)
-    axes[1].axis('off')
+    # 이미지별 원본 + 오버레이
+    for i, (img_np, label) in enumerate(imgs_and_labels):
+        col_img = 1 + i * 2
+        col_overlay = 2 + i * 2
+        axes[col_img].imshow(img_np)
+        axes[col_img].set_title(label, fontsize=10)
+        axes[col_img].axis('off')
 
-    axes[2].imshow(img_np)
-    axes[2].imshow(attn_resized, cmap='hot', alpha=0.5)
-    axes[2].set_title('Overlay', fontsize=10)
-    axes[2].axis('off')
+        axes[col_overlay].imshow(img_np)
+        axes[col_overlay].imshow(attn_resized, cmap='hot', alpha=0.5)
+        axes[col_overlay].set_title(f'{label} + Attn', fontsize=10)
+        axes[col_overlay].axis('off')
 
     fig.suptitle(title, fontsize=12, y=1.02)
     plt.tight_layout()
@@ -257,13 +274,15 @@ def main():
     parser.add_argument("--output-dir", default="docs/architecture/sample_detail")
     parser.add_argument("--gap", type=int, default=30)
     parser.add_argument("--episode", type=str, default=None)
+    parser.add_argument("--depth", type=int, default=12)
+    parser.add_argument("--num-stages", type=int, default=3)
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     # 모델 로드
     print(f"Loading: {args.checkpoint}")
-    model = TwoStreamModel().to(DEVICE)
+    model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages).to(DEVICE)
     ck = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
     model.load_state_dict(ck["model_state_dict"])
     model.eval()
@@ -324,16 +343,25 @@ def main():
     # === 3. Attention Maps ===
     attn_maps, m_tokens, p_tokens = extract_attention_maps(model, m_channel, p_channel)
 
-    # M stream attention overlay on frame_t
-    save_attention_overlay(img_t_np, attn_maps['m'],
-                          os.path.join(args.output_dir, '04_m_attention.png'),
-                          'M Stream: Last Layer Attention (CLS → patches)')
+    # ΔL 이미지를 grayscale RGB로 변환 (오버레이용)
+    delta_l = m_channel[0, 0].cpu().numpy()  # ΔL channel
+    delta_l_norm = (delta_l - delta_l.min()) / (delta_l.max() - delta_l.min() + 1e-8)
+    delta_l_rgb = np.stack([delta_l_norm] * 3, axis=-1)  # [H,W,3]
+
+    # M stream attention: ΔL 이미지에 오버레이
+    save_attention_overlay(
+        [(delta_l_rgb, 'ΔL (brightness diff)'), (img_t_np, 'Frame t')],
+        attn_maps['m'],
+        os.path.join(args.output_dir, '04_m_attention.png'),
+        'M Stream: Last Layer Attention (CLS → patches)')
     print("  Saved: 04_m_attention.png")
 
-    # P stream attention overlay on frame_t
-    save_attention_overlay(img_t_np, attn_maps['p'],
-                          os.path.join(args.output_dir, '05_p_attention.png'),
-                          'P Stream: Last Layer Attention (CLS → patches)')
+    # P stream attention: frame_t + frame_tk 둘 다에 오버레이
+    save_attention_overlay(
+        [(img_t_np, 'Frame t'), (img_tk_np, f'Frame t+{args.gap}')],
+        attn_maps['p'],
+        os.path.join(args.output_dir, '05_p_attention.png'),
+        'P Stream: Last Layer Attention (CLS → patches)')
     print("  Saved: 05_p_attention.png")
 
     # === 4. 모델 예측 ===
@@ -359,7 +387,7 @@ def main():
     print("  Saved: 06_predictions.png")
 
     # === 5. 전체 요약 ===
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    fig, axes = plt.subplots(2, 5, figsize=(25, 10))
 
     # Row 1: Input & channels
     axes[0][0].imshow(img_t_np); axes[0][0].set_title('Frame t'); axes[0][0].axis('off')
@@ -368,25 +396,34 @@ def main():
     axes[0][2].set_title('M: ΔL'); axes[0][2].axis('off')
     axes[0][3].imshow(p_channel[0, 2].cpu().numpy(), cmap='gray')
     axes[0][3].set_title('P: R channel'); axes[0][3].axis('off')
+    axes[0][4].imshow(delta_l_rgb)
+    axes[0][4].set_title('ΔL (normalized)'); axes[0][4].axis('off')
 
     # Row 2: Attention & predictions
     m_attn = attn_maps['m'][0, 0, 1:].numpy().reshape(14, 14)
     p_attn = attn_maps['p'][0, 0, 1:].numpy().reshape(14, 14)
-    axes[1][0].imshow(img_t_np)
-    from PIL import Image as PILImage
-    m_attn_r = np.array(PILImage.fromarray((m_attn * 255 / m_attn.max()).astype(np.uint8)).resize((224, 224), PILImage.BILINEAR)) / 255.0
-    axes[1][0].imshow(m_attn_r, cmap='hot', alpha=0.5)
-    axes[1][0].set_title('M Attention'); axes[1][0].axis('off')
+    m_attn_r = _resize_attn(m_attn)
+    p_attn_r = _resize_attn(p_attn)
 
-    p_attn_r = np.array(PILImage.fromarray((p_attn * 255 / p_attn.max()).astype(np.uint8)).resize((224, 224), PILImage.BILINEAR)) / 255.0
+    # M attention on ΔL
+    axes[1][0].imshow(delta_l_rgb)
+    axes[1][0].imshow(m_attn_r, cmap='hot', alpha=0.5)
+    axes[1][0].set_title('M Attn on ΔL'); axes[1][0].axis('off')
+
+    # P attention on frame_t
     axes[1][1].imshow(img_t_np)
     axes[1][1].imshow(p_attn_r, cmap='hot', alpha=0.5)
-    axes[1][1].set_title('P Attention'); axes[1][1].axis('off')
+    axes[1][1].set_title('P Attn on Frame t'); axes[1][1].axis('off')
 
-    axes[1][2].imshow(pred_m_np); axes[1][2].set_title('Pred M'); axes[1][2].axis('off')
-    axes[1][3].imshow(pred_p_np); axes[1][3].set_title('Pred P'); axes[1][3].axis('off')
+    # P attention on frame_tk
+    axes[1][2].imshow(img_tk_np)
+    axes[1][2].imshow(p_attn_r, cmap='hot', alpha=0.5)
+    axes[1][2].set_title(f'P Attn on Frame t+{args.gap}'); axes[1][2].axis('off')
 
-    fig.suptitle(f'Two-Stream v3 — {ep_name}, gap={args.gap}, epoch {epoch}', fontsize=14, y=1.02)
+    axes[1][3].imshow(pred_m_np); axes[1][3].set_title('Pred M'); axes[1][3].axis('off')
+    axes[1][4].imshow(pred_p_np); axes[1][4].set_title('Pred P'); axes[1][4].axis('off')
+
+    fig.suptitle(f'Two-Stream — {ep_name}, gap={args.gap}, epoch {epoch}', fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(os.path.join(args.output_dir, '00_summary.png'), dpi=150, bbox_inches='tight')
     plt.close()
