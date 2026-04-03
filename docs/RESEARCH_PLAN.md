@@ -121,14 +121,43 @@ sample_decay: -1 (linear, 큰 gap 선호 — gap에 비례한 샘플링 확률)
   - 큰 gap에서 프레임 차이가 커야 CLS exchange를 통한 정보 교환이 필수적
 
 ```bash
-bash scripts/pretrain_local.sh                          # two-stream(GPU 0) + videomae(GPU 1) 병렬
+# 로컬 (H100 x2)
 bash scripts/pretrain_local.sh --model two-stream        # 특정 모델만
 bash scripts/pretrain_local.sh --sanity                  # Sanity test
-bash scripts/pretrain_local.sh --splits part1            # 특정 split만
 
-# AWS EC2 (대안)
-bash scripts/pretrain_aws.sh --model two-stream
+# 8x H100 서버 (본 학습)
+torchrun --nproc_per_node=8 scripts/pretrain.py \
+    --model two-stream --depth 12 --num-stages 2 \
+    --mask-ratio 0.3 --sample-decay -1 \
+    --egodex-splits part1 part2 part3 part4 part5 \
+    --epochs 30 --batch-size 64
 ```
+
+### 8x H100 서버 체크리스트 (본 학습 전)
+
+**환경 확인:**
+- [ ] PyTorch 2.4+ (torch.compile 최적화)
+- [ ] NCCL 버전 + GPU 간 연결 확인 (`nvidia-smi topo -m` — NVLink 여부)
+- [ ] 스토리지 I/O 속도 (프레임 JPG 로딩 — NVMe 권장)
+
+**코드 수정:**
+- [ ] DataParallel → DistributedDataParallel 전환 (8 GPU 필수)
+- [ ] lr scaling: `lr = base_lr * num_gpus` (batch 512 대응)
+- [ ] warmup 스케줄 조정 (큰 batch에서 안정화)
+- [ ] torch.compile() 적용 테스트
+
+**데이터 전송:**
+- [ ] EgoDex part1~5 프레임 전체 전송 (S3 또는 rsync)
+- [ ] DataLoader: `num_workers=8~16`, `pin_memory=True`
+
+**리소스 분배:**
+| 작업 | 서버 | 예상 시간 |
+|------|------|----------|
+| Two-Stream v4 사전학습 | 8x H100 | 며칠 |
+| VideoMAE 사전학습 | 8x H100 | 며칠 |
+| Action probing (full) | 로컬 2x H100 | 수 시간 |
+| LIBERO fine-tuning | 로컬 2x H100 | 수 시간 |
+| LIBERO 시뮬레이터 평가 | 로컬 1 GPU | 수 시간 |
 
 ---
 

@@ -138,32 +138,28 @@ docker exec libero-eval python src/eval_libero.py \
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
 - **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
 
-## 현재 Phase (2026-03-24)
+## 현재 Phase (2026-04-03)
 
-**Phase 1 실행 중** — Two-Stream v3 + VideoMAE 병렬 학습 중
+**Phase 1 완료** — 사전학습 + Action Probing 초기 결과 확보
 
 - **Two-Stream 아키텍처 변천**:
-  - v1: CLS-only decoder → 평균 이미지만 출력 (실패, `docs/architecture/two_stream_v1_cls_only_result.png`)
-  - v2: per-stream PatchDecoder → 구조 복원 확인 (`docs/architecture/two_stream_v2_epoch1.png`)
-  - v3 (현재): M channel 재설계 (ΔL + Sobel(ΔL) = 3ch, RGB diff 제거)
-- Two-Stream v3 epoch 1부터 학습 시작 (GPU 0, ~15h/epoch)
-- VideoMAE epoch 8 완료, epoch 9 진행 중 (GPU 1, ~3.5h/epoch)
-- 아키텍처 다이어그램: `docs/architecture/two_stream_v2.png`
+  - v1: CLS-only decoder → trivial solution (실패)
+  - v2: per-stream PatchDecoder → 구조 복원 확인
+  - v3: M channel 재설계 (ΔL + Sobel(ΔL) = 3ch) → 30ep 학습 완료
+  - **v4 (확정)**: d=12, s=2 (6 blk/stage) + MAE masking + linear gap sampling
+- v4 비교 학습 진행 중 (masking 유/무, 5 epoch)
+- Action probing 초기 결과: gap=10에서 patch_mean_concat Two-Stream(R²=0.585) > VideoMAE(0.571)
 
-**다음 단계**: epoch별 시각화 결과 확인 → action probing → Phase 1 Go/No-Go
+**다음**: v4 비교 완료 → 8x H100 서버에서 본 학습 → LIBERO fine-tuning
 
-자세한 일정은 `docs/RESEARCH_PLAN.md` 참고
+자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
 
 ## 참고
 
 ### 활성 문서
 - `docs/RESEARCH_PLAN.md` - 연구 계획 (마스터)
-- `docs/AWS_INSTANCE_GUIDE.md` - AWS 환경 설정
-- `docs/PROBING_GUIDE.md` - Action probing
+- `docs/PROBING_GUIDE.md` - Action probing 실행 가이드 + 결과
 - `docs/setup/LIBERO_TEST_GUIDE.md` - LIBERO 평가
-
-### Archive (참고용)
-- `docs/archive/` - 과거 코드 리뷰, 개발 상태, 마이그레이션 기록
 
 ## 트러블슈팅 로그
 
