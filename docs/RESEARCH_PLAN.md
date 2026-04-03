@@ -94,10 +94,19 @@ Phase 3A 실패 시 실행. 3가지 사전학습 조건 비교:
 ```
 인스턴스: H100 워크스테이션 (x2, 81GB each) — 로컬 권장
 epochs: 30
-batch_size: 32 (per-GPU, H100 최적)
-max_gap: 30 (~1초), sample_decay: 0.3, loss_decay: 0.7
+batch_size: 64 (single-GPU)
+max_gap: 30 (~1초)
+sample_decay: -1 (linear, 큰 gap 선호 — gap에 비례한 샘플링 확률)
 데이터: EgoDex frames (로컬: /mnt/data/egodex_frames/)
 ```
+
+**Gap 샘플링 전략 (v4에서 변경)**:
+- 기존 (v1~v3): uniform (gap 1~30 동일 확률)
+- v4: **linear weighting** (`sample_decay=-1`, gap에 비례)
+  - gap<=5: 3.2%, gap>=20: 59.1%
+  - 이유: 작은 gap에서 M/P가 너무 비슷 → cross-stream 정보 교환 압력 부족
+    → 학습 데이터의 색상/배경 bias를 학습하게 됨 (DROID unseen에서 확인)
+  - 큰 gap에서 프레임 차이가 커야 CLS exchange를 통한 정보 교환이 필수적
 
 ```bash
 bash scripts/pretrain_local.sh                          # two-stream(GPU 0) + videomae(GPU 1) 병렬

@@ -48,10 +48,16 @@ class VideoFrameDataset(ABC, Dataset):
         else:
             self.spatial_transform = transforms.CenterCrop(img_size)
 
-        # Gap sampling 확률 (decay=0 → uniform)
+        # Gap sampling 확률
+        # sample_decay > 0: 작은 gap 선호 (exponential decay)
+        # sample_decay < 0: 큰 gap 선호 (linear weighting, |decay| 무시)
+        # sample_decay = 0: uniform
         gaps = np.arange(1, max_gap + 1)
         if sample_decay > 0:
             raw_probs = np.exp(-sample_decay * (gaps - 1))
+        elif sample_decay < 0:
+            # linear: gap에 비례 (gap=1 → 1, gap=30 → 30)
+            raw_probs = gaps.astype(float)
         else:
             raw_probs = np.ones_like(gaps, dtype=float)
         self.sample_probs = raw_probs / raw_probs.sum()
