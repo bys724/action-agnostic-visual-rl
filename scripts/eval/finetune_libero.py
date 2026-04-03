@@ -43,13 +43,9 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+_project_root = str(Path(__file__).resolve().parents[2])
+sys.path.insert(0, _project_root)
 sys.path.insert(0, '/workspace')
-
-from src.models.openvla_encoder import (
-    TwoStreamEncoderForOpenVLA,
-    SingleStreamEncoderForOpenVLA,
-    VideoMAEEncoderForOpenVLA,
-)
 
 
 # =============================================================================
@@ -239,6 +235,7 @@ class EncoderWithActionHead(nn.Module):
     def __init__(
         self,
         encoder: nn.Module,
+        encoder_name: str,
         embed_dim: int = 768,
         action_dim: int = 7,
         freeze_encoder: bool = True,
@@ -246,12 +243,46 @@ class EncoderWithActionHead(nn.Module):
         super().__init__()
 
         self.encoder = encoder
+        self.encoder_name = encoder_name
         self.action_head = ActionHead(embed_dim=embed_dim, action_dim=action_dim)
 
         if freeze_encoder:
             for param in self.encoder.parameters():
                 param.requires_grad = False
             print("Encoder frozen (only action head will be trained)")
+
+    def _encode(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        """Encoder별 embedding 추출 → [B, D] mean pooled."""
+        if self.encoder_name == "two-stream":
+            # CLS 직접 추출 (preprocessing 포함)
+            img_prev = pixel_values[:, :3]
+            img_curr = pixel_values[:, 3:]
+            m_ch, p_ch = self.encoder.preprocessing(img_prev, img_curr)
+            m_tok, p_tok = self.encoder.encoder(m_ch, p_ch)
+            # patch mean pool (M+P concat 후 평균)
+            m_patches = m_tok[:, 1:]
+            p_patches = p_tok[:, 1:]
+            return torch.cat([m_patches, p_patches], dim=1).mean(dim=1)  # [B, D]
+
+        elif self.encoder_name == "videomae":
+            patch_emb = self.encoder(pixel_values)  # [B, N, D]
+            return patch_emb.mean(dim=1)
+
+        elif self.encoder_name in ("clip", "dinov2"):
+            # 단일 프레임 baseline: img_curr만 사용
+            img_curr = pixel_values[:, 3:]  # [B, 3, H, W]
+            # Normalization
+            if self.encoder_name == "clip":
+                mean = torch.tensor([0.48145466, 0.4578275, 0.40821073], device=pixel_values.device).view(1, 3, 1, 1)
+                std = torch.tensor([0.26862954, 0.26130258, 0.27577711], device=pixel_values.device).view(1, 3, 1, 1)
+            else:
+                mean = torch.tensor([0.485, 0.456, 0.406], device=pixel_values.device).view(1, 3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225], device=pixel_values.device).view(1, 3, 1, 1)
+            img_norm = (img_curr - mean) / std
+            hidden = self.encoder(pixel_values=img_norm).last_hidden_state
+            return hidden[:, 1:].mean(dim=1)  # patch mean, CLS 제외
+
+        raise ValueError(f"Unknown encoder: {self.encoder_name}")
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """
@@ -261,16 +292,8 @@ class EncoderWithActionHead(nn.Module):
         Returns:
             action: [B, 7] - predicted action
         """
-        # Encode
-        patch_embeddings = self.encoder(pixel_values)  # [B, num_patches, D]
-
-        # Mean pooling over patches
-        visual_embedding = patch_embeddings.mean(dim=1)  # [B, D]
-
-        # Predict action
-        action = self.action_head(visual_embedding)  # [B, 7]
-
-        return action
+        visual_embedding = self._encode(pixel_values)  # [B, D]
+        return self.action_head(visual_embedding)  # [B, 7]
 
 
 # =============================================================================
@@ -347,10 +370,14 @@ def main():
 
     # Encoder
     parser.add_argument("--encoder", type=str, default="two-stream",
-                        choices=["two-stream", "single-stream", "videomae"],
+                        choices=["two-stream", "videomae", "clip", "dinov2"],
                         help="Encoder type")
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Path to pre-trained encoder checkpoint")
+    parser.add_argument("--depth", type=int, default=12,
+                        help="Two-Stream transformer depth (default: 12)")
+    parser.add_argument("--num-stages", type=int, default=3,
+                        help="Two-Stream CLS exchange stages (default: 3)")
     parser.add_argument("--no-pretrain", action="store_true",
                         help="Train from scratch (no pre-training)")
     parser.add_argument("--freeze-encoder", action="store_true", default=True,
@@ -395,40 +422,38 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # Create encoder (optionally with pre-trained weights)
+    # Create encoder
     print(f"\nCreating {args.encoder} encoder...")
     use_pretrain = args.checkpoint and not args.no_pretrain
 
     if args.encoder == "two-stream":
-        if use_pretrain:
-            print(f"Loading pre-trained weights from: {args.checkpoint}")
-            encoder = TwoStreamEncoderForOpenVLA.from_checkpoint(
-                args.checkpoint, device=str(device)
-            )
-        else:
-            print("Initializing encoder from scratch (no pre-training)")
-            encoder = TwoStreamEncoderForOpenVLA()
-    elif args.encoder == "single-stream":
-        if use_pretrain:
-            encoder = SingleStreamEncoderForOpenVLA.from_checkpoint(
-                args.checkpoint, device=str(device)
-            )
-        else:
-            encoder = SingleStreamEncoderForOpenVLA()
+        from src.models.two_stream import TwoStreamEncoder
+        ckpt = args.checkpoint if use_pretrain else None
+        encoder = TwoStreamEncoder(
+            checkpoint_path=ckpt, depth=args.depth, num_stages=args.num_stages,
+        )
+        embed_dim = encoder._embed_dim  # 768 (CLS average)
     elif args.encoder == "videomae":
-        if use_pretrain:
-            encoder = VideoMAEEncoderForOpenVLA.from_checkpoint(
-                args.checkpoint, device=str(device)
-            )
-        else:
-            encoder = VideoMAEEncoderForOpenVLA()
+        from src.models.videomae import VideoMAEEncoderForVLA
+        ckpt = args.checkpoint if use_pretrain else None
+        encoder = VideoMAEEncoderForVLA(checkpoint_path=ckpt)
+        embed_dim = encoder.embed_dim
+    elif args.encoder == "clip":
+        from transformers import CLIPVisionModel
+        encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-base-patch16")
+        embed_dim = encoder.config.hidden_size  # 768
+    elif args.encoder == "dinov2":
+        from transformers import AutoModel
+        encoder = AutoModel.from_pretrained("facebook/dinov2-base")
+        embed_dim = encoder.config.hidden_size  # 768
     else:
         raise ValueError(f"Unknown encoder: {args.encoder}")
 
     # Create model with action head
     model = EncoderWithActionHead(
         encoder=encoder,
-        embed_dim=encoder.embed_dim,
+        encoder_name=args.encoder,
+        embed_dim=embed_dim,
         freeze_encoder=args.freeze_encoder,
     ).to(device)
 
@@ -498,7 +523,7 @@ def main():
 
     # Save config
     config = vars(args)
-    config["encoder_embed_dim"] = encoder.embed_dim
+    config["encoder_embed_dim"] = embed_dim
     with open(os.path.join(args.output_dir, "config.json"), "w") as f:
         json.dump(config, f, indent=2)
 
