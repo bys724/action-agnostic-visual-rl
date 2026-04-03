@@ -81,9 +81,31 @@
 2. LIBERO fine-tuning → 인코딩된 정보가 **실제 제어에 유용하다**
 3. Encoder 비교 → action-agnostic 사전학습이 **범용 vision feature보다 낫다**
 
-**(Optional) Phase 3B: VLA 통합**
-시간 허용 시 OpenVLA의 SigLIP을 Two-Stream으로 교체하여 전체 fine-tuning.
-Phase 3 결과가 이미 논문 완성에 충분하므로 bonus.
+### Phase 3B: VLA 통합 (OpenVLA encoder 교체)
+
+OpenVLA의 SigLIP을 Two-Stream으로 교체 → LIBERO fine-tuning → rollout.
+"기존 VLA에 우리 encoder를 넣으면 성능이 오르는가?"를 직접 검증.
+
+**기존 인프라 (이미 준비됨)**:
+- OpenVLA fine-tuning 코드: 공개 (github.com/openvla/openvla)
+- LIBERO RLDS 데이터: `~/.cache/openvla/datasets/modified_libero_rlds/` (9.6GB)
+- Fine-tuned 체크포인트: `data/checkpoints/openvla-libero/` (libero-10, libero-spatial)
+- Docker 환경: `docker/openvla-libero/`
+- 시뮬레이터 rollout: `src/eval_libero.py` (OpenVLA REST API + Custom encoder 지원)
+- **기존 rollout 결과**: OpenVLA libero_spatial success rate 40% (참고용 baseline)
+
+**실험 설계**:
+| 모델 | Encoder | 방식 | 비고 |
+|------|---------|------|------|
+| OpenVLA (원본) | SigLIP | 7B VLA | reference baseline, 이미 결과 있음 |
+| OpenVLA + Two-Stream | Two-Stream v4 | 7B VLA (encoder 교체) | 통합 실험 |
+| Encoder + MLP (ours) | Two-Stream v4 | frozen enc + MLP | Phase 3 메인 실험 |
+| Encoder + MLP | DINOv2 | frozen enc + MLP | Phase 3 비교 대상 |
+
+**사전 작업**:
+- [ ] OpenVLA fine-tuning 코드에 Two-Stream encoder 주입 경로 확인
+- [ ] Docker `openvla-libero` 환경 정상 구동 확인
+- [ ] 기존 OpenVLA fine-tuned 모델로 rollout 재현 가능 확인
 
 ---
 
