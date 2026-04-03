@@ -403,9 +403,10 @@ class TwoStreamModel(nn.Module):
     Pipeline:
     1. Preprocessing: RGB pair → M channel (change) + P channel (appearance)
     2. Encoder: Interleaved ViT, CLS exchange between streams
+       - mask_ratio > 0: MAE-style, visible patches만 인코더 처리
     3. CLS fusion: (m_cls + p_cls) / 2 → global context [B, D]
-    4. Decoder M: M patches + fused CLS → predict future frame
-    5. Decoder P: P patches + fused CLS → predict future frame
+    4. Decoder: mask token 삽입 후 전체 패치로 future frame 복원
+    5. Loss: future prediction + (optional) masked reconstruction auxiliary
 
     Cross-stream info flows only through CLS exchange.
     Each decoder sees only its own patches, preventing trivial M+P shortcuts.
@@ -420,8 +421,12 @@ class TwoStreamModel(nn.Module):
         mlp_ratio: float = 4.0,
         image_size: int = 224,
         patch_size: int = 16,
+        mask_ratio: float = 0.0,
     ):
         super().__init__()
+
+        self.mask_ratio = mask_ratio
+        self.num_patches = (image_size // patch_size) ** 2
 
         self.preprocessing = TwoStreamPreprocessing()
         self.encoder = InterleavedTwoStreamViT(
@@ -433,11 +438,66 @@ class TwoStreamModel(nn.Module):
             image_size=image_size,
             patch_size=patch_size,
         )
-        # Per-stream decoders: each gets own patches + shared fused CLS.
-        # Both predict future frame → forces CLS to carry cross-stream info.
-        # M decoder needs appearance from CLS, P decoder needs change from CLS.
         self.decoder_m = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
         self.decoder_p = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
+
+        # MAE mask tokens (stream별 독립)
+        if mask_ratio > 0:
+            self.mask_token_m = nn.Parameter(torch.zeros(1, 1, embed_dim))
+            self.mask_token_p = nn.Parameter(torch.zeros(1, 1, embed_dim))
+            nn.init.trunc_normal_(self.mask_token_m, std=0.02)
+            nn.init.trunc_normal_(self.mask_token_p, std=0.02)
+
+    def _random_mask(self, B: int, device: torch.device) -> torch.Tensor:
+        """독립 랜덤 마스크 생성. Returns: [B, N] bool, True=masked."""
+        N = self.num_patches
+        num_masked = int(self.mask_ratio * N)
+        noise = torch.rand(B, N, device=device)
+        ids_shuffle = torch.argsort(noise, dim=1)
+        mask = torch.ones(B, N, dtype=torch.bool, device=device)
+        mask.scatter_(1, ids_shuffle[:, :N - num_masked], False)
+        return mask
+
+    def _apply_mask(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """마스킹: CLS(idx=0) 보존, 나머지 중 visible만 추출.
+
+        Args:
+            tokens: [B, N+1, D] (CLS + patches)
+            mask: [B, N] bool, True=masked
+
+        Returns:
+            visible_tokens: [B, N_vis+1, D] (CLS + visible patches)
+        """
+        cls = tokens[:, :1]        # [B, 1, D]
+        patches = tokens[:, 1:]    # [B, N, D]
+        B, N, D = patches.shape
+
+        # visible patches만 추출
+        visible = patches[~mask].reshape(B, -1, D)  # [B, N_vis, D]
+        return torch.cat([cls, visible], dim=1)      # [B, N_vis+1, D]
+
+    def _restore_with_mask_tokens(
+        self, visible_tokens: torch.Tensor, mask: torch.Tensor, mask_token: torch.Tensor
+    ) -> torch.Tensor:
+        """Visible embeddings + mask tokens → 원래 순서의 전체 패치 복원.
+
+        Args:
+            visible_tokens: [B, N_vis+1, D] (CLS + visible)
+            mask: [B, N] bool, True=masked
+            mask_token: [1, 1, D]
+
+        Returns:
+            full_patches: [B, N, D] (CLS 제외, 원래 patch 순서)
+        """
+        visible_patches = visible_tokens[:, 1:]  # [B, N_vis, D]
+        B, _, D = visible_patches.shape
+        N = mask.shape[1]
+
+        # 전체 패치를 mask token으로 초기화
+        full = mask_token.expand(B, N, -1).clone()
+        # visible 위치에 실제 embedding 삽입
+        full[~mask] = visible_patches.reshape(-1, D)
+        return full
 
     def forward(
         self, image_current: torch.Tensor, image_future: torch.Tensor
@@ -457,18 +517,81 @@ class TwoStreamModel(nn.Module):
         # 1. Preprocessing
         m_channel, p_channel = self.preprocessing(image_current, image_future)
 
-        # 2. Encoding with CLS exchange
+        if self.mask_ratio > 0 and self.training:
+            return self._forward_masked(m_channel, p_channel)
+        else:
+            return self._forward_full(m_channel, p_channel)
+
+    def _forward_full(
+        self, m_channel: torch.Tensor, p_channel: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """마스킹 없는 기존 forward (eval 또는 mask_ratio=0)."""
         m_tokens, p_tokens = self.encoder(m_channel, p_channel)
-
-        # 3. CLS fusion: shared global context for both decoders
-        cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2  # [B, D]
-
-        # 4. Per-stream decoding: own patches + fused CLS → future frame
-        m_patches = m_tokens[:, 1:]  # [B, N, D] — M patches only
-        p_patches = p_tokens[:, 1:]  # [B, N, D] — P patches only
-
+        cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
+        m_patches = m_tokens[:, 1:]
+        p_patches = p_tokens[:, 1:]
         pred_m = self.decoder_m(m_patches, cls_embedding)
         pred_p = self.decoder_p(p_patches, cls_embedding)
+        return pred_m, pred_p, cls_embedding
+
+    def _forward_masked(
+        self, m_channel: torch.Tensor, p_channel: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """MAE-style masked forward (training only)."""
+        B = m_channel.shape[0]
+        device = m_channel.device
+
+        # M/P 독립 마스크 생성
+        mask_m = self._random_mask(B, device)  # [B, N]
+        mask_p = self._random_mask(B, device)  # [B, N]
+
+        # 인코더: patch embed + pos embed까지는 전체, 그 후 마스킹
+        # InterleavedTwoStreamViT 내부에서 처리하기 어려우므로
+        # 인코더의 중간 단계를 직접 호출
+        enc = self.encoder
+        batch_size = B
+
+        # Patch embedding
+        m_patches = enc.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
+        p_patches = enc.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
+
+        # CLS + patches + pos embed
+        m_cls = enc.cls_token_m.expand(batch_size, -1, -1)
+        p_cls = enc.cls_token_p.expand(batch_size, -1, -1)
+        m_tokens = torch.cat([m_cls, m_patches], dim=1) + enc.pos_embed_m
+        p_tokens = torch.cat([p_cls, p_patches], dim=1) + enc.pos_embed_p
+
+        # 마스킹 적용 (CLS 보존)
+        m_tokens = self._apply_mask(m_tokens, mask_m)  # [B, N_vis_m+1, D]
+        p_tokens = self._apply_mask(p_tokens, mask_p)  # [B, N_vis_p+1, D]
+
+        # Interleaved processing with CLS exchange
+        for stage_idx in range(enc.num_stages):
+            for block_m in enc.blocks_m[stage_idx]:
+                m_tokens = block_m(m_tokens)
+            for block_p in enc.blocks_p[stage_idx]:
+                p_tokens = block_p(p_tokens)
+
+            m_cls_tok = m_tokens[:, 0:1]
+            p_cls_tok = p_tokens[:, 0:1]
+            cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)
+            cls_exchanged = enc.cls_exchange[stage_idx](cls_combined)
+            m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
+            p_tokens = torch.cat([cls_exchanged[:, 1:2], p_tokens[:, 1:]], dim=1)
+
+        m_tokens = enc.norm_m(m_tokens)
+        p_tokens = enc.norm_p(p_tokens)
+
+        # CLS fusion
+        cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
+
+        # Mask token 삽입 → 원래 순서의 전체 패치 복원
+        m_full_patches = self._restore_with_mask_tokens(m_tokens, mask_m, self.mask_token_m)
+        p_full_patches = self._restore_with_mask_tokens(p_tokens, mask_p, self.mask_token_p)
+
+        # 디코더: 전체 N개 패치 + CLS → future frame
+        pred_m = self.decoder_m(m_full_patches, cls_embedding)
+        pred_p = self.decoder_p(p_full_patches, cls_embedding)
 
         return pred_m, pred_p, cls_embedding
 
