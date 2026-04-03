@@ -49,29 +49,41 @@
 - YES (baseline 대비 competitive) → cross-domain transfer 가능. Phase 3A로
 - NO (도메인 갭 확인) → 실패는 아님. Phase 3B로
 
-### Phase 3A: LIBERO Fine-tuning (EgoDex-only 사전학습)
+### Phase 3: LIBERO Fine-tuning (Encoder 품질 최종 검증)
 
-**목표**: EgoDex 인코더로 로봇 조작 직접 평가
+**목표**: frozen encoder + 간단한 action decoder로 LIBERO 시뮬레이터에서 로봇 조작 평가.
+"표현에 인코딩된 action 정보가 실제 제어에 유용한가?"를 success rate로 검증.
 
-1. EgoDex 사전학습 인코더로 LIBERO fine-tune
-2. Baseline 비교: scratch, ImageNet pretrained
+**실험 설계 (controlled comparison)**:
+- 동일 조건: 같은 MLP action decoder, 같은 LIBERO fine-tuning 절차
+- 변수: frozen vision encoder만 교체
+- 평가: 시뮬레이터 rollout success rate
 
-**Go/No-Go**:
-- YES → 논문 메인 결과
-- NO → Phase 3B 필요
+| Encoder | 사전학습 | 입력 | Params |
+|---------|---------|------|--------|
+| Two-Stream v4 | EgoDex (ours) | (img_t-1, img_t) | ~186M |
+| VideoMAE | EgoDex (ours) | (img_t-1, img_t) | 86M |
+| SigLIP | WebLI (OpenVLA 원본) | img_t | 86M |
+| DINOv2-Base | LVD-142M | img_t | 86M |
 
-### Phase 3B: 혼합 사전학습 (필요 시에만)
+※ 공정성: 1프레임 baseline에도 (img_t-1, img_t) concat 조건 추가 검토
 
-Phase 3A 실패 시 실행. 3가지 사전학습 조건 비교:
+**학습 데이터**: LIBERO demonstration (HDF5, 이미지+action 포함)
+- `data/libero/datasets/libero_spatial/` — 10개 태스크
+- `~/.cache/openvla/datasets/modified_libero_rlds/` — 4개 suite (RLDS 포맷)
 
-| 사전학습 데이터 | Probing (Bridge) | LIBERO |
-|---------------|-----------------|--------|
-| EgoDex only | Phase 2 결과 | Phase 3A 결과 |
-| Bridge only | 새로 실험 | 새로 실험 |
-| EgoDex + Bridge | 새로 실험 | 새로 실험 |
+**평가**: LIBERO 시뮬레이터에서 rollout (Docker `libero` 환경)
+- 태스크별 success rate (N=20 trials)
+- 단순 action prediction이 아닌 **연속 제어** 성공 여부
 
-**원칙**: "EgoDex만으로 충분한가?"를 먼저 증명하고, 부족할 때만 데이터 추가.
-처음부터 혼합하면 기여 분리 불가.
+**논문 스토리 3단계**:
+1. Action probing → 표현에 action 정보가 **인코딩되어 있다** (완료)
+2. LIBERO fine-tuning → 인코딩된 정보가 **실제 제어에 유용하다**
+3. Encoder 비교 → action-agnostic 사전학습이 **범용 vision feature보다 낫다**
+
+**(Optional) Phase 3B: VLA 통합**
+시간 허용 시 OpenVLA의 SigLIP을 Two-Stream으로 교체하여 전체 fine-tuning.
+Phase 3 결과가 이미 논문 완성에 충분하므로 bonus.
 
 ---
 
