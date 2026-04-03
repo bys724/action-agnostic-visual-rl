@@ -187,15 +187,19 @@ bash scripts/pretrain_aws.sh --model two-stream
 - [ ] EgoDex part2, 3, 5 CDN 다운로드 + 추출
 
 ### 다음 단계
-- [ ] Ablation A/B/C probing 비교 → depth vs exchange 효과 분리
+- [x] Ablation A/B/C probing 비교 → **blk/stage가 핵심**, d=12 s=2 확정
+- [ ] MAE masked auxiliary loss 구현 (d=12, s=2 기반)
+- [ ] Full training: Two-Stream v4 (d=12, s=2, +masking) + VideoMAE 병렬
 - [ ] DROID action probing (cross-domain, 로봇 7-DoF velocity)
-- [ ] Full training 설정 확정 → 본 학습 시작
+- [ ] SSv2 데이터 전처리 및 활용 검토
 
 ---
 
-## Architecture Ablation (진행 중)
+## Architecture Ablation (완료)
 
 **목적**: depth(표현력)와 CLS exchange 빈도의 효과 분리
+
+### 설정
 
 | Config | depth | stages | blk/stage | exchange | Params |
 |--------|-------|--------|-----------|----------|--------|
@@ -204,8 +208,27 @@ bash scripts/pretrain_aws.sh --model two-stream
 | B | 6 | 2 | 3 | 2 | 128M |
 | C | 4 | 2 | 2 | 2 | 100M |
 
-- **A vs B** (같은 depth=6): exchange 빈도 효과 (3회 vs 2회)
-- **A vs C** (같은 exchange=2회): depth 효과 (6 vs 4) — B와 C 비교
+### 결과 (3 epoch 간이 학습, part4 probing)
+
+| Config | blk/stage | Epoch 3 Loss | pmc gap=5 | pmc gap=10 | cls avg gap=10 |
+|--------|-----------|-------------|-----------|------------|----------------|
+| 기존 (30ep) | 4 | 0.0009 | 0.489 | **0.585** | 0.364 |
+| A | 2 | 0.0017 | 0.212 | 0.359 | 0.243 |
+| **B** | **3** | **0.0017** | **0.256** | **0.405** | **0.255** |
+| C | 2 | 0.0019 | 0.175 | 0.376 | 0.138 |
+
+### 결론
+
+1. **B > A** (같은 depth=6): stage당 block 수가 많을수록 좋음 (3 > 2). 충분히 처리 후 교환이 효과적
+2. **C도 선전** (100M으로 A 135M에 근접): depth보다 blk/stage가 중요할 수 있음
+3. **최적 설정: blk/stage를 최대화** → 기존 d=12에서 s=3→s=2로 변경 (4→6 blk/stage)
+
+### 확정 아키텍처 (v4)
+
+```
+depth=12, num_stages=2 (6 blocks/stage, CLS exchange 2회)
+→ ~186M params (기존 193M 대비 약간 감소)
+```
 
 ---
 
@@ -219,23 +242,20 @@ bash scripts/pretrain_aws.sh --model two-stream
 
 ---
 
-## 아이디어: MAE-style Masked Auxiliary Loss (구현 예정)
+## MAE-style Masked Auxiliary Loss (구현 예정)
 
-Architecture ablation 확정 후 구현.
-
-### 개요
-
-MAE 스타일의 마스킹 보조 loss를 Two-Stream에 추가. M/P stream 각각 독립적으로 랜덤 마스킹.
+Architecture 확정(d=12, s=2)에 적용. 구현 후 full training에 포함.
 
 ### 구현 방향
 
 ```
 인코더 (MAE 방식):
-  M: 196 patches → 독립 random mask (30%) → 137 visible만 처리
-  P: 196 patches → 독립 random mask (30%) → 137 visible만 처리
-  ※ M/P 마스킹 위치는 독립 (종속성 없음, 겹침도 자연 발생)
+  M: 196 patches → 독립 random mask (30~50%) → visible만 처리
+  P: 196 patches → 독립 random mask (30~50%) → visible만 처리
+  ※ M/P 마스킹은 완전 독립 (종속성 없음, 겹침도 자연 발생)
   ※ CLS는 마스킹 안 함 (CLS exchange 품질 유지)
-      ↓ CLS exchange (visible + CLS만)
+      ↓ CLS exchange (visible + CLS)
+      ↓ (6 blocks/stage × 2 stages)
 디코더:
   visible embeddings + learnable mask_token + positional embedding → future image 복원
       ↓
@@ -246,24 +266,22 @@ Loss:
 
 ### 동기
 - CLS average가 patch_mean의 68% 수준 (0.364 vs 0.532) → CLS 정보 밀도 부족
-- 인코더가 일부 패치만 보고도 전체를 이해해야 하므로 표현력 향상 (MAE 핵심 발견)
-- 부수 효과: 인코더 연산 ~30% 절약 (visible만 처리)
+- 인코더가 일부만 보고도 전체를 이해해야 → 표현력 향상 (MAE 핵심 발견)
+- 부수 효과: 인코더 연산 절약 (visible만 처리)
 
-### 기대 효과
-1. 각 stream 내 local spatial reasoning 강화 (확실)
-2. CLS의 spatial info 밀도 향상 → CLS probing 성능 개선 (가능성)
-3. 3단계 랜덤성으로 overfitting 구조적 방지:
-   - Spatial: RandomCrop(224) — 매번 다른 영역
-   - Temporal: gap=1~30 — 매번 다른 시간 간격
-   - Structural: stream별 독립 랜덤 마스킹 — 매번 다른 정보 가림
+### 3단계 랜덤성 (모델 고유 특성)
+1. **Spatial**: RandomCrop(224) — 매번 다른 영역
+2. **Temporal**: gap=1~30 — 매번 다른 시간 간격
+3. **Structural**: stream별 독립 랜덤 마스킹 — 매번 다른 정보 가림
+→ 동일 데이터도 매번 다른 문제. 단, 과도한 랜덤성은 수렴 저하 → 비율 튜닝 필요.
 
 ### 마스킹 비율 가이드
 | 방법 | 비율 | 이유 |
 |------|------|------|
-| MAE | 75% | 이미지 redundancy 높음, 높은 마스킹이 핵심 |
-| VideoMAE | 90~95% | 비디오 시간축 중복이 더 큼 |
+| MAE | 75% | 이미지 redundancy 높음 |
+| VideoMAE | 90~95% | 비디오 시간축 중복 |
 | iBOT(DINOv2) | ~50% | discriminative, teacher 신호 보존 |
-| **우리 모델** | **30~50%** | 보조 loss이므로 공격적일 필요 없음 |
+| **우리 모델** | **30~50%** | 보조 loss, 메인은 future prediction |
 - 실험 조건: 0% (baseline), 30%, 50%
 
 ### 주의점
