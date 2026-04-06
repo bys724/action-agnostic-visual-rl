@@ -19,11 +19,135 @@ while giving decoders enough spatial information for meaningful reconstruction.
 Inspired by biological M/P visual pathways.
 """
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .common import TwoStreamPreprocessing
+
+
+# ============================================================================
+# 2D Rotary Position Embedding (RoPE)
+# ============================================================================
+
+def build_2d_rope_freqs(num_patches_per_side: int, dim: int, theta: float = 10000.0):
+    """2D RoPE 주파수 테이블 생성.
+
+    패치의 (row, col) 좌표를 dim의 절반씩 나눠 인코딩.
+    Returns: [N, dim] complex frequencies (N = num_patches_per_side^2)
+    """
+    half_dim = dim // 2
+    freqs_row = 1.0 / (theta ** (torch.arange(0, half_dim // 2, dtype=torch.float32) / (half_dim // 2)))
+    freqs_col = 1.0 / (theta ** (torch.arange(0, half_dim // 2, dtype=torch.float32) / (half_dim // 2)))
+
+    rows = torch.arange(num_patches_per_side, dtype=torch.float32)
+    cols = torch.arange(num_patches_per_side, dtype=torch.float32)
+
+    # [H, W, half_dim//2] for row and col separately
+    grid_r, grid_c = torch.meshgrid(rows, cols, indexing='ij')
+    grid_r = grid_r.reshape(-1)  # [N]
+    grid_c = grid_c.reshape(-1)  # [N]
+
+    # outer product: [N, half_dim//2]
+    angles_r = torch.outer(grid_r, freqs_row)
+    angles_c = torch.outer(grid_c, freqs_col)
+
+    # concat row and col angles: [N, half_dim]
+    angles = torch.cat([angles_r, angles_c], dim=-1)
+
+    # complex form: cos + i*sin
+    freqs_cis = torch.polar(torch.ones_like(angles), angles)  # [N, half_dim]
+    return freqs_cis
+
+
+def apply_rope(x: torch.Tensor, freqs_cis: torch.Tensor, has_cls: bool = True) -> torch.Tensor:
+    """RoPE를 attention의 Q, K에 적용.
+
+    Args:
+        x: [B, N(+1), H, D_head] — CLS가 있으면 idx 0이 CLS
+        freqs_cis: [N, D_head//2] — 패치 위치별 complex frequencies
+        has_cls: True면 idx 0(CLS)은 RoPE 적용 안 함
+
+    Returns: [B, N(+1), H, D_head]
+    """
+    if has_cls:
+        cls_tok = x[:, :1]
+        patches = x[:, 1:]
+    else:
+        patches = x
+
+    B, N, H, D = patches.shape
+
+    # [B, N, H, D] → [B, N, H, D//2, 2] → complex
+    patches_c = patches.float().reshape(B, N, H, D // 2, 2)
+    patches_c = torch.view_as_complex(patches_c)  # [B, N, H, D//2]
+
+    # freqs_cis: [N, D//2] → broadcast: [1, N, 1, D//2]
+    freqs = freqs_cis[:N].unsqueeze(0).unsqueeze(2).to(patches_c.device)
+    patches_c = patches_c * freqs
+
+    # complex → real
+    patches = torch.view_as_real(patches_c).reshape(B, N, H, D).type_as(x)
+
+    if has_cls:
+        return torch.cat([cls_tok, patches], dim=1)
+    return patches
+
+
+# ============================================================================
+# Custom Transformer Block with RoPE
+# ============================================================================
+
+class TransformerBlock(nn.Module):
+    """RoPE 지원 Transformer block (Pre-norm, ViT style)."""
+
+    def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float = 4.0):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.qkv = nn.Linear(embed_dim, embed_dim * 3)
+        self.proj = nn.Linear(embed_dim, embed_dim)
+
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, int(embed_dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
+        )
+
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor = None) -> torch.Tensor:
+        """
+        Args:
+            x: [B, N, D]
+            freqs_cis: [N_patches, D_head//2] — None이면 RoPE 없이 동작
+        """
+        # Self-attention with RoPE
+        h = self.norm1(x)
+        B, N, D = h.shape
+        qkv = self.qkv(h).reshape(B, N, 3, self.num_heads, self.head_dim)
+        q, k, v = qkv.unbind(dim=2)  # each: [B, N, H, D_head]
+
+        if freqs_cis is not None:
+            q = apply_rope(q, freqs_cis, has_cls=True)
+            k = apply_rope(k, freqs_cis, has_cls=True)
+
+        # Scaled dot-product attention
+        q = q.transpose(1, 2)  # [B, H, N, D_head]
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        attn = F.scaled_dot_product_attention(q, k, v)  # [B, H, N, D_head]
+        attn = attn.transpose(1, 2).reshape(B, N, D)  # [B, N, D]
+
+        x = x + self.proj(attn)
+
+        # MLP
+        x = x + self.mlp(self.norm2(x))
+        return x
 
 
 class CLSExchangeBlock(nn.Module):
@@ -128,10 +252,13 @@ class InterleavedTwoStreamViT(nn.Module):
         self.cls_token_m = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.cls_token_p = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
-        # Positional embeddings
         num_patches = (image_size // patch_size) ** 2
-        self.pos_embed_m = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
-        self.pos_embed_p = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        num_patches_per_side = image_size // patch_size
+
+        # 2D RoPE frequencies (not a parameter, just a buffer)
+        head_dim = embed_dim // num_heads
+        freqs_cis = build_2d_rope_freqs(num_patches_per_side, head_dim)
+        self.register_buffer("freqs_cis", freqs_cis, persistent=False)
 
         # Transformer blocks per stage for each stream
         self.blocks_m = nn.ModuleList()
@@ -139,35 +266,18 @@ class InterleavedTwoStreamViT(nn.Module):
         self.cls_exchange = nn.ModuleList()
 
         for _ in range(num_stages):
-            # M channel blocks
             stage_blocks_m = nn.ModuleList([
-                nn.TransformerEncoderLayer(
-                    d_model=embed_dim,
-                    nhead=num_heads,
-                    dim_feedforward=int(embed_dim * mlp_ratio),
-                    activation="gelu",
-                    batch_first=True,
-                    norm_first=True,
-                )
+                TransformerBlock(embed_dim, num_heads, mlp_ratio)
                 for _ in range(self.blocks_per_stage)
             ])
             self.blocks_m.append(stage_blocks_m)
 
-            # P channel blocks
             stage_blocks_p = nn.ModuleList([
-                nn.TransformerEncoderLayer(
-                    d_model=embed_dim,
-                    nhead=num_heads,
-                    dim_feedforward=int(embed_dim * mlp_ratio),
-                    activation="gelu",
-                    batch_first=True,
-                    norm_first=True,
-                )
+                TransformerBlock(embed_dim, num_heads, mlp_ratio)
                 for _ in range(self.blocks_per_stage)
             ])
             self.blocks_p.append(stage_blocks_p)
 
-            # CLS exchange block
             self.cls_exchange.append(
                 CLSExchangeBlock(embed_dim, num_heads=8, mlp_ratio=mlp_ratio)
             )
@@ -181,8 +291,6 @@ class InterleavedTwoStreamViT(nn.Module):
         """Initialize weights following ViT convention."""
         nn.init.trunc_normal_(self.cls_token_m, std=0.02)
         nn.init.trunc_normal_(self.cls_token_p, std=0.02)
-        nn.init.trunc_normal_(self.pos_embed_m, std=0.02)
-        nn.init.trunc_normal_(self.pos_embed_p, std=0.02)
 
     def forward(
         self, m_channel: torch.Tensor, p_channel: torch.Tensor
@@ -214,18 +322,15 @@ class InterleavedTwoStreamViT(nn.Module):
         m_tokens = torch.cat([m_cls, m_patches], dim=1)  # [B, N+1, D]
         p_tokens = torch.cat([p_cls, p_patches], dim=1)
 
-        # 3. Add positional embeddings
-        m_tokens = m_tokens + self.pos_embed_m
-        p_tokens = p_tokens + self.pos_embed_p
+        # 3. RoPE는 attention 내부에서 적용 (APE 대신)
 
         # 4. Interleaved processing with CLS exchange
         for stage_idx in range(self.num_stages):
-            # Process each stream with transformer blocks
             for block_m in self.blocks_m[stage_idx]:
-                m_tokens = block_m(m_tokens)
+                m_tokens = block_m(m_tokens, freqs_cis=self.freqs_cis)
 
             for block_p in self.blocks_p[stage_idx]:
-                p_tokens = block_p(p_tokens)
+                p_tokens = block_p(p_tokens, freqs_cis=self.freqs_cis)
 
             # Extract CLS tokens
             m_cls = m_tokens[:, 0:1]  # [B, 1, D]
@@ -463,8 +568,8 @@ class TwoStreamModel(nn.Module):
         mask.scatter_(1, ids_shuffle[:, :N - num_masked], False)
         return mask
 
-    def _apply_mask(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """마스킹: CLS(idx=0) 보존, 나머지 중 visible만 추출.
+    def _apply_mask(self, tokens: torch.Tensor, mask: torch.Tensor):
+        """마스킹: CLS(idx=0) 보존, 나머지 중 visible만 추출 + ids_keep 반환.
 
         Args:
             tokens: [B, N+1, D] (CLS + patches)
@@ -472,6 +577,7 @@ class TwoStreamModel(nn.Module):
 
         Returns:
             visible_tokens: [B, N_vis+1, D] (CLS + visible patches)
+            ids_keep: [N_vis] visible patch의 원래 position index (RoPE gather용)
         """
         cls = tokens[:, :1]        # [B, 1, D]
         patches = tokens[:, 1:]    # [B, N, D]
@@ -479,7 +585,11 @@ class TwoStreamModel(nn.Module):
 
         # visible patches만 추출
         visible = patches[~mask].reshape(B, -1, D)  # [B, N_vis, D]
-        return torch.cat([cls, visible], dim=1)      # [B, N_vis+1, D]
+
+        # visible patch의 원래 position index (batch 내 mask 동일하므로 [0] 사용)
+        ids_keep = (~mask[0]).nonzero(as_tuple=True)[0]  # [N_vis]
+
+        return torch.cat([cls, visible], dim=1), ids_keep
 
     def _restore_with_mask_tokens(
         self, visible_tokens: torch.Tensor, mask: torch.Tensor, mask_token: torch.Tensor
@@ -560,22 +670,26 @@ class TwoStreamModel(nn.Module):
         m_patches = enc.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
         p_patches = enc.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
 
-        # CLS + patches + pos embed
+        # CLS + patches (RoPE는 attention 내부에서 적용, APE 없음)
         m_cls = enc.cls_token_m.expand(batch_size, -1, -1)
         p_cls = enc.cls_token_p.expand(batch_size, -1, -1)
-        m_tokens = torch.cat([m_cls, m_patches], dim=1) + enc.pos_embed_m
-        p_tokens = torch.cat([p_cls, p_patches], dim=1) + enc.pos_embed_p
+        m_tokens = torch.cat([m_cls, m_patches], dim=1)
+        p_tokens = torch.cat([p_cls, p_patches], dim=1)
 
-        # 마스킹 적용 (CLS 보존)
-        m_tokens = self._apply_mask(m_tokens, mask_m)  # [B, N_vis_m+1, D]
-        p_tokens = self._apply_mask(p_tokens, mask_p)  # [B, N_vis_p+1, D]
+        # 마스킹 적용 (CLS 보존) + visible position index 반환
+        m_tokens, ids_keep_m = self._apply_mask(m_tokens, mask_m)
+        p_tokens, ids_keep_p = self._apply_mask(p_tokens, mask_p)
+
+        # Visible patch 위치의 RoPE frequencies만 gather
+        freqs_m = enc.freqs_cis[ids_keep_m]  # [N_vis_m, D_head//2]
+        freqs_p = enc.freqs_cis[ids_keep_p]  # [N_vis_p, D_head//2]
 
         # Interleaved processing with CLS exchange
         for stage_idx in range(enc.num_stages):
             for block_m in enc.blocks_m[stage_idx]:
-                m_tokens = block_m(m_tokens)
+                m_tokens = block_m(m_tokens, freqs_cis=freqs_m)
             for block_p in enc.blocks_p[stage_idx]:
-                p_tokens = block_p(p_tokens)
+                p_tokens = block_p(p_tokens, freqs_cis=freqs_p)
 
             m_cls_tok = m_tokens[:, 0:1]
             p_cls_tok = p_tokens[:, 0:1]
