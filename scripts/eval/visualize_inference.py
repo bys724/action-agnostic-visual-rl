@@ -122,11 +122,14 @@ def main():
     parser.add_argument("--max-gap", type=int, default=10)
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--num-stages", type=int, default=3)
+    parser.add_argument("--mask-ratio", type=float, default=0.0)
+    parser.add_argument("--mask-ratio-p", type=float, default=None)
     args = parser.parse_args()
 
     # 모델 로드
     print(f"Loading checkpoint: {args.checkpoint}")
-    model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages).to(DEVICE)
+    model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
+                           mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p).to(DEVICE)
     ck = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
     model.load_state_dict(ck["model_state_dict"])
     model.eval()
