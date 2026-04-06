@@ -198,6 +198,79 @@ class CLSExchangeBlock(nn.Module):
         return cls_tokens
 
 
+# ============================================================================
+# Composition Consistency: 변화의 합성 구조 검증
+# ============================================================================
+
+class ChangeCompositor(nn.Module):
+    """Learnable query + cross-attention으로 변화 합성.
+
+    cls_12(구간1) + cls_23(구간2) → predicted_cls_13(전체 구간)
+    Encoder CLS Exchange와 동일 철학: 입력을 변형하지 않고 query가 참조.
+
+    Args:
+        embed_dim: CLS embedding 차원 (768)
+        num_heads: cross-attention heads
+        depth: cross-attention layer 수
+    """
+
+    def __init__(self, embed_dim: int = 768, num_heads: int = 8, depth: int = 2):
+        super().__init__()
+
+        # Learnable query: M, P 각 1개
+        self.query = nn.Parameter(torch.zeros(1, 2, embed_dim))  # [1, 2, D]
+        nn.init.trunc_normal_(self.query, std=0.02)
+
+        # Cross-attention layers
+        self.layers = nn.ModuleList([
+            nn.ModuleDict({
+                'norm_q': nn.LayerNorm(embed_dim),
+                'norm_kv': nn.LayerNorm(embed_dim),
+                'cross_attn': nn.MultiheadAttention(embed_dim, num_heads, batch_first=True),
+                'norm_ff': nn.LayerNorm(embed_dim),
+                'mlp': nn.Sequential(
+                    nn.Linear(embed_dim, embed_dim * 4),
+                    nn.GELU(),
+                    nn.Linear(embed_dim * 4, embed_dim),
+                ),
+            })
+            for _ in range(depth)
+        ])
+
+    def forward(
+        self, cls_m_12: torch.Tensor, cls_p_12: torch.Tensor,
+        cls_m_23: torch.Tensor, cls_p_23: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            cls_m_12, cls_p_12: [B, D] — 구간 (t1,t2) M/P CLS
+            cls_m_23, cls_p_23: [B, D] — 구간 (t2,t3) M/P CLS
+
+        Returns:
+            pred_cls_m_13, pred_cls_p_13: [B, D] — 합성된 (t1,t3) 예측
+        """
+        B = cls_m_12.shape[0]
+
+        # Q: learnable [B, 2, D]
+        q = self.query.expand(B, -1, -1)
+
+        # K, V: 4개 CLS concat [B, 4, D]
+        kv = torch.stack([cls_m_12, cls_p_12, cls_m_23, cls_p_23], dim=1)
+
+        for layer in self.layers:
+            # Cross-attention: query가 4개 CLS를 참조
+            q_norm = layer['norm_q'](q)
+            kv_norm = layer['norm_kv'](kv)
+            attn_out, _ = layer['cross_attn'](q_norm, kv_norm, kv_norm, need_weights=False)
+            q = q + attn_out
+
+            # MLP
+            q = q + layer['mlp'](layer['norm_ff'](q))
+
+        # q[:, 0] = predicted cls_m_13, q[:, 1] = predicted cls_p_13
+        return q[:, 0], q[:, 1]
+
+
 class InterleavedTwoStreamViT(nn.Module):
     """
     Interleaved Two-Stream ViT encoder with periodic CLS exchange.
@@ -557,6 +630,9 @@ class TwoStreamModel(nn.Module):
             nn.init.trunc_normal_(self.mask_token_m, std=0.02)
             nn.init.trunc_normal_(self.mask_token_p, std=0.02)
 
+        # Composition consistency (optional, --composition으로 활성화)
+        self.compositor = None
+
     def _random_mask(self, B: int, device: torch.device, ratio: float = None) -> torch.Tensor:
         """독립 랜덤 마스크 생성. Returns: [B, N] bool, True=masked."""
         N = self.num_patches
@@ -714,6 +790,23 @@ class TwoStreamModel(nn.Module):
 
         return pred_m, pred_p, cls_embedding
 
+    def enable_composition(self, embed_dim: int = 768):
+        """Compositor를 활성화. 학습 시작 시 호출."""
+        device = next(self.parameters()).device
+        self.compositor = ChangeCompositor(embed_dim=embed_dim).to(device)
+        print(f"ChangeCompositor enabled ({sum(p.numel() for p in self.compositor.parameters()):,} params)")
+
+    def encode_cls(
+        self, image_a: torch.Tensor, image_b: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """두 이미지에서 M/P CLS만 추출 (composition용, 경량).
+
+        Returns: (cls_m, cls_p) each [B, D]
+        """
+        m_ch, p_ch = self.preprocessing(image_a, image_b)
+        m_tokens, p_tokens = self.encoder(m_ch, p_ch)
+        return m_tokens[:, 0], p_tokens[:, 0]
+
     def compute_loss(
         self, image_current: torch.Tensor, image_future: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -729,6 +822,57 @@ class TwoStreamModel(nn.Module):
         loss_p = F.mse_loss(pred_p, image_future)
         loss = loss_m + loss_p
         return loss, pred_p
+
+    def compute_composition_loss(
+        self,
+        img_t1: torch.Tensor, img_t2: torch.Tensor, img_t3: torch.Tensor,
+        detach_target: bool = True,
+    ) -> tuple[torch.Tensor, dict]:
+        """Triplet (t1,t2,t3)에 대한 전체 loss 계산.
+
+        Loss 1: 3쌍 × future prediction (기존 loss)
+        Loss 2: composition consistency (compositor)
+
+        Args:
+            img_t1, img_t2, img_t3: [B, 3, H, W]
+            detach_target: True면 cls_13에 stop-gradient (compositor만 학습)
+
+        Returns:
+            total_loss, info_dict
+        """
+        # Loss 1: 3쌍 future prediction
+        pred_m_12, pred_p_12, _ = self.forward(img_t1, img_t2)
+        pred_m_23, pred_p_23, _ = self.forward(img_t2, img_t3)
+        pred_m_13, pred_p_13, _ = self.forward(img_t1, img_t3)
+
+        loss_12 = F.mse_loss(pred_m_12, img_t2) + F.mse_loss(pred_p_12, img_t2)
+        loss_23 = F.mse_loss(pred_m_23, img_t3) + F.mse_loss(pred_p_23, img_t3)
+        loss_13 = F.mse_loss(pred_m_13, img_t3) + F.mse_loss(pred_p_13, img_t3)
+        loss_pixel = loss_12 + loss_23 + loss_13
+
+        # Loss 2: composition consistency
+        loss_comp = torch.tensor(0.0, device=img_t1.device)
+        if self.compositor is not None:
+            cls_m_12, cls_p_12 = self.encode_cls(img_t1, img_t2)
+            cls_m_23, cls_p_23 = self.encode_cls(img_t2, img_t3)
+            cls_m_13, cls_p_13 = self.encode_cls(img_t1, img_t3)
+
+            pred_cls_m, pred_cls_p = self.compositor(cls_m_12, cls_p_12, cls_m_23, cls_p_23)
+
+            target_m = cls_m_13.detach() if detach_target else cls_m_13
+            target_p = cls_p_13.detach() if detach_target else cls_p_13
+
+            loss_comp = F.mse_loss(pred_cls_m, target_m) + F.mse_loss(pred_cls_p, target_p)
+
+        info = {
+            "loss_pixel": loss_pixel.item(),
+            "loss_comp": loss_comp.item(),
+            "loss_12": loss_12.item(),
+            "loss_23": loss_23.item(),
+            "loss_13": loss_13.item(),
+        }
+
+        return loss_pixel + 0.1 * loss_comp, info
 
 
 class TwoStreamEncoder(nn.Module):
