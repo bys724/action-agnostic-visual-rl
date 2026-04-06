@@ -276,13 +276,15 @@ def main():
     parser.add_argument("--episode", type=str, default=None)
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--num-stages", type=int, default=3)
+    parser.add_argument("--mask-ratio", type=float, default=0.0,
+                        help="MAE mask ratio (체크포인트와 맞춰야 함)")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     # 모델 로드
     print(f"Loading: {args.checkpoint}")
-    model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages).to(DEVICE)
+    model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages, mask_ratio=args.mask_ratio).to(DEVICE)
     ck = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
     model.load_state_dict(ck["model_state_dict"])
     model.eval()
