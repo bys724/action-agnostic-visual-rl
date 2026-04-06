@@ -35,12 +35,14 @@ class VideoFrameDataset(ABC, Dataset):
         train: bool = True,
         max_videos: Optional[int] = None,
         cache_frames: bool = False,
+        composition: bool = False,
     ):
         self.data_root = Path(data_root)
         self.max_gap = max_gap
         self.img_size = img_size
         self.samples_per_video = samples_per_video
         self.cache_frames = cache_frames
+        self.composition = composition
 
         # Spatial transform: 256x256 → 224x224
         if train:
@@ -140,17 +142,22 @@ class VideoFrameDataset(ABC, Dataset):
     def __len__(self) -> int:
         return len(self.frame_dirs) * self.samples_per_video
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]:
+    def __getitem__(self, idx: int):
         video_idx = idx % len(self.frame_dirs)
         frame_dir = self.frame_dirs[video_idx]
         num_frames = self._get_num_frames(frame_dir)
 
-        # Gap 샘플링
+        if self.composition:
+            return self._getitem_triplet(frame_dir, num_frames)
+        else:
+            return self._getitem_pair(frame_dir, num_frames)
+
+    def _getitem_pair(self, frame_dir: Path, num_frames: int) -> Tuple[torch.Tensor, torch.Tensor, int]:
+        """기존 2장 샘플링."""
         gap = np.random.choice(
             np.arange(1, self.max_gap + 1), p=self.sample_probs
         )
 
-        # 시작 프레임 샘플링
         max_start = max(0, num_frames - gap - 1)
         if max_start <= 0:
             gap = 1
@@ -161,3 +168,36 @@ class VideoFrameDataset(ABC, Dataset):
 
         img_t, img_tk = self._load_frame_pair(frame_dir, frame_t, frame_tk)
         return img_t, img_tk, gap
+
+    def _getitem_triplet(self, frame_dir: Path, num_frames: int):
+        """Composition 모드: (t1, t2, t3) 3장 샘플링.
+
+        gap12, gap23을 독립 샘플링하고, t1 + gap12 + gap23 < num_frames 보장.
+        Returns: (img_t1, img_t2, img_t3, gap12, gap23)
+        """
+        # gap12, gap23 독립 샘플링
+        gap12 = np.random.choice(np.arange(1, self.max_gap + 1), p=self.sample_probs)
+        gap23 = np.random.choice(np.arange(1, self.max_gap + 1), p=self.sample_probs)
+        total_gap = gap12 + gap23
+
+        # 비디오 길이에 맞게 조정
+        max_start = max(0, num_frames - total_gap - 1)
+        if max_start <= 0:
+            gap12, gap23 = 1, 1
+            max_start = max(0, num_frames - 3)
+
+        t1 = np.random.randint(0, max_start + 1)
+        t2 = t1 + gap12
+        t3 = t2 + gap23
+
+        img_t1 = self._load_single_frame(frame_dir, t1)
+        img_t2 = self._load_single_frame(frame_dir, t2)
+        img_t3 = self._load_single_frame(frame_dir, t3)
+
+        return img_t1, img_t2, img_t3, gap12, gap23
+
+    def _load_single_frame(self, frame_dir: Path, idx: int) -> torch.Tensor:
+        """단일 프레임 로드 + spatial crop."""
+        path = frame_dir / f"frame_{idx:06d}.jpg"
+        img = self._load_image(path)
+        return self.spatial_transform(img)
