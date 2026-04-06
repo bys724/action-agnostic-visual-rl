@@ -271,6 +271,7 @@ M보다 높게 설정 (`--mask-ratio-p`). P의 자기 입력 의존성을 제한
 ### 다음 단계
 - [x] Architecture ablation → d=12, s=2 확정
 - [x] MAE masking 비교 → mask30 확정, P 비율 분리 구현 완료
+- [ ] **Composition Consistency 실험** (아래 섹션 참고)
 - [ ] Full training (8x H100): v4 (d=12, s=2, M=0.3, P=0.5) + VideoMAE
 - [ ] DROID action probing (action 추출 진행 중)
 - [ ] LIBERO fine-tuning + rollout (encoder 비교)
@@ -315,7 +316,88 @@ depth=12, num_stages=2 (6 blocks/stage, CLS exchange 2회)
 
 ---
 
-## Ablation Study (Phase 1 이후)
+## Composition Consistency 실험
+
+### 핵심 아이디어
+
+시간 간격(gap)은 temporal 다양성이 아니라 **변화의 크기에 대한 간접적 표현**.
+(t1, t2, t3) triplet으로 **변화의 합성 구조**를 검증하고, encoder가 구조화된 change embedding을 만들도록 유도.
+
+### 동기
+
+- 현재 encoder는 (t1, t2) 쌍으로 단일 변화만 학습
+- 실제 조작은 연속적 변화의 합성: "물체를 집고(Δ12) → 옮기는(Δ23)" 과정이 전체 변화(Δ13)
+- Δ12 + Δ23 ≈ Δ13 이 embedding 공간에서 성립하면, 표현이 진정으로 변화의 구조를 포착하고 있다는 증거
+
+### 학습 구조
+
+```
+데이터: (img_t1, img_t2, img_t3) — 기존 multi-gap 확장, 3장 샘플링
+
+encoder(t1,t2) → cls_12   (구간 1: 변화 크기 small~medium)
+encoder(t2,t3) → cls_23   (구간 2: 변화 크기 small~medium)
+encoder(t1,t3) → cls_13   (전체 구간: 변화 크기 large)
+
+[Loss 1] Both-Predict-Future × 3 (주된 학습 신호)
+  구간 (1,2): M/P decoder → predict img_t2
+  구간 (2,3): M/P decoder → predict img_t3
+  구간 (1,3): M/P decoder → predict img_t3
+  = 기존 loss를 3개 쌍에 적용
+
+[Loss 2] Composition Consistency (auxiliary)
+  compositor(cls_12, cls_23) → predicted_cls_13
+  L_comp = ||predicted_cls_13 - sg(cls_13)||²
+
+Total Loss = Loss_1 + α * Loss_2   (α=0.1로 시작)
+```
+
+### Compositor 구조: Learnable Query + Cross-Attention
+
+입력 CLS를 변형하지 않고, learnable query가 4개 CLS를 참조하여 합성 결과 생성.
+Encoder의 CLS Exchange와 동일한 철학 — 정보 훼손 없이 교환.
+
+```
+Compositor:
+  learnable tokens: [query_m, query_p]  (학습 가능)
+
+  Q = [query_m, query_p]               # 2 tokens
+  K, V = [cls_m_12, cls_p_12, cls_m_23, cls_p_23]  # 4 tokens
+
+  Cross-Attention (1~2 layers) → predicted_cls_m_13, predicted_cls_p_13
+```
+
+**sg(cls_13)** target: stop-gradient. Loss 1의 pixel target이 encoder를 잡아주므로 collapse 없음.
+
+### PE Ablation (compositor 내)
+
+| Variant | 설명 | 해석 |
+|---------|------|------|
+| A (PE 없음) | K에 순서 정보 없음 (set operation) | 교환법칙이 성립하는 합성만 가능 |
+| B (순서 PE) | K에 first/second PE 추가 | 비가환적 합성(회전→이동 ≠ 이동→회전) 가능 |
+
+- A ≈ B: change embedding 자체에 공간 구조 보존 → **encoder 품질의 강력한 증거**
+- B > A: 비가환적 변화에서 순서가 필요 → **순서의 역할 증명**
+
+### 구현 변경점
+
+1. **데이터 로더**: 2장 → 3장 샘플링 (기존 EgoDexDataset 확장)
+2. **Compositor 모듈**: learnable query + cross-attention (경량, ~수 MB)
+3. **Loss 항 추가**: composition consistency loss
+4. **학습 스크립트**: `--composition` 플래그로 on/off
+
+### 실험 계획
+
+| 실험 | 설명 | 비교 |
+|------|------|------|
+| v4 baseline | 기존 (t1,t2) 쌍 학습 | 기준 |
+| v4 + comp (PE 없음) | triplet + composition loss (variant A) | 합성 효과 |
+| v4 + comp (순서 PE) | triplet + composition loss (variant B) | 순서 효과 |
+
+**평가**: 동일 probing 프로토콜 (EgoDex part4, gap sweep, DROID cross-domain)
+
+---
+
+## Ablation Study (Phase 1 ��후)
 
 | 변형 | 설명 |
 |-----|------|

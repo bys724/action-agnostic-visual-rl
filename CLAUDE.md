@@ -138,19 +138,20 @@ docker exec libero-eval python src/eval_libero.py \
 - **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
 - **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
 
-## 현재 Phase (2026-04-03)
+## 현재 Phase (2026-04-06)
 
-**Phase 1 완료** — 사전학습 + Action Probing 초기 결과 확보
+**Phase 1 완료** — v4 확정 + Action Probing 초기 결과 확보
 
-- **Two-Stream 아키텍처 변천**:
-  - v1: CLS-only decoder → trivial solution (실패)
-  - v2: per-stream PatchDecoder → 구조 복원 확인
-  - v3: M channel 재설계 (ΔL + Sobel(ΔL) = 3ch) → 30ep 학습 완료
-  - **v4 (확정)**: d=12, s=2 (6 blk/stage) + MAE masking + linear gap sampling
-- v4 비교 학습 진행 중 (masking 유/무, 5 epoch)
-- Action probing 초기 결과: gap=10에서 patch_mean_concat Two-Stream(R²=0.585) > VideoMAE(0.571)
+- **v4 확정**: d=12, s=2, mask M30/P50, sample_decay=-1
+- Masking 비교 완료: CLS 정보 밀도 +33% (0.397 vs 0.297)
+- Action probing: patch_mean_concat Two-Stream(R²=0.585) > VideoMAE(0.571) @gap=10
 
-**다음**: v4 비교 완료 → 8x H100 서버에서 본 학습 → LIBERO fine-tuning
+**다음 작업 (워크스테이션)**:
+1. **Composition Consistency 실험** — (t1,t2,t3) triplet으로 변화 합성 검증
+   - 데이터 로더 3장 확장, compositor 모듈 구현, `--composition` 플래그
+   - 자세한 설계: `docs/RESEARCH_PLAN.md` > "Composition Consistency 실험"
+2. 8x H100 full training (v4 + VideoMAE)
+3. DROID action probing → LIBERO fine-tuning
 
 자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
 
