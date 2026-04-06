@@ -97,6 +97,14 @@ def main():
     parser.add_argument('--mask-ratio-p', type=float, default=None,
                         help='P stream mask ratio (default: same as --mask-ratio, higher recommended)')
 
+    # Composition consistency
+    parser.add_argument('--composition', action='store_true',
+                        help='Enable composition consistency loss (triplet sampling)')
+    parser.add_argument('--comp-detach', action='store_true', default=True,
+                        help='Stop-gradient on composition target (default: True)')
+    parser.add_argument('--no-comp-detach', dest='comp_detach', action='store_false',
+                        help='Allow gradient flow through composition target')
+
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -163,6 +171,10 @@ def main():
     print(f"Total parameters: {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
 
+    # Composition consistency 활성화
+    if hasattr(args, 'composition') and args.composition and args.model == 'two-stream':
+        model.enable_composition(embed_dim=768)
+
     # Create training dataset
     print("\n" + "="*60)
     print(f"Loading training dataset: {args.train_data}")
@@ -187,6 +199,7 @@ def main():
                 sample_decay=args.sample_decay,
                 loss_decay=args.loss_decay,
                 max_videos=args.max_videos,
+                composition=args.composition if hasattr(args, 'composition') else False,
             )
             split_datasets.append(ds)
         if len(split_datasets) == 1:
@@ -245,6 +258,8 @@ def main():
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
+        composition=getattr(args, 'composition', False),
+        comp_detach=getattr(args, 'comp_detach', True),
     )
 
     print("\n" + "="*60)
