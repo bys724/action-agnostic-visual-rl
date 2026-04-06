@@ -253,17 +253,28 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 4. **CLS concat < CLS average**: CLS exchange로 이미 동질화되어 concat이 차원만 증가. CLS는 average 방식이 적합
 5. **CLS average(0.364)는 patch_mean(0.532)의 68%**: CLS bottleneck에 개선 여지
 
-### 진행 중
-- [ ] Architecture ablation 학습 (A: d=6,s=3 / B: d=6,s=2 / C: d=4,s=2)
-  - A, B: epoch 1 거의 완료, C는 A/B 완료 후 자동 시작 예정
-- [ ] EgoDex part2, 3, 5 CDN 다운로드 + 추출
+### v4 Masking 비교 결과 (5 epoch, 2026-04-06)
+
+| | pmc gap=1 | pmc gap=5 | pmc gap=10 | CLS avg gap=10 |
+|---|---------|---------|----------|--------------|
+| v4_mask30 | -2.501 | **0.277** | **0.437** | **0.397** |
+| v4_nomask | -3.203 | 0.255 | 0.418 | 0.297 |
+
+- mask30이 모든 조건에서 우세
+- **CLS 정보 밀도 33% 개선** (0.397 vs 0.297)
+- masking이 표현 품질 향상 + 연산 30% 절약 + CLS exchange 강제
+
+**P stream self-sufficiency 문제**: P는 현재 프레임 외형을 직접 입력받아 CLS exchange 없이도
+낮은 loss 달성 가능 → 빠른 수렴 + shallow 표현 + blurry 출력. 해결: P의 masking 비율을
+M보다 높게 설정 (`--mask-ratio-p`). P의 자기 입력 의존성을 제한하여 cross-stream 교환 압력 강화.
 
 ### 다음 단계
-- [x] Ablation A/B/C probing 비교 → **blk/stage가 핵심**, d=12 s=2 확정
-- [ ] MAE masked auxiliary loss 구현 (d=12, s=2 기반)
-- [ ] Full training: Two-Stream v4 (d=12, s=2, +masking) + VideoMAE 병렬
-- [ ] DROID action probing (cross-domain, 로봇 7-DoF velocity)
-- [ ] SSv2 데이터 전처리 및 활용 검토
+- [x] Architecture ablation → d=12, s=2 확정
+- [x] MAE masking 비교 → mask30 확정, P 비율 분리 구현 완료
+- [ ] Full training (8x H100): v4 (d=12, s=2, M=0.3, P=0.5) + VideoMAE
+- [ ] DROID action probing (action 추출 진행 중)
+- [ ] LIBERO fine-tuning + rollout (encoder 비교)
+- [ ] OpenVLA encoder 교체 실험
 
 ---
 

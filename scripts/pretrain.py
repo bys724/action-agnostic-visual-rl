@@ -93,7 +93,9 @@ def main():
     parser.add_argument('--ssim', action='store_true',
                         help='Add SSIM loss (MSE + 0.1 * SSIM)')
     parser.add_argument('--mask-ratio', type=float, default=0.0,
-                        help='MAE-style mask ratio (0=disabled, 0.3~0.5 recommended)')
+                        help='MAE-style mask ratio for M stream (0=disabled, 0.3 recommended)')
+    parser.add_argument('--mask-ratio-p', type=float, default=None,
+                        help='P stream mask ratio (default: same as --mask-ratio, higher recommended)')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -146,7 +148,8 @@ def main():
     print("="*60)
 
     if args.model == 'two-stream':
-        model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages, mask_ratio=args.mask_ratio)
+        model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
+                               mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p)
     elif args.model == 'single-stream':
         model = SingleStreamModel()
     elif args.model == 'videomae':

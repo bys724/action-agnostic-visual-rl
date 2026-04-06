@@ -422,10 +422,14 @@ class TwoStreamModel(nn.Module):
         image_size: int = 224,
         patch_size: int = 16,
         mask_ratio: float = 0.0,
+        mask_ratio_p: float = None,
     ):
         super().__init__()
 
         self.mask_ratio = mask_ratio
+        # P stream은 자기 입력만으로 복원이 쉬워 표현이 shallow해지는 문제가 있음.
+        # P의 masking을 M보다 높게 설정하면 CLS exchange 의존도가 높아져 표현 품질 개선.
+        self.mask_ratio_p = mask_ratio_p if mask_ratio_p is not None else mask_ratio
         self.num_patches = (image_size // patch_size) ** 2
 
         self.preprocessing = TwoStreamPreprocessing()
@@ -448,10 +452,11 @@ class TwoStreamModel(nn.Module):
             nn.init.trunc_normal_(self.mask_token_m, std=0.02)
             nn.init.trunc_normal_(self.mask_token_p, std=0.02)
 
-    def _random_mask(self, B: int, device: torch.device) -> torch.Tensor:
+    def _random_mask(self, B: int, device: torch.device, ratio: float = None) -> torch.Tensor:
         """독립 랜덤 마스크 생성. Returns: [B, N] bool, True=masked."""
         N = self.num_patches
-        num_masked = int(self.mask_ratio * N)
+        r = ratio if ratio is not None else self.mask_ratio
+        num_masked = int(r * N)
         noise = torch.rand(B, N, device=device)
         ids_shuffle = torch.argsort(noise, dim=1)
         mask = torch.ones(B, N, dtype=torch.bool, device=device)
@@ -542,8 +547,8 @@ class TwoStreamModel(nn.Module):
         device = m_channel.device
 
         # M/P 독립 마스크 생성
-        mask_m = self._random_mask(B, device)  # [B, N]
-        mask_p = self._random_mask(B, device)  # [B, N]
+        mask_m = self._random_mask(B, device, ratio=self.mask_ratio)    # [B, N]
+        mask_p = self._random_mask(B, device, ratio=self.mask_ratio_p)  # [B, N]
 
         # 인코더: patch embed + pos embed까지는 전체, 그 후 마스킹
         # InterleavedTwoStreamViT 내부에서 처리하기 어려우므로
