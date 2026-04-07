@@ -268,11 +268,49 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 낮은 loss 달성 가능 → 빠른 수렴 + shallow 표현 + blurry 출력. 해결: P의 masking 비율을
 M보다 높게 설정 (`--mask-ratio-p`). P의 자기 입력 의존성을 제한하여 cross-stream 교환 압력 강화.
 
+### Composition Consistency 실험 결과 (30 epoch, 500 videos, 동일 조건 비교)
+
+| | Final train | Final eval | pmc g=5 | pmc g=10 | CLS avg g=10 | M loss | P loss |
+|---|-------------|-----------|---------|----------|--------------|--------|--------|
+| **v4_base (gap30 linear)** | 0.0020 | 0.0387 | 0.246 | 0.290 | **0.239** | 0.0015 | 0.0006 |
+| **v4_base_gap60_tri** | 0.0022 | **0.0326** | **0.260** | **0.344** | 0.218 | 0.0016 | 0.0006 |
+| v4_comp_sg | 0.0052 | 0.0655 | 0.187 | 0.280 | 0.217 | 0.0016 | 0.0015 |
+| v4_comp_grad | 0.0076 | 0.0559 | 0.219 | 0.369 | -0.009 | 0.0028 | 0.0026 |
+
+**핵심 발견**:
+
+1. **Composition loss는 불필요** — composition 없는 base가 pixel loss/probing 모두 우세.
+   - sg는 pixel loss가 2.6배 높고 probing도 base 이하
+   - grad는 CLS collapse(-0.009), patch만 살아남음
+   - 학습 시간 5배 증가 + 메모리 3배 → 이점 없음
+
+2. **max_gap 확장 (30 → 60, triangular)이 더 효과적**:
+   - eval loss 16% 개선 (0.0387 → 0.0326)
+   - probing pmc gap=10: 0.290 → 0.344 (+0.054)
+   - composition 없이 같은 data로 더 나은 결과
+
+3. **M/P loss 균형은 표현 품질과 무관**:
+   - base (M=0.0015, P=0.0006): M>>P인데 probing 최고
+   - comp_sg (M≈P=0.0016): 균형 맞췄지만 probing 낮음
+   - **M/P 균형 자체가 목표가 아님**, 전체 표현 품질이 중요
+   - sg에서 M≈P가 된 이유: composition의 multi-pair 학습 + compositor K/V gradient 상호작용 (P 마스킹 50% 때문이 아니고, gap 때문도 아님)
+
+### 확정된 v4 설정
+
+```
+depth=12, num_stages=2 (6 blk/stage, CLS exchange 2회)
+mask_ratio=0.3 (M), mask_ratio_p=0.5 (P)
+max_gap=60, sample_dist=triangular, sample_center=30
+2D RoPE
+Composition 없음 (compositor 제거)
+```
+
 ### 다음 단계
 - [x] Architecture ablation → d=12, s=2 확정
-- [x] MAE masking 비교 → mask30 확정, P 비율 분리 구현 완료
-- [ ] **Composition Consistency 실험** (아래 섹션 참고)
-- [ ] Full training (8x H100): v4 (d=12, s=2, M=0.3, P=0.5) + VideoMAE
+- [x] MAE masking 비교 → M=0.3, P=0.5 확정
+- [x] Composition 실험 → 사용하지 않기로 결정
+- [x] Gap 분포 실험 → max_gap=60, triangular(center=30) 확정
+- [ ] Full training (8x H100): 확정 설정 + VideoMAE
 - [ ] DROID action probing (action 추출 진행 중)
 - [ ] LIBERO fine-tuning + rollout (encoder 비교)
 - [ ] OpenVLA encoder 교체 실험

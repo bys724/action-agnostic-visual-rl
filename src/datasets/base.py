@@ -36,6 +36,8 @@ class VideoFrameDataset(ABC, Dataset):
         max_videos: Optional[int] = None,
         cache_frames: bool = False,
         composition: bool = False,
+        sample_dist: str = "auto",
+        sample_center: int = None,
     ):
         self.data_root = Path(data_root)
         self.max_gap = max_gap
@@ -51,16 +53,31 @@ class VideoFrameDataset(ABC, Dataset):
             self.spatial_transform = transforms.CenterCrop(img_size)
 
         # Gap sampling 확률
-        # sample_decay > 0: 작은 gap 선호 (exponential decay)
-        # sample_decay < 0: 큰 gap 선호 (linear weighting, |decay| 무시)
-        # sample_decay = 0: uniform
+        # sample_dist:
+        #   "auto": sample_decay 값으로 결정 (기존 호환)
+        #   "uniform": 균일
+        #   "linear": gap에 비례 (큰 gap 선호)
+        #   "exp": exponential decay (sample_decay 양수면 작은 gap 선호)
+        #   "triangular": center에서 최대, 양쪽으로 선형 감소
         gaps = np.arange(1, max_gap + 1)
-        if sample_decay > 0:
-            raw_probs = np.exp(-sample_decay * (gaps - 1))
-        elif sample_decay < 0:
-            # linear: gap에 비례 (gap=1 → 1, gap=30 → 30)
+
+        if sample_dist == "auto":
+            if sample_decay > 0:
+                sample_dist = "exp"
+            elif sample_decay < 0:
+                sample_dist = "linear"
+            else:
+                sample_dist = "uniform"
+
+        if sample_dist == "exp":
+            raw_probs = np.exp(-abs(sample_decay) * (gaps - 1))
+        elif sample_dist == "linear":
             raw_probs = gaps.astype(float)
-        else:
+        elif sample_dist == "triangular":
+            center = sample_center if sample_center is not None else max_gap // 2
+            # |gap - center|에 역비례, 경계에서 최소
+            raw_probs = np.maximum(1.0 - np.abs(gaps - center) / max(center, max_gap - center), 0.01)
+        else:  # uniform
             raw_probs = np.ones_like(gaps, dtype=float)
         self.sample_probs = raw_probs / raw_probs.sum()
 

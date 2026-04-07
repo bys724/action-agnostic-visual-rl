@@ -79,7 +79,12 @@ def main():
     parser.add_argument('--max-gap', type=int, default=30,
                         help='Max frame gap (default: 30, ~1sec at 30fps)')
     parser.add_argument('--sample-decay', type=float, default=0.0,
-                        help='Sample probability decay (0=uniform, >0=exponential)')
+                        help='Sample probability decay (0=uniform, >0=exponential, <0=linear)')
+    parser.add_argument('--sample-dist', type=str, default='auto',
+                        choices=['auto', 'uniform', 'linear', 'exp', 'triangular'],
+                        help='Gap sampling distribution (default: auto, determined by sample-decay)')
+    parser.add_argument('--sample-center', type=int, default=None,
+                        help='Center gap for triangular distribution (default: max_gap//2)')
     parser.add_argument('--loss-decay', type=float, default=0.0,
                         help='Loss weight decay (0=uniform, >0=exponential)')
 
@@ -200,6 +205,8 @@ def main():
                 loss_decay=args.loss_decay,
                 max_videos=args.max_videos,
                 composition=args.composition if hasattr(args, 'composition') else False,
+                sample_dist=args.sample_dist,
+                sample_center=args.sample_center,
             )
             split_datasets.append(ds)
         if len(split_datasets) == 1:

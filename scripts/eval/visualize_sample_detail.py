@@ -59,77 +59,47 @@ def find_episode(frames_dir, episode_filter=None, min_frames=60):
 def extract_attention_maps(model, m_channel, p_channel):
     """마지막 transformer layer에서 CLS→patches attention 추출.
 
-    nn.TransformerEncoderLayer의 내부 MultiheadAttention에 hook을 걸어서
-    attention weight를 캡처합니다.
+    커스텀 TransformerBlock + RoPE 지원. 마지막 stage 마지막 block에서
+    QKV를 직접 계산하여 attention weight를 추출.
     """
-    attention_maps = {'m': [], 'p': []}
+    from src.models.two_stream import apply_rope
 
-    hooks = []
+    attention_maps = {'m': None, 'p': None}
+    encoder = model.encoder
+    last_stage = encoder.num_stages - 1
 
-    # 마지막 stage의 마지막 block에서 attention 추출
-    last_stage = model.encoder.num_stages - 1
-    last_block_m = model.encoder.blocks_m[last_stage][-1]
-    last_block_p = model.encoder.blocks_p[last_stage][-1]
+    def manual_attention(block, x, freqs_cis):
+        """TransformerBlock의 self-attention을 수동으로 실행하여 attn weight 추출."""
+        h = block.norm1(x)
+        B, N, D = h.shape
+        qkv = block.qkv(h).reshape(B, N, 3, block.num_heads, block.head_dim)
+        q, k, v = qkv.unbind(dim=2)  # [B, N, H, D_head]
 
-    def make_hook(stream_name):
-        def hook_fn(module, args, kwargs, output):
-            # TransformerEncoderLayer 내부에서 self_attn을 직접 호출
-            pass
-        return hook_fn
+        if freqs_cis is not None:
+            q = apply_rope(q, freqs_cis, has_cls=True)
+            k = apply_rope(k, freqs_cis, has_cls=True)
 
-    # MultiheadAttention에 직접 hook
-    def attn_hook(name):
-        def hook_fn(module, args, output):
-            # output = (attn_output, attn_weights)
-            if isinstance(output, tuple) and len(output) == 2:
-                attn_weights = output[1]  # [B, N, N]
-                if attn_weights is not None:
-                    attention_maps[name].append(attn_weights.detach().cpu())
-        return hook_fn
+        # [B, H, N, D_head]
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
 
-    # TransformerEncoderLayer.self_attn에 hook 등록
-    h1 = last_block_m.self_attn.register_forward_hook(attn_hook('m'))
-    h2 = last_block_p.self_attn.register_forward_hook(attn_hook('p'))
-    hooks.extend([h1, h2])
+        # 수동 attention (softmax)
+        scale = block.head_dim ** -0.5
+        attn = (q @ k.transpose(-2, -1)) * scale  # [B, H, N, N]
+        attn = attn.softmax(dim=-1)
 
-    # need_weights=True로 설정해야 attention weight가 반환됨
-    # TransformerEncoderLayer는 기본적으로 need_weights=False
-    # 임시로 변경
-    orig_m = last_block_m.self_attn.batch_first
-    orig_p = last_block_p.self_attn.batch_first
+        # head 평균
+        attn_avg = attn.mean(dim=1)  # [B, N, N]
 
-    # Forward with attention
+        # 정상 attention output (forward 계속하기 위해)
+        out = (attn @ v).transpose(1, 2).reshape(B, N, D)
+        x = x + block.proj(out)
+        x = x + block.mlp(block.norm2(x))
+        return x, attn_avg.detach().cpu()
+
     with torch.no_grad():
-        # 수동으로 encoder forward를 재현하되 마지막 block에서만 attention 캡처
-        # 간단하게: 전체 forward를 하되, hook에서 attention을 잡음
-
-        # 문제: TransformerEncoderLayer는 내부적으로 self_attn(need_weights=False)를 호출
-        # 이를 우회하기 위해 _sa_block을 패치
-
-        # 원본 _sa_block 저장
-        orig_sa_m = last_block_m._sa_block
-        orig_sa_p = last_block_p._sa_block
-
-        def patched_sa_block(self_ref, attn_module, name):
-            def _sa_block(x, attn_mask=None, key_padding_mask=None):
-                attn_out, attn_w = attn_module(x, x, x,
-                    attn_mask=attn_mask,
-                    key_padding_mask=key_padding_mask,
-                    need_weights=True,
-                    average_attn_weights=True)
-                attention_maps[name].append(attn_w.detach().cpu())
-                return attn_module.out_proj(attn_out) if hasattr(attn_module, '_qkv_same_embed_dim') else attn_out
-            return _sa_block
-
-        # 더 간단한 접근: forward를 직접 호출하면서 중간 결과를 저장
-        # encoder.forward를 그대로 호출하되, 마지막 stage 마지막 block만
-        # need_weights=True로 패치
-
-        # 가장 간단한 방법: 전체 forward 후 마지막 layer attention을 근사
-        # → encoder forward를 수동 재현
-
         batch_size = m_channel.shape[0]
-        encoder = model.encoder
 
         # Patch embedding
         m_patches = encoder.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
@@ -137,33 +107,23 @@ def extract_attention_maps(model, m_channel, p_channel):
 
         m_cls = encoder.cls_token_m.expand(batch_size, -1, -1)
         p_cls = encoder.cls_token_p.expand(batch_size, -1, -1)
-
-        m_tokens = torch.cat([m_cls, m_patches], dim=1) + encoder.pos_embed_m
-        p_tokens = torch.cat([p_cls, p_patches], dim=1) + encoder.pos_embed_p
+        m_tokens = torch.cat([m_cls, m_patches], dim=1)
+        p_tokens = torch.cat([p_cls, p_patches], dim=1)
 
         for stage_idx in range(encoder.num_stages):
             for block_idx, block_m in enumerate(encoder.blocks_m[stage_idx]):
                 if stage_idx == last_stage and block_idx == len(encoder.blocks_m[stage_idx]) - 1:
-                    # 마지막 block: attention 추출
-                    normed = block_m.norm1(m_tokens)
-                    attn_out, attn_w = block_m.self_attn(
-                        normed, normed, normed, need_weights=True, average_attn_weights=True)
-                    attention_maps['m'] = attn_w.detach().cpu()
-                    m_tokens = m_tokens + attn_out
-                    m_tokens = m_tokens + block_m._ff_block(block_m.norm2(m_tokens))
+                    m_tokens, attn_w = manual_attention(block_m, m_tokens, encoder.freqs_cis)
+                    attention_maps['m'] = attn_w
                 else:
-                    m_tokens = block_m(m_tokens)
+                    m_tokens = block_m(m_tokens, freqs_cis=encoder.freqs_cis)
 
             for block_idx, block_p in enumerate(encoder.blocks_p[stage_idx]):
                 if stage_idx == last_stage and block_idx == len(encoder.blocks_p[stage_idx]) - 1:
-                    normed = block_p.norm1(p_tokens)
-                    attn_out, attn_w = block_p.self_attn(
-                        normed, normed, normed, need_weights=True, average_attn_weights=True)
-                    attention_maps['p'] = attn_w.detach().cpu()
-                    p_tokens = p_tokens + attn_out
-                    p_tokens = p_tokens + block_p._ff_block(block_p.norm2(p_tokens))
+                    p_tokens, attn_w = manual_attention(block_p, p_tokens, encoder.freqs_cis)
+                    attention_maps['p'] = attn_w
                 else:
-                    p_tokens = block_p(p_tokens)
+                    p_tokens = block_p(p_tokens, freqs_cis=encoder.freqs_cis)
 
             # CLS exchange
             m_cls_ex = m_tokens[:, 0:1]
@@ -175,10 +135,6 @@ def extract_attention_maps(model, m_channel, p_channel):
 
         m_tokens = encoder.norm_m(m_tokens)
         p_tokens = encoder.norm_p(p_tokens)
-
-    # cleanup hooks
-    for h in hooks:
-        h.remove()
 
     return attention_maps, m_tokens, p_tokens
 
@@ -286,7 +242,8 @@ def main():
     print(f"Loading: {args.checkpoint}")
     model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages, mask_ratio=args.mask_ratio).to(DEVICE)
     ck = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
-    model.load_state_dict(ck["model_state_dict"])
+    # strict=False: compositor 등 학습 전용 모듈이 체크포인트에 있을 수 있음
+    model.load_state_dict(ck["model_state_dict"], strict=False)
     model.eval()
     epoch = ck.get('epoch', '?')
     print(f"  Epoch {epoch}, Loss {ck.get('train_loss', '?'):.4f}")
