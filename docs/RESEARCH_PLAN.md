@@ -310,10 +310,40 @@ Composition 없음 (compositor 제거)
 - [x] MAE masking 비교 → M=0.3, P=0.5 확정
 - [x] Composition 실험 → 사용하지 않기로 결정
 - [x] Gap 분포 실험 → max_gap=60, triangular(center=30) 확정
-- [ ] Full training (8x H100): 확정 설정 + VideoMAE
+- [ ] **VideoMAE full training** (로컬 2 GPU에서 선제 시작, 2026-04-07)
+- [ ] Full training (8x H100): Two-Stream v4
 - [ ] DROID action probing (action 추출 진행 중)
 - [ ] LIBERO fine-tuning + rollout (encoder 비교)
 - [ ] OpenVLA encoder 교체 실험
+
+### 병행 학습 전략 (2026-04-07)
+
+**배경**: 8x H100 서버 가용성 불확실 → 로컬 2 GPU에서 VideoMAE 선제 학습, 8 GPU 확보 시 체크포인트 이어서 학습.
+
+**현재 진행 중** (로컬):
+```bash
+# VideoMAE full training
+python scripts/pretrain.py --model videomae --train-data egodex \
+    --egodex-root /mnt/data/egodex_frames \
+    --egodex-splits part1,part2,part3,part4,part5 \
+    --epochs 30 --batch-size 64 \
+    --checkpoint-dir /mnt/data/checkpoints/videomae_full
+```
+
+**Option A (선택됨, 안전)**: 2 GPU → 8 GPU 전환 시 **batch 128 유지**
+- GPU당 batch 16 (8 GPU × 16 = 128) 또는 GPU당 batch 64 (2 GPU × 64 = 128)
+- lr 변경 없이 그대로 resume → 학습 dynamics 유지
+- 8 GPU의 나머지 4개는 Two-Stream 학습에 할당
+
+**중단-재시작 주의사항**:
+- `--resume` 옵션으로 체크포인트, optimizer state, scheduler state 복원
+- `num_epochs`는 불변 (Cosine scheduler T_max 고정)
+- BatchNorm 없음 (LayerNorm만 사용) → batch 통계 이슈 없음
+- DistributedSampler로 GPU 수 변경 시 데이터 순서만 달라짐 (학습엔 무영향)
+
+**리스크**:
+- Option B (8 GPU에서 batch 512 + lr scaling)는 학습 가속 크지만 전환 충격 가능성
+- 보수적 선택으로 Option A 채택
 
 ---
 
