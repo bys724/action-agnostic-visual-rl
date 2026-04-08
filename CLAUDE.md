@@ -5,8 +5,8 @@
 ## 핵심 문서 (업데이트 우선)
 
 1. **`docs/RESEARCH_PLAN.md`** - 전체 연구 계획 및 현재 phase (마스터 문서)
-2. **`docs/AWS_INSTANCE_GUIDE.md`** - AWS 학습 환경 설정 및 troubleshooting
-3. **`docs/PROBING_GUIDE.md`** - Action probing 실험 계획
+2. **`docs/PROBING_GUIDE.md`** - Action probing 실험 가이드 + 결과
+3. **`docs/setup/LIBERO_TEST_GUIDE.md`** - LIBERO 평가
 
 **문서 작성 원칙**:
 - 새 문서를 만들기보다 기존 핵심 문서 **업데이트** 우선
@@ -25,22 +25,19 @@
 
 ### 1. EgoDex Pre-training
 
-2개 모델 사전학습: Two-Stream, VideoMAE (Single-Stream 제외)
+2개 모델 사전학습: **Two-Stream v4** (제안), **VideoMAE** (baseline)
 
-**학습 목적**: 행동 라벨 없이 비디오만으로 범용 시각 표현 학습
-- Two-Stream: 미래 프레임 예측
-- VideoMAE: 마스크된 패치 복원
-
+**v4 확정 설정**:
 ```bash
-# H100 워크스테이션 (권장) — Docker dev 환경
-docker compose up -d dev
+# Docker dev 환경
 docker exec -it dev-env bash
-bash scripts/pretrain_local.sh                     # two-stream → videomae 순차
-bash scripts/pretrain_local.sh --model two-stream   # 특정 모델만
-bash scripts/pretrain_local.sh --sanity             # Sanity test
 
-# AWS EC2 (대안)
-bash scripts/pretrain_aws.sh --model two-stream
+python scripts/pretrain.py --model two-stream \
+    --depth 12 --num-stages 2 \
+    --mask-ratio 0.3 --mask-ratio-p 0.5 \
+    --max-gap 60 --sample-dist triangular --sample-center 30 \
+    --egodex-splits part1,part2,part3,part4,part5 \
+    --epochs 30 --batch-size 64
 ```
 
 **데이터 다운로드** (EgoDex CDN 직접):
@@ -53,14 +50,17 @@ bash scripts/download_egodex.sh part2 part3 part5
 학습된 표현이 행동 정보를 인코딩하는지 검증
 
 ```bash
-# DROID 데이터셋으로 linear probe (primary)
+# EgoDex (within-domain)
 python scripts/eval/probe_action.py \
-    --checkpoint data/checkpoints/two_stream/latest.pt \
-    --dataset droid
+    --encoder two-stream \
+    --checkpoint /mnt/data/checkpoints/two_stream/.../best_model.pt \
+    --egodex-root /mnt/data/egodex --frames-root /mnt/data/egodex_frames \
+    --egodex-split part4 --gap 10 --cls-mode patch_mean_concat
 
-# Bridge V2 (secondary, cross-embodiment 보강용)
-python scripts/eval/probe_action_bridge.py \
-    --checkpoint data/checkpoints/two_stream/latest.pt
+# DROID (cross-domain, primary)
+python scripts/eval/probe_action_droid.py \
+    --encoder two-stream --checkpoint <ckpt> \
+    --droid-root /mnt/data/droid_frames/ext1 --gap 10
 ```
 
 자세한 내용은 `docs/PROBING_GUIDE.md` 참고
@@ -70,110 +70,95 @@ python scripts/eval/probe_action_bridge.py \
 학습된 인코더로 로봇 조작 태스크 수행
 
 ```bash
-# Docker 환경에서 실행
-docker compose up -d libero openvla-libero
-docker exec libero-eval python src/eval_libero.py \
-    --model openvla \
+# Encoder + MLP decoder fine-tuning
+python scripts/eval/finetune_libero.py \
     --encoder two-stream \
-    --checkpoint data/checkpoints/two_stream/latest.pt
+    --checkpoint <ckpt> \
+    --task-suite libero_spatial --epochs 50
+
+# 시뮬레이터 rollout (success rate)
+docker compose up -d libero
+docker exec libero-eval python src/eval_libero.py ...
 ```
 
 자세한 내용은 `docs/setup/LIBERO_TEST_GUIDE.md` 참고
 
 ## 주요 파일
 
-| 파일 | 용도 | 비고 |
-|------|------|------|
-| `scripts/pretrain.py` | Pre-training 메인 스크립트 | Self-supervised |
-| `scripts/pretrain_local.sh` | H100 로컬 학습 런처 | 권장 |
-| `scripts/pretrain_aws.sh` | AWS EC2 학습 런처 | 대안 |
-| `scripts/download_egodex.sh` | EgoDex CDN 다운로드+추출 | |
-| `scripts/data/extract_frames.py` | EgoDex 프레임 추출 | |
-| `scripts/data/extract_bridge_frames.py` | Bridge V2 프레임 추출 | |
-| `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 (TFRecord→JPG) | |
-| `scripts/eval/probe_action.py` | Action probing 평가 | |
-| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning | |
-| `src/models/two_stream.py` | Two-Stream 모델 | 미래 프레임 예측 |
-| `src/models/videomae.py` | VideoMAE 모델 | 마스크 복원 |
-| `src/models/single_stream.py` | Single-Stream 모델 | 현재 미사용 |
-| `src/datasets/egodex.py` | EgoDex 데이터셋 | |
-| `src/datasets/droid.py` | DROID 데이터셋 | |
-| `src/datasets/bridge.py` | Bridge V2 데이터셋 | |
-| `src/training/pretrain.py` | Pre-training 루프 | |
-| `src/eval_libero.py` | LIBERO 평가 | |
+| 파일 | 용도 |
+|------|------|
+| `scripts/pretrain.py` | Pre-training 메인 스크립트 |
+| `scripts/download_egodex.sh` | EgoDex CDN 다운로드+추출 |
+| `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 |
+| `scripts/data/extract_droid_actions.py` | DROID action 추출 (cross-domain probing용) |
+| `scripts/eval/probe_action.py` | EgoDex action probing |
+| `scripts/eval/probe_action_droid.py` | DROID cross-domain probing |
+| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning |
+| `scripts/eval/visualize_inference.py` | 단일/다중 모델 비교 시각화 |
+| `scripts/eval/visualize_sample_detail.py` | 단일 샘플 상세 (M/P channel + attention) |
+| `src/models/two_stream.py` | Two-Stream 모델 + 2D RoPE + MAE masking |
+| `src/models/videomae.py` | VideoMAE baseline |
+| `src/datasets/egodex.py` | EgoDex 데이터셋 |
+| `src/datasets/droid.py` | DROID 데이터셋 |
+| `src/training/pretrain.py` | Pre-training 루프 |
 
 ## 개발 원칙
 
 1. **문서 업데이트 우선**: 새 문서보다 핵심 문서 업데이트
 2. **간결한 코드**: 실험 우선, 과도한 추상화 피하기
-3. **환경 분리**: H100 Docker (pretraining) vs Docker (evaluation), AWS는 대안
-4. **검증 필수**: 새 스크립트는 sanity test로 검증 후 배포
-5. **Best Practice 참고 필수**:
+3. **검증 필수**: 새 스크립트는 sanity test로 검증 후 배포
+4. **Best Practice 참고 필수**:
    - 새로운 구현 전에 **반드시** 공식 문서/권장 방법/샘플 코드 조사
    - 특히 데이터 로딩, 학습 파이프라인 등 성능에 영향을 주는 부분
-   - 검색 키워드 예시: "pytorch video dataset best practices", "efficient video loading"
    - 비효율적 구현으로 재작업하지 않도록 사전 조사 우선
 
 ## 데이터셋 전처리 워크플로우
 
 새 데이터셋을 학습에 사용하기 전, 아래 프로세스를 따름:
 
-### 1. 샘플 테스트
-- 소수 영상(3~5개)으로 crop/resize 옵션별 결과 비교
-- 다양한 task에서 샘플링하여 대표성 확보
-
-### 2. 결과 기록
-- 비교 이미지 + 결정 근거를 `docs/preprocessing/` 하위에 기록
-- 예: `docs/preprocessing/egodex.md`, `docs/preprocessing/bridge_v2.md`
-
-### 3. 전체 추출
-- 결정된 설정으로 전체 데이터셋 프레임 추출
-- 추출 스크립트: `scripts/data/extract_frames.py` (또는 데이터셋별 스크립트)
-
-### 4. 업로드 및 검증
-- S3 업로드 후 샘플 다운로드하여 품질 확인
+1. **샘플 테스트**: 소수 영상(3~5개)으로 crop/resize 옵션별 결과 비교
+2. **결과 기록**: 비교 이미지 + 결정 근거를 `docs/preprocessing/` 하위에 기록
+3. **전체 추출**: 결정된 설정으로 전체 데이터셋 프레임 추출
+4. **검증**: 샘플 다운로드하여 품질 확인
 
 ### 기존 사례
-- **EgoDex**: 센터크롭(1080x1080) → 256x256 (`docs/preprocessing/egodex/`)
-- **Bridge V2**: 리사이즈(480x640 → 256x256, crop 없음) (`docs/preprocessing/bridge_v2/`)
-- **DROID**: 리사이즈(180x320 → 256x256, crop 없음) (`docs/preprocessing/droid/`)
+- **EgoDex** (1920x1080): 센터크롭 → 256x256
+- **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
+- **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-06)
+## 현재 Phase (2026-04-08)
 
-**Phase 1 완료** — v4 확정 + Action Probing 초기 결과 확보
+**Phase 1 완료** — v4 설정 확정 (모든 ablation 완료)
 
-- **v4 확정**: d=12, s=2, mask M30/P50, sample_decay=-1
-- Masking 비교 완료: CLS 정보 밀도 +33% (0.397 vs 0.297)
-- Action probing: patch_mean_concat Two-Stream(R²=0.585) > VideoMAE(0.571) @gap=10
+- **v4 확정**: d=12, s=2 (6 blk/stage), 2D RoPE, MAE M=0.3/P=0.5, max_gap=60 triangular
+- **검증된 실험**:
+  - Architecture ablation: blk/stage가 핵심
+  - MAE masking: 30/50%로 P self-sufficiency 해결, CLS 밀도 33% 향상
+  - Composition consistency: 효과 없음, 사용 안 함
+  - Gap 분포: triangular(center=30, max=60)이 linear(max=30)보다 우세
 
-**다음 작업 (워크스테이션)**:
-1. **Composition Consistency 실험** — (t1,t2,t3) triplet으로 변화 합성 검증
-   - 데이터 로더 3장 확장, compositor 모듈 구현, `--composition` 플래그
-   - 자세한 설계: `docs/RESEARCH_PLAN.md` > "Composition Consistency 실험"
-2. 8x H100 full training (v4 + VideoMAE)
-3. DROID action probing → LIBERO fine-tuning
+**다음 작업**:
+1. **Full training**: 8x H100 서버에서 v4 + VideoMAE (EgoDex part1~5 전체)
+2. DROID action probing (cross-domain, action 추출 진행 중)
+3. LIBERO fine-tuning + 시뮬레이터 rollout
+4. (Optional) OpenVLA encoder 교체 실험
 
 자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
-
-## 참고
-
-### 활성 문서
-- `docs/RESEARCH_PLAN.md` - 연구 계획 (마스터)
-- `docs/PROBING_GUIDE.md` - Action probing 실행 가이드 + 결과
-- `docs/setup/LIBERO_TEST_GUIDE.md` - LIBERO 평가
 
 ## 트러블슈팅 로그
 
 ### EgoDex test symlink 문제 (2026-03-23)
 - **증상**: eval 시 `FileNotFoundError: .../part2/.../frame_000000.jpg`로 학습 크래시
-- **원인**: `pretrain_local.sh`가 test symlink을 `data/egodex/test/` (원본 hdf5/mp4)로 생성.
-  추출된 프레임은 `/mnt/data/egodex_frames/test_frames/`에 별도 존재.
-  학습 시작 시점에 잘못된 symlink으로 eval dataset 로드 → 프레임 없는 디렉토리 참조
-- **수정**: symlink을 `test_frames`로 교체, `pretrain_local.sh` 수정
-- **교훈**: 학습 시작 전 eval dataset 경로 확인 필수.
-  dataset 객체는 시작 시 경로를 캐싱하므로, 학습 중 symlink 수정해도 효과 없음 → 재시작 필요
+- **원인**: `pretrain_local.sh`가 test symlink을 잘못 생성. 추출된 프레임은 `/mnt/data/egodex_frames/test_frames/`
+- **수정**: symlink을 `test_frames`로 교체
+- **교훈**: dataset 객체는 시작 시 경로를 캐싱하므로, 학습 중 symlink 수정해도 효과 없음 → 재시작 필요
 
 ### 학습 프로세스 안정성 (2026-03-23)
 - `evaluate()`와 `save_epoch_samples()`를 try/except로 보호
 - eval/시각화 실패 시 WARNING 출력 후 학습 계속 (크래시 방지)
 - `model.train()` 복구를 finally 블록으로 보장
+
+### SSIM loss BF16 안정성 (2026-03-31)
+- BF16 autocast에서 sigma_sq가 음수가 되어 NaN 발생
+- 해결: SSIM 연산을 FP32로 강제 + sigma clamp(min=0)
+- GradScaler 제거 (BF16에는 불필요)

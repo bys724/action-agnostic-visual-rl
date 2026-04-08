@@ -530,5 +530,5 @@ DINOv2(iBOT)도 masked patch prediction이지만 pixel이 아닌 feature-level d
 
 ## 참고 문서
 
-- [`docs/AWS_INSTANCE_GUIDE.md`](AWS_INSTANCE_GUIDE.md) — AWS 환경 설정
-- [`docs/PROBING_GUIDE.md`](PROBING_GUIDE.md) — Action probing 계획
+- [`docs/PROBING_GUIDE.md`](PROBING_GUIDE.md) — Action probing 가이드 + 결과
+- [`docs/setup/LIBERO_TEST_GUIDE.md`](setup/LIBERO_TEST_GUIDE.md) — LIBERO 평가

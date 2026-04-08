@@ -50,38 +50,19 @@ Phase 3: VLM/VLA Training (Future)
 
 ## Phase 1: Pretraining
 
-### AWS EC2 설정
-
-**추천 인스턴스**: g5.12xlarge Spot
-- 4× A10G 24GB
-- 48 vCPU
-- Spot 가격: ~$3.50/hr
-
 ### 학습 실행
 
 ```bash
-# EC2 인스턴스에서
-cd /workspace
-git clone <your-repo>
-cd action-agnostic-visual-rl
+# Two-Stream v4 (확정 설정)
+python scripts/pretrain.py --model two-stream \
+    --depth 12 --num-stages 2 \
+    --mask-ratio 0.3 --mask-ratio-p 0.5 \
+    --max-gap 60 --sample-dist triangular --sample-center 30 \
+    --epochs 30
 
-# Sanity test (5분, 환경 검증)
-bash scripts/pretrain_aws.sh --sanity --model two-stream --no-shutdown
-
-# 전체 학습 (3개 모델 순차, ~54시간)
-bash scripts/pretrain_aws.sh
-
-# 또는 단일 모델만
-bash scripts/pretrain_aws.sh --model two-stream
+# VideoMAE baseline
+python scripts/pretrain.py --model videomae --epochs 30
 ```
-
-### 예상 일정 (Epochs=30)
-
-| Model | Time | Output |
-|-------|------|--------|
-| Two-Stream | ~18hr | `s3://bucket/checkpoints/two_stream/` |
-| Single-Stream | ~18hr | `s3://bucket/checkpoints/single_stream/` |
-| VideoMAE | ~18hr | `s3://bucket/checkpoints/videomae/` |
 
 ## Phase 2: Action Probing
 

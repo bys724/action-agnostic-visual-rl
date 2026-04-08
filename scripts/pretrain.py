@@ -2,20 +2,13 @@
 """
 Training script for Video Prediction Models.
 
-Supports three models:
+Supports two models:
     1. two-stream: Two-Stream Interleaved ViT (ours)
-    2. single-stream: Single ViT encoder
-    3. videomae: Masked autoencoder
+    2. videomae: Masked autoencoder (comparison baseline)
 
-Usage (in Docker container):
-    # Two-Stream (default)
-    python scripts/train_long.py --model two-stream --epochs 100
-
-    # Single-Stream baseline
-    python scripts/train_long.py --model single-stream --epochs 100
-
-    # VideoMAE baseline
-    python scripts/train_long.py --model videomae --epochs 100
+Usage:
+    python scripts/pretrain.py --model two-stream --epochs 30
+    python scripts/pretrain.py --model videomae --epochs 30
 """
 
 import argparse
@@ -27,7 +20,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, SingleStreamModel, VideoMAEModel
+from src.models import TwoStreamModel, VideoMAEModel
 from src.datasets import EgoDexDataset, BridgeDataset
 from src.training.pretrain import train
 
@@ -37,7 +30,7 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'single-stream', 'videomae'],
+                        choices=['two-stream', 'videomae'],
                         help='Model type (default: two-stream)')
 
     # Training parameters
@@ -102,14 +95,6 @@ def main():
     parser.add_argument('--mask-ratio-p', type=float, default=None,
                         help='P stream mask ratio (default: same as --mask-ratio, higher recommended)')
 
-    # Composition consistency
-    parser.add_argument('--composition', action='store_true',
-                        help='Enable composition consistency loss (triplet sampling)')
-    parser.add_argument('--comp-detach', action='store_true', default=True,
-                        help='Stop-gradient on composition target (default: True)')
-    parser.add_argument('--no-comp-detach', dest='comp_detach', action='store_false',
-                        help='Allow gradient flow through composition target')
-
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -163,8 +148,6 @@ def main():
     if args.model == 'two-stream':
         model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
                                mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p)
-    elif args.model == 'single-stream':
-        model = SingleStreamModel()
     elif args.model == 'videomae':
         model = VideoMAEModel()
     else:
@@ -175,10 +158,6 @@ def main():
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total parameters: {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
-
-    # Composition consistency 활성화
-    if hasattr(args, 'composition') and args.composition and args.model == 'two-stream':
-        model.enable_composition(embed_dim=768)
 
     # Create training dataset
     print("\n" + "="*60)
@@ -204,7 +183,6 @@ def main():
                 sample_decay=args.sample_decay,
                 loss_decay=args.loss_decay,
                 max_videos=args.max_videos,
-                composition=args.composition if hasattr(args, 'composition') else False,
                 sample_dist=args.sample_dist,
                 sample_center=args.sample_center,
             )
@@ -265,8 +243,6 @@ def main():
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
-        composition=getattr(args, 'composition', False),
-        comp_detach=getattr(args, 'comp_detach', True),
     )
 
     print("\n" + "="*60)

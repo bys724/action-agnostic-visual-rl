@@ -2,7 +2,7 @@
 Training utilities for video prediction models.
 
 Provides training loop, evaluation, and checkpoint management
-for TwoStreamModel, SingleStreamModel, and VideoMAEModel.
+for TwoStreamModel and VideoMAEModel.
 """
 
 import json
@@ -60,8 +60,7 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
         return 1 - ssim_map.mean()
 
 
-def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None, use_ssim=False,
-                composition=False, comp_detach=True):
+def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None, use_ssim=False):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -82,27 +81,17 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
     total_weighted_loss = 0
     total_loss_current = 0
     total_loss_future = 0
-    total_loss_comp = 0
     num_batches = 0
     gap_counts = {}
 
     for batch_idx, batch in enumerate(dataloader):
-        # Unpack batch: pair (img_t, img_tk, gap) or triplet (t1, t2, t3, g12, g23)
-        if composition and len(batch) == 5:
-            img_t1, img_t2, img_t3, gaps12, gaps23 = batch
-            img_t1 = img_t1.to(device)
-            img_t2 = img_t2.to(device)
-            img_t3 = img_t3.to(device)
-            gaps = gaps12.numpy()
-            img_t, img_tk = img_t1, img_t2  # fallback for gap counting
-        elif len(batch) == 3:
+        # Unpack batch (img_t, img_tk, gap) or (img_t, img_tk)
+        if len(batch) == 3:
             img_t, img_tk, gaps = batch
             gaps = gaps.numpy()
-            img_t1 = img_t3 = None
         else:
             img_t, img_tk = batch
             gaps = np.ones(img_t.shape[0])
-            img_t1 = img_t3 = None
 
         img_t = img_t.to(device)
         img_tk = img_tk.to(device)
@@ -123,44 +112,31 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
                 weighted_loss = loss
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
-                if composition and img_t3 is not None:
-                    # Composition mode: triplet loss
-                    comp_loss, comp_info = actual_model.compute_composition_loss(
-                        img_t1, img_t2, img_t3, detach_target=comp_detach)
-                    weighted_loss = comp_loss
-                    unweighted_loss = comp_loss
-                    img_pred = None
-
-                    total_loss_current += comp_info['loss_12']
-                    total_loss_future += comp_info['loss_13']
-                    total_loss_comp += comp_info['loss_comp']
+                pred_m, pred_p, _ = model(img_t, img_tk)
+                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                if use_ssim:
+                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                    loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
                 else:
-                    # Standard pair mode
-                    pred_m, pred_p, _ = model(img_t, img_tk)
-                    mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                    mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                    if use_ssim:
-                        loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
-                    else:
-                        loss_m = mse_m
-                        loss_p = mse_p
-                    per_sample_loss = loss_m + loss_p
-                    img_pred = pred_p
+                    loss_m = mse_m
+                    loss_p = mse_p
+                per_sample_loss = loss_m + loss_p
+                img_pred = pred_p
 
-                    total_loss_current += loss_m.mean().item()
-                    total_loss_future += loss_p.mean().item()
+                total_loss_current += loss_m.mean().item()
+                total_loss_future += loss_p.mean().item()
 
-                    if dataset is not None and hasattr(dataset, 'get_loss_weight'):
-                        weights = torch.tensor(
-                            [dataset.get_loss_weight(int(g)) for g in gaps],
-                            device=device, dtype=per_sample_loss.dtype
-                        )
-                    else:
-                        weights = torch.ones_like(per_sample_loss)
+                if dataset is not None and hasattr(dataset, 'get_loss_weight'):
+                    weights = torch.tensor(
+                        [dataset.get_loss_weight(int(g)) for g in gaps],
+                        device=device, dtype=per_sample_loss.dtype
+                    )
+                else:
+                    weights = torch.ones_like(per_sample_loss)
 
-                    weighted_loss = (per_sample_loss * weights).mean()
-                    unweighted_loss = per_sample_loss.mean()
+                weighted_loss = (per_sample_loss * weights).mean()
+                unweighted_loss = per_sample_loss.mean()
             else:
                 img_pred, _ = model(img_t, img_tk)
                 per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
@@ -213,17 +189,12 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
         avg_future = total_loss_future / num_batches
         avg_current = total_loss_current / num_batches
         print(f"  Loss breakdown: future={avg_future:.4f}, current={avg_current:.4f}")
-    if total_loss_comp > 0:
-        avg_comp = total_loss_comp / num_batches
-        print(f"  Composition loss: {avg_comp:.4f}")
     print(f"  Gap distribution: {gap_dist}")
 
     result = {'loss': avg_loss, 'weighted_loss': avg_weighted}
     if total_loss_future > 0:
         result['loss_future'] = total_loss_future / num_batches
         result['loss_current'] = total_loss_current / num_batches
-    if total_loss_comp > 0:
-        result['loss_comp'] = total_loss_comp / num_batches
     return result
 
 
@@ -439,8 +410,6 @@ def train(
     resume_from=None,
     multi_gpu=True,
     use_ssim=False,
-    composition=False,
-    comp_detach=True,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -578,8 +547,7 @@ def train(
         epoch_start_time = time.time()
 
         # Train
-        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler, use_ssim=use_ssim,
-                                   composition=composition, comp_detach=comp_detach)
+        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler, use_ssim=use_ssim)
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
