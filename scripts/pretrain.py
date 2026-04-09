@@ -109,41 +109,61 @@ def main():
 
     args = parser.parse_args()
 
-    # Auto-detect latest checkpoint (spot instance resume)
+    # 분산 학습 환경 감지 (SLURM_PROCID 또는 RANK 존재 시)
+    import os as _os
+    distributed = ("SLURM_PROCID" in _os.environ) or ("RANK" in _os.environ and "WORLD_SIZE" in _os.environ)
+    if distributed:
+        rank = int(_os.environ.get("SLURM_PROCID", _os.environ.get("RANK", "0")))
+        world_size = int(_os.environ.get("SLURM_NTASKS", _os.environ.get("WORLD_SIZE", "1")))
+        is_master = (rank == 0)
+    else:
+        rank = 0
+        world_size = 1
+        is_master = True
+
+    # Auto-detect latest checkpoint (resume)
     if args.resume is None:
         import glob
         checkpoint_dir = args.checkpoint_dir or f'/workspace/data/checkpoints/{args.model.replace("-", "_")}'
         candidates = glob.glob(f"{checkpoint_dir}/*/latest.pt")
         if candidates:
             args.resume = sorted(candidates)[-1]
-            print(f"[Spot Resume] Auto-detected checkpoint: {args.resume}")
+            if is_master:
+                print(f"[Resume] Auto-detected checkpoint: {args.resume}")
 
-    # Print GPU info
+    # Print GPU info (rank 0만)
     import torch
-    print("\n" + "="*60)
-    print("GPU Information")
-    print("="*60)
-    num_gpus = torch.cuda.device_count()
-    for i in range(num_gpus):
-        props = torch.cuda.get_device_properties(i)
-        print(f"  GPU {i}: {props.name} ({props.total_memory / 1e9:.1f} GB)")
-    print(f"  Multi-GPU: {'Disabled' if args.no_multi_gpu else f'Enabled ({num_gpus} GPUs)'}")
+    if is_master:
+        print("\n" + "="*60)
+        print("GPU Information")
+        print("="*60)
+        num_gpus = torch.cuda.device_count()
+        for i in range(num_gpus):
+            props = torch.cuda.get_device_properties(i)
+            print(f"  GPU {i}: {props.name} ({props.total_memory / 1e9:.1f} GB)")
+        if distributed:
+            print(f"  Distributed: rank={rank}, world_size={world_size} (DDP)")
+        else:
+            print(f"  Multi-GPU: {'Disabled' if args.no_multi_gpu else f'Enabled ({num_gpus} GPUs DataParallel)'}")
 
     # Auto-set checkpoint directory based on model name
     if args.checkpoint_dir is None:
         model_name = args.model.replace('-', '_')
         args.checkpoint_dir = f'/workspace/data/checkpoints/{model_name}'
-        print(f"Auto checkpoint_dir: {args.checkpoint_dir}")
+        if is_master:
+            print(f"Auto checkpoint_dir: {args.checkpoint_dir}")
 
     # Auto-calculate save interval for ~12 checkpoints
     if args.save_interval is None:
         args.save_interval = max(1, args.epochs // 12)
-        print(f"Auto save_interval: {args.save_interval} (for ~12 checkpoints)")
+        if is_master:
+            print(f"Auto save_interval: {args.save_interval} (for ~12 checkpoints)")
 
     # Create model
-    print("\n" + "="*60)
-    print(f"Creating model: {args.model}")
-    print("="*60)
+    if is_master:
+        print("\n" + "="*60)
+        print(f"Creating model: {args.model}")
+        print("="*60)
 
     if args.model == 'two-stream':
         model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
@@ -153,16 +173,17 @@ def main():
     else:
         raise ValueError(f"Unknown model: {args.model}")
 
-    # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total parameters: {total_params:,}")
-    print(f"Trainable parameters: {trainable_params:,}")
+    if is_master:
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Total parameters: {total_params:,}")
+        print(f"Trainable parameters: {trainable_params:,}")
 
     # Create training dataset
-    print("\n" + "="*60)
-    print(f"Loading training dataset: {args.train_data}")
-    print("="*60)
+    if is_master:
+        print("\n" + "="*60)
+        print(f"Loading training dataset: {args.train_data}")
+        print("="*60)
 
     if args.train_data == 'bridge':
         train_dataset = BridgeDataset(
@@ -192,12 +213,14 @@ def main():
         else:
             from torch.utils.data import ConcatDataset
             train_dataset = ConcatDataset(split_datasets)
-            print(f"  Combined {len(splits)} splits: {splits} → {len(train_dataset)} samples")
+            if is_master:
+                print(f"  Combined {len(splits)} splits: {splits} → {len(train_dataset)} samples")
 
     # Create evaluation dataset (always use EgoDex test)
-    print("\n" + "="*60)
-    print("Loading evaluation dataset: EgoDex test")
-    print("="*60)
+    if is_master:
+        print("\n" + "="*60)
+        print("Loading evaluation dataset: EgoDex test")
+        print("="*60)
 
     eval_dataset = EgoDexDataset(
         data_root=args.egodex_root,
@@ -207,27 +230,28 @@ def main():
         loss_decay=args.loss_decay,
     )
 
-    # Training configuration summary
-    print("\n" + "="*60)
-    print("Training Configuration")
-    print("="*60)
-    print(f"  Model: {args.model}")
-    print(f"  Epochs: {args.epochs}")
-    print(f"  Batch size: {args.batch_size}")
-    print(f"  Learning rate: {args.lr}")
-    print(f"  Save interval: {args.save_interval} epochs (~{args.epochs // args.save_interval} checkpoints)")
-    print(f"  Eval interval: {args.eval_interval} epochs")
-    print(f"  Max gap: {args.max_gap}")
-    print(f"  Sample decay: {args.sample_decay}")
-    print(f"  Loss decay: {args.loss_decay}")
-    if args.resume:
-        print(f"  Resume from: {args.resume}")
-    print()
-
-    # Start training
-    print("="*60)
-    print("Starting training...")
-    print("="*60)
+    # Training configuration summary (rank 0)
+    if is_master:
+        print("\n" + "="*60)
+        print("Training Configuration")
+        print("="*60)
+        print(f"  Model: {args.model}")
+        print(f"  Epochs: {args.epochs}")
+        print(f"  Batch size (per GPU): {args.batch_size}")
+        if distributed:
+            print(f"  Global batch size: {args.batch_size * world_size}")
+        print(f"  Learning rate: {args.lr}")
+        print(f"  Save interval: {args.save_interval} epochs (~{args.epochs // args.save_interval} checkpoints)")
+        print(f"  Eval interval: {args.eval_interval} epochs")
+        print(f"  Max gap: {args.max_gap}")
+        print(f"  Sample decay: {args.sample_decay}")
+        print(f"  Loss decay: {args.loss_decay}")
+        if args.resume:
+            print(f"  Resume from: {args.resume}")
+        print()
+        print("="*60)
+        print("Starting training...")
+        print("="*60)
 
     model, history = train(
         model=model,
@@ -245,12 +269,13 @@ def main():
         use_ssim=args.ssim,
     )
 
-    print("\n" + "="*60)
-    print("Training completed!")
-    print("="*60)
-    print(f"Final train loss: {history['train_loss'][-1]:.6f}")
-    if history['eval_loss']:
-        print(f"Final eval loss: {history['eval_loss'][-1]:.6f}")
+    if is_master:
+        print("\n" + "="*60)
+        print("Training completed!")
+        print("="*60)
+        print(f"Final train loss: {history['train_loss'][-1]:.6f}")
+        if history['eval_loss']:
+            print(f"Final eval loss: {history['eval_loss'][-1]:.6f}")
 
     # S3 upload
     if args.s3_bucket and args.checkpoint_dir:

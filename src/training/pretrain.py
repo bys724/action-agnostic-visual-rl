@@ -3,23 +3,88 @@ Training utilities for video prediction models.
 
 Provides training loop, evaluation, and checkpoint management
 for TwoStreamModel and VideoMAEModel.
+
+Multi-GPU 지원:
+- 단일 노드: torch.nn.DataParallel (간편)
+- 다중 노드 / 다중 GPU 풀스케일: DistributedDataParallel (DDP)
+  스크립트가 SLURM_PROCID 또는 RANK 환경변수를 보면 자동으로 DDP 모드 진입.
 """
 
 import json
+import os
 import random
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DistributedSampler
 
 try:
     from torch.utils.tensorboard import SummaryWriter
     HAS_TENSORBOARD = True
 except ImportError:
     HAS_TENSORBOARD = False
+
+
+# ── 분산 학습 (DDP) 헬퍼 ──────────────────────────────────────────────────────
+
+def is_distributed_env():
+    """SLURM 또는 torchrun 환경 변수가 있으면 DDP 모드."""
+    return ("SLURM_PROCID" in os.environ) or ("RANK" in os.environ and "WORLD_SIZE" in os.environ)
+
+
+def init_distributed():
+    """분산 학습 초기화. (rank, local_rank, world_size) 반환.
+
+    SLURM 환경에서는 SLURM_* 변수에서 직접 추출 (torchrun 불필요).
+    그 외에는 torchrun이 설정한 RANK/LOCAL_RANK/WORLD_SIZE 사용.
+    """
+    if "SLURM_PROCID" in os.environ:
+        rank = int(os.environ["SLURM_PROCID"])
+        local_rank = int(os.environ["SLURM_LOCALID"])
+        world_size = int(os.environ["SLURM_NTASKS"])
+        # MASTER_ADDR: SLURM_JOB_NODELIST의 첫 노드 호스트명
+        if "MASTER_ADDR" not in os.environ:
+            nodelist = os.environ["SLURM_JOB_NODELIST"]
+            try:
+                first_node = subprocess.check_output(
+                    ["scontrol", "show", "hostnames", nodelist],
+                    text=True,
+                ).strip().splitlines()[0]
+                os.environ["MASTER_ADDR"] = first_node
+            except Exception as e:
+                raise RuntimeError(f"Failed to resolve MASTER_ADDR from SLURM_JOB_NODELIST: {e}")
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "29500"
+    else:  # torchrun
+        rank = int(os.environ["RANK"])
+        local_rank = int(os.environ["LOCAL_RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(
+        backend="nccl",
+        init_method="env://",
+        rank=rank,
+        world_size=world_size,
+    )
+    return rank, local_rank, world_size
+
+
+def cleanup_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def _is_master():
+    """현재 프로세스가 rank 0인지. dist 미초기화 시 True (단일 프로세스)."""
+    return (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
 
 
 def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
@@ -173,7 +238,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
         for g in gaps:
             gap_counts[int(g)] = gap_counts.get(int(g), 0) + 1
 
-        if batch_idx % 10 == 0:
+        if batch_idx % 10 == 0 and _is_master():
             print(f"  Batch {batch_idx}/{len(dataloader)}, "
                   f"Loss: {unweighted_loss.item():.4f}, "
                   f"Weighted: {weighted_loss.item():.4f}")
@@ -181,15 +246,16 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
     avg_loss = total_loss / num_batches
     avg_weighted = total_weighted_loss / num_batches
 
-    # Print gap distribution
-    total_samples = sum(gap_counts.values())
-    gap_dist = {k: f"{v/total_samples*100:.1f}%" for k, v in sorted(gap_counts.items())}
-    print(f"Epoch {epoch}: Loss = {avg_loss:.4f}, Weighted = {avg_weighted:.4f}")
-    if total_loss_future > 0:
-        avg_future = total_loss_future / num_batches
-        avg_current = total_loss_current / num_batches
-        print(f"  Loss breakdown: future={avg_future:.4f}, current={avg_current:.4f}")
-    print(f"  Gap distribution: {gap_dist}")
+    # Print gap distribution (rank 0)
+    if _is_master():
+        total_samples = sum(gap_counts.values())
+        gap_dist = {k: f"{v/total_samples*100:.1f}%" for k, v in sorted(gap_counts.items())}
+        print(f"Epoch {epoch}: Loss = {avg_loss:.4f}, Weighted = {avg_weighted:.4f}")
+        if total_loss_future > 0:
+            avg_future = total_loss_future / num_batches
+            avg_current = total_loss_current / num_batches
+            print(f"  Loss breakdown: future={avg_future:.4f}, current={avg_current:.4f}")
+        print(f"  Gap distribution: {gap_dist}")
 
     result = {'loss': avg_loss, 'weighted_loss': avg_weighted}
     if total_loss_future > 0:
@@ -410,59 +476,108 @@ def train(
     resume_from=None,
     multi_gpu=True,
     use_ssim=False,
+    num_workers=16,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
+
+    분산 학습 모드 (SLURM_PROCID 또는 RANK env가 설정된 경우):
+    - DistributedDataParallel 사용 (DataParallel 우회)
+    - DistributedSampler가 데이터 분할
+    - rank 0만 print/checkpoint/eval/TB 수행
 
     Args:
         model: Video prediction model
         train_dataset: Training dataset
         num_epochs: Number of training epochs
-        batch_size: Batch size (per GPU if multi_gpu=True)
-        lr: Learning rate
-        device: Device to train on
+        batch_size: Per-GPU batch size (DDP 모드: 각 GPU의 배치, DP 모드: 단일 GPU 배치)
+        lr: Learning rate (DDP 모드에서는 외부에서 미리 scaling해서 전달할 것)
+        device: 'cuda' 또는 'cpu'. DDP 모드에서는 무시되고 자동으로 cuda:local_rank 사용
         checkpoint_dir: Base directory for checkpoints (auto-creates timestamped subfolder)
         save_interval: Save checkpoint every N epochs (None = only save best)
         eval_dataset: Evaluation dataset (optional)
         eval_interval: Evaluate every N epochs
         resume_from: Path to checkpoint to resume training from
-        multi_gpu: Use DataParallel if multiple GPUs available
+        multi_gpu: DP 모드에서만 의미. DDP 모드에서는 무시됨
         use_ssim: Add SSIM loss to MSE (for TwoStream)
+        num_workers: DataLoader worker 수
 
     Returns:
         model: Trained model
         history: Training history dict
     """
-    # Multi-GPU setup
-    use_multi_gpu = multi_gpu and torch.cuda.device_count() > 1
-    if use_multi_gpu:
-        print(f"Using {torch.cuda.device_count()} GPUs with DataParallel")
-        model = model.to(device)
-        model = torch.nn.DataParallel(model)
-        # Adjust batch size for multi-GPU (batch_size is per-GPU)
-        effective_batch_size = batch_size * torch.cuda.device_count()
-        print(f"  Per-GPU batch size: {batch_size}")
-        print(f"  Effective batch size: {effective_batch_size}")
-    else:
-        model = model.to(device)
-        effective_batch_size = batch_size
+    # ── 분산 학습 vs 단일/DP 모드 결정 ─────────────────────────────────────────
+    distributed = is_distributed_env()
+    rank = 0
+    local_rank = 0
+    world_size = 1
 
-    # Setup checkpoint directory with timestamp
+    if distributed:
+        rank, local_rank, world_size = init_distributed()
+        device = torch.device(f"cuda:{local_rank}")
+        is_master = (rank == 0)
+        if is_master:
+            print(f"DDP enabled: rank={rank}, local_rank={local_rank}, world_size={world_size}")
+            print(f"  Backend: nccl, MASTER_ADDR={os.environ.get('MASTER_ADDR')}, "
+                  f"MASTER_PORT={os.environ.get('MASTER_PORT')}")
+        model = model.to(device)
+        model = DDP(model, device_ids=[local_rank], find_unused_parameters=False)
+        effective_batch_size = batch_size  # per-GPU; DistributedSampler가 데이터 분할
+        global_batch_size = batch_size * world_size
+        if is_master:
+            print(f"  Per-GPU batch size: {batch_size}")
+            print(f"  Global batch size: {global_batch_size}")
+    else:
+        is_master = True
+        # Multi-GPU DP setup (기존 방식)
+        use_multi_gpu = multi_gpu and torch.cuda.device_count() > 1
+        if use_multi_gpu:
+            print(f"Using {torch.cuda.device_count()} GPUs with DataParallel")
+            model = model.to(device)
+            model = torch.nn.DataParallel(model)
+            effective_batch_size = batch_size * torch.cuda.device_count()
+            print(f"  Per-GPU batch size: {batch_size}")
+            print(f"  Effective batch size: {effective_batch_size}")
+        else:
+            model = model.to(device)
+            effective_batch_size = batch_size
+
+    def log(msg):
+        if is_master:
+            print(msg)
+
+    # Setup checkpoint directory with timestamp (rank 0만 생성)
     run_dir = None
-    if checkpoint_dir:
+    if checkpoint_dir and is_master:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_dir = Path(checkpoint_dir) / timestamp
         run_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Checkpoint directory: {run_dir}")
+        log(f"Checkpoint directory: {run_dir}")
 
-    dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=effective_batch_size,
-        shuffle=True,
-        num_workers=16,
-        pin_memory=True,
-        persistent_workers=True,
-    )
+    # DataLoader: DDP는 DistributedSampler 사용, 그 외는 shuffle=True
+    if distributed:
+        train_sampler = DistributedSampler(
+            train_dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True
+        )
+        dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=effective_batch_size,
+            sampler=train_sampler,
+            num_workers=num_workers,
+            pin_memory=True,
+            persistent_workers=(num_workers > 0),
+            drop_last=True,
+        )
+    else:
+        train_sampler = None
+        dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=effective_batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            persistent_workers=(num_workers > 0),
+        )
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
@@ -485,15 +600,17 @@ def train(
     }
 
     if resume_from:
-        print(f"Resuming from {resume_from}")
-        checkpoint = torch.load(resume_from, map_location=device)
-        # Handle DataParallel: load into model.module if wrapped
-        model_to_load = model.module if use_multi_gpu else model
+        log(f"Resuming from {resume_from}")
+        # 모든 rank가 동일 체크포인트를 메모리에서 로드 (DDP는 자동 broadcast 안 함)
+        map_location = {'cuda:0': str(device)} if distributed else device
+        checkpoint = torch.load(resume_from, map_location=map_location)
+        # DDP 또는 DataParallel: model.module에 로드
+        model_to_load = model.module if hasattr(model, 'module') else model
         try:
             model_to_load.load_state_dict(checkpoint['model_state_dict'])
         except RuntimeError as e:
-            print(f"  WARNING: Checkpoint incompatible — {e}")
-            print(f"  Starting from scratch (ignoring old checkpoint)")
+            log(f"  WARNING: Checkpoint incompatible — {e}")
+            log(f"  Starting from scratch (ignoring old checkpoint)")
             resume_from = None
         if resume_from:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -502,7 +619,6 @@ def train(
             start_epoch = checkpoint['epoch'] + 1
             if 'history' in checkpoint:
                 history = checkpoint['history']
-                # Ensure new metrics exist in resumed history
                 history.setdefault('epoch_time', [])
                 history.setdefault('samples_per_sec', [])
                 history.setdefault('timestamps', [])
@@ -510,29 +626,34 @@ def train(
                 best_eval_loss = checkpoint['best_eval_loss']
             if 'scaler_state_dict' in checkpoint and scaler is not None:
                 scaler.load_state_dict(checkpoint['scaler_state_dict'])
-            print(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
+            log(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
 
-    print(f"\nTraining for {num_epochs} epochs (starting from epoch {start_epoch})")
-    print(f"  Train dataset: {len(train_dataset)} samples")
+    log(f"\nTraining for {num_epochs} epochs (starting from epoch {start_epoch})")
+    log(f"  Train dataset: {len(train_dataset)} samples")
     if eval_dataset:
-        print(f"  Eval dataset: {len(eval_dataset)} samples (every {eval_interval} epochs)")
-    print(f"  Batch size: {batch_size}")
-    print(f"  Learning rate: {lr}")
+        log(f"  Eval dataset: {len(eval_dataset)} samples (every {eval_interval} epochs)")
+    log(f"  Batch size (per GPU): {batch_size}")
+    if distributed:
+        log(f"  World size: {world_size}, global batch: {batch_size * world_size}")
+    log(f"  Learning rate: {lr}")
     if save_interval:
-        print(f"  Save interval: every {save_interval} epochs")
-    print()
+        log(f"  Save interval: every {save_interval} epochs")
+    log("")
 
-    # TensorBoard
+    # TensorBoard (rank 0만)
     writer = None
-    if run_dir and HAS_TENSORBOARD:
+    if run_dir and HAS_TENSORBOARD and is_master:
         writer = SummaryWriter(log_dir=str(run_dir / 'tb'))
-        print(f"TensorBoard: {run_dir / 'tb'}")
+        log(f"TensorBoard: {run_dir / 'tb'}")
 
-    # Save config
-    if run_dir:
+    # Save config (rank 0만)
+    if run_dir and is_master:
         config = {
             'num_epochs': num_epochs,
             'batch_size': batch_size,
+            'global_batch_size': batch_size * world_size,
+            'world_size': world_size,
+            'distributed': distributed,
             'lr': lr,
             'eval_interval': eval_interval,
             'save_interval': save_interval,
@@ -546,22 +667,29 @@ def train(
     for epoch in range(start_epoch, num_epochs + 1):
         epoch_start_time = time.time()
 
+        # DistributedSampler shuffle 재초기화 (필수 — 빠뜨리면 매 epoch 같은 순서)
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
+
         # Train
         train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler, use_ssim=use_ssim)
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
 
-        # Evaluate (에러 시 학습 계속)
+        # Evaluate (rank 0만 수행, 다른 rank는 barrier 대기)
         eval_loss = None
         if eval_dataset and epoch % eval_interval == 0:
-            try:
-                eval_result = evaluate(model, eval_dataset, device, batch_size=batch_size, use_ssim=use_ssim)
-                eval_loss = eval_result['loss']
-                history['eval_loss'].append(eval_loss)
-                print(f"  [Eval] Loss: {eval_loss:.4f}, Weighted: {eval_result['weighted_loss']:.4f}")
-            except Exception as e:
-                print(f"  [WARNING] Evaluation failed (epoch {epoch}): {e}")
+            if is_master:
+                try:
+                    eval_result = evaluate(model, eval_dataset, device, batch_size=batch_size, use_ssim=use_ssim)
+                    eval_loss = eval_result['loss']
+                    history['eval_loss'].append(eval_loss)
+                    log(f"  [Eval] Loss: {eval_loss:.4f}, Weighted: {eval_result['weighted_loss']:.4f}")
+                except Exception as e:
+                    log(f"  [WARNING] Evaluation failed (epoch {epoch}): {e}")
+            if distributed:
+                dist.barrier()
 
         # Track time metrics
         epoch_end_time = time.time()
@@ -573,9 +701,9 @@ def train(
         history['samples_per_sec'].append(samples_per_sec)
         history['timestamps'].append(current_timestamp)
 
-        # Print time metrics
+        # Print time metrics (rank 0)
         current_lr = scheduler.get_last_lr()[0]
-        print(f"  [Time] Epoch: {epoch_duration:.1f}s, Throughput: {samples_per_sec:.1f} samples/sec, LR: {current_lr:.2e}")
+        log(f"  [Time] Epoch: {epoch_duration:.1f}s, Throughput: {samples_per_sec:.1f} samples/sec, LR: {current_lr:.2e}")
 
         # Estimate remaining time
         if epoch < num_epochs:
@@ -583,9 +711,9 @@ def train(
             remaining_epochs = num_epochs - epoch
             eta_seconds = avg_epoch_time * remaining_epochs
             eta_hours = eta_seconds / 3600
-            print(f"  [ETA] {remaining_epochs} epochs remaining, ~{eta_hours:.1f}h ({eta_seconds/60:.0f}min)")
+            log(f"  [ETA] {remaining_epochs} epochs remaining, ~{eta_hours:.1f}h ({eta_seconds/60:.0f}min)")
 
-        # TensorBoard logging
+        # TensorBoard logging (rank 0만; writer는 rank 0에서만 생성됨)
         if writer:
             writer.add_scalar('loss/train', avg_loss, epoch)
             if 'loss_future' in train_result:
@@ -598,14 +726,14 @@ def train(
             writer.add_scalar('perf/epoch_time_sec', epoch_duration, epoch)
             writer.flush()
 
-        # Save prediction samples every epoch
-        if run_dir and eval_dataset:
+        # Save prediction samples every epoch (rank 0)
+        if run_dir and eval_dataset and is_master:
             save_epoch_samples(model, eval_dataset, device, epoch, run_dir)
 
-        # Save checkpoint
-        if run_dir:
-            # Handle DataParallel: save model.module.state_dict() if wrapped
-            model_to_save = model.module if use_multi_gpu else model
+        # Save checkpoint (rank 0만)
+        if run_dir and is_master:
+            # DDP/DP 모두 model.module에 실모델
+            model_to_save = model.module if hasattr(model, 'module') else model
             checkpoint_data = {
                 'epoch': epoch,
                 'model_state_dict': model_to_save.state_dict(),
@@ -622,7 +750,7 @@ def train(
             if save_interval and epoch % save_interval == 0:
                 ckpt_path = run_dir / f'checkpoint_epoch{epoch:04d}.pt'
                 torch.save(checkpoint_data, ckpt_path)
-                print(f"  Saved checkpoint: {ckpt_path.name}")
+                log(f"  Saved checkpoint: {ckpt_path.name}")
 
             # Save best model
             current_loss = eval_loss if eval_loss is not None else avg_loss
@@ -631,18 +759,25 @@ def train(
                 checkpoint_data['best_eval_loss'] = best_eval_loss
                 best_path = run_dir / 'best_model.pt'
                 torch.save(checkpoint_data, best_path)
-                print(f"  Saved best model (loss: {current_loss:.4f})")
+                log(f"  Saved best model (loss: {current_loss:.4f})")
 
             # Always save latest (for resume)
             latest_path = run_dir / 'latest.pt'
             torch.save(checkpoint_data, latest_path)
 
-    # Save final history
-    if run_dir:
+        # 모든 rank가 다음 epoch 진입 동기화
+        if distributed:
+            dist.barrier()
+
+    # Save final history (rank 0)
+    if run_dir and is_master:
         with open(run_dir / 'history.json', 'w') as f:
             json.dump(history, f, indent=2)
 
     if writer:
         writer.close()
+
+    if distributed:
+        cleanup_distributed()
 
     return model, history
