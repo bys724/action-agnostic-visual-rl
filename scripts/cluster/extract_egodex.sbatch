@@ -6,29 +6,40 @@
 #   2. scripts/data/extract_frames.py로 프레임 추출 (144 worker 병렬)
 #   3. 추출 결과 검증
 #
+# 파티션 선택 전략:
+#   모든 CPU 노드가 동일 하드웨어 (Intel Xeon Platinum 8360Y, 36C×2 socket = 144 logical CPU).
+#   --partition=core_s,normal_cpu 멀티 지정 → Slurm이 먼저 가용한 쪽으로 자동 배치.
+#     - core_s: PriorityJobFactor 200 (압도적), MaxTime 2h
+#     - normal_cpu: PriorityJobFactor 20, MaxTime 3 days, exclusive
+#   --time=02:00:00은 두 파티션 모두 허용. 추출이 2h 안에 끝나야 함.
+#   2h를 넘길 가능성이 보이면 normal_cpu 단독으로 시간 늘려서 재제출.
+#
 # 저장소 주의:
-#   - normal_cpu (olaf-c) 노드에는 /scratch가 없음 (관리자 확인). GPFS(/proj) 직접 사용.
+#   - olaf-c 노드에는 /scratch가 없음 (관리자 확인). GPFS(/proj) 직접 사용.
 #   - GPFS write 16 GB/s로 충분히 빠름. scratch 우회 불필요.
 #
 # Usage:
-#   # 단일 part
+#   # 단일 part (테스트용 — 첫 측정 권장)
 #   sbatch --export=PART=part1 scripts/cluster/extract_egodex.sbatch
 #
-#   # 여러 part (sbatch array, 부분별 독립 잡)
+#   # 여러 part 동시 추출 (sbatch array, 노드 1개씩 병렬)
 #   sbatch --array=1-5 scripts/cluster/extract_egodex.sbatch
 #
-#   # 다운로드 진행 중인 part부터 순서대로 (예: part1만 끝났을 때)
-#   sbatch --array=1 scripts/cluster/extract_egodex.sbatch
+#   # 일부만 (예: 다운로드 끝난 1, 2번만)
+#   sbatch --array=1,2 scripts/cluster/extract_egodex.sbatch
+#
+#   # 2h를 초과해야 하는 경우 normal_cpu 단독 + 시간 연장
+#   sbatch --partition=normal_cpu --time=04:00:00 --array=1-5 scripts/cluster/extract_egodex.sbatch
 #
 # 제출 후 모니터링:
 #   squeue --me
 #   tail -f /proj/external_group/mrg/logs/extract_egodex_*.out
 
 #SBATCH --job-name=egodex_extract
-#SBATCH --partition=normal_cpu
+#SBATCH --partition=core_s,normal_cpu
 #SBATCH --nodes=1
 #SBATCH --exclusive
-#SBATCH --time=12:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=/proj/external_group/mrg/logs/extract_egodex_%A_%a.out
 #SBATCH --error=/proj/external_group/mrg/logs/extract_egodex_%A_%a.err
 
@@ -56,9 +67,13 @@ mkdir -p "$RAW_DIR" "$FRAMES_DIR"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$PART] $*"; }
 
+JOB_START_EPOCH=$(date +%s)
+
 log "=== Extraction job start ==="
 log "Node: $(hostname), CPUs: ${SLURM_CPUS_ON_NODE:-unknown}"
+log "Partition: ${SLURM_JOB_PARTITION:-N/A}"
 log "Job: ${SLURM_JOB_ID:-N/A} (array task ${SLURM_ARRAY_TASK_ID:-N/A})"
+log "Time limit: ${SLURM_JOB_END_TIME:-N/A}"
 
 # ── conda 환경 활성화 ─────────────────────────────────────────────────────────
 module load miniforge3/24.11.3-2
@@ -97,10 +112,16 @@ N_VIDEOS=$(find "$RAW_PART_DIR" -name "*.mp4" | wc -l)
 N_FRAME_DIRS=$(find "$FRAMES_PART_DIR" -mindepth 2 -maxdepth 2 -type d | wc -l)
 TOTAL_SIZE=$(du -sh "$FRAMES_PART_DIR" | cut -f1)
 
+JOB_END_EPOCH=$(date +%s)
+ELAPSED=$((JOB_END_EPOCH - JOB_START_EPOCH))
+ELAPSED_HMS=$(printf '%dh %dm %ds' $((ELAPSED/3600)) $(((ELAPSED%3600)/60)) $((ELAPSED%60)))
+
 log "=== Extraction complete ==="
 log "Videos found:        $N_VIDEOS"
 log "Frame directories:   $N_FRAME_DIRS"
 log "Frames total size:   $TOTAL_SIZE"
+log "Total elapsed:       $ELAPSED_HMS ($ELAPSED sec)"
+log "Throughput:          $(awk -v v=$N_VIDEOS -v t=$ELAPSED 'BEGIN{if(t>0)printf "%.2f videos/sec", v/t}')"
 
 if [ "$N_VIDEOS" -ne "$N_FRAME_DIRS" ]; then
     log "WARNING: video count != frame dir count (some extractions may have failed)"
