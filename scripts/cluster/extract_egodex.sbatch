@@ -12,7 +12,13 @@
 #     - core_s: PriorityJobFactor 200 (압도적), MaxTime 2h
 #     - normal_cpu: PriorityJobFactor 20, MaxTime 3 days, exclusive
 #   --time=02:00:00은 두 파티션 모두 허용. 추출이 2h 안에 끝나야 함.
-#   2h를 넘길 가능성이 보이면 normal_cpu 단독으로 시간 늘려서 재제출.
+#
+# CPU 수 / 노드 점유 전략:
+#   기본은 --cpus-per-task=144 (full node) — 노드가 idle일 때 빠른 처리.
+#   클러스터 혼잡 시 idle 노드 없으면 무한 대기 → 작은 값으로 override 가능:
+#     sbatch --cpus-per-task=64 --export=PART=part1 ...
+#   core_s mixed 노드에 부분 점유로 즉시 진입. 64배 병렬로도 충분히 빠름.
+#   스크립트는 SLURM_CPUS_PER_TASK를 자동으로 worker 수로 사용.
 #
 # 저장소 주의:
 #   - olaf-c 노드에는 /scratch가 없음 (관리자 확인). GPFS(/proj) 직접 사용.
@@ -38,7 +44,8 @@
 #SBATCH --job-name=egodex_extract
 #SBATCH --partition=core_s,normal_cpu
 #SBATCH --nodes=1
-#SBATCH --exclusive
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=144
 #SBATCH --time=02:00:00
 #SBATCH --output=/proj/external_group/mrg/logs/extract_egodex_%A_%a.out
 #SBATCH --error=/proj/external_group/mrg/logs/extract_egodex_%A_%a.err
@@ -69,11 +76,14 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$PART] $*"; }
 
 JOB_START_EPOCH=$(date +%s)
 
+# Worker 수: --cpus-per-task로 할당받은 CPU 수 (override 가능). fallback: 노드 전체.
+NUM_WORKERS="${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-1}}"
+
 log "=== Extraction job start ==="
-log "Node: $(hostname), CPUs: ${SLURM_CPUS_ON_NODE:-unknown}"
+log "Node: $(hostname)"
+log "CPU on node: ${SLURM_CPUS_ON_NODE:-unknown}, Allocated to job: $NUM_WORKERS"
 log "Partition: ${SLURM_JOB_PARTITION:-N/A}"
 log "Job: ${SLURM_JOB_ID:-N/A} (array task ${SLURM_ARRAY_TASK_ID:-N/A})"
-log "Time limit: ${SLURM_JOB_END_TIME:-N/A}"
 
 # ── conda 환경 활성화 ─────────────────────────────────────────────────────────
 module load miniforge3/24.11.3-2
@@ -82,7 +92,10 @@ conda activate "$CONDA_ENV"
 log "Activated conda env: $CONDA_PREFIX"
 python --version
 
-# ── Step 1: unzip ────────────────────────────────────────────────────────────
+# ── Step 1: 병렬 unzip (144 worker) ──────────────────────────────────────────
+# 표준 unzip은 단일 스레드라 144 CPU 노드에서 1코어만 사용 → 병목.
+# scripts/data/parallel_unzip.py로 zip entry를 worker chunk 단위 분산 추출.
+# 측정: 16 worker로 16 GB test.zip 11초 (1.45 GB/s, 단일 unzip 대비 18배).
 if [ -d "$RAW_PART_DIR" ] && [ -n "$(ls -A "$RAW_PART_DIR" 2>/dev/null)" ]; then
     log "Raw data already exists at $RAW_PART_DIR, skipping unzip"
 else
@@ -91,20 +104,23 @@ else
         log "Run scripts/cluster/download_egodex.sh $PART first"
         exit 1
     fi
-    log "Unzipping $ZIP_FILE → $RAW_DIR/"
-    time unzip -q "$ZIP_FILE" -d "$RAW_DIR/"
+    log "Parallel unzipping $ZIP_FILE → $RAW_DIR/ (workers=$NUM_WORKERS)"
+    time python "$PROJECT_ROOT/scripts/data/parallel_unzip.py" \
+        --zip "$ZIP_FILE" \
+        --output-dir "$RAW_DIR" \
+        --num-workers "$NUM_WORKERS"
     log "Unzip complete: $(du -sh "$RAW_PART_DIR" | cut -f1)"
 fi
 
 # ── Step 2: 프레임 추출 ───────────────────────────────────────────────────────
-log "Extracting frames → $FRAMES_PART_DIR (workers=${SLURM_CPUS_ON_NODE})"
+log "Extracting frames → $FRAMES_PART_DIR (workers=$NUM_WORKERS)"
 mkdir -p "$FRAMES_PART_DIR"
 
 time python "$PROJECT_ROOT/scripts/data/extract_frames.py" \
     --egodex-root "$RAW_DIR" \
     --split "$PART" \
     --output-dir "$FRAMES_PART_DIR" \
-    --num-workers "$SLURM_CPUS_ON_NODE" \
+    --num-workers "$NUM_WORKERS" \
     --yes
 
 # ── Step 3: 검증 ──────────────────────────────────────────────────────────────
