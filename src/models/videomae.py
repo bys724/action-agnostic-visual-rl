@@ -455,15 +455,27 @@ class VideoMAEEncoderForVLA(nn.Module):
         return self._embed_dim
 
     def load_from_checkpoint(self, checkpoint_path: str):
-        """Load encoder weights from trained VideoMAE model."""
+        """Load encoder weights from trained VideoMAE model.
+
+        DDP/DataParallel로 저장된 체크포인트의 'module.' prefix를 자동 제거.
+        encoder. prefix로 필터링하여 인코더 weight만 추출.
+        """
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
         state_dict = checkpoint.get("model_state_dict", checkpoint)
+
+        # 'module.' prefix 자동 제거 (DDP/DP wrapped checkpoint 호환)
+        if any(k.startswith("module.") for k in state_dict):
+            state_dict = {k[len("module."):] if k.startswith("module.") else k: v
+                          for k, v in state_dict.items()}
 
         encoder_state = {
             k: v for k, v in state_dict.items()
             if k.startswith("encoder.")
         }
-        self.load_state_dict(encoder_state, strict=False)
+        result = self.load_state_dict(encoder_state, strict=False)
+        if result.missing_keys:
+            print(f"  WARNING: {len(result.missing_keys)} missing encoder keys "
+                  f"(first 3: {result.missing_keys[:3]})")
         print(f"Loaded encoder weights from: {checkpoint_path}")
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:

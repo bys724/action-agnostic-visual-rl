@@ -783,9 +783,19 @@ class TwoStreamEncoder(nn.Module):
         return self._embed_dim * 2  # Returns 2D due to separate fusion
 
     def load_from_checkpoint(self, checkpoint_path: str):
-        """Load encoder weights from trained Two-Stream model."""
+        """Load encoder weights from trained Two-Stream model.
+
+        DDP/DataParallel로 저장된 체크포인트의 'module.' prefix를 자동 제거.
+        decoder weights는 제외 (인코더만 사용).
+        키 매칭 결과를 출력하여 silent fail 방지.
+        """
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
         state_dict = checkpoint.get("model_state_dict", checkpoint)
+
+        # 'module.' prefix 자동 제거 (DDP/DP wrapped checkpoint 호환)
+        if any(k.startswith("module.") for k in state_dict):
+            state_dict = {k[len("module."):] if k.startswith("module.") else k: v
+                          for k, v in state_dict.items()}
 
         # Extract encoder weights only (exclude decoders)
         encoder_state = {
@@ -793,7 +803,11 @@ class TwoStreamEncoder(nn.Module):
             if not k.startswith("decoder_m.") and not k.startswith("decoder_p.")
         }
 
-        self.load_state_dict(encoder_state, strict=False)
+        result = self.load_state_dict(encoder_state, strict=False)
+        if result.missing_keys:
+            print(f"  WARNING: {len(result.missing_keys)} missing encoder keys "
+                  f"(first 3: {result.missing_keys[:3]})")
+        # unexpected_keys는 보통 decoder/SSIM 등 — 정상이라 silent
         print(f"Loaded encoder weights from: {checkpoint_path}")
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
