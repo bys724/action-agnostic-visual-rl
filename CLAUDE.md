@@ -21,6 +21,27 @@
 - EgoDex로 행동-독립적(action-agnostic) 시각 표현 사전학습
 - LIBERO에서 로봇 조작 태스크로 평가
 
+## 실행 환경
+
+이 프로젝트는 **두 개의 실행 환경**에서 동작합니다. Python 코드 (`scripts/pretrain.py`, `scripts/data/`, `scripts/eval/`, `src/`)는 환경 무관이며, bash launcher만 환경별로 분리되어 있습니다.
+
+| 환경 | 위치 | 컨테이너 | GPU | 데이터 경로 | Launcher |
+|------|------|---------|-----|------------|----------|
+| **로컬 워크스테이션** | 외부 워크스테이션 | Docker (`dev-env`) | H100 × 2 (DataParallel) | `/mnt/data/...` | `scripts/local/` |
+| **IBS 클러스터** (olaf) | Slurm cluster | Apptainer (예정) | H100 × 4 per node, 최대 2 nodes | `/proj/external_group/mrg/datasets/...` (GPFS) | `scripts/cluster/` |
+
+**클러스터 저장소 요약** (관리자 확인, 2026-04-09):
+- `/proj` GPFS: ~16 GB/s read/write, 모든 노드, 영구
+- `/scratch`: 로컬 NVMe (~6.8 GB/s read, ~2 GB/s write), **GPU 노드(olaf-g)에만**, 잡 종료 시 휘발
+- 이 클러스터는 GPFS가 더 빠름 → 일반 작업은 `/proj` 직접 사용. scratch는 small file random I/O에서만 유리
+- 자세한 내용 및 stage-in/out 패턴: [scripts/cluster/README.md](scripts/cluster/README.md)
+
+**역할 분담** (2026-04-09):
+- **로컬**: probing, 시각화, LIBERO fine-tuning + rollout (인터랙티브, 빠른 turnaround)
+- **클러스터**: full pre-training (장시간 백그라운드, 8 GPU DDP)
+
+자세한 클러스터 사용법은 [scripts/cluster/README.md](scripts/cluster/README.md) 참고.
+
 ## 워크플로우
 
 ### 1. EgoDex Pre-training
@@ -29,20 +50,23 @@
 
 **v4 확정 설정**:
 ```bash
-# Docker dev 환경
+# 로컬 (Docker dev-env)
 docker exec -it dev-env bash
-
 python scripts/pretrain.py --model two-stream \
     --depth 12 --num-stages 2 \
     --mask-ratio 0.3 --mask-ratio-p 0.5 \
     --max-gap 60 --sample-dist triangular --sample-center 30 \
     --egodex-splits part1,part2,part3,part4,part5 \
     --epochs 30 --batch-size 64
+
+# 클러스터 (sbatch)
+sbatch scripts/cluster/pretrain.sbatch  # TODO: 작성 예정
 ```
 
 **데이터 다운로드** (EgoDex CDN 직접):
 ```bash
-bash scripts/download_egodex.sh part2 part3 part5
+bash scripts/local/download_egodex.sh   part2 part3 part5  # 로컬
+bash scripts/cluster/download_egodex.sh part2 part3 part5  # 클러스터
 ```
 
 ### 2. Action Probing (사전학습 완료 후)
@@ -87,8 +111,12 @@ docker exec libero-eval python src/eval_libero.py ...
 
 | 파일 | 용도 |
 |------|------|
-| `scripts/pretrain.py` | Pre-training 메인 스크립트 |
-| `scripts/download_egodex.sh` | EgoDex CDN 다운로드+추출 |
+| `scripts/pretrain.py` | Pre-training 메인 스크립트 (env-agnostic) |
+| `scripts/local/download_egodex.sh` | EgoDex CDN 다운로드+추출 (로컬, `/mnt/data`) |
+| `scripts/local/pretrain.sh` | 로컬 학습 launcher (Docker dev-env) |
+| `scripts/cluster/download_egodex.sh` | EgoDex CDN 다운로드 (클러스터, `/proj/external_group/mrg`) |
+| `scripts/cluster/extract_egodex.sbatch` | 프레임 추출 sbatch (144 CPU 병렬) |
+| `scripts/cluster/README.md` | 클러스터 사용법 quickstart |
 | `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 |
 | `scripts/data/extract_droid_actions.py` | DROID action 추출 (cross-domain probing용) |
 | `scripts/eval/probe_action.py` | EgoDex action probing |
@@ -149,7 +177,7 @@ docker exec libero-eval python src/eval_libero.py ...
 
 ### EgoDex test symlink 문제 (2026-03-23)
 - **증상**: eval 시 `FileNotFoundError: .../part2/.../frame_000000.jpg`로 학습 크래시
-- **원인**: `pretrain_local.sh`가 test symlink을 잘못 생성. 추출된 프레임은 `/mnt/data/egodex_frames/test_frames/`
+- **원인**: `scripts/local/pretrain.sh`가 test symlink을 잘못 생성. 추출된 프레임은 `/mnt/data/egodex_frames/test_frames/`
 - **수정**: symlink을 `test_frames`로 교체
 - **교훈**: dataset 객체는 시작 시 경로를 캐싱하므로, 학습 중 symlink 수정해도 효과 없음 → 재시작 필요
 
