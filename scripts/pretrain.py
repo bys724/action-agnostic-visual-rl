@@ -99,6 +99,10 @@ def main():
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
 
+    # Acceleration
+    parser.add_argument('--compile', action='store_true',
+                        help='torch.compile() 적용 (10-30%% 가속, 첫 실행 시 컴파일 오버헤드)')
+
     # AWS / Post-training
     parser.add_argument('--s3-bucket', type=str, default=None,
                         help='S3 bucket to sync checkpoints after training (e.g. bys724-research-2026)')
@@ -178,6 +182,12 @@ def main():
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Total parameters: {total_params:,}")
         print(f"Trainable parameters: {trainable_params:,}")
+
+    # torch.compile (DDP wrap 전에 적용해야 효과적)
+    if args.compile:
+        model = torch.compile(model)
+        if is_master:
+            print(f"torch.compile() enabled — 첫 step 컴파일 후 10-30% 가속 예상")
 
     # Create training dataset
     if is_master:

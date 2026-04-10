@@ -136,7 +136,8 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
         return 1 - ssim_map.mean()
 
 
-def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scaler=None, use_ssim=False):
+def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
+                scaler=None, use_ssim=False, use_bf16=True):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -147,7 +148,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
         device: Device
         epoch: Current epoch number
         dataset: Dataset with get_loss_weight() method (optional)
-        scaler: GradScaler for AMP (None = FP32)
+        scaler: GradScaler for AMP (None = BF16 mode, BF16에서는 불필요)
+        use_bf16: BF16 autocast 사용 여부. H100에서 ~2배 가속.
 
     Returns:
         avg_loss: Average unweighted loss for the epoch
@@ -174,9 +176,9 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
 
         optimizer.zero_grad()
 
-        # AMP autocast context
-        use_amp = scaler is not None
-        amp_ctx = torch.cuda.amp.autocast(dtype=torch.bfloat16) if use_amp else torch.cuda.amp.autocast(enabled=False)
+        # AMP autocast: BF16은 GradScaler 없이 autocast만으로 동작
+        # (이전 코드: scaler is not None으로 게이팅 → BF16에서 autocast 꺼지는 버그)
+        amp_ctx = torch.cuda.amp.autocast(dtype=torch.bfloat16) if use_bf16 else torch.cuda.amp.autocast(enabled=False)
 
         # Compute loss based on model type
         actual_model = model.module if hasattr(model, 'module') else model
@@ -229,17 +231,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None, scale
                 weighted_loss = (per_sample_loss * weights).mean()
                 unweighted_loss = per_sample_loss.mean()
 
-        # Backward with AMP scaling
-        if use_amp:
-            scaler.scale(weighted_loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            weighted_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+        # Backward (BF16 autocast 사용 시 scaler 불필요 — dynamic range가 FP32와 동일)
+        weighted_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -590,14 +585,14 @@ def train(
             persistent_workers=(num_workers > 0),
         )
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
+    # Fused AdamW — optimizer step을 단일 CUDA 커널로 합침 (5~10% 가속, PyTorch 2.0+)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01, fused=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
-    # AMP (BF16) — H100 Tensor Core 최적화
-    # BF16은 FP32와 동일한 dynamic range → GradScaler 불필요
-    # GradScaler + BF16 조합은 mixed-precision loss (SSIM 등)에서 NaN 유발 가능
-    scaler = None
-    print(f"AMP enabled (BF16, no GradScaler)")
+    # AMP BF16 — H100 Tensor Core 기준 FP32 대비 ~2배 throughput
+    # BF16은 FP32와 동일한 exponent range → GradScaler 불필요 (FP16만 필요)
+    use_bf16 = True
+    log(f"AMP: BF16 autocast enabled, Fused AdamW enabled")
 
     # Resume from checkpoint if specified
     start_epoch = 1
@@ -635,8 +630,6 @@ def train(
                 history.setdefault('timestamps', [])
             if 'best_eval_loss' in checkpoint:
                 best_eval_loss = checkpoint['best_eval_loss']
-            if 'scaler_state_dict' in checkpoint and scaler is not None:
-                scaler.load_state_dict(checkpoint['scaler_state_dict'])
             log(f"  Resumed from epoch {checkpoint['epoch']}, LR: {scheduler.get_last_lr()[0]:.2e}")
 
     log(f"\nTraining for {num_epochs} epochs (starting from epoch {start_epoch})")
@@ -683,7 +676,8 @@ def train(
             train_sampler.set_epoch(epoch)
 
         # Train
-        train_result = train_epoch(model, dataloader, optimizer, device, epoch, dataset=train_dataset, scaler=scaler, use_ssim=use_ssim)
+        train_result = train_epoch(model, dataloader, optimizer, device, epoch,
+                                   dataset=train_dataset, use_ssim=use_ssim, use_bf16=use_bf16)
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
@@ -750,7 +744,6 @@ def train(
                 'model_state_dict': model_to_save.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-                'scaler_state_dict': scaler.state_dict() if scaler is not None else None,
                 'train_loss': avg_loss,
                 'eval_loss': eval_loss,
                 'best_eval_loss': best_eval_loss,
