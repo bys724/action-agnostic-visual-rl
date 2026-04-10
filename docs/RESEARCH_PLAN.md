@@ -183,25 +183,38 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 
 ---
 
-## 현재 상태 (2026-03-19)
+## 현재 상태 (2026-04-10)
 
-### 완료
-- [x] Two-Stream + VideoMAE 구현 (Single-Stream은 ablation용, 현재 학습 제외)
-- [x] TwoStreamModel 아키텍처 개편: CLS bottleneck + 이중 디코더 (trivial solution 해결)
-  - 이전: patch-level PixelwiseFusion → decoder (trivial shortcut 가능)
-  - 현재: (m_cls + p_cls) / 2 → decoder_current + decoder_future (CLS 강제)
-- [x] VideoMAE 공식 정합성 검증
-- [x] 학습 파이프라인 (pretrain.py, pretrain_local.sh, pretrain_aws.sh)
-- [x] 프레임 전처리 확정 (256x256 저장 → 학습 시 RandomCrop 224, 독립 crop)
-- [x] EgoDex part1, part4 로컬 추출 완료 (~515GB)
-- [x] DROID v1.0.1 다운로드 완료 (2048 shards, 1.7TB)
+### Phase 1 완료 (모델 설계 + ablation)
+- [x] Two-Stream v4 아키텍처 확정: d=12, s=2, MAE M=0.3/P=0.5, max_gap=60 triangular
+- [x] Architecture ablation, MAE masking, composition consistency, gap 분포 실험 전부 완료
+- [x] VideoMAE 30 epoch baseline 완료
+- [x] Action probing 초기 결과 확보 (EgoDex + DROID)
 
-### 완료 (추가)
-- [x] Two-Stream v3 30 epoch 완료 (train loss 0.000885, eval loss 0.001870)
-- [x] Two-Stream v3 + SSIM 1 epoch 검증 완료 (학습 정상 확인, 풀 학습은 보류)
+### IBS 클러스터 환경 구축 완료
+- [x] EgoDex part1~5 + test CDN 다운로드 (1.6 TB, 5-way 병렬 ~2시간)
+- [x] EgoDex 프레임 추출 완료 (314,839 train videos, ~1.25 TB frames)
+  - part1: 46,234 / part2: 95,125 / part3: 53,779 / part4: 44,129 / part5: 75,572 / test: 3,243
+- [x] DROID 다운로드 진행 중 (gsutil rsync)
+- [x] scripts/{local,cluster}/ 환경별 launcher 분리
+- [x] conda env 2개: aavrl-extract (cv2), aavrl-train (torch 2.6+cu124)
+- [x] 클러스터 저장소 정책 확인: GPFS 16 GB/s, scratch 7 TB (GPU 노드 로컬 NVMe)
+
+### DDP 전환 + 학습 가속
+- [x] DataParallel → DistributedDataParallel 변환 (Slurm srun 직접, torchrun 불필요)
+- [x] DDP sanity Stage 2 통과 (1 GPU, 37.6→BF16 검증중)
+- [x] DDP sanity Stage 3 통과 (2 GPU 1 node, NCCL over NVLink, 90.8 samples/sec)
+- [ ] DDP sanity Stage 4 (2 node multi-node NCCL) — 큐 대기
+- [x] AMP BF16 autocast 버그 수정 (기존: scaler 기반 조건문 → 실제 FP32 실행. ~2배 성능 손실)
+- [x] Fused AdamW 적용 (5-10% 가속)
+- [x] torch.compile 선택적 지원 (--compile 플래그)
+- [x] pretrain.sbatch scratch stage-in/out 구현 (USE_SCRATCH=1)
+
+### 로컬 워크스테이션 (이전 완료)
+- [x] Two-Stream v1~v4 iterative ablation (part1 기준, 30 epoch)
 - [x] VideoMAE 30 epoch 완료
-- [x] DROID 프레임 추출 완료 (ext1/ext2/wrist, 95,658 에피소드)
-- [x] Action probing 코드 개선 (MP4→JPG 프레임 로딩, --cls-mode 옵션)
+- [x] DROID 프레임 추출 완료 (ext1/ext2/wrist)
+- [x] Action probing 코드 (EgoDex, DROID, Bridge)
 
 ### Action Probing 초기 결과 (2026-03-31, 500 videos, linear probe, 20 epochs)
 
@@ -305,45 +318,27 @@ max_gap=60, sample_dist=triangular, sample_center=30
 Composition 없음 (compositor 제거)
 ```
 
-### 다음 단계
-- [x] Architecture ablation → d=12, s=2 확정
-- [x] MAE masking 비교 → M=0.3, P=0.5 확정
-- [x] Composition 실험 → 사용하지 않기로 결정
-- [x] Gap 분포 실험 → max_gap=60, triangular(center=30) 확정
-- [ ] **VideoMAE full training** (로컬 2 GPU에서 선제 시작, 2026-04-07)
-- [ ] Full training (8x H100): Two-Stream v4
-- [ ] DROID action probing (action 추출 진행 중)
+### 다음 단계 (2026-04-10)
+- [ ] DDP sanity Stage 4 완료 (멀티노드 NCCL 검증)
+- [ ] **Full training (IBS 8 H100)**: Two-Stream v4 50 epoch
+- [ ] **Full training (IBS 8 H100)**: VideoMAE 50 epoch
+- [ ] DROID action probing (DROID 다운로드 완료 후)
 - [ ] LIBERO fine-tuning + rollout (encoder 비교)
 - [ ] OpenVLA encoder 교체 실험
 
-### 병행 학습 전략 (2026-04-07)
+### 학습 전략 (2026-04-10, IBS 클러스터)
 
-**배경**: 8x H100 서버 가용성 불확실 → 로컬 2 GPU에서 VideoMAE 선제 학습, 8 GPU 확보 시 체크포인트 이어서 학습.
+**환경**: IBS olaf 클러스터, AIP/AIP_long 파티션, 노드당 H100 × 4
 
-**현재 진행 중** (로컬):
-```bash
-# VideoMAE full training
-python scripts/pretrain.py --model videomae --train-data egodex \
-    --egodex-root /mnt/data/egodex_frames \
-    --egodex-splits part1,part2,part3,part4,part5 \
-    --epochs 30 --batch-size 64 \
-    --checkpoint-dir /mnt/data/checkpoints/videomae_full
-```
+**본 학습 계획**:
+- 2 노드 × 4 GPU = 8 H100 DDP, AIP_long (14일 max)
+- Per-GPU batch 64, global batch 512, lr=2e-4 (square-root scaling)
+- Scratch stage-in (~10분) → 로컬 NVMe에서 학습 → 체크포인트 stage-out
+- 예상 시간: ~3.5일 (50 epoch), 비용 ~170만원
 
-**Option A (선택됨, 안전)**: 2 GPU → 8 GPU 전환 시 **batch 128 유지**
-- GPU당 batch 16 (8 GPU × 16 = 128) 또는 GPU당 batch 64 (2 GPU × 64 = 128)
-- lr 변경 없이 그대로 resume → 학습 dynamics 유지
-- 8 GPU의 나머지 4개는 Two-Stream 학습에 할당
-
-**중단-재시작 주의사항**:
-- `--resume` 옵션으로 체크포인트, optimizer state, scheduler state 복원
-- `num_epochs`는 불변 (Cosine scheduler T_max 고정)
-- BatchNorm 없음 (LayerNorm만 사용) → batch 통계 이슈 없음
-- DistributedSampler로 GPU 수 변경 시 데이터 순서만 달라짐 (학습엔 무영향)
-
-**리스크**:
-- Option B (8 GPU에서 batch 512 + lr scaling)는 학습 가속 크지만 전환 충격 가능성
-- 보수적 선택으로 Option A 채택
+**대안 (스케줄링 어려울 시)**:
+- 1 노드 × 4 GPU, AIP (3일 max), 25 epoch씩 2번 `--resume`
+- 비용 동일, wall-clock 2배
 
 ---
 

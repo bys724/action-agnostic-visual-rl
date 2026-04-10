@@ -167,22 +167,18 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-08)
+## 현재 Phase (2026-04-10)
 
-**Phase 1 완료** — v4 설정 확정 (모든 ablation 완료)
+**Phase 1 완료 → Full training 준비 완료**
 
-- **v4 확정**: d=12, s=2 (6 blk/stage), 2D RoPE, MAE M=0.3/P=0.5, max_gap=60 triangular
-- **검증된 실험**:
-  - Architecture ablation: blk/stage가 핵심
-  - MAE masking: 30/50%로 P self-sufficiency 해결, CLS 밀도 33% 향상
-  - Composition consistency: 효과 없음, 사용 안 함
-  - Gap 분포: triangular(center=30, max=60)이 linear(max=30)보다 우세
+- **v4 확정**: d=12, s=2, 2D RoPE, MAE M=0.3/P=0.5, max_gap=60 triangular
+- **클러스터 환경**: IBS olaf, EgoDex 5 parts 추출 완료 (314k videos), DDP 검증 진행 중
+- **학습 가속**: BF16 autocast + Fused AdamW + scratch stage-in 구현
 
 **다음 작업**:
-1. **Full training**: 8x H100 서버에서 v4 + VideoMAE (EgoDex part1~5 전체)
-2. DROID action probing (cross-domain, action 추출 진행 중)
+1. DDP Stage 4 (멀티노드 NCCL) 검증 후 → **Full training 제출**
+2. DROID action probing (다운로드 진행 중)
 3. LIBERO fine-tuning + 시뮬레이터 rollout
-4. (Optional) OpenVLA encoder 교체 실험
 
 자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
 

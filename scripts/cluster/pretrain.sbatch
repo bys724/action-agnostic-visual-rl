@@ -107,18 +107,74 @@ if [ "${SLURM_PROCID:-0}" = "0" ]; then
 fi
 
 # ── NCCL 환경 ────────────────────────────────────────────────────────────────
-# IB가 있으면 사용, 없으면 ethernet
-export NCCL_DEBUG=INFO   # 첫 sanity는 verbose로, 안정 후 WARN으로 낮추기
+export NCCL_DEBUG=${NCCL_DEBUG:-WARN}   # 첫 sanity: INFO, 안정 후 WARN
 export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
 export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-^lo,docker}
-# Master addr/port는 pretrain.py가 SLURM_JOB_NODELIST에서 추출
+
+# ── Scratch stage-in (선택적) ────────────────────────────────────────────────
+# USE_SCRATCH=1로 설정하면 /proj에서 /scratch로 데이터 복사 후 학습.
+# GPU 학습은 random small file read → local NVMe가 GPFS보다 유리.
+# 각 노드별로 독립 복사 필요 (node-local storage).
+# 복사 완료 후 DATA_ROOT를 scratch 경로로 교체.
+#
+# scratch 용량: 7 TB (Stage 4.5 확인). EgoDex frames ~1.25 TB → 충분.
+# 복사 속도: GPFS read 16 GB/s → scratch write 2 GB/s 병목 → ~10분.
+#
+# Usage: sbatch --export=ALL,...,USE_SCRATCH=1 scripts/cluster/pretrain.sbatch
+USE_SCRATCH="${USE_SCRATCH:-0}"
+SCRATCH_DIR="/scratch/$USER/$SLURM_JOB_ID"
+
+if [ "$USE_SCRATCH" = "1" ]; then
+    SCRATCH_DATA="$SCRATCH_DIR/egodex_frames"
+    SCRATCH_CKPT="$SCRATCH_DIR/checkpoints"
+    mkdir -p "$SCRATCH_DATA" "$SCRATCH_CKPT"
+
+    # 모든 task 중 rank 0만 stage-in. 나머지는 대기.
+    # 멀티노드에서는 각 노드의 rank 0 (SLURM_LOCALID=0)이 각각 복사.
+    if [ "${SLURM_LOCALID:-0}" = "0" ]; then
+        log "── Scratch stage-in start ──"
+        log "  src: $DATA_ROOT → dst: $SCRATCH_DATA"
+        STAGE_IN_START=$(date +%s)
+
+        # rsync로 프레임만 복사 (raw mp4, zips는 불필요)
+        for SPLIT in $(echo "$SPLITS" | tr ',' ' ') test; do
+            SRC="$DATA_ROOT/$SPLIT"
+            if [ -d "$SRC" ]; then
+                log "  copying $SPLIT ..."
+                cp -a "$SRC" "$SCRATCH_DATA/" 2>&1 || {
+                    log "  WARNING: cp failed for $SPLIT, falling back to GPFS"
+                    USE_SCRATCH=0
+                    break
+                }
+            fi
+        done
+
+        STAGE_IN_END=$(date +%s)
+        STAGE_IN_SEC=$((STAGE_IN_END - STAGE_IN_START))
+        log "  Stage-in done: ${STAGE_IN_SEC}s ($(awk -v t=$STAGE_IN_SEC 'BEGIN{printf "%.1f", t/60}') min)"
+        log "── Scratch stage-in complete ──"
+    fi
+
+    # 모든 rank가 stage-in 끝날 때까지 대기
+    srun --ntasks-per-node=1 --nodes=$SLURM_JOB_NUM_NODES true 2>/dev/null || true
+    sleep 5  # 파일시스템 sync 여유
+
+    if [ "$USE_SCRATCH" = "1" ]; then
+        DATA_ROOT="$SCRATCH_DATA"
+        log "Using scratch data: $DATA_ROOT"
+    fi
+
+    # 체크포인트 stage-out: 잡 종료 시 scratch → /proj 복사
+    trap '
+        if [ "${SLURM_LOCALID:-0}" = "0" ] && [ -d "$SCRATCH_CKPT" ]; then
+            echo "[$(date "+%Y-%m-%d %H:%M:%S")] [pretrain] Stage-out: $SCRATCH_CKPT → $CKPT_DIR"
+            rsync -a "$SCRATCH_CKPT/" "$CKPT_DIR/" 2>&1 || true
+        fi
+    ' EXIT
+fi
 
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
-# 각 task가 자기 LOCAL_RANK GPU 점유 → DDP init은 pretrain.py 내부에서 처리
-# train_data=egodex, eval은 자동 (test split)
-#
-# CRITICAL: srun이 새 shell을 띄우면서 login shell PATH가 전파 안 됨.
-# "python"으로만 쓰면 execve 실패 → $CONDA_PREFIX/bin/python 절대 경로 사용.
+# CRITICAL: srun이 새 shell을 띄우면서 PATH 전파 안 됨 → 절대 경로 사용.
 srun --kill-on-bad-exit=1 --export=ALL \
     "$CONDA_PREFIX/bin/python" -u "$PROJECT_ROOT/scripts/pretrain.py" \
     --model "$MODEL" \
@@ -131,7 +187,7 @@ srun --kill-on-bad-exit=1 --export=ALL \
     --depth 12 --num-stages 2 \
     --mask-ratio 0.3 --mask-ratio-p 0.5 \
     --max-gap 60 --sample-dist triangular --sample-center 30 \
-    --checkpoint-dir "$CKPT_DIR" \
+    --checkpoint-dir "$([ "$USE_SCRATCH" = "1" ] && echo "$SCRATCH_CKPT" || echo "$CKPT_DIR")" \
     --eval-interval 5 \
     $EXTRA_ARGS
 
