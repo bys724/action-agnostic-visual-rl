@@ -124,7 +124,7 @@ export MASTER_PORT=${MASTER_PORT:-$((29500 + SLURM_JOB_ID % 1000))}
 #
 # Usage: sbatch --export=ALL,...,USE_SCRATCH=1 scripts/cluster/pretrain.sbatch
 USE_SCRATCH="${USE_SCRATCH:-0}"
-SCRATCH_DIR="/scratch/$USER/$SLURM_JOB_ID"
+SCRATCH_DIR="/scratch/tmp/$USER/$SLURM_JOB_ID"
 
 if [ "$USE_SCRATCH" = "1" ]; then
     SCRATCH_DATA="$SCRATCH_DIR/egodex_frames"

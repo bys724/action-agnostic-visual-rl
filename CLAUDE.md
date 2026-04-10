@@ -33,7 +33,7 @@
 
 **클러스터 저장소 요약** (관리자 확인, 2026-04-09):
 - `/proj` GPFS: ~16 GB/s read/write, 모든 노드, 영구
-- `/scratch`: 로컬 NVMe (~6.8 GB/s read, ~2 GB/s write), **GPU 노드(olaf-g)에만**, 잡 종료 시 휘발
+- `/scratch/tmp/`: 로컬 NVMe (~6.8 GB/s read, ~2 GB/s write), **GPU 노드(olaf-g)에만**, 전체 쓰기 가능 (관리자 설정, 2026-04-10)
 - 이 클러스터는 GPFS가 더 빠름 → 일반 작업은 `/proj` 직접 사용. scratch는 small file random I/O에서만 유리
 - 자세한 내용 및 stage-in/out 패턴: [scripts/cluster/README.md](scripts/cluster/README.md)
 

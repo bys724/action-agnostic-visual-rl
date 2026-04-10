@@ -17,7 +17,7 @@
 | 컨테이너 | `apptainer/1.4.3` 모듈 (Docker 미사용) |
 | Python | `miniforge3/24.11.3-2` 모듈 (conda/mamba) |
 | 영구 저장소 | `/proj/external_group/mrg/` (GPFS, ~16 GB/s, mrg 그룹) |
-| Local scratch | `/scratch` (NVMe, GPU 노드 olaf-g 전용, 잡 종료 시 휘발) |
+| Local scratch | `/scratch/tmp/` (NVMe, GPU 노드 olaf-g 전용, 전체 쓰기 가능) |
 
 **저장소 / Scratch 정책** (관리자 확인, 2026-04-09)
 
@@ -35,7 +35,7 @@
 권장 stage-in/out 패턴 (학습 잡 작성 시 참고):
 ```bash
 # Stage in (잡 시작 시)
-SCRATCH_DATA=/scratch/$USER/$SLURM_JOB_ID/egodex
+SCRATCH_DATA=/scratch/tmp/$USER/$SLURM_JOB_ID/egodex
 mkdir -p "$SCRATCH_DATA"
 rsync -a /proj/external_group/mrg/datasets/egodex/frames/ "$SCRATCH_DATA/"
 
