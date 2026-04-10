@@ -40,14 +40,19 @@ def is_distributed_env():
 
 
 def init_distributed():
-    """분산 학습 초기화. (rank, local_rank, world_size) 반환.
+    """분산 학습 초기화. (rank, device_idx, world_size) 반환.
 
     SLURM 환경에서는 SLURM_* 변수에서 직접 추출 (torchrun 불필요).
     그 외에는 torchrun이 설정한 RANK/LOCAL_RANK/WORLD_SIZE 사용.
+
+    device_idx는 torch.cuda.set_device()에 넘길 실제 CUDA 디바이스 번호.
+    --gpus-per-task=1 같은 Slurm 옵션은 각 task의 CUDA_VISIBLE_DEVICES를
+    제한해서 1개의 GPU만 보이게 만듦 → 이 경우 SLURM_LOCALID가 1이어도
+    실제 CUDA device는 0번. torch.cuda.device_count()로 감지해서 처리.
     """
     if "SLURM_PROCID" in os.environ:
         rank = int(os.environ["SLURM_PROCID"])
-        local_rank = int(os.environ["SLURM_LOCALID"])
+        slurm_local_rank = int(os.environ["SLURM_LOCALID"])
         world_size = int(os.environ["SLURM_NTASKS"])
         # MASTER_ADDR: SLURM_JOB_NODELIST의 첫 노드 호스트명
         if "MASTER_ADDR" not in os.environ:
@@ -64,17 +69,23 @@ def init_distributed():
             os.environ["MASTER_PORT"] = "29500"
     else:  # torchrun
         rank = int(os.environ["RANK"])
-        local_rank = int(os.environ["LOCAL_RANK"])
+        slurm_local_rank = int(os.environ["LOCAL_RANK"])
         world_size = int(os.environ["WORLD_SIZE"])
 
-    torch.cuda.set_device(local_rank)
+    # CUDA 디바이스 번호 결정:
+    # - 각 task가 전체 GPU를 다 볼 수 있으면 (e.g., --gres=gpu:N) → SLURM_LOCALID 그대로
+    # - 각 task가 1 GPU로 제한되면 (e.g., --gpus-per-task=1) → 항상 0
+    n_visible = torch.cuda.device_count()
+    device_idx = slurm_local_rank if n_visible > 1 else 0
+
+    torch.cuda.set_device(device_idx)
     dist.init_process_group(
         backend="nccl",
         init_method="env://",
         rank=rank,
         world_size=world_size,
     )
-    return rank, local_rank, world_size
+    return rank, device_idx, world_size
 
 
 def cleanup_distributed():
