@@ -199,3 +199,26 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - BF16 autocast에서 sigma_sq가 음수가 되어 NaN 발생
 - 해결: SSIM 연산을 FP32로 강제 + sigma clamp(min=0)
 - GradScaler 제거 (BF16에는 불필요)
+
+### AMP BF16 autocast 비활성화 버그 (2026-04-10)
+- **증상**: "AMP enabled" 로그가 뜨지만 실제 FP32로 실행. H100 throughput의 절반만 활용.
+- **원인**: `scaler = None` → `use_amp = scaler is not None` → False → autocast 꺼짐
+- **수정**: `use_bf16` 플래그로 autocast를 scaler와 분리. BF16은 GradScaler 불필요.
+- **효과**: 37.6 → 62.2 samples/sec (+65%, batch 4 기준)
+
+### Sanity checkpoint → 본 학습 auto-resume 오염 (2026-04-10)
+- **증상**: 본 학습이 sanity test 체크포인트를 auto-resume. CosineAnnealingLR의 T_max=2(sanity)로 덮어써져 lr이 2 epoch 주기로 진동.
+- **원인**: sanity와 본 학습이 같은 checkpoint_dir 사용 + pretrain.py auto-resume 로직이 latest.pt 자동 감지
+- **수정**: sanity 체크포인트 삭제 후 fresh start. 향후 sanity 잡은 반드시 `CHECKPOINT_SUFFIX` 사용.
+- **교훈**: auto-resume은 편리하지만, 서로 다른 학습 설정의 체크포인트가 같은 디렉토리에 있으면 scheduler/optimizer 상태 오염. 특히 T_max, lr, batch_size가 다른 경우 치명적.
+
+### Scratch stage-in 소형 파일 병목 (2026-04-10)
+- **증상**: `cp -a`로 1.25 TB JPG 프레임을 GPFS → scratch 복사 시 1시간 37분에 part1의 2개 dir만 복사됨
+- **원인**: 수천만 개 소형 파일의 per-file 메타데이터 오버헤드 (stat, open, create, close × 1400만 파일)
+- **수정**: scratch stage-in 포기, GPFS 직접 읽기로 전환. tar 파이프 방식은 대안으로 검토 중.
+- **교훈**: scratch는 대용량 파일 소수에 유리. 소형 파일 수백만 개는 tar/WebDataset 패키징 없이 stage-in 비현실적.
+
+### Slurm DDP 환경 함정 3가지 (2026-04-10)
+- **`--gpus-per-task=1`**: CUDA_VISIBLE_DEVICES 제한 → `set_device(local_rank)` 실패 + NCCL `nvmlDeviceGetHandleByPciBusId` 실패. 해결: `--gres=gpu:N`으로 전환
+- **MASTER_PORT 충돌**: 동일 노드에 여러 DDP 잡 → EADDRINUSE. 해결: `MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`
+- **srun PATH 미전파**: conda activate 후에도 `srun python` 실패. 해결: `$CONDA_PREFIX/bin/python` 절대 경로
