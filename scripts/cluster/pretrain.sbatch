@@ -128,8 +128,7 @@ SCRATCH_DIR="/scratch/tmp/$USER/$SLURM_JOB_ID"
 
 if [ "$USE_SCRATCH" = "1" ]; then
     SCRATCH_DATA="$SCRATCH_DIR/egodex_frames"
-    SCRATCH_CKPT="$SCRATCH_DIR/checkpoints"
-    mkdir -p "$SCRATCH_DATA" "$SCRATCH_CKPT"
+    mkdir -p "$SCRATCH_DATA"
 
     # 모든 task 중 rank 0만 stage-in. 나머지는 대기.
     # 멀티노드에서는 각 노드의 rank 0 (SLURM_LOCALID=0)이 각각 복사.
@@ -171,13 +170,8 @@ if [ "$USE_SCRATCH" = "1" ]; then
         log "────────────────────────"
     fi
 
-    # 체크포인트 stage-out: 잡 종료 시 scratch → /proj 복사
-    trap '
-        if [ "${SLURM_LOCALID:-0}" = "0" ] && [ -d "$SCRATCH_CKPT" ]; then
-            echo "[$(date "+%Y-%m-%d %H:%M:%S")] [pretrain] Stage-out: $SCRATCH_CKPT → $CKPT_DIR"
-            rsync -a "$SCRATCH_CKPT/" "$CKPT_DIR/" 2>&1 || true
-        fi
-    ' EXIT
+    # 체크포인트는 /proj(CKPT_DIR)에 직접 저장 — scratch 유실 위험 없음.
+    # scratch는 데이터 읽기 전용으로만 사용.
 fi
 
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
@@ -194,7 +188,7 @@ srun --kill-on-bad-exit=1 --export=ALL \
     --depth 12 --num-stages 2 \
     --mask-ratio 0.3 --mask-ratio-p 0.5 \
     --max-gap 60 --sample-dist triangular --sample-center 30 \
-    --checkpoint-dir "$([ "$USE_SCRATCH" = "1" ] && echo "$SCRATCH_CKPT" || echo "$CKPT_DIR")" \
+    --checkpoint-dir "$CKPT_DIR" \
     --eval-interval 5 \
     $EXTRA_ARGS
 
