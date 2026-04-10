@@ -106,10 +106,12 @@ if [ "${SLURM_PROCID:-0}" = "0" ]; then
     log "──────────────────────────────────"
 fi
 
-# ── NCCL 환경 ────────────────────────────────────────────────────────────────
-export NCCL_DEBUG=${NCCL_DEBUG:-WARN}   # 첫 sanity: INFO, 안정 후 WARN
+# ── NCCL + DDP 환경 ──────────────────────────────────────────────────────────
+export NCCL_DEBUG=${NCCL_DEBUG:-WARN}
 export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
 export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-^lo,docker}
+# MASTER_PORT: 잡마다 고유 포트로 충돌 방지 (동일 노드에 여러 DDP 잡 시)
+export MASTER_PORT=${MASTER_PORT:-$((29500 + SLURM_JOB_ID % 1000))}
 
 # ── Scratch stage-in (선택적) ────────────────────────────────────────────────
 # USE_SCRATCH=1로 설정하면 /proj에서 /scratch로 데이터 복사 후 학습.
@@ -162,6 +164,11 @@ if [ "$USE_SCRATCH" = "1" ]; then
     if [ "$USE_SCRATCH" = "1" ]; then
         DATA_ROOT="$SCRATCH_DATA"
         log "Using scratch data: $DATA_ROOT"
+        log "── Scratch 이점 분석 ──"
+        log "  GPFS baseline throughput (BF16 sanity, batch 4): 62.2 samples/sec (1 GPU)"
+        log "  본 학습 1 epoch 완료 후 samples_per_sec를 확인하여 GPFS 대비 비교."
+        log "  TensorBoard perf/samples_per_sec 또는 로그의 [Time] Throughput 참조."
+        log "────────────────────────"
     fi
 
     # 체크포인트 stage-out: 잡 종료 시 scratch → /proj 복사
