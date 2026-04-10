@@ -158,21 +158,30 @@ class VideoFrameDataset(ABC, Dataset):
         return len(self.frame_dirs) * self.samples_per_video
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]:
-        video_idx = idx % len(self.frame_dirs)
-        frame_dir = self.frame_dirs[video_idx]
-        num_frames = self._get_num_frames(frame_dir)
+        # 손상된 프레임 파일 대비: 실패 시 랜덤 다른 샘플로 fallback
+        for _retry in range(5):
+            try:
+                video_idx = idx % len(self.frame_dirs)
+                frame_dir = self.frame_dirs[video_idx]
+                num_frames = self._get_num_frames(frame_dir)
 
-        gap = np.random.choice(
-            np.arange(1, self.max_gap + 1), p=self.sample_probs
-        )
+                gap = np.random.choice(
+                    np.arange(1, self.max_gap + 1), p=self.sample_probs
+                )
 
-        max_start = max(0, num_frames - gap - 1)
-        if max_start <= 0:
-            gap = 1
-            max_start = max(0, num_frames - 2)
+                max_start = max(0, num_frames - gap - 1)
+                if max_start <= 0:
+                    gap = 1
+                    max_start = max(0, num_frames - 2)
 
-        frame_t = np.random.randint(0, max_start + 1)
-        frame_tk = frame_t + gap
+                frame_t = np.random.randint(0, max_start + 1)
+                frame_tk = frame_t + gap
 
-        img_t, img_tk = self._load_frame_pair(frame_dir, frame_t, frame_tk)
-        return img_t, img_tk, gap
+                img_t, img_tk = self._load_frame_pair(frame_dir, frame_t, frame_tk)
+                return img_t, img_tk, gap
+            except Exception:
+                # 손상 파일 → 다른 비디오에서 재시도
+                idx = np.random.randint(0, len(self))
+        # 5회 연속 실패 시 (극히 드묾) 검은 이미지 반환
+        fallback = torch.zeros(3, self.img_size, self.img_size)
+        return fallback, fallback, 1
