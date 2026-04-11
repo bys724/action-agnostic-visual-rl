@@ -167,18 +167,33 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-10)
+## 현재 Phase (2026-04-11)
 
-**Phase 1 완료 → Full training 준비 완료**
+**Phase 1.5 진행 중 — Two-Stream full training + V-JEPA-ours 구현**
 
-- **v4 확정**: d=12, s=2, 2D RoPE, MAE M=0.3/P=0.5, max_gap=60 triangular
-- **클러스터 환경**: IBS olaf, EgoDex 5 parts 추출 완료 (314k videos), DDP 검증 진행 중
-- **학습 가속**: BF16 autocast + Fused AdamW + scratch stage-in 구현
+- **Two-Stream v4**: 현재 IBS 클러스터에서 50 epoch full training 중 (jobID 32712324)
+- **V-JEPA-ours**: 신규 baseline으로 구현 예정 (기존 VideoMAE 계획 대체)
+  - 같은 EgoDex 데이터로 학습하여 "구조적 inductive bias(M/P) vs generic feature prediction" 직접 비교
+- **DROID**: gsutil rsync 진행 중 (sbatch 기반)
+
+**Encoder 5종 lineup** (전부 frozen 비교):
+1. Two-Stream v4 (ours, EgoDex, 구조적 M/P bias) — 우리 학습
+2. V-JEPA-ours (ours, EgoDex, feature prediction) — 우리 학습 (신규)
+3. VC-1-Base (Meta, Ego4D+조작, 로봇 제어 SOTA) — 공개 가중치
+4. DINOv2-Base (LVD-142M 웹) — 공개 가중치
+5. SigLIP-Base (WebLI 웹) — 공개 가중치
+
+**V-JEPA 중요 관찰**:
+- V-JEPA 논문의 "feature > pixel" 주장은 classification benchmark 기반
+- 로봇 제어(continuous control) 실증 없음 → 우리가 이 갭 채움
+- Two-Stream은 로봇 특화가 아니라 **생물학적 inductive bias 기반 범용 시각 학습**
 
 **다음 작업**:
-1. DDP Stage 4 (멀티노드 NCCL) 검증 후 → **Full training 제출**
-2. DROID action probing (다운로드 진행 중)
-3. LIBERO fine-tuning + 시뮬레이터 rollout
+1. Two-Stream 학습 완료 대기 (~3일)
+2. V-JEPA-ours 구현 → 학습 (~1-2일 구현 + 4일 학습)
+3. Phase 2: DROID action probing
+4. Phase 3: LIBERO BC + MLP (5 encoder)
+5. Phase 3B: OpenVLA encoder 교체 + LoRA (5 encoder)
 
 자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
 

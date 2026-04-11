@@ -1,24 +1,58 @@
 # Action-Agnostic Visual RL Research Plan
 
 **마지막 업데이트**: 2026-04-11
-**연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
+**연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
+
+## 연구 동기
+
+- **핵심 가설**: 영장류 시각 피질의 magnocellular / parvocellular 경로 분리는 생물학적 시각 시스템의 근본적 구조 원리. 이 구조를 비디오 표현 학습 모델에 반영하면 더 범용적인 표현을 학습할 수 있다.
+- **Two-Stream 접근**: M(motion) / P(pattern) 채널 분리 + CLS exchange를 통해 구조적 inductive bias를 부여. Pixel reconstruction 목표와 결합.
+- **시각-행동 연결 태스크로 검증**: 로봇 조작 태스크(LIBERO)는 "어떤 feature가 진짜 유용한지"를 가장 직접적으로 평가할 수 있는 설정. **Two-Stream은 로봇용 특수 알고리즘이 아니라, 일반 시각 표현 학습 방법의 로봇 태스크 검증**이다.
+- **V-JEPA에 대한 중요 관찰**: V-JEPA (Bardes et al., 2024)는 같은 조건에서 feature prediction > pixel reconstruction을 실증 주장. 하지만 이 증거는 전부 **classification 벤치마크**(Kinetics-400, SSv2, ImageNet)에 국한. **로봇 제어(continuous control) 도메인 증거는 부재**. 우리는 이 갭을 채운다.
 
 ---
 
 ## 실험 대상 모델 (Encoder 5종)
 
-| 구분 | Encoder | 사전학습 데이터 | 파라미터 | 입력 | 학습 주체 |
-|------|---------|---------------|---------|------|----------|
-| **제안** | **Two-Stream v4 (ours)** | EgoDex (1.3 TB) | ~213M | (img_{t-1}, img_t) | **우리 학습** |
-| **Same-data ablation** | **VideoMAE (ours)** | EgoDex (1.3 TB) | ~101M | (img_{t-1}, img_t) | **우리 학습** |
-| 로봇 특화 baseline | VC-1-Base | Ego4D + Manipulation | 86M | img_t (2 frame concat) | 공개 가중치 |
-| 범용 SSL baseline | DINOv2-Base | LVD-142M (웹) | 86M | img_t (2 frame concat) | 공개 가중치 |
-| 범용 VL baseline | SigLIP-Base | WebLI (웹) | 86M | img_t (2 frame concat) | 공개 가중치 |
+| 구분 | Encoder | 사전학습 데이터 | 파라미터 | 방법 철학 | 학습 주체 |
+|------|---------|---------------|---------|----------|----------|
+| **제안** | **Two-Stream v4 (ours)** | EgoDex (~100M frames) | ~213M | **생물학적 영감 M/P 구조 + pixel reconstruction** | 🔥 우리 학습 |
+| **직접 경쟁** | **V-JEPA-ours** | **EgoDex (same)** | ~86M (ViT-B + predictor) | Generic feature prediction (no structural prior) | 🔥 **우리 학습 (신규)** |
+| **로봇 제어 SOTA baseline** | VC-1-Base | Ego4D + 조작 (~500M frames) | 86M | MAE-style (embodied AI 표준) | 📦 공개 가중치 |
+| Internet-scale SSL | DINOv2-Base | LVD-142M (웹 이미지) | 86M | Self-distillation (data-driven) | 📦 공개 가중치 |
+| Internet-scale VL | SigLIP-Base | WebLI (웹 10B 이미지-텍스트) | 86M | Vision-language contrastive | 📦 공개 가중치 |
 
-**공정성 원칙**:
-- 모든 encoder에 **동일한 입력 형식** — 단일 프레임 encoder도 `(img_{t-1}, img_t)` 2개를 feature 레벨 concat
-- 모든 encoder는 downstream 실험에서 **frozen** (학습 안 함)
-- downstream에서 유일하게 학습되는 것은 **MLP action decoder** (Phase 3) 또는 **LoRA + projection** (Phase 3B)
+### 3-축 비교 구조
+
+**축 1: 같은 데이터, 다른 구조/목표** (Two-Stream vs V-JEPA-ours)
+- 통제: EgoDex 같은 데이터, 같은 compute
+- 변수: 구조적 bias(M/P split) + 목표(pixel vs feature)
+- 답할 질문: "M/P 구조가 표현 품질에 기여하는가? V-JEPA의 pixel < feature 주장이 로봇 제어에 전이되는가?"
+
+**축 2: 같은 도메인 계열, 다른 구조** (Two-Stream vs VC-1)
+- 통제: Egocentric/manipulation video
+- 변수: 데이터(EgoDex vs Ego4D+) + 방법(M/P structured vs standard MAE)
+- 답할 질문: "M/P 구조가 기존 embodied AI baseline보다 나은가?"
+
+**축 3: 소규모 principled vs 대규모 data-driven** (Two-Stream vs DINOv2/SigLIP)
+- 통제: downstream 평가
+- 변수: 데이터 규모 + 방법 (100M frames 구조 기반 vs 수십억 규모 범용 SSL/VL)
+- 답할 질문: "작은 규모의 구조 기반 방법이 대규모 범용 학습과 경쟁 가능한가?"
+
+### 공정성 원칙
+
+- **모든 encoder는 frozen** (downstream에서 학습 안 함)
+- **동일한 입력 형식**: 단일 프레임 encoder (DINOv2, SigLIP, VC-1)도 `(img_{t-1}, img_t)` 두 프레임을 각각 forward pass 후 feature concat
+- **각 encoder의 공식 preprocessing 사용** (정규화, resolution)
+- Downstream에서 유일하게 학습되는 것: **MLP action decoder** (Phase 3) 또는 **projection + LoRA** (Phase 3B)
+
+### 학습 주체 요약
+
+| 카테고리 | 작업 |
+|---------|------|
+| 🔥 **우리가 EgoDex에 학습** | Two-Stream v4 (진행 중), **V-JEPA-ours (신규)** |
+| 📦 **공개 가중치 그대로** | VC-1-Base, DINOv2-Base, SigLIP-Base |
+| 🔧 **Downstream 학습 (encoder frozen)** | MLP decoder (Phase 3), Projection + LoRA (Phase 3B) |
 
 ---
 
@@ -41,11 +75,14 @@
 **목표**: 전체 EgoDex (part1~5, 314k videos)로 최종 체크포인트 확보
 
 **작업**:
-- Two-Stream v4 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중**
-- VideoMAE 50 epoch 학습 (동일 데이터, baseline 역할)
+- **Two-Stream v4** 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중 (jobID 32712324)**
+- **V-JEPA-ours** 50 epoch 학습 (동일 데이터, 직접 경쟁 baseline) — 구현 후 제출 예정
+  - 구조: ViT-B x-encoder + predictor (narrow transformer, 12 blocks × 384 dim) + EMA y-encoder
+  - 목표: L1 loss in feature space with stop-gradient
+  - 2-frame 입력으로 adapt (tubelet_size=2 → 1 temporal group)
 - 학습 후 hand pose probing으로 품질 확인 (part1 기준 대비 개선 여부)
 
-**산출물**: `results/checkpoints/two_stream/` 및 `.../videomae/` 에 best_model.pt
+**산출물**: `results/checkpoints/two_stream/` 및 `.../v_jepa/` 에 best_model.pt
 
 ### Phase 2: Cross-Domain Action Probing (DROID) ⏸️ 대기
 
@@ -108,13 +145,22 @@ Two-Stream encoder → projection → Llama 7B (OpenVLA backbone) → action tok
 
 **학습 데이터**: LIBERO RLDS 포맷 (OpenVLA 기존 인프라 활용)
 
-**실험 대상**:
+**실험 대상** (encoder 5종을 OpenVLA의 vision backbone에 교체):
 | 모델 | Encoder | 방식 | 역할 |
 |------|---------|------|------|
-| OpenVLA (원본) | SigLIP (원본) | LoRA FT | Reference (기존 결과 libero_spatial 40%) |
-| OpenVLA + Two-Stream | Two-Stream v4 | LoRA FT | 주된 비교 대상 |
+| OpenVLA (원본) | SigLIP (공개, OpenVLA fine-tuned) | LoRA FT | Reference (기존 결과 libero_spatial 40%) |
+| OpenVLA + Two-Stream | Two-Stream v4 (frozen) | LoRA FT on LLM | 메인 제안 |
+| OpenVLA + V-JEPA-ours | V-JEPA-ours (frozen) | LoRA FT on LLM | 직접 경쟁 |
+| OpenVLA + VC-1 | VC-1-Base (frozen) | LoRA FT on LLM | 로봇 SOTA baseline |
+| OpenVLA + DINOv2 | DINOv2 (frozen) | LoRA FT on LLM | Internet SSL baseline |
+| OpenVLA + SigLIP (swap) | SigLIP (frozen, 원본 가중치) | LoRA FT on LLM | Internet VL baseline + frozen vs fine-tune 비교 |
 
-**평가**: libero_spatial만 (scope 제한). 필요 시 다른 suite로 확장.
+**Frozen encoder 정책**: 모든 encoder를 frozen 유지. 학습 대상은 **projection layer (encoder → Llama embed dim) + Llama 7B LoRA**만.
+- 장점: encoder-only 공정 비교, 변수 통제
+- 단점: OpenVLA 원본 setup (encoder fine-tune)과 다름 → 원본 성능 재현 못할 가능성
+- 의도적 선택: 연구 질문이 "사전학습 표현 품질"이므로 encoder fine-tune은 오염 변수
+
+**평가**: libero_spatial main. 필요 시 다른 suite로 확장.
 
 **기존 인프라** (대부분 준비됨):
 - OpenVLA 코드: https://github.com/openvla/openvla (fine-tuning 스크립트 포함)
@@ -148,32 +194,44 @@ Two-Stream encoder → projection → Llama 7B (OpenVLA backbone) → action tok
 ## 요약: 학습 작업 분류
 
 ### 🔥 우리가 학습해야 하는 모델 (from scratch)
-1. **Two-Stream v4** on EgoDex full (50 epoch, 8 H100) — **현재 진행 중**
-2. **VideoMAE** on EgoDex full (50 epoch, 8 H100) — 다음 차례
+1. **Two-Stream v4** on EgoDex full (50 epoch, 8 H100) — **현재 진행 중** (jobID 32712324)
+2. **V-JEPA-ours** on EgoDex full (50 epoch, 8 H100) — 구현 후 학습 예정
+   - 기존 VideoMAE 계획은 V-JEPA-ours로 대체됨 (V-JEPA가 더 강한 직접 경쟁)
 
-### 📦 공개 가중치 그대로 사용 (학습 없음)
-3. **VC-1-Base** (Meta eai-vc 저장소)
-4. **DINOv2-Base** (Facebook)
-5. **SigLIP-Base** (Google)
+### 📦 공개 가중치 그대로 사용 (학습 없음, frozen 사용)
+3. **VC-1-Base** (Meta eai-vc, `pip install vc_models`)
+4. **DINOv2-Base** (Facebook, HuggingFace)
+5. **SigLIP-Base** (Google, HuggingFace)
 
-### 🔧 Downstream에서 학습하는 것 (encoder는 frozen)
+### 🔧 Downstream에서 학습하는 것 (encoder는 모두 frozen)
 - **Phase 2**: MLP probing head (5 encoder × DROID)
-- **Phase 3**: MLP action decoder (5 encoder × 4 task suite)
-- **Phase 3B**: Projection layer + Llama LoRA 어댑터 (Two-Stream + OpenVLA backbone, libero_spatial)
+- **Phase 3**: MLP action decoder (5 encoder × LIBERO task suite)
+- **Phase 3B**: Projection layer + Llama 7B LoRA (5 encoder × OpenVLA backbone, libero_spatial)
 
 ---
 
-## 모델
+## 모델 (우리가 구현/학습하는 것)
 
 | 모델 | 학습 방식 | 목적 |
 |-----|----------|------|
-| Two-Stream | Future prediction (M/P 채널 분리 + CLS 교환) | 제안 모델 |
-| Single-Stream | Future prediction (9ch 단일 ViT) | Baseline (구조 효과 검증) |
-| VideoMAE | Masked reconstruction (75%, 공식 Base 설정) | Comparison |
+| **Two-Stream v4** | Future pixel prediction (M/P 채널 분리 + CLS 교환 + MAE masking) | 제안 모델 |
+| **V-JEPA-ours** | Feature prediction (x-encoder + predictor + EMA y-encoder + stop-gradient) | 직접 경쟁 baseline (같은 EgoDex 데이터) |
 
-### 비교 의미
-- Single-Stream vs VideoMAE → 학습 방식 차이 (prediction vs reconstruction)
-- Two-Stream vs Single-Stream → 같은 M/P 입력, 구조 차이 (interleaved vs single)
+### 두 모델의 비교 의미
+
+| 차원 | Two-Stream | V-JEPA-ours |
+|------|-----------|-------------|
+| 데이터 | EgoDex | EgoDex (동일) |
+| 아키텍처 | ViT + M/P 채널 분리 + CLS 교환 | ViT + predictor + EMA teacher |
+| 학습 목표 | Pixel reconstruction (MSE) | Feature prediction (L1 in embedding space) |
+| 구조적 prior | **O (생물학적 M/P)** | X (generic masked modeling) |
+
+**축 1 직접 비교**: 같은 데이터 + 같은 학습 시간 → 구조적 bias와 학습 목표가 표현 품질에 미치는 영향 분리 측정.
+
+### Single-Stream / 과거 VideoMAE 실험
+
+- Phase 1 ablation에서 Single-Stream (9채널 단일 ViT)과 VideoMAE (pixel reconstruction, no M/P)를 이미 검증 완료. M/P 구조의 우위 확인 → Phase 1.5 이후 제외.
+- 이전 VideoMAE 학습 계획은 V-JEPA-ours로 **대체**되었음. V-JEPA가 더 강한 직접 경쟁 baseline이기 때문.
 
 ---
 
