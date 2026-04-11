@@ -218,6 +218,12 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **수정**: scratch stage-in 포기, GPFS 직접 읽기로 전환. tar 파이프 방식은 대안으로 검토 중.
 - **교훈**: scratch는 대용량 파일 소수에 유리. 소형 파일 수백만 개는 tar/WebDataset 패키징 없이 stage-in 비현실적.
 
+### gsutil -m 로그인 노드 thread limit (2026-04-11)
+- **증상**: DROID 다운로드 중 `RuntimeError: can't start new thread` → EOFError → 다운로드 중단
+- **원인**: `gsutil -m`이 기본 수백 개 스레드 spawn. 로그인 노드(공용)의 사용자별 스레드 limit 초과
+- **수정**: (1) `gsutil -o "GSUtil:parallel_thread_count=8" -o "GSUtil:parallel_process_count=4"`로 병렬도 제한, (2) 로그인 노드 대신 sbatch로 compute 노드에서 실행
+- **교훈**: 로그인 노드에서 공격적 병렬 I/O 도구 사용 금지. sbatch 잡으로 독립 리소스 확보
+
 ### Slurm DDP 환경 함정 3가지 (2026-04-10)
 - **`--gpus-per-task=1`**: CUDA_VISIBLE_DEVICES 제한 → `set_device(local_rank)` 실패 + NCCL `nvmlDeviceGetHandleByPciBusId` 실패. 해결: `--gres=gpu:N`으로 전환
 - **MASTER_PORT 충돌**: 동일 노드에 여러 DDP 잡 → EADDRINUSE. 해결: `MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`

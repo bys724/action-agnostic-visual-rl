@@ -54,7 +54,10 @@ RETRY=0
 
 while [ $RETRY -lt $MAX_RETRIES ]; do
     log "Download attempt $((RETRY + 1))/$MAX_RETRIES"
-    if gsutil -m rsync -r "$SRC" "$DEST/"; then
+    # thread/process count 제한: 기본 수백 → 로그인 노드 thread limit 회피
+    if gsutil -o "GSUtil:parallel_thread_count=8" \
+              -o "GSUtil:parallel_process_count=4" \
+              -m rsync -r "$SRC" "$DEST/"; then
         log "Download complete"
         du -sh "$DEST"
         exit 0
