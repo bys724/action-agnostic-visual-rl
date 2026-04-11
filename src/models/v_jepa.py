@@ -1,72 +1,27 @@
 """
-V-JEPA (Video Joint-Embedding Predictive Architecture) — 2-frame variant for EgoDex.
+V-JEPA (Bardes et al. 2024, arXiv:2404.08471) — 2-frame variant for EgoDex.
 
-Reference:
-    Bardes et al., "Revisiting Feature Prediction for Learning Visual Representations from Video."
-    arXiv:2404.08471, 2024.
+Re-implementation adapted to 2-frame input for direct comparison against
+Two-Stream on the same EgoDex data. Tubelet_size=2 collapses the two frames
+into one temporal group → 196 spatial tokens; masking is therefore spatial-only.
+Temporal long-range context is provided by variable gap sampling (--max-gap 16,
+matching V-JEPA's 16-frame clip receptive field).
 
-This is our re-implementation of V-JEPA 1 adapted to 2-frame input on EgoDex,
-for direct comparison against Two-Stream (same data, different method).
-
-Key differences vs Two-Stream:
-- Target is FEATURE prediction (L1 in embedding space), not pixel reconstruction
-- Uses EMA y-encoder as target (stop-gradient)
-- Separate narrow predictor network
-
-2-frame adaptation:
-- Two frames → 1 tubelet group (tubelet_size=2) → 196 spatial tokens
-- Masking is spatial-only (single temporal group collapses temporal masking)
-- Temporal diversity comes from variable gap sampling (same as Two-Stream)
-- Multi-block masking: sample random spatial blocks, complement of mask = x
-
-=============================================================================
-TODO: 논문 재현 갭 수정 (Phase 1.5 V-JEPA-ours 학습 전 필수)
-=============================================================================
-현재 구현은 파이프라인 (x-encoder / y-encoder EMA / predictor / L1 loss) 은
-논문과 일치하지만, 아래 세 가지는 단순화된 상태. V-JEPA-ours full training
-시작 전에 수정 필요. 논문 리뷰어의 "재현 타당성" 질문 대비.
-
-(A) Per-sample masking (현재: batch 공유 마스크)
-    - 문제: `_sample_masks()` 가 배치 전체에 동일한 마스크를 적용.
-      논문은 각 샘플마다 독립 마스크 샘플링.
-    - 원인: `_gather_freqs()` 가 RoPE 주파수를 배치 내 공유로만 처리.
-    - 수정: RoPE 적용 경로를 per-sample freqs 지원하도록 재작성.
-      attention block forward 수정 필요 (scaled_dot_product_attention 경로).
-    - 난이도: 중 (하루 작업)
-
-(B) Spatial dual masking (현재: 단일 블록 마스크)
-    - 문제: V-JEPA 원 논문은 short-range + long-range 두 마스크를 동시에
-      적용, 각각 predictor로 예측 후 loss 합산. 현재는 한 종류만 사용.
-    - 2-frame 적응: tubelet 으로 temporal 차원이 collapse 되므로 spatial
-      only dual masking = I-JEPA 스타일 (작은 블록 다수 + 큰 블록 소수).
-      시간 차원의 long-range 는 gap sampling 이 상응 역할.
-    - 수정:
-      * `_sample_masks()` 가 (mask_short, mask_long) 반환
-      * `compute_loss()` 에서 predictor 2번 호출 후 L1 합산
-      * 블록 수치는 I-JEPA 기준 (short: n_blocks=8, scale=(0.03,0.05);
-        long: n_blocks=2, scale=(0.30,0.40))
-    - 난이도: 낮 (반나절)
-
-(C) Predictor positional embedding (현재: learnable)
-    - 문제: 현재 `self.pos_embed = nn.Parameter(...)`. 논문은 고정 sin-cos.
-    - 수정: `self.register_buffer('pos_embed', sincos_pe(...))` 로 교체.
-    - 난이도: 매우 낮
-
-(D) Encoder positional embedding (스킵 예정)
-    - 현재 2D RoPE 사용 (논문은 sin-cos). 되돌리지 않음.
-    - 논문에 "we replace sin-cos with 2D RoPE as a standard modernization"
-      한 줄로 정당화.
-
-학습 파라미터 (변경 불필요):
-    V-JEPA-ours 도 Two-Stream 과 동일하게 `--max-gap 60 --sample-dist triangular
-    --sample-decay -1` 사용. Gap sampling 이 시간 차원의 long-range 보충.
-
-Sanity check 재실행 (32866942 수준) 후 full training 제출.
-=============================================================================
+Design choices vs. the official facebookresearch/jepa repo:
+- L1 loss in feature space, target features LayerNorm'd (official forward_target).
+- Dual mask per batch: short-range (8 small blocks) + long-range (2 large
+  blocks), each with per-sample independent sampling. Predictor called twice,
+  losses averaged.
+- Predictor: narrow transformer (12 × 384), fixed 2D sin-cos PE added to tokens.
+- Target encoder: EMA of x-encoder, momentum schedule 0.998→1.0 with
+  ipe_scale=1.25 (matches vitl16.yaml).
+- Encoder PE: 2D RoPE instead of sin-cos. This is a deliberate deviation —
+  RoPE is the current standard for modern ViT backbones (DINOv2, EVA, ViT-22B)
+  and does not affect V-JEPA's prediction objective. Paper should note this
+  as a "standard ViT modernization".
 """
 
 import copy
-import math
 
 import torch
 import torch.nn as nn
@@ -76,15 +31,63 @@ from .two_stream import TransformerBlock, build_2d_rope_freqs
 
 
 # ============================================================================
+# Helpers: 2D sin-cos PE (predictor), batched RoPE (encoder per-sample mask)
+# ============================================================================
+
+def build_2d_sincos_pe(grid_size: int, embed_dim: int) -> torch.Tensor:
+    """Fixed 2D sinusoidal positional embedding (non-learnable).
+
+    Encodes (row, col) grid positions into `embed_dim` with half-row / half-col.
+    Standard recipe from MAE / I-JEPA / V-JEPA predictors.
+
+    Returns:
+        [N, embed_dim] float tensor where N = grid_size^2.
+    """
+    assert embed_dim % 4 == 0, "embed_dim must be divisible by 4 for 2D sincos"
+    half = embed_dim // 2  # each axis gets half
+
+    def _1d_sincos(positions: torch.Tensor, dim: int) -> torch.Tensor:
+        omega = torch.arange(dim // 2, dtype=torch.float32) / (dim / 2.0)
+        omega = 1.0 / (10000 ** omega)  # [dim/2]
+        out = torch.einsum('n,d->nd', positions.float(), omega)  # [N, dim/2]
+        return torch.cat([torch.sin(out), torch.cos(out)], dim=1)  # [N, dim]
+
+    rows = torch.arange(grid_size)
+    cols = torch.arange(grid_size)
+    grid_r, grid_c = torch.meshgrid(rows, cols, indexing='ij')
+    grid_r = grid_r.reshape(-1)
+    grid_c = grid_c.reshape(-1)
+    pe_r = _1d_sincos(grid_r, half)
+    pe_c = _1d_sincos(grid_c, half)
+    return torch.cat([pe_r, pe_c], dim=1)  # [N, embed_dim]
+
+
+def apply_rope_batched(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
+    """Apply 2D RoPE with per-sample frequencies (supports per-sample masking).
+
+    Args:
+        x: [B, N, H, D_head]
+        freqs_cis: [B, N, D_head//2] complex — different token positions per sample.
+
+    Returns:
+        [B, N, H, D_head] with RoPE applied.
+    """
+    B, N, H, D = x.shape
+    x_c = x.float().reshape(B, N, H, D // 2, 2)
+    x_c = torch.view_as_complex(x_c)  # [B, N, H, D/2]
+    freqs = freqs_cis.unsqueeze(2).to(x_c.device)  # [B, N, 1, D/2]
+    x_c = x_c * freqs
+    return torch.view_as_real(x_c).reshape(B, N, H, D).type_as(x)
+
+
+# ============================================================================
 # Tubelet (2-frame) patch embedding
 # ============================================================================
 
 class TubeletEmbed(nn.Module):
-    """3D conv that projects (B, 2, 3, H, W) → (B, 196, embed_dim).
-
-    tubelet_size=2 fuses 2 frames into a single temporal token group.
-    Equivalent to a 2D ViT processing a 6-channel stacked image.
-    """
+    """3D conv projecting [B, T, C, H, W] → [B, N, D]. tubelet_size=2 fuses 2
+    frames into a single temporal token group (equivalent to a 2D ViT over
+    6-channel stacked frames)."""
 
     def __init__(
         self,
@@ -95,13 +98,8 @@ class TubeletEmbed(nn.Module):
         tubelet_size: int = 2,
     ):
         super().__init__()
-        self.image_size = image_size
-        self.patch_size = patch_size
         self.num_patches_per_side = image_size // patch_size
         self.num_patches = self.num_patches_per_side ** 2
-        self.tubelet_size = tubelet_size
-
-        # 3D conv: kernel=(tubelet_size, patch_size, patch_size)
         self.projection = nn.Conv3d(
             in_channels,
             embed_dim,
@@ -110,20 +108,11 @@ class TubeletEmbed(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: [B, T, C, H, W] where T=2
-
-        Returns:
-            tokens: [B, N, D] where N = (T/tubelet_size) * num_patches
-                    with T=2, tubelet_size=2 → N = num_patches = 196
-        """
-        # [B, T, C, H, W] → [B, C, T, H, W] for Conv3d
+        # [B, T, C, H, W] → [B, C, T, H, W] → Conv3d → [B, D, T', H', W']
         x = x.permute(0, 2, 1, 3, 4)
-        x = self.projection(x)  # [B, D, T', H', W']
+        x = self.projection(x)
         B, D, Tp, Hp, Wp = x.shape
-        x = x.permute(0, 2, 3, 4, 1).reshape(B, Tp * Hp * Wp, D)  # [B, N, D]
-        return x
+        return x.permute(0, 2, 3, 4, 1).reshape(B, Tp * Hp * Wp, D)
 
 
 # ============================================================================
@@ -131,11 +120,8 @@ class TubeletEmbed(nn.Module):
 # ============================================================================
 
 class VJEPAEncoder(nn.Module):
-    """Vision Transformer backbone for V-JEPA.
-
-    Standard ViT with 2D RoPE. No CLS token (V-JEPA uses patch tokens only).
-    Used as both x-encoder (trained) and y-encoder (EMA target).
-    """
+    """ViT backbone with 2D RoPE, no CLS token. Used as both online (x) and
+    EMA target (y) encoder."""
 
     def __init__(
         self,
@@ -159,13 +145,13 @@ class VJEPAEncoder(nn.Module):
         )
         self.num_patches = self.patch_embed.num_patches  # 196
 
-        # 2D RoPE (spatial only, since tubelet collapses temporal)
+        # 2D RoPE (spatial only; tubelet collapses temporal into one group)
         self.head_dim = embed_dim // num_heads
         freqs = build_2d_rope_freqs(
             num_patches_per_side=self.patch_embed.num_patches_per_side,
             dim=self.head_dim,
         )
-        self.register_buffer("freqs_cis", freqs, persistent=False)
+        self.register_buffer("freqs_cis", freqs, persistent=False)  # [N, D_head/2]
 
         self.blocks = nn.ModuleList([
             TransformerBlock(embed_dim, num_heads, mlp_ratio)
@@ -175,68 +161,38 @@ class VJEPAEncoder(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,
-        visible_indices: torch.Tensor = None,
+        x: torch.Tensor,                    # [B, T=2, C, H, W]
+        visible_indices: torch.Tensor = None,  # [B, N_visible] or None for all tokens
     ) -> torch.Tensor:
-        """
-        Args:
-            x: [B, T=2, C, H, W]
-            visible_indices: [B, N_visible] token indices to process.
-                             If None, processes all tokens.
-
-        Returns:
-            features: [B, N_out, D] where N_out = len(visible_indices) or num_patches
-        """
-        tokens = self.patch_embed(x)  # [B, num_patches, D]
+        """Returns [B, N_visible_or_full, embed_dim]."""
+        tokens = self.patch_embed(x)  # [B, N, D]
+        B = tokens.shape[0]
 
         if visible_indices is not None:
-            # Gather visible tokens per batch
-            B, N, D = tokens.shape
+            # Per-sample gather of visible tokens and their RoPE frequencies
+            D = tokens.shape[-1]
             idx = visible_indices.unsqueeze(-1).expand(-1, -1, D)
-            tokens = torch.gather(tokens, dim=1, index=idx)  # [B, N_visible, D]
-            freqs_cis = self._gather_freqs(visible_indices)
+            tokens = torch.gather(tokens, dim=1, index=idx)
+            freqs_cis = self.freqs_cis[visible_indices]  # [B, N_vis, D_head/2]
         else:
-            freqs_cis = self.freqs_cis
+            freqs_cis = self.freqs_cis.unsqueeze(0).expand(B, -1, -1)
 
-        # Run through blocks (TransformerBlock uses has_cls=True default; we set False)
         for block in self.blocks:
             tokens = self._block_forward(block, tokens, freqs_cis)
 
         tokens = self.norm(tokens)
         return tokens
 
-    def _gather_freqs(self, visible_indices: torch.Tensor) -> torch.Tensor:
-        """Gather RoPE frequencies for visible tokens.
-
-        Note: freqs_cis is [N, head_dim/2] (complex). Different batches may have
-        different visible indices, so we handle per-batch. Since RoPE application
-        is done inside block.forward, we need a per-batch freqs.
-
-        For simplicity, return full freqs_cis and trust that block uses [:N_visible]
-        positions. This WORKS if batch sizes are the same, but may not correctly
-        apply position-specific RoPE for different indices. For V-JEPA with global
-        masking (same mask per batch), this is fine.
-
-        For per-batch masks, would need to restructure block forward to accept
-        position-specific freqs. Deferred to later optimization.
-        """
-        # Use first batch's indices (assumes shared mask across batch)
-        idx = visible_indices[0]  # [N_visible]
-        return self.freqs_cis[idx]
-
     def _block_forward(self, block, tokens, freqs_cis):
-        """Run a TransformerBlock without CLS token handling."""
-        # TransformerBlock.forward has has_cls=True default in apply_rope.
-        # For V-JEPA we have no CLS, so apply RoPE to all tokens.
+        # TransformerBlock forward without CLS, with per-sample RoPE frequencies
+        # (shape [B, N, D_head/2]). Reuses the block's sub-modules directly.
         h = block.norm1(tokens)
         B, N, D = h.shape
         qkv = block.qkv(h).reshape(B, N, 3, block.num_heads, block.head_dim)
         q, k, v = qkv.unbind(dim=2)  # [B, N, H, D_head]
 
-        if freqs_cis is not None:
-            from .two_stream import apply_rope
-            q = apply_rope(q, freqs_cis, has_cls=False)
-            k = apply_rope(k, freqs_cis, has_cls=False)
+        q = apply_rope_batched(q, freqs_cis)
+        k = apply_rope_batched(k, freqs_cis)
 
         q = q.transpose(1, 2)
         k = k.transpose(1, 2)
@@ -254,12 +210,8 @@ class VJEPAEncoder(nn.Module):
 # ============================================================================
 
 class VJEPAPredictor(nn.Module):
-    """Predict masked token features from visible tokens.
-
-    Follows V-JEPA paper: narrow transformer (12 blocks, embed_dim=384).
-    Takes visible x-encoder features + learnable mask tokens, outputs predictions
-    at masked positions.
-    """
+    """Narrow transformer (default 12 × 384) that maps visible x-encoder features
+    to predictions at masked positions. Uses fixed 2D sin-cos PE (no RoPE)."""
 
     def __init__(
         self,
@@ -275,88 +227,54 @@ class VJEPAPredictor(nn.Module):
         self.encoder_embed_dim = encoder_embed_dim
         self.num_patches = num_patches
 
-        # Project encoder features to predictor space
         self.input_proj = nn.Linear(encoder_embed_dim, pred_embed_dim)
+        self.output_proj = nn.Linear(pred_embed_dim, encoder_embed_dim)
 
-        # Learnable mask token (shared)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, pred_embed_dim))
         nn.init.trunc_normal_(self.mask_token, std=0.02)
 
-        # TODO(C): 논문은 고정 sin-cos PE. 현재 learnable 로 단순화됨.
-        #          register_buffer('pos_embed', sincos_2d(...)) 로 교체 필요.
-        # Positional embedding (learnable, full length)
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, pred_embed_dim))
-        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        # Fixed 2D sin-cos PE (non-learnable buffer). Added to both visible
+        # and mask tokens so the predictor knows which positions to predict.
+        grid_size = int(round(num_patches ** 0.5))
+        assert grid_size * grid_size == num_patches, "num_patches must be a square"
+        pos_embed = build_2d_sincos_pe(grid_size, pred_embed_dim).unsqueeze(0)
+        self.register_buffer("pos_embed", pos_embed, persistent=False)
 
-        # Narrow transformer blocks
         self.blocks = nn.ModuleList([
             TransformerBlock(pred_embed_dim, num_heads, mlp_ratio)
             for _ in range(depth)
         ])
         self.norm = nn.LayerNorm(pred_embed_dim)
 
-        # Project back to encoder feature dim (for L1 loss against y-encoder)
-        self.output_proj = nn.Linear(pred_embed_dim, encoder_embed_dim)
-
     def forward(
         self,
-        visible_features: torch.Tensor,
-        visible_indices: torch.Tensor,
-        masked_indices: torch.Tensor,
+        visible_features: torch.Tensor,  # [B, N_vis, D_enc]
+        visible_indices: torch.Tensor,   # [B, N_vis]
+        masked_indices: torch.Tensor,    # [B, N_masked]
     ) -> torch.Tensor:
-        """
-        Args:
-            visible_features: [B, N_visible, D_enc] from x-encoder
-            visible_indices: [B, N_visible] positions of visible tokens
-            masked_indices: [B, N_masked] positions of masked tokens
-
-        Returns:
-            predicted_features: [B, N_masked, D_enc] predictions for masked positions
-        """
+        """Returns [B, N_masked, D_enc] predictions at masked positions."""
         B, N_vis, _ = visible_features.shape
         N_masked = masked_indices.shape[1]
-        N_total = N_vis + N_masked  # should equal num_patches
 
-        # Project visible features to predictor dim
-        vis = self.input_proj(visible_features)  # [B, N_visible, D_pred]
+        vis = self.input_proj(visible_features) + self._gather_pos(visible_indices)
+        masks = self.mask_token.expand(B, N_masked, -1) + self._gather_pos(masked_indices)
 
-        # Add positional embedding to visible tokens
-        vis_pos = self._gather_pos(visible_indices)  # [B, N_visible, D_pred]
-        vis = vis + vis_pos
-
-        # Create mask tokens with positional embedding
-        mask_pos = self._gather_pos(masked_indices)  # [B, N_masked, D_pred]
-        masks = self.mask_token.expand(B, N_masked, -1) + mask_pos  # [B, N_masked, D_pred]
-
-        # Concatenate visible + mask tokens (order: visible first, then masked)
-        x = torch.cat([vis, masks], dim=1)  # [B, N_total, D_pred]
-
-        # Run through predictor blocks (no RoPE — pos embedding is additive)
+        x = torch.cat([vis, masks], dim=1)  # visible first, masked second
         for block in self.blocks:
             x = self._block_forward(block, x)
-
         x = self.norm(x)
 
-        # Return only the masked position outputs
-        pred_masked = x[:, N_vis:]  # [B, N_masked, D_pred]
-        return self.output_proj(pred_masked)  # [B, N_masked, D_enc]
+        return self.output_proj(x[:, N_vis:])
 
     def _gather_pos(self, indices: torch.Tensor) -> torch.Tensor:
-        """Gather positional embedding for given indices.
-
-        Args:
-            indices: [B, N] token positions
-
-        Returns:
-            [B, N, D_pred]
-        """
-        B, N = indices.shape
-        pos = self.pos_embed.expand(B, -1, -1)  # [B, num_patches, D_pred]
+        """Gather 2D sin-cos PE at given indices → [B, N, D_pred]."""
+        B = indices.shape[0]
+        pos = self.pos_embed.expand(B, -1, -1)
         idx = indices.unsqueeze(-1).expand(-1, -1, self.pred_embed_dim)
         return torch.gather(pos, dim=1, index=idx)
 
     def _block_forward(self, block, tokens):
-        """Predictor uses no RoPE (additive pos embedding instead)."""
+        # No RoPE — PE is already additive on the input tokens.
         h = block.norm1(tokens)
         B, N, D = h.shape
         qkv = block.qkv(h).reshape(B, N, 3, block.num_heads, block.head_dim)
@@ -374,61 +292,50 @@ class VJEPAPredictor(nn.Module):
 
 
 # ============================================================================
-# Multi-block masking
+# Multi-block masking (per-sample, fixed count)
 # ============================================================================
 
-# TODO(B): dual masking 을 위해 short / long 두 종류 샘플링으로 확장.
-#          현재는 단일 블록 세트만 지원 — compute_loss 도 함께 수정 필요.
-def sample_multi_block_mask(
-    num_patches_per_side: int = 14,
-    num_blocks: int = 4,
-    block_scale_range: tuple = (0.15, 0.2),
-    aspect_range: tuple = (0.75, 1.5),
-    max_mask_ratio: float = 0.9,
+def sample_block_mask_fixed(
+    num_patches_per_side: int,
+    num_blocks: int,
+    block_scale_range: tuple,
+    aspect_range: tuple,
+    target_mask_count: int,
 ) -> torch.Tensor:
-    """Sample a multi-block mask on a num_patches_per_side × num_patches_per_side grid.
+    """Sample a union of random blocks, then adjust to exactly `target_mask_count`.
 
-    Simplified version of V-JEPA's multi-block masking:
-    - Sample `num_blocks` rectangular blocks of random aspect & scale
-    - Mark their union as masked (True)
-    - Rejection-sample if total mask exceeds max_mask_ratio
+    Fixed count is required so that batch tensors have uniform shape. The
+    adjustment randomly masks/unmasks tokens after the block union if the
+    natural mask count doesn't match the target.
 
-    Returns:
-        mask: [num_patches_per_side^2] bool tensor. True = masked.
+    Returns `[num_patches_per_side^2]` bool tensor (True = masked).
     """
     H = W = num_patches_per_side
     total = H * W
+    assert 0 < target_mask_count < total, "target_mask_count out of range"
     mask = torch.zeros(H, W, dtype=torch.bool)
 
     for _ in range(num_blocks):
-        # random scale (fraction of area)
         scale = torch.empty(1).uniform_(*block_scale_range).item()
         aspect = torch.empty(1).uniform_(*aspect_range).item()
-
         block_area = total * scale
-        block_h = max(1, int(round((block_area * aspect) ** 0.5)))
-        block_w = max(1, int(round((block_area / aspect) ** 0.5)))
-        block_h = min(block_h, H)
-        block_w = min(block_w, W)
-
-        # random top-left
+        block_h = min(H, max(1, int(round((block_area * aspect) ** 0.5))))
+        block_w = min(W, max(1, int(round((block_area / aspect) ** 0.5))))
         top = torch.randint(0, H - block_h + 1, (1,)).item()
         left = torch.randint(0, W - block_w + 1, (1,)).item()
-
         mask[top:top + block_h, left:left + block_w] = True
 
     mask = mask.reshape(-1)
+    n_masked = int(mask.sum().item())
 
-    # Cap mask ratio
-    ratio = mask.float().mean().item()
-    if ratio > max_mask_ratio:
-        # Randomly unmask a fraction
-        masked_idx = torch.nonzero(mask, as_tuple=False).reshape(-1)
-        num_to_keep = int(total * max_mask_ratio)
-        if masked_idx.numel() > num_to_keep:
-            perm = torch.randperm(masked_idx.numel())
-            drop = masked_idx[perm[num_to_keep:]]
-            mask[drop] = False
+    if n_masked > target_mask_count:
+        idx = torch.nonzero(mask, as_tuple=False).reshape(-1)
+        drop = idx[torch.randperm(idx.numel())[:n_masked - target_mask_count]]
+        mask[drop] = False
+    elif n_masked < target_mask_count:
+        idx = torch.nonzero(~mask, as_tuple=False).reshape(-1)
+        add = idx[torch.randperm(idx.numel())[:target_mask_count - n_masked]]
+        mask[add] = True
 
     return mask
 
@@ -438,12 +345,12 @@ def sample_multi_block_mask(
 # ============================================================================
 
 class VJEPAModel(nn.Module):
-    """Full V-JEPA model: x-encoder + predictor + EMA y-encoder.
+    """x-encoder + narrow predictor + EMA y-encoder.
 
-    Training objective:
-        L = || predictor(x_encoder(masked)) − sg(y_encoder(full)) ||_1
+    Objective: L1( predictor(x_encoder(masked)) , LayerNorm(sg(y_encoder(full))) ),
+    averaged over two mask types (short-range + long-range).
 
-    Inference: use x_encoder as the frozen feature extractor.
+    Downstream usage: call `extract_features()` with the x-encoder frozen.
     """
 
     def __init__(
@@ -457,18 +364,31 @@ class VJEPAModel(nn.Module):
         pred_embed_dim: int = 384,
         pred_depth: int = 12,
         pred_num_heads: int = 12,
-        mask_num_blocks: int = 4,
-        mask_scale_range: tuple = (0.15, 0.2),
-        max_mask_ratio: float = 0.9,
+        # Dual masking config — matches facebookresearch/jepa vitl16.yaml
+        # (spatial-only adaptation for 2-frame tubelet; per-block scales are
+        #  the spatial_scale of the official 3D multi-block mask)
+        short_num_blocks: int = 8,
+        short_scale_range: tuple = (0.13, 0.17),  # official: 0.15 ± small jitter
+        short_mask_ratio: float = 0.80,            # ~many small blocks → ~80% masked
+        long_num_blocks: int = 2,
+        long_scale_range: tuple = (0.65, 0.75),   # official: 0.70
+        long_mask_ratio: float = 0.85,             # ~few large blocks → ~85% masked
+        aspect_range: tuple = (0.75, 1.5),
         ema_momentum_start: float = 0.998,
         ema_momentum_end: float = 1.0,
+        ema_ipe_scale: float = 1.25,               # official: stretch schedule 25% past end
     ):
         super().__init__()
-        self.mask_num_blocks = mask_num_blocks
-        self.mask_scale_range = mask_scale_range
-        self.max_mask_ratio = max_mask_ratio
+        self.short_num_blocks = short_num_blocks
+        self.short_scale_range = short_scale_range
+        self.short_mask_ratio = short_mask_ratio
+        self.long_num_blocks = long_num_blocks
+        self.long_scale_range = long_scale_range
+        self.long_mask_ratio = long_mask_ratio
+        self.aspect_range = aspect_range
         self.ema_momentum_start = ema_momentum_start
         self.ema_momentum_end = ema_momentum_end
+        self.ema_ipe_scale = ema_ipe_scale
         self._ema_momentum = ema_momentum_start
 
         # x-encoder (online, trained)
@@ -501,96 +421,101 @@ class VJEPAModel(nn.Module):
 
     @torch.no_grad()
     def update_ema(self, momentum: float = None):
-        """Update y-encoder as EMA of x-encoder. Call after each optimizer step."""
+        """Update y-encoder as EMA of x-encoder. Call after every optimizer step."""
         m = momentum if momentum is not None else self._ema_momentum
         for p_y, p_x in zip(self.y_encoder.parameters(), self.x_encoder.parameters()):
             p_y.data.mul_(m).add_(p_x.data, alpha=1 - m)
 
     def set_ema_momentum(self, epoch: int, total_epochs: int):
-        """Linearly anneal EMA momentum from start to end over training."""
-        t = min(1.0, max(0.0, epoch / max(1, total_epochs)))
+        # `ipe_scale=1.25` stretches the schedule 25% past the nominal end,
+        # so momentum reaches ~0.9996 (not exactly 1.0) at the final epoch.
+        effective_total = max(1.0, total_epochs * self.ema_ipe_scale)
+        t = min(1.0, max(0.0, epoch / effective_total))
         self._ema_momentum = (
             self.ema_momentum_start * (1 - t) + self.ema_momentum_end * t
         )
 
-    # TODO(A): per-sample masking 으로 재작성. 현재는 배치 공유 마스크 —
-    #          RoPE `_gather_freqs` 가 배치 내 공유 기반이라 함께 수정 필요.
-    # TODO(B): (mask_short, mask_long) 튜플 반환으로 확장. compute_loss 에서
-    #          각각 predictor 호출 후 loss 합산. 2-frame 세팅에서는 spatial
-    #          only 이므로 I-JEPA 스타일.
-    def _sample_masks(self, batch_size: int, device: torch.device):
-        """Sample a shared mask for the batch (simpler than per-sample masks)."""
-        mask = sample_multi_block_mask(
-            num_patches_per_side=self.num_patches_per_side,
-            num_blocks=self.mask_num_blocks,
-            block_scale_range=self.mask_scale_range,
-            max_mask_ratio=self.max_mask_ratio,
-        ).to(device)
+    def _sample_masks_per_sample(
+        self,
+        batch_size: int,
+        num_blocks: int,
+        scale_range: tuple,
+        target_mask_count: int,
+        device: torch.device,
+    ):
+        """Sample `batch_size` independent fixed-count masks.
 
-        masked_idx = torch.nonzero(mask, as_tuple=False).reshape(-1)  # [N_masked]
-        visible_idx = torch.nonzero(~mask, as_tuple=False).reshape(-1)  # [N_visible]
+        Returns (visible_idx, masked_idx) each of shape [B, N_*].
+        """
+        vis_list, mask_list = [], []
+        for _ in range(batch_size):
+            mask_b = sample_block_mask_fixed(
+                num_patches_per_side=self.num_patches_per_side,
+                num_blocks=num_blocks,
+                block_scale_range=scale_range,
+                aspect_range=self.aspect_range,
+                target_mask_count=target_mask_count,
+            )
+            mask_list.append(torch.nonzero(mask_b, as_tuple=False).reshape(-1))
+            vis_list.append(torch.nonzero(~mask_b, as_tuple=False).reshape(-1))
 
-        # Expand to batch
-        masked_idx = masked_idx.unsqueeze(0).expand(batch_size, -1)
-        visible_idx = visible_idx.unsqueeze(0).expand(batch_size, -1)
-        return visible_idx, masked_idx
+        return (
+            torch.stack(vis_list, dim=0).to(device),
+            torch.stack(mask_list, dim=0).to(device),
+        )
+
+    def _forward_one_mask(
+        self,
+        frames: torch.Tensor,
+        y_target_normed: torch.Tensor,
+        visible_idx: torch.Tensor,
+        masked_idx: torch.Tensor,
+    ) -> torch.Tensor:
+        """x-encoder(visible) → predictor → L1 vs LayerNormed y-target."""
+        x_feat = self.x_encoder(frames, visible_indices=visible_idx)
+        pred = self.predictor(x_feat, visible_idx, masked_idx)
+        idx = masked_idx.unsqueeze(-1).expand(-1, -1, y_target_normed.shape[-1])
+        y_target = torch.gather(y_target_normed, dim=1, index=idx)
+        return F.l1_loss(pred, y_target.detach())
 
     def compute_loss(self, img_t: torch.Tensor, img_tk: torch.Tensor):
-        """Training loss.
+        """Dual-mask V-JEPA loss.
 
-        Args:
-            img_t:  [B, C, H, W] first frame
-            img_tk: [B, C, H, W] second frame
+        Matches `app/vjepa/train.py::forward_target` in the official repo:
+        y-encoder runs once on the full sequence, its output is LayerNormed,
+        then reused as the target for both the short-range and long-range mask
+        passes. The two L1 losses are averaged (not summed).
 
-        Returns:
-            loss: scalar L1 loss
-            img_pred: dummy placeholder (for compatibility with train loop that expects it)
+        Returns (scalar_loss, dummy_image_pred_for_train_loop_compat).
         """
         B = img_t.shape[0]
         device = img_t.device
+        frames = torch.stack([img_t, img_tk], dim=1)  # [B, 2, C, H, W]
 
-        # Stack frames into [B, 2, C, H, W]
-        frames = torch.stack([img_t, img_tk], dim=1)
-
-        # Sample mask
-        visible_idx, masked_idx = self._sample_masks(B, device)
-
-        # x-encoder: visible tokens only
-        x_feat = self.x_encoder(frames, visible_indices=visible_idx)
-        # [B, N_visible, D_enc]
-
-        # Predictor: predict masked feature
-        pred = self.predictor(x_feat, visible_idx, masked_idx)
-        # [B, N_masked, D_enc]
-
-        # y-encoder: full sequence, no gradient
         with torch.no_grad():
             y_feat_full = self.y_encoder(frames, visible_indices=None)
-            # Gather masked positions
-            idx = masked_idx.unsqueeze(-1).expand(-1, -1, y_feat_full.shape[-1])
-            y_target = torch.gather(y_feat_full, dim=1, index=idx)
-            # [B, N_masked, D_enc]
+            y_target_normed = F.layer_norm(y_feat_full, (y_feat_full.shape[-1],))
 
-        # L1 loss in feature space
-        loss = F.l1_loss(pred, y_target.detach())
+        n_short = int(round(self.short_mask_ratio * self.num_patches))
+        vis_s, mask_s = self._sample_masks_per_sample(
+            B, self.short_num_blocks, self.short_scale_range, n_short, device,
+        )
+        loss_short = self._forward_one_mask(frames, y_target_normed, vis_s, mask_s)
 
-        # dummy image output (for compatibility with save_epoch_samples)
-        img_pred = img_tk
+        n_long = int(round(self.long_mask_ratio * self.num_patches))
+        vis_l, mask_l = self._sample_masks_per_sample(
+            B, self.long_num_blocks, self.long_scale_range, n_long, device,
+        )
+        loss_long = self._forward_one_mask(frames, y_target_normed, vis_l, mask_l)
 
-        return loss, img_pred
+        loss = 0.5 * (loss_short + loss_long)
+        return loss, img_tk  # second return is a dummy for save_epoch_samples
 
     def forward(self, img_t: torch.Tensor, img_tk: torch.Tensor):
-        """Convenience forward for training loop. Delegates to compute_loss."""
         return self.compute_loss(img_t, img_tk)
 
     @torch.no_grad()
     def extract_features(self, img_t: torch.Tensor, img_tk: torch.Tensor):
-        """Inference-time feature extraction (for frozen downstream use).
-
-        Uses x-encoder on full sequence (no masking).
-
-        Returns:
-            features: [B, num_patches, embed_dim]
-        """
+        """Frozen inference: x-encoder on full (unmasked) sequence. → [B, 196, D]."""
         frames = torch.stack([img_t, img_tk], dim=1)
         return self.x_encoder(frames, visible_indices=None)
