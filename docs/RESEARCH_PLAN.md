@@ -172,56 +172,77 @@ frozen encoder → MLP action decoder → 7-DOF action
 
 **기대 결과**: Two-Stream v4 > VC-1 > VideoMAE > DINOv2 ≈ SigLIP
 
-### Phase 3B: OpenVLA 통합 (supplementary) ⏸️ 대기
+### Phase 3B: OpenVLA 통합 (축소안, 조건부 진입) ⏸️ 대기
 
-**목표**: "기존 SOTA VLA에 우리 encoder를 넣으면 성능이 오르는가"를 직접 검증
+**목표**: Phase 3 와 동일 질문 ("표현이 실제 제어에 유용한가") 을 **Llama 7B
+크기의 강력한 decoder** 조건에서 재검증. Phase 3 (작은 MLP) 결과가 "decoder
+용량 때문" 이라는 반박을 차단.
+
+**핵심 논리**: 원본 OpenVLA 의 40% 를 재현하지 못해도, 모든 encoder 가 같은
+불리함을 겪으므로 **상대 순위** 는 유효하다. Phase 3 + 3B 조합으로 "encoder
+우위가 decoder 용량과 무관" 이라는 더 강한 주장이 가능.
 
 **실험 구조**:
 ```
-Two-Stream encoder → projection → Llama 7B (OpenVLA backbone) → action tokens
-  (frozen 또는      (신규 학습)   (LoRA fine-tune)
-   partial fine-tune)
+encoder (frozen) → projection (학습) → Llama 7B + LoRA (학습) → action tokens
 ```
 
+**축소된 실험 대상** (3 encoder × 1 task suite):
+
+| 모델 | Encoder | 역할 |
+|------|---------|------|
+| OpenVLA + SigLIP (frozen) | SigLIP | Home advantage reference (Llama 와 co-train 된 encoder 를 frozen) |
+| OpenVLA + V-JEPA-ours | V-JEPA-ours (frozen) | 축 1 유지 (같은 데이터, 다른 방법) |
+| OpenVLA + Two-Stream | Two-Stream v4 (frozen) | **메인 제안** |
+
+**Task suite**: libero_spatial 만 (원본 OpenVLA 결과 존재)
+**Trial**: task 당 50 × 3 seed
+
 **학습 대상**:
-- Projection layer (encoder dim → Llama embed dim): **신규 학습**
-- Llama 7B: **LoRA 어댑터만 학습** (rank 32, OpenVLA 논문 setup)
-- Two-Stream encoder: 실험 옵션 (frozen 권장, 필요 시 마지막 N layer fine-tune)
+- Projection layer (encoder → Llama embed dim 4096): 신규 학습
+- Llama 7B LoRA (rank 32, OpenVLA 논문 setup): 학습
+- Vision encoder: **frozen** 통일
 
-**학습 데이터**: LIBERO RLDS 포맷 (OpenVLA 기존 인프라 활용)
+**공정성 정책**:
+- 모든 encoder 가 **같은 frozen 조건** — 원본 OpenVLA (joint fine-tune) 와 다름
+- 논문에 명시: "absolute numbers are not directly comparable to the original
+  OpenVLA paper; we report encoder-only relative comparison under controlled
+  freeze policy"
 
-**실험 대상** (encoder 5종을 OpenVLA의 vision backbone에 교체):
-| 모델 | Encoder | 방식 | 역할 |
-|------|---------|------|------|
-| OpenVLA (원본) | SigLIP (공개, OpenVLA fine-tuned) | LoRA FT | Reference (기존 결과 libero_spatial 40%) |
-| OpenVLA + Two-Stream | Two-Stream v4 (frozen) | LoRA FT on LLM | 메인 제안 |
-| OpenVLA + V-JEPA-ours | V-JEPA-ours (frozen) | LoRA FT on LLM | 직접 경쟁 |
-| OpenVLA + VC-1 | VC-1-Base (frozen) | LoRA FT on LLM | 로봇 SOTA baseline |
-| OpenVLA + DINOv2 | DINOv2 (frozen) | LoRA FT on LLM | Internet SSL baseline |
-| OpenVLA + SigLIP (swap) | SigLIP (frozen, 원본 가중치) | LoRA FT on LLM | Internet VL baseline + frozen vs fine-tune 비교 |
+**진입 조건 (Phase 3 결과 보고 결정)**:
+- Phase 3 에서 Two-Stream 명확히 우위 → Phase 3B 는 "강화 증거" 역할
+- Phase 3 에서 박빙 → Phase 3B 결과가 판정 역할, 결과 뒤집힐 수 있음 감수
 
-**Frozen encoder 정책**: 모든 encoder를 frozen 유지. 학습 대상은 **projection layer (encoder → Llama embed dim) + Llama 7B LoRA**만.
-- 장점: encoder-only 공정 비교, 변수 통제
-- 단점: OpenVLA 원본 setup (encoder fine-tune)과 다름 → 원본 성능 재현 못할 가능성
-- 의도적 선택: 연구 질문이 "사전학습 표현 품질"이므로 encoder fine-tune은 오염 변수
+**구현 작업** (상세 TODO: [src/eval_libero.py](../src/eval_libero.py) 상단):
+- [ ] OpenVLA `vision_backbone` 교체 어댑터 (PrismaticVisionBackbone 인터페이스)
+- [ ] Encoder → Llama embed dim projection layer
+- [ ] `vla-scripts/finetune.py` 에 encoder 교체 경로 삽입
+- [ ] 공식 OpenVLA 코드로 SigLIP fine-tune 재현 먼저 (검증 step)
+- [ ] SigLIP frozen 으로 downgrade 실험 (frozen 정책 단독 손실 측정)
 
-**평가**: libero_spatial main. 필요 시 다른 suite로 확장.
+**기존 인프라**:
+- OpenVLA 공식 저장소: https://github.com/openvla/openvla
+- LIBERO RLDS: `~/.cache/openvla/datasets/modified_libero_rlds/` (9.6 GB)
+- Docker: `docker/openvla-libero/`
+- Rollout: `src/eval_libero.py` 의 `OpenVLAClient`
 
-**기존 인프라** (대부분 준비됨):
-- OpenVLA 코드: https://github.com/openvla/openvla (fine-tuning 스크립트 포함)
-- LIBERO RLDS 데이터: `~/.cache/openvla/datasets/modified_libero_rlds/` (9.6 GB)
-- OpenVLA fine-tuned 체크포인트: `data/checkpoints/openvla-libero/`
-- Docker 환경: `docker/openvla-libero/`
-- Rollout 서버: `src/eval_libero.py`
+**예상 비용 (Phase 2-3 완료 후)**:
+- Vision backbone 교체 + projection: ~1주
+- 3 encoder × LoRA FT (Llama 7B, LoRA 라 감당 가능): ~1주
+- Rollout 평가 (3 × libero_spatial × 3 seed): ~2-3일
+- 총 ~2.5주
 
-**신규 작업**:
-- [ ] OpenVLA의 `vision_backbone` 교체 로직 작성 (~수십 줄)
-- [ ] Two-Stream output → Llama embedding projection layer
-- [ ] OpenVLA `vla-scripts/finetune.py` 에 encoder 교체 경로 삽입
+**축소된 이유** (기존 5 encoder 전체 → 3 encoder):
+- 원래 계획: 5 encoder × OpenVLA 교체 = 과도한 비용
+- 축소 후: Two-Stream (ours) + V-JEPA-ours (직접 경쟁) + SigLIP (home advantage) 만
+- VC-1 / DINOv2 는 Phase 2-3 에서 이미 비교됨 → Phase 3B 에서 중복 제거
+
+**대안 (일정 안 맞으면)**: 메인 scope 제외, **rebuttal 추가 실험** 으로 전환.
+이 경우 Two-Stream 1개만 + libero_spatial 만 (2주 작업으로 축소 가능).
 
 **의도적 제외** (scope 관리):
 - Pi0, RT-2, LAPA — 인프라 불완전 또는 비공개. Future work.
-- 여러 IL 알고리즘 비교 (BC-RNN, Diffusion Policy 등) — 필요 시 rebuttal에서 추가 가능.
+- 여러 IL 알고리즘 비교 (BC-RNN, Diffusion Policy 등) — rebuttal 에서 추가 가능.
 - Full fine-tuning (non-LoRA) — 비용 대비 효과 낮음.
 
 ---

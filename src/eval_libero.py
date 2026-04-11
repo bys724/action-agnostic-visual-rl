@@ -6,6 +6,82 @@ OpenVLA, Pi0, Custom encoder 모델을 LIBERO 벤치마크에서 평가합니다
 - OpenVLA: REST API 사용
 - Pi0: WebSocket API 사용 (openpi 프로토콜)
 - Custom: 로컬 encoder + action head (two-stream, single-stream, videomae)
+
+=============================================================================
+TODO: Phase 3B — OpenVLA vision backbone 교체 실험 (축소안)
+=============================================================================
+목적: "동일한 downstream 파이프라인에서 vision encoder 만 교체했을 때,
+      어떤 encoder 가 더 나은가" 를 Llama 7B decoder 조건에서 검증.
+
+핵심 논리: 절대 성능이 원본 OpenVLA 40% 를 재현하지 못해도, 모든 encoder 가
+          같은 불리함을 겪으므로 **상대 순위** 는 유효하다. Phase 3 의 MLP
+          decoder 결과와 결합해서 "encoder 우위가 decoder 용량과 무관함" 을
+          주장한다.
+
+실험 범위 (축소):
+- Encoder 3개만: Two-Stream v4, V-JEPA-ours (축 1 유지), SigLIP (home advantage reference)
+- Task suite 1개: libero_spatial (원본 OpenVLA 결과 존재)
+- 모든 encoder frozen, 동일 LoRA rank/epoch/data/seed
+- Trial 수: task 당 50 trial × 3 seed
+
+학습 대상 (Phase 3B):
+- Projection layer: encoder_feature_dim → Llama embed dim (신규 학습)
+- Llama-2 7B LoRA adapter: rank 32, OpenVLA 논문 setup 준수
+- Vision encoder: frozen (원본 OpenVLA 는 joint fine-tune 이지만, 우리는
+  encoder 품질 비교가 목적이므로 의도적으로 frozen)
+
+기존 인프라 (OpenVLA 공식 저장소 활용):
+- https://github.com/openvla/openvla — fine-tune 스크립트 `vla-scripts/finetune.py`
+- LIBERO RLDS 데이터: `~/.cache/openvla/datasets/modified_libero_rlds/` (9.6 GB)
+- Docker 환경: `docker/openvla-libero/`
+- Rollout 서버: 이 파일 (src/eval_libero.py) 의 OpenVLAClient
+
+구현해야 할 것:
+(1) OpenVLA vision_backbone 교체 경로
+    - `prismatic/models/backbones/vision/` 구조 파악
+    - 우리 encoder 를 PrismaticVisionBackbone 인터페이스에 맞춰 감싸는 어댑터
+    - 출력 token 포맷 (shape, dtype, feature dim) 을 SigLIP 기준에 맞춰야 함
+    - 2-frame 입력 → OpenVLA 가 기대하는 single feature tensor 로 reduction
+
+(2) Projection layer
+    - encoder_feature_dim → Llama embed dim (4096)
+    - 단순 linear 로 시작. 필요 시 2-layer MLP 로 확장.
+
+(3) fine-tune 파이프라인
+    - `vla-scripts/finetune.py` 에 encoder 교체 경로 삽입
+    - Vision encoder requires_grad=False 명시
+    - LoRA 설정은 OpenVLA 논문 기본값 (rank 32, target llama q/k/v/o)
+
+(4) Rollout 통합
+    - 학습된 VLA 를 이 파일의 `OpenVLAClient` 경로로 rollout
+    - 기존 OpenVLA REST API 가 vision encoder 교체 후에도 작동하는지 확인
+
+공정성 명시 (논문에 반드시 기재):
+    "The original OpenVLA jointly fine-tunes its SigLIP vision encoder.
+    For controlled comparison of encoder quality, we freeze all vision
+    encoders and train only the projection layer and Llama-2 LoRA adapter
+    with the same hyperparameters. Absolute numbers are therefore not
+    directly comparable to the original OpenVLA paper."
+
+진입 조건:
+- Two-Stream v4 Phase 1.5 학습 완료 + Phase 2 probing 완료
+- Phase 3 (MLP decoder) 결과 확인 후 진입 여부 결정
+- Phase 3 에서 Two-Stream 명확히 우위 → Phase 3B 는 "강화 증거"
+- Phase 3 에서 박빙 → Phase 3B 결과가 판정 역할 (결과 뒤집힐 수 있음)
+
+예상 비용 (Phase 2-3 완료 후 기준):
+- OpenVLA vision_backbone 교체 + projection: ~1주
+- 3 encoder × LoRA fine-tuning (Llama 7B): ~1주
+- Rollout 평가 (3 encoder × libero_spatial × 3 seed): ~2-3일
+- 총 ~2.5주
+
+공식 저장소 검증 절차 (구현 전 필수):
+1. OpenVLA 공식 finetune.py 를 SigLIP 그대로 LIBERO 에 재현 → 원본 40% 재현 여부 확인
+2. SigLIP frozen 으로 돌려 "frozen 정책" 단독의 성능 손실 측정
+3. 그 이후 Two-Stream 으로 교체 → 상대 비교
+
+대안 (일정 안 맞으면): rebuttal 시점에 Two-Stream 1개만 붙여서 제시.
+=============================================================================
 """
 
 import argparse
