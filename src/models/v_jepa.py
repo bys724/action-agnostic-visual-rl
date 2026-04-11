@@ -16,7 +16,53 @@ Key differences vs Two-Stream:
 2-frame adaptation:
 - Two frames → 1 tubelet group (tubelet_size=2) → 196 spatial tokens
 - Masking is spatial-only (single temporal group collapses temporal masking)
+- Temporal diversity comes from variable gap sampling (same as Two-Stream)
 - Multi-block masking: sample random spatial blocks, complement of mask = x
+
+=============================================================================
+TODO: 논문 재현 갭 수정 (Phase 1.5 V-JEPA-ours 학습 전 필수)
+=============================================================================
+현재 구현은 파이프라인 (x-encoder / y-encoder EMA / predictor / L1 loss) 은
+논문과 일치하지만, 아래 세 가지는 단순화된 상태. V-JEPA-ours full training
+시작 전에 수정 필요. 논문 리뷰어의 "재현 타당성" 질문 대비.
+
+(A) Per-sample masking (현재: batch 공유 마스크)
+    - 문제: `_sample_masks()` 가 배치 전체에 동일한 마스크를 적용.
+      논문은 각 샘플마다 독립 마스크 샘플링.
+    - 원인: `_gather_freqs()` 가 RoPE 주파수를 배치 내 공유로만 처리.
+    - 수정: RoPE 적용 경로를 per-sample freqs 지원하도록 재작성.
+      attention block forward 수정 필요 (scaled_dot_product_attention 경로).
+    - 난이도: 중 (하루 작업)
+
+(B) Spatial dual masking (현재: 단일 블록 마스크)
+    - 문제: V-JEPA 원 논문은 short-range + long-range 두 마스크를 동시에
+      적용, 각각 predictor로 예측 후 loss 합산. 현재는 한 종류만 사용.
+    - 2-frame 적응: tubelet 으로 temporal 차원이 collapse 되므로 spatial
+      only dual masking = I-JEPA 스타일 (작은 블록 다수 + 큰 블록 소수).
+      시간 차원의 long-range 는 gap sampling 이 상응 역할.
+    - 수정:
+      * `_sample_masks()` 가 (mask_short, mask_long) 반환
+      * `compute_loss()` 에서 predictor 2번 호출 후 L1 합산
+      * 블록 수치는 I-JEPA 기준 (short: n_blocks=8, scale=(0.03,0.05);
+        long: n_blocks=2, scale=(0.30,0.40))
+    - 난이도: 낮 (반나절)
+
+(C) Predictor positional embedding (현재: learnable)
+    - 문제: 현재 `self.pos_embed = nn.Parameter(...)`. 논문은 고정 sin-cos.
+    - 수정: `self.register_buffer('pos_embed', sincos_pe(...))` 로 교체.
+    - 난이도: 매우 낮
+
+(D) Encoder positional embedding (스킵 예정)
+    - 현재 2D RoPE 사용 (논문은 sin-cos). 되돌리지 않음.
+    - 논문에 "we replace sin-cos with 2D RoPE as a standard modernization"
+      한 줄로 정당화.
+
+학습 파라미터 (변경 불필요):
+    V-JEPA-ours 도 Two-Stream 과 동일하게 `--max-gap 60 --sample-dist triangular
+    --sample-decay -1` 사용. Gap sampling 이 시간 차원의 long-range 보충.
+
+Sanity check 재실행 (32866942 수준) 후 full training 제출.
+=============================================================================
 """
 
 import copy
@@ -236,6 +282,8 @@ class VJEPAPredictor(nn.Module):
         self.mask_token = nn.Parameter(torch.zeros(1, 1, pred_embed_dim))
         nn.init.trunc_normal_(self.mask_token, std=0.02)
 
+        # TODO(C): 논문은 고정 sin-cos PE. 현재 learnable 로 단순화됨.
+        #          register_buffer('pos_embed', sincos_2d(...)) 로 교체 필요.
         # Positional embedding (learnable, full length)
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, pred_embed_dim))
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
@@ -329,6 +377,8 @@ class VJEPAPredictor(nn.Module):
 # Multi-block masking
 # ============================================================================
 
+# TODO(B): dual masking 을 위해 short / long 두 종류 샘플링으로 확장.
+#          현재는 단일 블록 세트만 지원 — compute_loss 도 함께 수정 필요.
 def sample_multi_block_mask(
     num_patches_per_side: int = 14,
     num_blocks: int = 4,
@@ -463,6 +513,11 @@ class VJEPAModel(nn.Module):
             self.ema_momentum_start * (1 - t) + self.ema_momentum_end * t
         )
 
+    # TODO(A): per-sample masking 으로 재작성. 현재는 배치 공유 마스크 —
+    #          RoPE `_gather_freqs` 가 배치 내 공유 기반이라 함께 수정 필요.
+    # TODO(B): (mask_short, mask_long) 튜플 반환으로 확장. compute_loss 에서
+    #          각각 predictor 호출 후 loss 합산. 2-frame 세팅에서는 spatial
+    #          only 이므로 I-JEPA 스타일.
     def _sample_masks(self, batch_size: int, device: torch.device):
         """Sample a shared mask for the batch (simpler than per-sample masks)."""
         mask = sample_multi_block_mask(

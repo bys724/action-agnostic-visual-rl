@@ -76,13 +76,34 @@
 
 **작업**:
 - **Two-Stream v4** 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중 (jobID 32712324, epoch 17 완료)**
-- **V-JEPA-ours** — 구현 + sanity check 완료 (`src/models/v_jepa.py`), Two-Stream 종료 후 학습 제출 예정
-  - 구조: ViT-B x-encoder (86M) + narrow predictor (22M) + EMA y-encoder (frozen)
-  - 2-frame tubelet 입력, multi-block spatial masking, L1 loss with stop-gradient
-  - Sanity check (jobID 32866942): gradient flow, EMA update, feature extraction 전부 통과
+- **V-JEPA-ours** — 구현 있음 (`src/models/v_jepa.py`), sanity check (32866942) 통과.
+  구조: ViT-B x-encoder (86M) + narrow predictor (22M) + EMA y-encoder (frozen).
+  2-frame tubelet 입력, L1 loss + stop-gradient, EMA momentum anneal.
+  **Two-Stream 종료 전 구현 갭 수정 필요** (아래 참고).
 - 학습 후 hand pose probing으로 품질 확인 (part1 기준 대비 개선 여부)
 
 **산출물**: `results/checkpoints/two_stream/` 및 `.../v_jepa/` 에 best_model.pt
+
+#### V-JEPA-ours 구현 갭 (Full training 전 수정 필요)
+
+논문 재현 타당성 확보를 위해 학습 제출 전 수정. 파이프라인 (x/y encoder,
+predictor, EMA, stop-gradient, L1) 은 이미 일치 — 아래 3건만 보강.
+
+| 항목 | 현재 | 수정 계획 | 난이도 |
+|------|------|----------|--------|
+| **(A)** Per-sample masking | 배치 공유 마스크 | RoPE `_gather_freqs` 재작성해서 per-sample freqs 지원 | 중 (하루) |
+| **(B)** Spatial dual masking | 단일 블록 세트 | short-range (n=8, scale 0.03-0.05) + long-range (n=2, scale 0.30-0.40) 두 마스크, predictor 2번 호출 후 L1 합산. 2-frame 세팅이므로 I-JEPA 스타일 spatial-only | 낮 (반나절) |
+| **(C)** Predictor PE | Learnable `nn.Parameter` | 고정 sin-cos PE (`register_buffer`) | 매우 낮 |
+| (D) Encoder PE | 2D RoPE | 유지 — 논문에 "standard modernization" 명시 | — |
+
+**2-frame 세팅의 적응**: Tubelet collapse 로 temporal long-range masking 이
+불가능. 시간 차원의 long-range 역할은 **gap sampling** (`--max-gap 60
+--sample-dist triangular --sample-decay -1`) 이 담당. Two-Stream 과 동일 조건.
+
+**수정 후 절차**:
+1. Sanity check 재실행 (~32866942 수준: gradient flow, EMA, feature shape)
+2. Full training 제출 (Two-Stream 종료 후 같은 노드/파티션)
+3. 코드 참조: [src/models/v_jepa.py](../src/models/v_jepa.py) 상단 TODO 주석
 
 ### Phase 2: Cross-Domain Action Probing (DROID) ⏸️ 대기
 
