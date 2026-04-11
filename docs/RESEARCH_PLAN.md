@@ -75,11 +75,11 @@
 **목표**: 전체 EgoDex (part1~5, 314k videos)로 최종 체크포인트 확보
 
 **작업**:
-- **Two-Stream v4** 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중 (jobID 32712324)**
-- **V-JEPA-ours** 50 epoch 학습 (동일 데이터, 직접 경쟁 baseline) — 구현 후 제출 예정
-  - 구조: ViT-B x-encoder + predictor (narrow transformer, 12 blocks × 384 dim) + EMA y-encoder
-  - 목표: L1 loss in feature space with stop-gradient
-  - 2-frame 입력으로 adapt (tubelet_size=2 → 1 temporal group)
+- **Two-Stream v4** 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중 (jobID 32712324, epoch 17 완료)**
+- **V-JEPA-ours** — 구현 + sanity check 완료 (`src/models/v_jepa.py`), Two-Stream 종료 후 학습 제출 예정
+  - 구조: ViT-B x-encoder (86M) + narrow predictor (22M) + EMA y-encoder (frozen)
+  - 2-frame tubelet 입력, multi-block spatial masking, L1 loss with stop-gradient
+  - Sanity check (jobID 32866942): gradient flow, EMA update, feature extraction 전부 통과
 - 학습 후 hand pose probing으로 품질 확인 (part1 기준 대비 개선 여부)
 
 **산출물**: `results/checkpoints/two_stream/` 및 `.../v_jepa/` 에 best_model.pt

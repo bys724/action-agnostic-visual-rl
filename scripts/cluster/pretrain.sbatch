@@ -26,8 +26,8 @@
 #          --export=MODEL=two-stream,EPOCHS=1 scripts/cluster/pretrain.sbatch
 #
 #   # 본 학습 (2 노드 8 GPU 50 epoch)
-#   sbatch --export=MODEL=two-stream,EPOCHS=50 scripts/cluster/pretrain.sbatch
-#   sbatch --export=MODEL=videomae,EPOCHS=50   scripts/cluster/pretrain.sbatch
+#   sbatch --export=MODEL=two-stream,EPOCHS=50,USE_SCRATCH=0 scripts/cluster/pretrain.sbatch
+#   sbatch --export=MODEL=v-jepa,EPOCHS=50,USE_SCRATCH=0     scripts/cluster/pretrain.sbatch
 #
 # 모니터링:
 #   squeue --me
