@@ -1,111 +1,165 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-03-19
+**마지막 업데이트**: 2026-04-11
 **연구 질문**: 행동 정보 없이 학습한 시각 표현이 더 범용적인가?
 
 ---
 
-## 실험 로드맵 (단계별 Go/No-Go)
+## 실험 대상 모델 (Encoder 5종)
 
-### Phase 1: EgoDex 사전학습 → Action Probing (EgoDex)
+| 구분 | Encoder | 사전학습 데이터 | 파라미터 | 입력 | 학습 주체 |
+|------|---------|---------------|---------|------|----------|
+| **제안** | **Two-Stream v4 (ours)** | EgoDex (1.3 TB) | ~213M | (img_{t-1}, img_t) | **우리 학습** |
+| **Same-data ablation** | **VideoMAE (ours)** | EgoDex (1.3 TB) | ~101M | (img_{t-1}, img_t) | **우리 학습** |
+| 로봇 특화 baseline | VC-1-Base | Ego4D + Manipulation | 86M | img_t (2 frame concat) | 공개 가중치 |
+| 범용 SSL baseline | DINOv2-Base | LVD-142M (웹) | 86M | img_t (2 frame concat) | 공개 가중치 |
+| 범용 VL baseline | SigLIP-Base | WebLI (웹) | 86M | img_t (2 frame concat) | 공개 가중치 |
 
-**목표**: 세 모델의 표현 품질 비교 (hand pose linear probe)
-**비용**: ~$250-700 (part1, 30ep, g5.12xlarge)
+**공정성 원칙**:
+- 모든 encoder에 **동일한 입력 형식** — 단일 프레임 encoder도 `(img_{t-1}, img_t)` 2개를 feature 레벨 concat
+- 모든 encoder는 downstream 실험에서 **frozen** (학습 안 함)
+- downstream에서 유일하게 학습되는 것은 **MLP action decoder** (Phase 3) 또는 **LoRA + projection** (Phase 3B)
 
-1. EgoDex part1로 3개 모델 사전학습 (AWS g5.12xlarge)
-2. 인코더 freeze → EgoDex test에서 hand pose linear probe
-3. 기대 결과: **Two-Stream > Single-Stream > VideoMAE**
+---
+
+## 실험 로드맵
+
+### Phase 1: EgoDex 사전학습 → Hand Pose Probing ✅ 완료
+
+**목표**: 제안한 Two-Stream 구조의 표현 품질 검증 (within-domain)
+
+**작업**:
+- Two-Stream v4, VideoMAE를 EgoDex part1~5 일부로 반복 ablation
+- frozen encoder → EgoDex test에서 hand pose linear probe (R²)
+- Architecture / MAE masking / gap 분포 / composition consistency 전체 ablation
+
+**결과**: v4 설정 확정 (d=12, s=2, M=0.3/P=0.5, max_gap=60 triangular).
+상세 ablation 결과는 하단 "Phase 1 Ablation 결과" 참고.
+
+### Phase 1.5: 데이터 스케일업 (Full EgoDex) 🔄 진행 중
+
+**목표**: 전체 EgoDex (part1~5, 314k videos)로 최종 체크포인트 확보
+
+**작업**:
+- Two-Stream v4 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중**
+- VideoMAE 50 epoch 학습 (동일 데이터, baseline 역할)
+- 학습 후 hand pose probing으로 품질 확인 (part1 기준 대비 개선 여부)
+
+**산출물**: `results/checkpoints/two_stream/` 및 `.../videomae/` 에 best_model.pt
+
+### Phase 2: Cross-Domain Action Probing (DROID) ⏸️ 대기
+
+**목표**: EgoDex 표현이 **로봇 도메인**으로 전이되는지 검증
+
+**작업**:
+1. frozen encoder로 DROID에서 로봇 행동 linear/MLP probe
+2. 5개 encoder 모두 동일 probe 프로토콜로 비교
+3. 지표: R², cosine similarity
+
+**데이터**: DROID v1.0.1 (95k episodes Franka, gsutil rsync 진행 중)
 
 **Go/No-Go**:
-- YES (순서 맞음) → 구조 효과 확인. Phase 1.5로
-- NO → 모델 구조 또는 학습 디버깅 필요
+- 우리 encoder가 baseline 대비 우위 → Phase 3 순항
+- 열세 → 원인 분석 (EgoDex와 DROID 도메인 갭 vs 표현 품질)
 
-### Phase 1.5: 데이터 스케일업 (Go 시에만)
+### Phase 3: LIBERO BC (메인 downstream 실험) ⏸️ 대기
 
-**목표**: 전체 EgoDex로 표현 품질 극대화
-**비용**: ~$2,000-3,000 (part1~5, 50+ep)
-**전제**: Phase 1에서 모델 구조 효과가 검증된 상태
+**목표**: "표현에 인코딩된 action 정보가 **실제 제어**에 유용한가"를 검증
 
-1. EgoDex part1~5 전체로 best 모델 재학습 (epoch 확대)
-2. 같은 hand pose probe로 Phase 1 대비 성능 향상 확인
+**실험 구조**:
+```
+frozen encoder → MLP action decoder → 7-DOF action
+  (5종 비교)     (학습 대상)          (task-conditioned)
+```
 
-**Go/No-Go**:
-- 스케일업 효과 확인 → 이 체크포인트로 Phase 2 진행
-- 효과 미미 → part1 체크포인트로 Phase 2 진행 (데이터 추가 불필요)
+**학습 대상**: MLP action decoder만. encoder는 모두 frozen.
+**학습 데이터**: LIBERO demonstrations (BC, supervised regression)
+**태스크 구분**: per-task policy 또는 task ID embedding (자연어 사용 안 함)
 
-### Phase 2: Action Probing (DROID + Bridge V2)
+**평가**:
+- LIBERO 시뮬레이터에서 closed-loop rollout
+- Task suite: `libero_spatial` (main), `libero_object`, `libero_goal`, `libero_10` (supp)
+- Task당 최소 50 trials, 3 seed 평균
+- 지표: success rate (%)
 
-**목표**: EgoDex 표현의 로봇 도메인 전이 가능성 검증
+**공정 비교 체크리스트**:
+- [ ] 모든 encoder에 동일 MLP 아키텍처 (hidden dim, depth)
+- [ ] 단일 프레임 encoder는 (img_{t-1}, img_t) feature concat으로 입력 맞춤
+- [ ] 동일 action 정규화, lr, epoch, batch size
+- [ ] 동일 trial 수 + seed
 
-1. 같은 인코더로 DROID에서 로봇 행동 linear probe (**primary**)
-2. Bridge V2로 cross-embodiment 추가 검증 (secondary, 필요 시)
-3. Baseline 비교: DINOv2, CLIP, R3M
+**기대 결과**: Two-Stream v4 > VC-1 > VideoMAE > DINOv2 ≈ SigLIP
 
-**데이터셋 역할**:
-- **DROID** (95k ep, Franka): 주력 probing 데이터. 규모·다양성 최대
-- **Bridge V2** (25k traj, WidowX): 로봇 다양성 보강용. 리뷰어 요청 시 추가
+### Phase 3B: OpenVLA 통합 (supplementary) ⏸️ 대기
 
-**Go/No-Go**:
-- YES (baseline 대비 competitive) → cross-domain transfer 가능. Phase 3A로
-- NO (도메인 갭 확인) → 실패는 아님. Phase 3B로
+**목표**: "기존 SOTA VLA에 우리 encoder를 넣으면 성능이 오르는가"를 직접 검증
 
-### Phase 3: LIBERO Fine-tuning (Encoder 품질 최종 검증)
+**실험 구조**:
+```
+Two-Stream encoder → projection → Llama 7B (OpenVLA backbone) → action tokens
+  (frozen 또는      (신규 학습)   (LoRA fine-tune)
+   partial fine-tune)
+```
 
-**목표**: frozen encoder + 간단한 action decoder로 LIBERO 시뮬레이터에서 로봇 조작 평가.
-"표현에 인코딩된 action 정보가 실제 제어에 유용한가?"를 success rate로 검증.
+**학습 대상**:
+- Projection layer (encoder dim → Llama embed dim): **신규 학습**
+- Llama 7B: **LoRA 어댑터만 학습** (rank 32, OpenVLA 논문 setup)
+- Two-Stream encoder: 실험 옵션 (frozen 권장, 필요 시 마지막 N layer fine-tune)
 
-**실험 설계 (controlled comparison)**:
-- 동일 조건: 같은 MLP action decoder, 같은 LIBERO fine-tuning 절차
-- 변수: frozen vision encoder만 교체
-- 평가: 시뮬레이터 rollout success rate
+**학습 데이터**: LIBERO RLDS 포맷 (OpenVLA 기존 인프라 활용)
 
-| Encoder | 사전학습 | 입력 | Params |
-|---------|---------|------|--------|
-| Two-Stream v4 | EgoDex (ours) | (img_t-1, img_t) | ~186M |
-| VideoMAE | EgoDex (ours) | (img_t-1, img_t) | 86M |
-| SigLIP | WebLI (OpenVLA 원본) | img_t | 86M |
-| DINOv2-Base | LVD-142M | img_t | 86M |
-
-※ 공정성: 1프레임 baseline에도 (img_t-1, img_t) concat 조건 추가 검토
-
-**학습 데이터**: LIBERO demonstration (HDF5, 이미지+action 포함)
-- `data/libero/datasets/libero_spatial/` — 10개 태스크
-- `~/.cache/openvla/datasets/modified_libero_rlds/` — 4개 suite (RLDS 포맷)
-
-**평가**: LIBERO 시뮬레이터에서 rollout (Docker `libero` 환경)
-- 태스크별 success rate (N=20 trials)
-- 단순 action prediction이 아닌 **연속 제어** 성공 여부
-
-**논문 스토리 3단계**:
-1. Action probing → 표현에 action 정보가 **인코딩되어 있다** (완료)
-2. LIBERO fine-tuning → 인코딩된 정보가 **실제 제어에 유용하다**
-3. Encoder 비교 → action-agnostic 사전학습이 **범용 vision feature보다 낫다**
-
-### Phase 3B: VLA 통합 (OpenVLA encoder 교체)
-
-OpenVLA의 SigLIP을 Two-Stream으로 교체 → LIBERO fine-tuning → rollout.
-"기존 VLA에 우리 encoder를 넣으면 성능이 오르는가?"를 직접 검증.
-
-**기존 인프라 (이미 준비됨)**:
-- OpenVLA fine-tuning 코드: 공개 (github.com/openvla/openvla)
-- LIBERO RLDS 데이터: `~/.cache/openvla/datasets/modified_libero_rlds/` (9.6GB)
-- Fine-tuned 체크포인트: `data/checkpoints/openvla-libero/` (libero-10, libero-spatial)
-- Docker 환경: `docker/openvla-libero/`
-- 시뮬레이터 rollout: `src/eval_libero.py` (OpenVLA REST API + Custom encoder 지원)
-- **기존 rollout 결과**: OpenVLA libero_spatial success rate 40% (참고용 baseline)
-
-**실험 설계**:
-| 모델 | Encoder | 방식 | 비고 |
+**실험 대상**:
+| 모델 | Encoder | 방식 | 역할 |
 |------|---------|------|------|
-| OpenVLA (원본) | SigLIP | 7B VLA | reference baseline, 이미 결과 있음 |
-| OpenVLA + Two-Stream | Two-Stream v4 | 7B VLA (encoder 교체) | 통합 실험 |
-| Encoder + MLP (ours) | Two-Stream v4 | frozen enc + MLP | Phase 3 메인 실험 |
-| Encoder + MLP | DINOv2 | frozen enc + MLP | Phase 3 비교 대상 |
+| OpenVLA (원본) | SigLIP (원본) | LoRA FT | Reference (기존 결과 libero_spatial 40%) |
+| OpenVLA + Two-Stream | Two-Stream v4 | LoRA FT | 주된 비교 대상 |
 
-**사전 작업**:
-- [ ] OpenVLA fine-tuning 코드에 Two-Stream encoder 주입 경로 확인
-- [ ] Docker `openvla-libero` 환경 정상 구동 확인
-- [ ] 기존 OpenVLA fine-tuned 모델로 rollout 재현 가능 확인
+**평가**: libero_spatial만 (scope 제한). 필요 시 다른 suite로 확장.
+
+**기존 인프라** (대부분 준비됨):
+- OpenVLA 코드: https://github.com/openvla/openvla (fine-tuning 스크립트 포함)
+- LIBERO RLDS 데이터: `~/.cache/openvla/datasets/modified_libero_rlds/` (9.6 GB)
+- OpenVLA fine-tuned 체크포인트: `data/checkpoints/openvla-libero/`
+- Docker 환경: `docker/openvla-libero/`
+- Rollout 서버: `src/eval_libero.py`
+
+**신규 작업**:
+- [ ] OpenVLA의 `vision_backbone` 교체 로직 작성 (~수십 줄)
+- [ ] Two-Stream output → Llama embedding projection layer
+- [ ] OpenVLA `vla-scripts/finetune.py` 에 encoder 교체 경로 삽입
+
+**의도적 제외** (scope 관리):
+- Pi0, RT-2, LAPA — 인프라 불완전 또는 비공개. Future work.
+- 여러 IL 알고리즘 비교 (BC-RNN, Diffusion Policy 등) — 필요 시 rebuttal에서 추가 가능.
+- Full fine-tuning (non-LoRA) — 비용 대비 효과 낮음.
+
+---
+
+## 논문 스토리 3단계
+
+| 단계 | 주장 | 뒷받침 Phase | 지표 |
+|------|------|-------------|------|
+| 1 | 표현에 action 정보가 **인코딩되어 있다** | Phase 1 (EgoDex) + Phase 2 (DROID) | R², cosine similarity (open-loop) |
+| 2 | 인코딩된 정보가 **실제 제어에 유용하다** | Phase 3 (LIBERO BC rollout) | success rate (closed-loop) |
+| 3 | action-agnostic 사전학습이 **범용 비전 feature보다 낫다** | Phase 3 (5종 encoder 비교) + Phase 3B (SOTA 통합) | 순위 + success rate 차이 |
+
+---
+
+## 요약: 학습 작업 분류
+
+### 🔥 우리가 학습해야 하는 모델 (from scratch)
+1. **Two-Stream v4** on EgoDex full (50 epoch, 8 H100) — **현재 진행 중**
+2. **VideoMAE** on EgoDex full (50 epoch, 8 H100) — 다음 차례
+
+### 📦 공개 가중치 그대로 사용 (학습 없음)
+3. **VC-1-Base** (Meta eai-vc 저장소)
+4. **DINOv2-Base** (Facebook)
+5. **SigLIP-Base** (Google)
+
+### 🔧 Downstream에서 학습하는 것 (encoder는 frozen)
+- **Phase 2**: MLP probing head (5 encoder × DROID)
+- **Phase 3**: MLP action decoder (5 encoder × 4 task suite)
+- **Phase 3B**: Projection layer + Llama LoRA 어댑터 (Two-Stream + OpenVLA backbone, libero_spatial)
 
 ---
 
