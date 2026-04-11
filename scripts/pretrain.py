@@ -20,7 +20,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, VideoMAEModel
+from src.models import TwoStreamModel, VJEPAModel, VideoMAEModel
 from src.datasets import EgoDexDataset, BridgeDataset
 from src.training.pretrain import train
 
@@ -30,7 +30,7 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'videomae'],
+                        choices=['two-stream', 'v-jepa', 'videomae'],
                         help='Model type (default: two-stream)')
 
     # Training parameters
@@ -172,6 +172,8 @@ def main():
     if args.model == 'two-stream':
         model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
                                mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p)
+    elif args.model == 'v-jepa':
+        model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':
         model = VideoMAEModel()
     else:

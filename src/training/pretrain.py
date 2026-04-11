@@ -185,7 +185,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         model_name = type(actual_model).__name__
 
         with amp_ctx:
-            if model_name == 'VideoMAEModel':
+            if model_name in ('VideoMAEModel', 'VJEPAModel'):
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -235,6 +235,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         weighted_loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
+
+        # V-JEPA: optimizer step 후 y-encoder (EMA teacher) 업데이트
+        if model_name == 'VJEPAModel':
+            actual_model.update_ema()
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -311,7 +315,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
         model_name = type(actual_model).__name__
 
         with torch.no_grad(), torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            if model_name == 'VideoMAEModel':
+            if model_name in ('VideoMAEModel', 'VJEPAModel'):
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -421,8 +425,8 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     pred_p = pred_p.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, pred_m, pred_p]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
-                elif model_name == 'VideoMAEModel':
-                    # VideoMAE는 masked patch만 예측 → full image 시각화 생략
+                elif model_name in ('VideoMAEModel', 'VJEPAModel'):
+                    # 픽셀 복원이 아닌 feature/masked 예측 → 이미지 시각화 생략
                     continue
                 else:
                     pred, _ = actual_model(x, y)
@@ -674,6 +678,11 @@ def train(
         # DistributedSampler shuffle 재초기화 (필수 — 빠뜨리면 매 epoch 같은 순서)
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
+
+        # V-JEPA: EMA momentum 스케줄 (선형 anneal start → end)
+        _inner = model.module if hasattr(model, 'module') else model
+        if type(_inner).__name__ == 'VJEPAModel':
+            _inner.set_ema_momentum(epoch - 1, num_epochs)
 
         # Train
         train_result = train_epoch(model, dataloader, optimizer, device, epoch,
