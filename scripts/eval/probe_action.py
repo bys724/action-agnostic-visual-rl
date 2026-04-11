@@ -266,6 +266,50 @@ def build_datasets(
 # 2. Encoder loading
 # ============================================================================
 
+# =============================================================================
+# TODO: Phase 2 baseline encoder 로더 보강 (full training 체크포인트 확보 후)
+# =============================================================================
+# 현재 지원: two-stream, videomae, clip, dinov2
+# 누락 (Phase 2 probing 전 반드시 추가):
+#
+#   (1) SigLIP-Base — Internet-scale VL baseline
+#       - 공식 저장소: google-research/big_vision (원본) / HuggingFace 공식 미러
+#       - 권장: `google/siglip-base-patch16-224` (HF official) 사용
+#       - `transformers.SiglipVisionModel.from_pretrained(...)`
+#       - 공식 preprocessing: mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5), 224x224
+#       - 검증: HuggingFace model card 의 sample code 를 먼저 재현해서 feature
+#         shape / norm 이 문서와 일치하는지 확인 후 통합
+#
+#   (2) VC-1-Base — embodied AI 표준 baseline
+#       - 공식 저장소: facebookresearch/eai-vc
+#       - 설치: `pip install vc_models` (or git clone + pip install -e .)
+#       - API: `from vc_models.models.vit import model_utils;
+#                model, _, _, _ = model_utils.load_model(model_utils.VC1_BASE_NAME)`
+#       - 공식 preprocessing: ImageNet mean/std, 224x224
+#       - 검증: eai-vc README 의 feature extraction 예제 재현 후 통합
+#       - 절대 자체 구현하지 말 것. 공식 로더 그대로 사용.
+#
+#   (3) V-JEPA-ours — 우리가 학습한 체크포인트
+#       - src/models/v_jepa.py::VJEPAModel.extract_features() 사용
+#       - `load_from_checkpoint` 유사 패턴으로 x_encoder 만 로드 (y_encoder 불필요)
+#       - EMA y_encoder 는 체크포인트에서 제외 가능 (frozen inference 에는 x 만 필요)
+#
+# CLIP 제거 검토:
+#   - 5-encoder 실험 목록에 없음 (SigLIP 이 Internet-scale VL 역할 담당)
+#   - Phase 1 에서 baseline 참고용으로만 써서 남아 있음
+#   - Phase 2 이후 제거 or "legacy baseline" 으로 라벨링
+#
+# 2-frame 입력 규약 (모든 단일 프레임 baseline 공통):
+#   (a) 각 프레임 독립 forward → concat 방식 권장 (코드 기존 방식 그대로)
+#   (b) 각 encoder 의 "공식 preprocessing" 을 그대로 사용 (mean/std, resolution)
+#   (c) feature 추출 위치: CLS token 또는 patch mean pool — probe 실험에서 결정
+#
+# 공식 저장소 검증 절차 (각 baseline 통합 전 반드시):
+#   1. 공식 README 의 feature extraction quickstart 코드 실행
+#   2. 공식 예제 이미지로 feature shape / norm / dtype 확인
+#   3. 공식 문서가 명시한 layer / token 선택 규약을 그대로 따름
+#   4. 우리 래퍼에서 동일 입력 → 동일 feature 재현 확인 (값까지 같아야 함)
+# =============================================================================
 def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
                  cls_mode: str = "average", depth: int = 12, num_stages: int = 3):
     """

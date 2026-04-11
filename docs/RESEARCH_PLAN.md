@@ -120,6 +120,30 @@ predictor, EMA, stop-gradient, L1) 은 이미 일치 — 아래 3건만 보강.
 - 우리 encoder가 baseline 대비 우위 → Phase 3 순항
 - 열세 → 원인 분석 (EgoDex와 DROID 도메인 갭 vs 표현 품질)
 
+#### 선행 작업: Baseline encoder 로더 보강 (Phase 2 시작 전 필수)
+
+`scripts/eval/probe_action.py::load_encoder` 에 현재 지원: two-stream,
+videomae, clip, dinov2. **누락**: SigLIP, VC-1, V-JEPA-ours.
+
+**원칙**: 각 baseline 은 **공식 저장소의 검증된 방식**으로만 로드. 자체 구현
+금지. 공식 예제를 먼저 재현해서 feature shape/값이 문서와 일치함을 확인 후
+우리 래퍼로 감싼다.
+
+| Encoder | 공식 저장소 | 로드 방식 | 전처리 |
+|---------|------------|----------|--------|
+| **SigLIP-Base** | google-research/big_vision (HF 미러 `google/siglip-base-patch16-224`) | `transformers.SiglipVisionModel.from_pretrained` | mean=(.5,.5,.5), std=(.5,.5,.5), 224 |
+| **VC-1-Base** | facebookresearch/eai-vc | `vc_models.models.vit.model_utils.load_model(VC1_BASE_NAME)` | ImageNet mean/std, 224 |
+| **V-JEPA-ours** | (자체 학습) | `VJEPAModel.extract_features()`, x_encoder 만 로드 | Two-Stream 과 동일 |
+
+**2-frame 입력 규약**: 모든 단일 프레임 baseline 은 `(img_{t-1}, img_t)` 각
+프레임 독립 forward 후 feature concat. 각 encoder 의 **공식 preprocessing** 을
+그대로 사용 (mean/std, resolution).
+
+**CLIP 제거 검토**: 5-encoder 목록에 없음. SigLIP 이 Internet-scale VL 역할.
+Phase 2 이후 `legacy_baseline` 으로 라벨링 or 삭제.
+
+상세 TODO 는 [scripts/eval/probe_action.py](../scripts/eval/probe_action.py) 상단 주석 참고.
+
 ### Phase 3: LIBERO BC (메인 downstream 실험) ⏸️ 대기
 
 **목표**: "표현에 인코딩된 action 정보가 **실제 제어**에 유용한가"를 검증
