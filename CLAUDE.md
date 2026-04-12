@@ -167,14 +167,14 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-11)
+## 현재 Phase (2026-04-12)
 
-**Phase 1.5 진행 중 — Two-Stream full training + V-JEPA-ours 구현**
+**Phase 1.5 진행 중 — Two-Stream + V-JEPA-ours full training**
 
-- **Two-Stream v4**: 현재 IBS 클러스터에서 50 epoch full training 중 (jobID 32712324)
-- **V-JEPA-ours**: 신규 baseline으로 구현 예정 (기존 VideoMAE 계획 대체)
-  - 같은 EgoDex 데이터로 학습하여 "구조적 inductive bias(M/P) vs generic feature prediction" 직접 비교
-- **DROID**: gsutil rsync 진행 중 (sbatch 기반)
+- **Two-Stream v4**: 50 epoch full training 중 (jobID 32712324, epoch 25/50)
+- **V-JEPA-ours**: 구현 완료 → 2차 학습 중 (jobID 32867645, warmup 추가 후 재제출)
+  - 1차(32867433)는 LR warmup 부재로 loss 단조 상승 → epoch 4에서 취소
+- **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기 중
 
 **Encoder 5종 lineup** (전부 frozen 비교):
 1. Two-Stream v4 (ours, EgoDex, 구조적 M/P bias) — 우리 학습
@@ -243,3 +243,9 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **`--gpus-per-task=1`**: CUDA_VISIBLE_DEVICES 제한 → `set_device(local_rank)` 실패 + NCCL `nvmlDeviceGetHandleByPciBusId` 실패. 해결: `--gres=gpu:N`으로 전환
 - **MASTER_PORT 충돌**: 동일 노드에 여러 DDP 잡 → EADDRINUSE. 해결: `MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`
 - **srun PATH 미전파**: conda activate 후에도 `srun python` 실패. 해결: `$CONDA_PREFIX/bin/python` 절대 경로
+
+### V-JEPA LR warmup 부재로 loss 발산 (2026-04-12)
+- **증상**: V-JEPA 1차 학습(32867433)에서 loss가 epoch 2 이후 단조 상승 (0.17 → 0.25 → 0.35)
+- **원인**: CosineAnnealingLR만 사용, warmup 없음. 학습 시작부터 LR=2e-4(max)로 x-encoder가 급변 → EMA y-encoder(momentum 0.998)가 추적 실패 → predictor target drift → loss 상승
+- **수정**: `SequentialLR(LinearLR(warmup 5ep, 1e-6→2e-4) + CosineAnnealingLR(45ep))` 적용. 모든 모델 공통 (Two-Stream에도 무해)
+- **교훈**: EMA target 기반 학습(V-JEPA, BYOL, DINO 등)은 LR warmup 필수. Pixel reconstruction(Two-Stream)은 target이 고정이라 warmup 없이도 안정적이지만, moving target에서는 초기 LR이 EMA lag와 맞물려 발산 유발

@@ -591,7 +591,22 @@ def train(
 
     # Fused AdamW — optimizer step을 단일 CUDA 커널로 합침 (5~10% 가속, PyTorch 2.0+)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01, fused=True)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+
+    # LR schedule: linear warmup (10% of epochs) + cosine decay
+    # Warmup은 EMA 기반 모델(V-JEPA)의 초기 안정성에 필수.
+    # Two-Stream(pixel target)에도 무해하므로 공통 적용.
+    warmup_epochs = max(1, num_epochs // 10)
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=1e-6 / lr, total_iters=warmup_epochs,
+    )
+    cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epochs - warmup_epochs,
+    )
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[warmup_epochs],
+    )
 
     # AMP BF16 — H100 Tensor Core 기준 FP32 대비 ~2배 throughput
     # BF16은 FP32와 동일한 exponent range → GradScaler 불필요 (FP16만 필요)
