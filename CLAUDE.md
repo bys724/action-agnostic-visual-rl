@@ -172,8 +172,10 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 **Phase 1.5 진행 중 — Two-Stream + V-JEPA-ours full training**
 
 - **Two-Stream v4**: 50 epoch full training 중 (jobID 32712324, epoch 25/50)
-- **V-JEPA-ours**: 구현 완료 → 2차 학습 중 (jobID 32867645, warmup 추가 후 재제출)
-  - 1차(32867433)는 LR warmup 부재로 loss 단조 상승 → epoch 4에서 취소
+- **V-JEPA-ours**: 구현 완료 → 3차 학습 중 (jobID 32950553, mask ratio 완화 후 재제출)
+  - 1차(32867433): LR warmup 부재로 loss 상승 → epoch 4에서 취소
+  - 2차(32867645): warmup 추가했으나 mask ratio 과다(80/85%)로 loss 계속 상승 → epoch 7에서 취소
+  - 3차: mask ratio 50/60%로 완화. 2-frame spatial-only는 temporal redundancy 없어 높은 masking이 발산 유발
 - **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기 중
 
 **Encoder 5종 lineup** (전부 frozen 비교):
@@ -249,3 +251,9 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **원인**: CosineAnnealingLR만 사용, warmup 없음. 학습 시작부터 LR=2e-4(max)로 x-encoder가 급변 → EMA y-encoder(momentum 0.998)가 추적 실패 → predictor target drift → loss 상승
 - **수정**: `SequentialLR(LinearLR(warmup 5ep, 1e-6→2e-4) + CosineAnnealingLR(45ep))` 적용. 모든 모델 공통 (Two-Stream에도 무해)
 - **교훈**: EMA target 기반 학습(V-JEPA, BYOL, DINO 등)은 LR warmup 필수. Pixel reconstruction(Two-Stream)은 target이 고정이라 warmup 없이도 안정적이지만, moving target에서는 초기 LR이 EMA lag와 맞물려 발산 유발
+
+### V-JEPA mask ratio 과다로 2차도 loss 상승 (2026-04-12)
+- **증상**: 2차 학습(32867645, warmup 추가)에서도 epoch 6까지 loss 단조 상승 (0.28 → 0.42). Warmup 종료(epoch 5) 후에도 하강 없음
+- **원인**: mask ratio 80%(short) / 85%(long)로 visible 토큰이 30-40개뿐. 원래 V-JEPA는 16프레임의 temporal redundancy 덕에 90% masking이 가능하지만, 2-frame spatial-only 세팅에서는 그 redundancy가 없음 → predictor가 충분한 context 없이 과도한 예측을 요구받아 학습 실패
+- **수정**: mask ratio 50%(short) / 60%(long)로 완화. visible 토큰 ~78-98개로 확보. 블록 스케일도 축소 (short 0.10-0.15, long 0.30-0.40)
+- **교훈**: V-JEPA의 높은 masking ratio는 temporal redundancy(16프레임)가 전제. 2-frame 적응 시 masking을 대폭 완화해야 함

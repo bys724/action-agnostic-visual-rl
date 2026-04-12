@@ -9,9 +9,10 @@ matching V-JEPA's 16-frame clip receptive field).
 
 Design choices vs. the official facebookresearch/jepa repo:
 - L1 loss in feature space, target features LayerNorm'd (official forward_target).
-- Dual mask per batch: short-range (8 small blocks) + long-range (2 large
-  blocks), each with per-sample independent sampling. Predictor called twice,
-  losses averaged.
+- Dual mask per batch: short-range (8 small blocks, 50% masked) + long-range
+  (2 large blocks, 60% masked). 원본 V-JEPA(80/85%)보다 완화 — 2-frame
+  spatial-only 세팅에서는 temporal redundancy 가 없어 높은 mask ratio 가 학습
+  발산을 유발 (1차, 2차 실험에서 확인). Predictor 2회 호출, losses averaged.
 - Predictor: narrow transformer (12 × 384), fixed 2D sin-cos PE added to tokens.
 - Target encoder: EMA of x-encoder, momentum schedule 0.998→1.0 with
   ipe_scale=1.25 (matches vitl16.yaml).
@@ -368,11 +369,11 @@ class VJEPAModel(nn.Module):
         # (spatial-only adaptation for 2-frame tubelet; per-block scales are
         #  the spatial_scale of the official 3D multi-block mask)
         short_num_blocks: int = 8,
-        short_scale_range: tuple = (0.13, 0.17),  # official: 0.15 ± small jitter
-        short_mask_ratio: float = 0.80,            # ~many small blocks → ~80% masked
-        long_num_blocks: int = 2,
-        long_scale_range: tuple = (0.65, 0.75),   # official: 0.70
-        long_mask_ratio: float = 0.85,             # ~few large blocks → ~85% masked
+        short_scale_range: tuple = (0.10, 0.15),
+        short_mask_ratio: float = 0.50,            # 2-frame spatial-only 적응: temporal
+        long_num_blocks: int = 2,                  # redundancy 없으므로 원본(80/85%)
+        long_scale_range: tuple = (0.30, 0.40),    # 대비 대폭 완화. visible 토큰 충분히 확보.
+        long_mask_ratio: float = 0.60,
         aspect_range: tuple = (0.75, 1.5),
         ema_momentum_start: float = 0.998,
         ema_momentum_end: float = 1.0,
