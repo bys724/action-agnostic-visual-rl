@@ -41,6 +41,9 @@ def find_high_change_pairs(frames_dir, num_candidates=30, num_select=2, gap=30, 
     for root, dirs, files in os.walk(frames_dir):
         if any(f.endswith('.jpg') for f in files):
             episode_dirs.append(root)
+    # os.walk 반환 순서는 FS 의존적이라 서버/환경마다 다름 → sorted로 고정해서
+    # seed와 결합 시 완전 재현 가능하게 만듦.
+    episode_dirs.sort()
     rng.shuffle(episode_dirs)
 
     candidates = []

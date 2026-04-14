@@ -167,17 +167,19 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-14)
+## 현재 Phase (2026-04-15)
 
-**Phase 1.5 — Two-Stream resume + VideoMAE-ours로 encoder lineup 재편**
+**Phase 1.5 — Two-Stream 수렴 완료, VideoMAE-ours 학습 시작**
 
-- **Two-Stream v4**: 50 epoch 중 48 완료 후 TIMEOUT (32712324). Resume 잡 32983533 제출 (AIP, 2노드×4 H100, --time=6h, 남은 2 epoch)
-- **V-JEPA-ours**: 3차례 시도 모두 발산 (mask ratio/warmup 완화 무효). **30 epoch까지 기록 후 중단, paper Appendix의 negative result로 기록 (3 attempts loss curve + Two-Stream reference overlay)**
+- **Two-Stream v4**: 50 epoch 중 **48 완료** (32712324, TIMEOUT). ep33부터 완전 plateau (loss 0.0008) → resume 불필요 판단, best_model.pt 확정
+- **V-JEPA-ours**: 3차례 시도 모두 발산, **3차는 30 epoch 도달 후 2026-04-15 01:16 계획대로 CANCEL** (32950553, 2d2h41m, 405.5 GPU·h). Paper Appendix negative result로 보존.
   - 1차(32867433): warmup 없음 → epoch 4 취소
   - 2차(32867645): warmup 추가, mask 0.80/0.85 → epoch 7 취소
-  - 3차(32950553): warmup + mask 0.50/0.60 → epoch 20까지 수렴 후 재발산. 30 epoch까지 기록
-- **VideoMAE-ours (2-frame)**: V-JEPA-ours 대체 controlled comparison 모델. 구현은 이미 완료 (`src/models/videomae.py` num_frames=2, tubelet_size=2). **mask ratio 0.5** (공식 0.75 대신; 2-frame은 temporal redundancy 부재). V-JEPA 중단 후 제출
+  - 3차(32950553): warmup + mask 0.50/0.60 → 3단계 패턴 (ep1-12 진동 → ep13-20 collapse(0.002) → ep21-30 재발산(0.15-0.23))
+- **VideoMAE-ours (2-frame)**: **2026-04-15 01:17 학습 시작 (33003926, AIP_long, 2노드×4 H100, 50 epoch)**. mask ratio 0.5, WD param group 분리 (LN/bias/mask_token 제외, 공식 프로토콜)
+- **Two-Stream probing**: 2026-04-15 01:08 제출 (33003822, AIP, 1 H100, ep48 best_model + test split + patch_mean_concat + gap=10)
 - **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기 중
+- **저장소**: 10 TB → 50 TB 증설 완료 (2026-04-14)
 
 **Encoder lineup 재편 (2026-04-14)**:
 1. **Two-Stream v4** (ours, EgoDex, M/P 구조) — 🔥 학습 (진행 중)
@@ -199,12 +201,13 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - 파라미터 불균형(213M vs 101M)은 "Two-Stream M/P 설계상 불가피, 각 스트림 ViT-B per-stream capacity는 동일"로 명시
 
 **다음 작업**:
-1. Two-Stream resume 완료 대기 (~6h)
-2. V-JEPA-ours 30 epoch 도달 후 중단, 3-attempt + Two-Stream overlay 그래프 생성
-3. VideoMAE-ours 2-frame full training (~3일)
-4. Phase 2: DROID action probing (7 encoder)
-5. Phase 3: LIBERO BC + MLP (7 encoder)
-6. Phase 3B: OpenVLA encoder 교체 + LoRA (7 encoder)
+1. VideoMAE-ours 2-frame full training 진행 중 (~3일)
+2. Two-Stream probing 결과 확인 (ep48 best_model, R² vs 이전 30ep R²=0.585 비교)
+3. V-JEPA 3-attempt + Two-Stream overlay 그래프 생성 (Appendix figure)
+4. DROID 프레임 추출 (VideoMAE 완료 전 병행 가능)
+5. Phase 2: DROID action probing (7 encoder)
+6. Phase 3: LIBERO BC + MLP (7 encoder)
+7. Phase 3B: OpenVLA encoder 교체 + LoRA (7 encoder)
 
 자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
 

@@ -101,9 +101,21 @@
 |------|-------|------|------|------|
 | 1차 | 32867433 | warmup 없음, mask 0.80/0.85 | epoch 4 cancel | LR=2e-4부터 시작 → EMA target drift 즉시 발산 |
 | 2차 | 32867645 | warmup 5ep 추가, mask 0.80/0.85 | epoch 7 cancel | warmup 후에도 상승. mask 비율 과도 의심 |
-| 3차 | 32950553 | warmup + mask 0.50/0.60 | epoch 20까지 수렴, 이후 재발산. **30 epoch까지 기록 후 중단** | visible token 확보해도 결국 발산 |
+| 3차 | 32950553 | warmup + mask 0.50/0.60 | 30 epoch 도달 후 **2026-04-15 01:16 계획대로 CANCEL** | 3단계 loss 패턴: ep1-12 진동(0.13-0.30) → ep13-20 collapse(0.002-0.003, trivial solution) → ep21-30 재발산(0.15-0.23) |
 
-**Paper 기록 방식**: 3 attempts + Two-Stream reference의 loss curve overlay (log scale) → Appendix. 메시지: "2-frame 세팅은 V-JEPA의 temporal redundancy 전제를 깨뜨려, hyperparameter 완화만으로는 EMA target learning이 안정화되지 않음."
+**3차 학습 Loss 패턴 상세** (32950553, 2026-04-12~15, 2일 2시간, 405.5 GPU·h):
+- Ep1-12: 0.13~0.30 사이 진동, 방향 잡지 못함
+- Ep13-20: 0.002~0.003으로 급락 — **representation collapse 의심** (EMA y-encoder에 x-encoder가 trivial alignment)
+- Ep21-30: 0.15~0.23으로 재발산, 안정 구간 없이 상승세로 중단
+
+**Paper 기록 방식**: 3 attempts + Two-Stream reference의 loss curve overlay (log scale) → Appendix. 메시지: "2-frame 세팅은 V-JEPA의 temporal redundancy 전제를 깨뜨려, hyperparameter 완화만으로는 EMA target learning이 안정화되지 않음. 3차 시도에서 관찰된 collapse→recovery 패턴은 predictor가 일시적으로 trivial solution에 도달 후 재이탈하는 전형적 실패 모드."
+
+#### Attention 시각화 방향 결정 (2026-04-14)
+
+- **학습 진화 스토리 포기**: Two-Stream은 epoch 4에 이미 복원 품질 포화, epoch 33부터 완전 plateau. "학습 진행에 따른 attention 변화" 스토리는 시각적으로 나타나지 않음 (pixel MAE 특성)
+- **대체 프레이밍**: "M vs P stream 기능적 분리" — ep48 한 checkpoint에서 다양한 샘플(6-8개)에 대한 M/P attention 분포 차이를 main figure로. 학습 진화는 메인에서 제외
+- **정량 보강 (선택)**: M/P attention cosine distance, spatial entropy 등으로 분리도를 숫자로 증명
+- **우선순위**: 시각화 추가 작업은 paper figure 작성 시점으로 미룸. 지금은 DROID probing / LIBERO 준비가 더 중요
 
 #### VideoMAE-ours 구현 상태 (작업 불필요)
 
