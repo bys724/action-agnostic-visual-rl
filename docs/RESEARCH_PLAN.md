@@ -1,6 +1,6 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-04-11
+**마지막 업데이트**: 2026-04-14
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
 ## 연구 동기
@@ -12,22 +12,31 @@
 
 ---
 
-## 실험 대상 모델 (Encoder 5종)
+## 실험 대상 모델 (Encoder lineup 재편, 2026-04-14)
+
+**배경 (V-JEPA-ours 제외 이유)**: V-JEPA-ours를 EgoDex 2-frame 세팅에 적응시키는 3차례 시도(LR warmup 추가, mask ratio 85%→60% 완화) 모두에서 학습 발산. 2-frame 세팅은 V-JEPA의 16-frame temporal redundancy 전제를 깨뜨려 EMA target drift를 유발 (자세한 내용은 Phase 1.5 아래 참조). **V-JEPA-ours의 negative result는 paper에 "2-frame regime에서 feature prediction의 한계"로 기록**하고, V-JEPA는 **공식 가중치(16-frame, VideoMix2M)**로만 비교군에 포함.
 
 | 구분 | Encoder | 사전학습 데이터 | 파라미터 | 방법 철학 | 학습 주체 |
 |------|---------|---------------|---------|----------|----------|
 | **제안** | **Two-Stream v4 (ours)** | EgoDex (~100M frames) | ~213M | **생물학적 영감 M/P 구조 + pixel reconstruction** | 🔥 우리 학습 |
-| **직접 경쟁** | **V-JEPA-ours** | **EgoDex (same)** | ~86M (ViT-B + predictor) | Generic feature prediction (no structural prior) | 🔥 **우리 학습 (신규)** |
-| **로봇 제어 SOTA baseline** | VC-1-Base | Ego4D + 조작 (~500M frames) | 86M | MAE-style (embodied AI 표준) | 📦 공개 가중치 |
-| Internet-scale SSL | DINOv2-Base | LVD-142M (웹 이미지) | 86M | Self-distillation (data-driven) | 📦 공개 가중치 |
+| **Controlled comparison** | **VideoMAE-ours (2-frame)** | **EgoDex (same)** | ~101M (ViT-B + decoder) | Vanilla MAE (구조적 bias 없음, mask 0.5) | 🔥 **우리 학습 (신규)** |
+| **Native 세팅 baseline** | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | 📦 공개 가중치 |
+| **Native 세팅 baseline** | V-JEPA-official | VideoMix2M (16-frame) | ~86M | Feature prediction (공식 세팅) | 📦 공개 가중치 |
+| **로봇 제어 SOTA** | VC-1-Base | Ego4D + 조작 (~500M frames) | 86M | MAE (embodied AI 표준) | 📦 공개 가중치 |
+| Internet-scale SSL | DINOv2-Base | LVD-142M (웹 이미지) | 86M | Self-distillation | 📦 공개 가중치 |
 | Internet-scale VL | SigLIP-Base | WebLI (웹 10B 이미지-텍스트) | 86M | Vision-language contrastive | 📦 공개 가중치 |
 
 ### 3-축 비교 구조
 
-**축 1: 같은 데이터, 다른 구조/목표** (Two-Stream vs V-JEPA-ours)
-- 통제: EgoDex 같은 데이터, 같은 compute
-- 변수: 구조적 bias(M/P split) + 목표(pixel vs feature)
-- 답할 질문: "M/P 구조가 표현 품질에 기여하는가? V-JEPA의 pixel < feature 주장이 로봇 제어에 전이되는가?"
+**축 1: 같은 데이터·같은 framework, 다른 구조** (Two-Stream vs VideoMAE-ours)
+- 통제: EgoDex, 2-frame pixel MAE framework, 같은 compute, 같은 sampling
+- 변수: encoder 구조 (M/P two-stream vs vanilla ViT)
+- 답할 질문: "**M/P 구조적 bias가 표현 품질에 기여하는가?**" (단일 변수 격리)
+- 주의: Two-Stream(213M) > VideoMAE(101M) 파라미터 차이는 "M/P 두 스트림 설계상 불가피"로 명시. 각 스트림이 ViT-B backbone으로 baseline과 동일한 per-stream capacity 유지
+
+**축 1': 2-frame regime에서의 방법론 한계** (V-JEPA-ours negative result)
+- V-JEPA의 feature prediction framework는 temporal redundancy를 전제. 2-frame 세팅에서 3차 hyperparameter 완화 후에도 EMA target drift로 발산
+- 이 실패는 paper의 Appendix에 3-attempt loss curve overlay로 기록 (Two-Stream 수렴 곡선과 비교)
 
 **축 2: 같은 도메인 계열, 다른 구조** (Two-Stream vs VC-1)
 - 통제: Egocentric/manipulation video
@@ -50,8 +59,8 @@
 
 | 카테고리 | 작업 |
 |---------|------|
-| 🔥 **우리가 EgoDex에 학습** | Two-Stream v4 (진행 중), **V-JEPA-ours (신규)** |
-| 📦 **공개 가중치 그대로** | VC-1-Base, DINOv2-Base, SigLIP-Base |
+| 🔥 **우리가 EgoDex에 학습** | Two-Stream v4 (resume 중), **VideoMAE-ours 2-frame (신규)** |
+| 📦 **공개 가중치 그대로** | VideoMAE-official, V-JEPA-official, VC-1-Base, DINOv2-Base, SigLIP-Base |
 | 🔧 **Downstream 학습 (encoder frozen)** | MLP decoder (Phase 3), Projection + LoRA (Phase 3B) |
 
 ---
@@ -75,43 +84,47 @@
 **목표**: 전체 EgoDex (part1~5, 314k videos)로 최종 체크포인트 확보
 
 **작업**:
-- **Two-Stream v4** 50 epoch 학습 (IBS 클러스터 8 H100 DDP) — **현재 진행 중 (jobID 32712324, epoch 17 완료)**
-- **V-JEPA-ours** — 구현 있음 (`src/models/v_jepa.py`), sanity check (32866942) 통과.
-  구조: ViT-B x-encoder (86M) + narrow predictor (22M) + EMA y-encoder (frozen).
-  2-frame tubelet 입력, L1 loss + stop-gradient, EMA momentum anneal.
-  **Two-Stream 종료 전 구현 갭 수정 필요** (아래 참고).
-- 학습 후 hand pose probing으로 품질 확인 (part1 기준 대비 개선 여부)
+- **Two-Stream v4** 50 epoch 학습 — epoch 48/50 시점에서 --time=3-12h 한도 TIMEOUT (jobID 32712324). **Resume 잡 32983533 제출 (AIP, 2노드×4 H100, --time=6h, 남은 2 epoch)**
+- **VideoMAE-ours (2-frame)** — V-JEPA-ours 대체 controlled comparison 모델.
+  - 기존 구현 (`src/models/videomae.py`) 이미 2-frame 지원 (num_frames=2, tubelet_size=2, 196 patches)
+  - **mask ratio 0.5** 채택 (공식 0.75는 16-frame temporal redundancy 전제 → 2-frame에서는 visible token 부족. V-JEPA 2-frame 실패 사례와 동일 원리)
+  - Two-Stream과 동일한 gap sampling (`--max-gap 60 triangular`), 동일 EgoDex splits
+  - V-JEPA-ours 학습 종료/취소 후 제출
+- **V-JEPA-ours** — 3차례 시도 모두 발산 (아래 참조). 30 epoch까지 기록 후 중단, negative result로 paper 기록
+- 학습 후 hand pose probing으로 품질 확인 (sanity only, main 비교는 DROID)
 
-**산출물**: `results/checkpoints/two_stream/` 및 `.../v_jepa/` 에 best_model.pt
+**산출물**: `results/checkpoints/{two_stream,videomae,v_jepa}/` 에 best_model.pt + 학습 곡선
 
-#### V-JEPA-ours 구현 갭 (Full training 전 수정 필요)
+#### V-JEPA-ours 3차례 학습 시도 요약 (negative result 보존용)
 
-논문 재현 타당성 확보를 위해 학습 제출 전 수정. 파이프라인 (x/y encoder,
-predictor, EMA, stop-gradient, L1) 은 이미 일치 — 아래 3건만 보강.
+| 시도 | JobID | 설정 | 결과 | 관찰 |
+|------|-------|------|------|------|
+| 1차 | 32867433 | warmup 없음, mask 0.80/0.85 | epoch 4 cancel | LR=2e-4부터 시작 → EMA target drift 즉시 발산 |
+| 2차 | 32867645 | warmup 5ep 추가, mask 0.80/0.85 | epoch 7 cancel | warmup 후에도 상승. mask 비율 과도 의심 |
+| 3차 | 32950553 | warmup + mask 0.50/0.60 | epoch 20까지 수렴, 이후 재발산. **30 epoch까지 기록 후 중단** | visible token 확보해도 결국 발산 |
 
-| 항목 | 현재 | 수정 계획 | 난이도 |
-|------|------|----------|--------|
-| **(A)** Per-sample masking | 배치 공유 마스크 | RoPE `_gather_freqs` 재작성해서 per-sample freqs 지원 | 중 (하루) |
-| **(B)** Spatial dual masking | 단일 블록 세트 | short-range (n=8, scale 0.03-0.05) + long-range (n=2, scale 0.30-0.40) 두 마스크, predictor 2번 호출 후 L1 합산. 2-frame 세팅이므로 I-JEPA 스타일 spatial-only | 낮 (반나절) |
-| **(C)** Predictor PE | Learnable `nn.Parameter` | 고정 sin-cos PE (`register_buffer`) | 매우 낮 |
-| (D) Encoder PE | 2D RoPE | 유지 — 논문에 "standard modernization" 명시 | — |
+**Paper 기록 방식**: 3 attempts + Two-Stream reference의 loss curve overlay (log scale) → Appendix. 메시지: "2-frame 세팅은 V-JEPA의 temporal redundancy 전제를 깨뜨려, hyperparameter 완화만으로는 EMA target learning이 안정화되지 않음."
 
-**2-frame 세팅의 적응**: Tubelet collapse 로 temporal long-range masking 이
-불가능. 시간 차원의 long-range 역할은 **gap sampling** (`--max-gap 60
---sample-dist triangular --sample-decay -1`) 이 담당. Two-Stream 과 동일 조건.
+#### VideoMAE-ours 구현 상태 (작업 불필요)
 
-**수정 후 절차**:
-1. Sanity check 재실행 (~32866942 수준: gradient flow, EMA, feature shape)
-2. Full training 제출 (Two-Stream 종료 후 같은 노드/파티션)
-3. 코드 참조: [src/models/v_jepa.py](../src/models/v_jepa.py) 상단 TODO 주석
+- [src/models/videomae.py](../src/models/videomae.py): 이미 2-frame (num_frames=2, tubelet_size=2, 196 patches)
+- [scripts/pretrain.py](../scripts/pretrain.py): `--model videomae` 분기 OK, `--mask-ratio 0.5` CLI override 가능
+- [scripts/cluster/pretrain.sbatch](../scripts/cluster/pretrain.sbatch): `MODEL=videomae`에 `--mask-ratio 0.5` 기본값 설정됨
+- Two-Stream과 동일 sampling/data/compute → 단일 변수(구조) 통제 비교
 
-### Phase 2: Cross-Domain Action Probing (DROID) ⏸️ 대기
+### Phase 2: Cross-Domain Action Probing ⏸️ 대기
 
-**목표**: EgoDex 표현이 **로봇 도메인**으로 전이되는지 검증
+**평가 우선순위 재편 (2026-04-14)**: Two-Stream과 VideoMAE-ours만 EgoDex로 학습하므로 EgoDex within-domain probing은 **controlled comparison 전용 (Two-Stream vs VideoMAE-ours, 축 1)**. 공개 가중치는 EgoDex OOD이므로 함께 비교하면 home-field advantage 문제. 따라서 **main cross-encoder 비교는 DROID**.
+
+| 평가 | 비교 대상 | 역할 |
+|------|----------|------|
+| **EgoDex probing** (축 1) | Two-Stream vs VideoMAE-ours | 구조적 bias 기여도 sanity |
+| **DROID probing** (main) | Two-Stream, VideoMAE-ours, VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP | Cross-embodiment 전이 비교 |
+| **LIBERO** (Phase 3) | 동일 7개 encoder | Downstream robot control |
 
 **작업**:
 1. frozen encoder로 DROID에서 로봇 행동 linear/MLP probe
-2. 5개 encoder 모두 동일 probe 프로토콜로 비교
+2. 7개 encoder 모두 동일 probe 프로토콜로 비교
 3. 지표: R², cosine similarity
 
 **데이터**: DROID v1.0.1 (95k episodes Franka, gsutil rsync 진행 중)
@@ -123,7 +136,7 @@ predictor, EMA, stop-gradient, L1) 은 이미 일치 — 아래 3건만 보강.
 #### 선행 작업: Baseline encoder 로더 보강 (Phase 2 시작 전 필수)
 
 `scripts/eval/probe_action.py::load_encoder` 에 현재 지원: two-stream,
-videomae, clip, dinov2. **누락**: SigLIP, VC-1, V-JEPA-ours.
+videomae, clip, dinov2. **누락**: SigLIP, VC-1, VideoMAE-official, V-JEPA-official.
 
 **원칙**: 각 baseline 은 **공식 저장소의 검증된 방식**으로만 로드. 자체 구현
 금지. 공식 예제를 먼저 재현해서 feature shape/값이 문서와 일치함을 확인 후
@@ -133,7 +146,9 @@ videomae, clip, dinov2. **누락**: SigLIP, VC-1, V-JEPA-ours.
 |---------|------------|----------|--------|
 | **SigLIP-Base** | google-research/big_vision (HF 미러 `google/siglip-base-patch16-224`) | `transformers.SiglipVisionModel.from_pretrained` | mean=(.5,.5,.5), std=(.5,.5,.5), 224 |
 | **VC-1-Base** | facebookresearch/eai-vc | `vc_models.models.vit.model_utils.load_model(VC1_BASE_NAME)` | ImageNet mean/std, 224 |
-| **V-JEPA-ours** | (자체 학습) | `VJEPAModel.extract_features()`, x_encoder 만 로드 | Two-Stream 과 동일 |
+| **VideoMAE-official** | MCG-NJU/VideoMAE (HF `MCG-NJU/videomae-base`) | `transformers.VideoMAEModel.from_pretrained` | ImageNet mean/std, 16 frames 원본 세팅 |
+| **V-JEPA-official** | facebookresearch/jepa (공식 checkpoint) | JEPA repo의 `load_pretrained()`, 16-frame VideoMix2M 모델 | 공식 preprocessing |
+| **VideoMAE-ours (2-frame)** | (자체 학습) | 기존 `VideoMAEEncoderForVLA` 래퍼 그대로 사용 | Two-Stream 과 동일 |
 
 **2-frame 입력 규약**: 모든 단일 프레임 baseline 은 `(img_{t-1}, img_t)` 각
 프레임 독립 forward 후 feature concat. 각 encoder 의 **공식 preprocessing** 을

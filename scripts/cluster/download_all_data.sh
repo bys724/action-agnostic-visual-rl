@@ -21,6 +21,21 @@
 
 set -uo pipefail
 
+# ── 로그인 노드 실행 금지 ─────────────────────────────────────────────────────
+# 다수 병렬 curl + gsutil이 로그인 노드 프로세스/스레드 limit을 초과하여
+# 접속 장애를 유발한 전례 있음 (관리자가 강제 kill). 항상 compute 노드에서 실행.
+# sbatch 환경 아니면 중단 (SLURM_JOB_ID 없으면 로그인 노드로 간주).
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+    HOST=$(hostname)
+    if [[ "$HOST" =~ ^olaf[0-9]+$ ]]; then
+        echo "ERROR: This script must not run on login node ($HOST)." >&2
+        echo "       다수 병렬 curl/gsutil이 스레드 limit을 초과해 접속 장애를 유발합니다." >&2
+        echo "       sbatch로 compute 노드(normal_cpu 등)에 제출하세요." >&2
+        echo "       예: sbatch -p normal_cpu -t 24:00:00 --wrap='bash $0'" >&2
+        exit 1
+    fi
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_ROOT="/proj/external_group/mrg/datasets/egodex"
 ZIP_DIR="$DATA_ROOT/zips"

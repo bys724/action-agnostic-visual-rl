@@ -167,35 +167,44 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-12)
+## 현재 Phase (2026-04-14)
 
-**Phase 1.5 진행 중 — Two-Stream + V-JEPA-ours full training**
+**Phase 1.5 — Two-Stream resume + VideoMAE-ours로 encoder lineup 재편**
 
-- **Two-Stream v4**: 50 epoch full training 중 (jobID 32712324, epoch 25/50)
-- **V-JEPA-ours**: 구현 완료 → 3차 학습 중 (jobID 32950553, mask ratio 완화 후 재제출)
-  - 1차(32867433): LR warmup 부재로 loss 상승 → epoch 4에서 취소
-  - 2차(32867645): warmup 추가했으나 mask ratio 과다(80/85%)로 loss 계속 상승 → epoch 7에서 취소
-  - 3차: mask ratio 50/60%로 완화. 2-frame spatial-only는 temporal redundancy 없어 높은 masking이 발산 유발
+- **Two-Stream v4**: 50 epoch 중 48 완료 후 TIMEOUT (32712324). Resume 잡 32983533 제출 (AIP, 2노드×4 H100, --time=6h, 남은 2 epoch)
+- **V-JEPA-ours**: 3차례 시도 모두 발산 (mask ratio/warmup 완화 무효). **30 epoch까지 기록 후 중단, paper Appendix의 negative result로 기록 (3 attempts loss curve + Two-Stream reference overlay)**
+  - 1차(32867433): warmup 없음 → epoch 4 취소
+  - 2차(32867645): warmup 추가, mask 0.80/0.85 → epoch 7 취소
+  - 3차(32950553): warmup + mask 0.50/0.60 → epoch 20까지 수렴 후 재발산. 30 epoch까지 기록
+- **VideoMAE-ours (2-frame)**: V-JEPA-ours 대체 controlled comparison 모델. 구현은 이미 완료 (`src/models/videomae.py` num_frames=2, tubelet_size=2). **mask ratio 0.5** (공식 0.75 대신; 2-frame은 temporal redundancy 부재). V-JEPA 중단 후 제출
 - **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기 중
 
-**Encoder 5종 lineup** (전부 frozen 비교):
-1. Two-Stream v4 (ours, EgoDex, 구조적 M/P bias) — 우리 학습
-2. V-JEPA-ours (ours, EgoDex, feature prediction) — 우리 학습 (신규)
-3. VC-1-Base (Meta, Ego4D+조작, 로봇 제어 SOTA) — 공개 가중치
-4. DINOv2-Base (LVD-142M 웹) — 공개 가중치
-5. SigLIP-Base (WebLI 웹) — 공개 가중치
+**Encoder lineup 재편 (2026-04-14)**:
+1. **Two-Stream v4** (ours, EgoDex, M/P 구조) — 🔥 학습 (진행 중)
+2. **VideoMAE-ours 2-frame** (ours, EgoDex, vanilla MAE, mask 0.5) — 🔥 학습 (대기)
+3. VideoMAE-official (16-frame 공식) — 📦 공개 가중치
+4. V-JEPA-official (16-frame 공식) — 📦 공개 가중치
+5. VC-1-Base (Ego4D+조작, 로봇 SOTA) — 📦 공개 가중치
+6. DINOv2-Base (LVD-142M 웹) — 📦 공개 가중치
+7. SigLIP-Base (WebLI 웹) — 📦 공개 가중치
 
-**V-JEPA 중요 관찰**:
-- V-JEPA 논문의 "feature > pixel" 주장은 classification benchmark 기반
-- 로봇 제어(continuous control) 실증 없음 → 우리가 이 갭 채움
-- Two-Stream은 로봇 특화가 아니라 **생물학적 inductive bias 기반 범용 시각 학습**
+**평가 프로토콜**:
+- **EgoDex probing**: Two-Stream vs VideoMAE-ours만 (통제 비교, 축 1 — 구조적 bias 기여도)
+- **DROID probing (main)**: 7개 모두 (cross-encoder fair comparison, 전부 OOD)
+- **LIBERO (Phase 3)**: 7개 모두
+
+**주요 관찰**:
+- V-JEPA 실패는 "2-frame 세팅이 feature prediction의 temporal redundancy 전제를 깨뜨림"을 실증 → negative result로 보존
+- VideoMAE-ours는 pixel MAE framework에서 encoder 구조만 바꾼 controlled ablation
+- 파라미터 불균형(213M vs 101M)은 "Two-Stream M/P 설계상 불가피, 각 스트림 ViT-B per-stream capacity는 동일"로 명시
 
 **다음 작업**:
-1. Two-Stream 학습 완료 대기 (~3일)
-2. V-JEPA-ours 구현 → 학습 (~1-2일 구현 + 4일 학습)
-3. Phase 2: DROID action probing
-4. Phase 3: LIBERO BC + MLP (5 encoder)
-5. Phase 3B: OpenVLA encoder 교체 + LoRA (5 encoder)
+1. Two-Stream resume 완료 대기 (~6h)
+2. V-JEPA-ours 30 epoch 도달 후 중단, 3-attempt + Two-Stream overlay 그래프 생성
+3. VideoMAE-ours 2-frame full training (~3일)
+4. Phase 2: DROID action probing (7 encoder)
+5. Phase 3: LIBERO BC + MLP (7 encoder)
+6. Phase 3B: OpenVLA encoder 교체 + LoRA (7 encoder)
 
 자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
 
@@ -234,6 +243,12 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **원인**: 수천만 개 소형 파일의 per-file 메타데이터 오버헤드 (stat, open, create, close × 1400만 파일)
 - **수정**: scratch stage-in 포기, GPFS 직접 읽기로 전환. tar 파이프 방식은 대안으로 검토 중.
 - **교훈**: scratch는 대용량 파일 소수에 유리. 소형 파일 수백만 개는 tar/WebDataset 패키징 없이 stage-in 비현실적.
+
+### 로그인 노드 다운로드로 인한 접속 장애 (2026-04-14)
+- **증상**: `download_all_data.sh`를 로그인 노드에서 nohup으로 실행 후 접속 장애 발생 → 관리자 강제 kill
+- **원인**: 6개 병렬 `curl`(EgoDex part1~5+test) + `download_droid.sh`의 `gsutil -m`(thread-limit 8×4 적용 상태에서도) 프로세스가 누적되어 로그인 노드의 사용자별 프로세스/스레드 limit 초과. 로그인 노드는 공용 자원이라 한 사용자가 점유하면 다른 사용자도 영향
+- **수정**: `download_all_data.sh`, `download_droid.sh`에 로그인 노드 실행 차단 guard 추가 (hostname `olaf[0-9]+` + `SLURM_JOB_ID` 미설정 조건). sbatch로 compute 노드(`normal_cpu` 등)에서 실행 필수. 외부 인터넷은 compute 노드에서도 접근 가능
+- **교훈**: "thread count 제한했으니 안전" 가정 금지. 로그인 노드에서는 어떤 병렬 I/O도 누적되면 위험. 네트워크 다운로드도 반드시 sbatch 잡으로 제출
 
 ### gsutil -m 로그인 노드 thread limit (2026-04-11)
 - **증상**: DROID 다운로드 중 `RuntimeError: can't start new thread` → EOFError → 다운로드 중단

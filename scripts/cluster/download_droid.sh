@@ -12,6 +12,19 @@
 
 set -euo pipefail
 
+# ── 로그인 노드 실행 금지 ─────────────────────────────────────────────────────
+# gsutil -m은 기본 수백 스레드. thread-count 제한을 걸어도 로그인 노드의
+# 공용 자원을 고갈시켜 접속 장애를 유발할 수 있음. sbatch로 compute 노드 사용.
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+    HOST=$(hostname)
+    if [[ "$HOST" =~ ^olaf[0-9]+$ ]]; then
+        echo "ERROR: This script must not run on login node ($HOST)." >&2
+        echo "       sbatch로 compute 노드에서 실행하세요." >&2
+        echo "       예: sbatch -p normal_cpu -t 24:00:00 --wrap='bash $0 $*'" >&2
+        exit 1
+    fi
+fi
+
 DEST="/proj/external_group/mrg/datasets/droid"
 LOG_DIR="/proj/external_group/mrg/logs"
 CONDA_ENV="/proj/external_group/mrg/conda_envs/aavrl-extract"

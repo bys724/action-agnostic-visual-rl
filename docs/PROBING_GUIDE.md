@@ -2,6 +2,13 @@
 
 ## 실험 개요
 
+**평가 우선순위 (2026-04-14 재편)**: Two-Stream과 VideoMAE-ours만 EgoDex로 학습하므로 EgoDex within-domain probing은 **controlled comparison 전용**(Two-Stream vs VideoMAE-ours). 공개 가중치(VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official)와의 main 비교는 모두 OOD인 **DROID에서 수행**.
+
+| 평가 | 비교 대상 | 역할 |
+|------|----------|------|
+| EgoDex probing | Two-Stream vs VideoMAE-ours (둘 다 EgoDex 학습) | 구조적 bias 기여 sanity (축 1) |
+| **DROID probing (main)** | 상기 2개 + VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP | Cross-encoder fair comparison |
+
 **핵심 주장**:
 > "Action-agnostic pretraining으로 학습한 변화 임베딩은 action-informative하다. 따라서 VLM은 임베딩 공간에서만 sequence modeling을 수행하면서도 실질적으로 action planning을 할 수 있다."
 

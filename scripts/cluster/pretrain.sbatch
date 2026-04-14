@@ -174,8 +174,10 @@ elif [ "$MODEL" = "v-jepa" ]; then
         --max-gap 16 --sample-dist triangular --sample-center 8
     )
 elif [ "$MODEL" = "videomae" ]; then
+    # mask-ratio 0.5: 2-frame에 공식 0.75 과도 (V-JEPA 실패 사례 참조)
     MODEL_ARGS=(
         --depth 12
+        --mask-ratio 0.5
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
 else

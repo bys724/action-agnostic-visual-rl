@@ -175,7 +175,10 @@ def main():
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':
-        model = VideoMAEModel()
+        # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
+        # V-JEPA 실패 사례와 동일한 이유로 2-frame에서는 masking 완화 필요.
+        vm_mask = args.mask_ratio if args.mask_ratio > 0 else 0.5
+        model = VideoMAEModel(mask_ratio=vm_mask)
     else:
         raise ValueError(f"Unknown model: {args.model}")
 
