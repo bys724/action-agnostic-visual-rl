@@ -244,11 +244,18 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **수정**: scratch stage-in 포기, GPFS 직접 읽기로 전환. tar 파이프 방식은 대안으로 검토 중.
 - **교훈**: scratch는 대용량 파일 소수에 유리. 소형 파일 수백만 개는 tar/WebDataset 패키징 없이 stage-in 비현실적.
 
-### 로그인 노드 다운로드로 인한 접속 장애 (2026-04-14)
+### 동시 프로세스 폭증으로 인한 로그인 노드 접속 장애 (2026-04-14)
 - **증상**: `download_all_data.sh`를 로그인 노드에서 nohup으로 실행 후 접속 장애 발생 → 관리자 강제 kill
-- **원인**: 6개 병렬 `curl`(EgoDex part1~5+test) + `download_droid.sh`의 `gsutil -m`(thread-limit 8×4 적용 상태에서도) 프로세스가 누적되어 로그인 노드의 사용자별 프로세스/스레드 limit 초과. 로그인 노드는 공용 자원이라 한 사용자가 점유하면 다른 사용자도 영향
-- **수정**: `download_all_data.sh`, `download_droid.sh`에 로그인 노드 실행 차단 guard 추가 (hostname `olaf[0-9]+` + `SLURM_JOB_ID` 미설정 조건). sbatch로 compute 노드(`normal_cpu` 등)에서 실행 필수. 외부 인터넷은 compute 노드에서도 접근 가능
-- **교훈**: "thread count 제한했으니 안전" 가정 금지. 로그인 노드에서는 어떤 병렬 I/O도 누적되면 위험. 네트워크 다운로드도 반드시 sbatch 잡으로 제출
+- **원인**: **동시 프로세스/스레드 폭증** (로그인 노드 자체는 문제 아님):
+  - `download_all_data.sh`: EgoDex 6 parts를 `curl &`로 **6개 동시** 실행
+  - 이어서 `download_droid.sh`의 `gsutil -m`이 thread-limit 8×4 적용 상태여도 추가 프로세스 생성
+  - 6 curl + gsutil 자식 프로세스 합쳐 사용자별 limit 초과
+- **중요**: IBS 클러스터 정책상 **대용량 다운로드는 로그인 노드에서 실행 권장** (compute 노드는 외부 네트워크 접근 제한). 로그인 노드 차단은 잘못된 대응
+- **수정**:
+  1. `download_all_data.sh`: EgoDex 6 parts를 **순차 다운로드**로 변경 (네트워크 대역폭은 어차피 한 파이프라 전체 시간 유사, 프로세스 수만 감소)
+  2. `download_droid.sh`: `gsutil -o parallel_thread_count=8 -o parallel_process_count=4` 유지 (2026-04-11 수정 그대로)
+  3. 여러 대용량 다운로드 **동시 실행 금지** — 이미 gsutil 돌고 있으면 EgoDex/Ego4D 등을 별도 세션에서 띄우지 말 것
+- **교훈**: 로그인 노드는 공용이므로 "내가 쓰는 프로세스 총량"을 의식적으로 제한. 병렬화는 네트워크 대역폭이 단일 파이프인 이상 실익 없음 — 순차가 안전하고 속도도 유사
 
 ### gsutil -m 로그인 노드 thread limit (2026-04-11)
 - **증상**: DROID 다운로드 중 `RuntimeError: can't start new thread` → EOFError → 다운로드 중단

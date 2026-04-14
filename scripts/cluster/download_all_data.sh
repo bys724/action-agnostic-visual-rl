@@ -21,20 +21,10 @@
 
 set -uo pipefail
 
-# ── 로그인 노드 실행 금지 ─────────────────────────────────────────────────────
-# 다수 병렬 curl + gsutil이 로그인 노드 프로세스/스레드 limit을 초과하여
-# 접속 장애를 유발한 전례 있음 (관리자가 강제 kill). 항상 compute 노드에서 실행.
-# sbatch 환경 아니면 중단 (SLURM_JOB_ID 없으면 로그인 노드로 간주).
-if [ -z "${SLURM_JOB_ID:-}" ]; then
-    HOST=$(hostname)
-    if [[ "$HOST" =~ ^olaf[0-9]+$ ]]; then
-        echo "ERROR: This script must not run on login node ($HOST)." >&2
-        echo "       다수 병렬 curl/gsutil이 스레드 limit을 초과해 접속 장애를 유발합니다." >&2
-        echo "       sbatch로 compute 노드(normal_cpu 등)에 제출하세요." >&2
-        echo "       예: sbatch -p normal_cpu -t 24:00:00 --wrap='bash $0'" >&2
-        exit 1
-    fi
-fi
+# 실행 위치: 로그인 노드 (IBS 정책상 compute 노드는 외부 네트워크 접근 제한).
+# 2026-04-14 관리자 kill 사건의 원인은 "로그인 노드 자체"가 아니라 "동시 프로세스 폭증"
+# (6 parts curl 병렬 + gsutil -m 중첩 = 수백 프로세스/스레드 누적).
+# 이 스크립트는 순차 다운로드로 수정되었고, gsutil은 thread-limit 8×4 적용됨.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_ROOT="/proj/external_group/mrg/datasets/egodex"
@@ -59,11 +49,13 @@ declare -A PART_SIZES=(
 
 PARTS=(part1 part2 part3 part4 part5 test)
 
-# ── Step 1: EgoDex 5 parts 병렬 다운로드 ──────────────────────────────────────
-log "=== EgoDex parallel download start ==="
+# ── Step 1: EgoDex 6 parts 순차 다운로드 ────────────────────────────────────
+# 2026-04-14 이전에는 병렬 6 curl로 실행했다가 프로세스 폭증 발생.
+# 네트워크 대역폭은 어차피 한 파이프라 순차가 합리적 (전체 시간 유사, 프로세스 안전).
+log "=== EgoDex sequential download start ==="
 log "Total expected: $(numfmt --to=iec $(( 321588941964 + 327274733628 + 326263668370 + 329365549875 + 331277374642 + 17304529397 )))"
 
-PIDS=()
+FAIL=0
 for PART in "${PARTS[@]}"; do
     ZIP_FILE="$ZIP_DIR/${PART}.zip"
     PART_LOG="$LOG_DIR/download_${PART}.log"
@@ -79,21 +71,14 @@ for PART in "${PARTS[@]}"; do
     fi
 
     log "[$PART] Starting curl -C - (expected $(numfmt --to=iec $EXPECTED))"
-    (
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$PART] curl start (resume)" >> "$PART_LOG"
-        curl -L -C - -f -o "$ZIP_FILE" "$CDN_BASE/${PART}.zip" >> "$PART_LOG" 2>&1
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$PART] curl exit=$?" >> "$PART_LOG"
-    ) &
-    PIDS+=($!)
-done
-
-# ── Step 2: 모든 EgoDex 다운로드 완료 대기 ────────────────────────────────────
-log "Waiting for ${#PIDS[@]} parallel downloads to complete..."
-FAIL=0
-for PID in "${PIDS[@]}"; do
-    if ! wait "$PID"; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$PART] curl start (resume)" >> "$PART_LOG"
+    if curl -L -C - -f -o "$ZIP_FILE" "$CDN_BASE/${PART}.zip" >> "$PART_LOG" 2>&1; then
+        log "[$PART] curl done"
+    else
+        log "[$PART] curl failed (exit=$?) — 재실행으로 resume 가능"
         FAIL=$((FAIL+1))
     fi
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$PART] curl exit=$?" >> "$PART_LOG"
 done
 
 # 완료 후 사이즈 검증
