@@ -590,7 +590,35 @@ def train(
         )
 
     # Fused AdamW — optimizer step을 단일 CUDA 커널로 합침 (5~10% 가속, PyTorch 2.0+)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01, fused=True)
+    #
+    # Weight decay param group 정책:
+    # - VideoMAEModel: 공식 VideoMAE 프로토콜 준수 → LN/bias/mask_token 제외
+    #   (공식 optim_factory.py의 no_weight_decay() 동작 재현)
+    # - TwoStreamModel, VJEPAModel: 기존 uniform weight_decay 유지 (이미 학습된
+    #   체크포인트와 호환성 보존, optimizer state_dict 구조 변경 회피)
+    # 논문 메소드 섹션에 "VideoMAE-ours만 공식 optimizer 프로토콜 적용, 우리 모델은
+    # simpler uniform weight decay 사용"으로 투명하게 기재.
+    _actual = model.module if hasattr(model, 'module') else model
+    _model_name = type(_actual).__name__
+
+    if _model_name == 'VideoMAEModel':
+        decay_params, no_decay_params = [], []
+        for name, p in _actual.named_parameters():
+            if not p.requires_grad:
+                continue
+            # 1D 파라미터(bias, LayerNorm γ/β) 또는 mask_token은 weight decay 제외
+            if p.ndim <= 1 or 'mask_token' in name:
+                no_decay_params.append(p)
+            else:
+                decay_params.append(p)
+        log(f"VideoMAE optimizer param_groups: decay={len(decay_params)}, "
+            f"no_decay={len(no_decay_params)}")
+        optimizer = torch.optim.AdamW([
+            {'params': decay_params, 'weight_decay': 0.01},
+            {'params': no_decay_params, 'weight_decay': 0.0},
+        ], lr=lr, fused=True)
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01, fused=True)
 
     # LR schedule: linear warmup (10% of epochs) + cosine decay
     # Warmup은 EMA 기반 모델(V-JEPA)의 초기 안정성에 필수.
