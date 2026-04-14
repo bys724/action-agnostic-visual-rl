@@ -117,6 +117,43 @@
 - **정량 보강 (선택)**: M/P attention cosine distance, spatial entropy 등으로 분리도를 숫자로 증명
 - **우선순위**: 시각화 추가 작업은 paper figure 작성 시점으로 미룸. 지금은 DROID probing / LIBERO 준비가 더 중요
 
+#### 🚨 V4 position prior 편향 문제 (2026-04-15 발견)
+
+**증상** (정량 + 정성 둘 다 signal):
+1. **Probing R² = 0.197** (test split, ep48 best_model, patch_mean_concat, gap=10) — GO/NO-GO threshold 0.7에 크게 못 미침
+2. **Rotation diagnostic** ([results/viz_rotation/sweep_dustpan_159.png](../results/viz_rotation/sweep_dustpan_159.png)): 입력을 0°/90°/180°/270° 회전시켜도 **M attention이 거의 동일한 중앙 하단 grid 패턴** 유지. 입력 ΔL은 회전을 따라가는데 attention은 그대로 → content가 아니라 **position prior + mask_token grid에 attention이 고정**. Pred P도 회전 입력에서 붕괴 → "학습 분포 내 image manifold 외우기"에 가깝다는 확증.
+
+**원인 가설 (우선순위 순)**:
+1. **Mask ratio 0.3/0.5가 너무 약함** — 재구성이 쉬우면 position prior + local continuity로 풀 수 있어 content 학습 압력 약화
+2. **2D RoPE의 절대좌표** — patch position 신호가 강해 content 대비 지배적
+3. **CLS exchange num_stages=2** — 스트림 간 소통이 약해 M이 자기 stream prior에 갇힘
+4. **EgoDex 도메인 편향** — 손이 거의 늘 화면 하단. Position prior만으로도 loss 낮아짐
+
+**해결 전략 (제안, 우선순위 순)**:
+
+| 전략 | 목적 | 비용 | 기대 효과 |
+|------|------|------|----------|
+| **A. Mask ratio 대폭 상향** (M/P 모두 0.75~0.85) | 재구성을 "보이지 않는 영역 추론"으로 강제 → content 읽기 필수 | 1회 full training (~3.5일) | 🔥 가장 유력. VideoMAE의 0.75 정신 복구 |
+| **B. Mask에 spatial block 패턴 도입** | random patch 대신 block 단위 masking → local copy 불가 | 학습 로직 수정 + 1회 학습 | 🔥 MAE→VideoMAE 차이의 핵심 교훈 |
+| **C. 데이터 augmentation에 회전/플립 추가** | position prior 자체를 무력화 (inductive bias로) | 사소한 코드 변경 + 재학습 | 🔸 Probe R² 직접 개선 가능 |
+| **D. Position embedding 약화** (RoPE frequency 조정 or dropout) | content 상대 가중치 상승 | 코드 수정 + 재학습 | 🔸 2D RoPE 자체 재설계 필요 |
+| **E. Crop augmentation 강화** (RandomResizedCrop scale 0.3~1.0) | 손 위치 다양화로 position prior 깨기 | 사소 + 재학습 | 🔸 C의 간접 버전 |
+
+**최적 조합 예상**: A(mask 0.75) + B(block masking) + C(rotation aug). 이 세 개는 서로 중첩 방지 효과 있고 구현 부담 작음. D는 큰 수술이라 뒤로 미뤄도 됨.
+
+**다른 시각** (paper 기여):
+- 만약 A+B+C로 개선되면 "저-mask ratio + absolute position은 2-frame MAE에서 prior collapse 유발"이 방법론 교훈
+- 만약 개선 안 되면 "2-frame + MAE 틀 자체의 한계" → Two-Stream 구조 가치를 기각하는 증거로 paper 축 재설계 필요
+
+##### 검증용 Action Items
+
+- [ ] **V3 체크포인트를 로컬 워크스테이션에서 조회 후 동일 rotation diagnostic 실행** (`/mnt/data/checkpoints/two_stream/...` 추정)
+  - V3는 APE (절대 position embedding), M 채널 3ch (ΔL + Sobel(ΔL))라 구조 다름
+  - V3도 동일 편향을 보이면 "구조 무관 공통 실패" → 원인이 mask ratio / 데이터 편향에 가까움
+  - V3는 괜찮은데 V4만 망가졌으면 "RoPE 전환 or mask 별도 비율 변경이 도입한 문제"
+- [ ] V4 ep04 체크포인트 (학습 초기)로 rotation diagnostic → 학습 과정에서 position prior로 붕괴하는지 확인
+- [ ] 위 결과 종합 후 A+B+C 조합 재학습 의사결정
+
 #### VideoMAE-ours 구현 상태 (작업 불필요)
 
 - [src/models/videomae.py](../src/models/videomae.py): 이미 2-frame (num_frames=2, tubelet_size=2, 196 patches)
