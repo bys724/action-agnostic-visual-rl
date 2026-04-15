@@ -67,7 +67,10 @@ def find_high_change_pairs(frames_dir, num_candidates=30, num_select=2, gap=30, 
 
 
 def extract_attention_and_predict(model, img_t_tensor, img_tk_tensor):
-    """Run model forward, extract last-layer attention maps + predictions."""
+    """Run model forward, extract last-layer attention maps + predictions.
+
+    APE/RoPE 자동 감지: encoder에 pos_embed_m이 있으면 APE, 아니면 RoPE.
+    """
     x = img_t_tensor.unsqueeze(0).to(DEVICE)
     y = img_tk_tensor.unsqueeze(0).to(DEVICE)
 
@@ -77,6 +80,10 @@ def extract_attention_and_predict(model, img_t_tensor, img_tk_tensor):
     encoder = model.encoder
     last_stage = encoder.num_stages - 1
     attn_maps = {}
+
+    # APE vs RoPE 감지
+    use_ape = hasattr(encoder, 'pos_embed_m')
+    freqs_cis = None if use_ape else encoder.freqs_cis
 
     def manual_attention(block, tokens, freqs_cis):
         h = block.norm1(tokens)
@@ -103,17 +110,22 @@ def extract_attention_and_predict(model, img_t_tensor, img_tk_tensor):
         m_tokens = torch.cat([encoder.cls_token_m.expand(B, -1, -1), m_patches], dim=1)
         p_tokens = torch.cat([encoder.cls_token_p.expand(B, -1, -1), p_patches], dim=1)
 
+        # APE: position embedding 더하기
+        if use_ape:
+            m_tokens = m_tokens + encoder.pos_embed_m
+            p_tokens = p_tokens + encoder.pos_embed_p
+
         for si in range(encoder.num_stages):
             for bi, bm in enumerate(encoder.blocks_m[si]):
                 if si == last_stage and bi == len(encoder.blocks_m[si]) - 1:
-                    m_tokens, attn_maps['m'] = manual_attention(bm, m_tokens, encoder.freqs_cis)
+                    m_tokens, attn_maps['m'] = manual_attention(bm, m_tokens, freqs_cis)
                 else:
-                    m_tokens = bm(m_tokens, freqs_cis=encoder.freqs_cis)
+                    m_tokens = bm(m_tokens, freqs_cis=freqs_cis)
             for bi, bp in enumerate(encoder.blocks_p[si]):
                 if si == last_stage and bi == len(encoder.blocks_p[si]) - 1:
-                    p_tokens, attn_maps['p'] = manual_attention(bp, p_tokens, encoder.freqs_cis)
+                    p_tokens, attn_maps['p'] = manual_attention(bp, p_tokens, freqs_cis)
                 else:
-                    p_tokens = bp(p_tokens, freqs_cis=encoder.freqs_cis)
+                    p_tokens = bp(p_tokens, freqs_cis=freqs_cis)
             m_cls, p_cls = m_tokens[:, 0:1], p_tokens[:, 0:1]
             cls_ex = encoder.cls_exchange[si](torch.cat([m_cls, p_cls], dim=1))
             m_tokens = torch.cat([cls_ex[:, 0:1], m_tokens[:, 1:]], dim=1)

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Two-Stream rotation diagnostic.
+"""Two-Stream rotation diagnostic (multi-model 지원).
 
-하나의 sample 에 대해 입력 이미지를 0/90/180/270도 회전시키며
-M/P attention 이 content-driven (equivariant) 인지, 아니면
+하나의 sample에 대해 입력 이미지를 0/90/180/270도 회전시키며
+M/P attention이 content-driven (equivariant) 인지, 아니면
 position-prior 고정 (invariant) 인지 진단.
 
-진짜 motion content 를 읽는다면 attention 은 입력과 함께 회전해야 함.
-2D RoPE 는 절대좌표 기반이라 equivariance 를 구조적으로 보장하지 않음
-→ 그럼에도 attention 이 회전을 따라가면 "content 의존", 아니면 "RoPE + 학습된 prior 붕괴".
+진짜 motion content를 읽는다면 attention은 입력과 함께 회전해야 함.
+
+Legacy (APE + nn.TransformerEncoderLayer) 및
+현재 (RoPE + custom TransformerBlock) 체크포인트 모두 지원.
 """
 
 import argparse
@@ -25,7 +26,6 @@ from torchvision import transforms
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.models import TwoStreamModel
 
-# visualize_attn_compare 의 헬퍼 재사용
 from scripts.eval.visualize_attn_compare import (
     load_image, extract_attention_and_predict, attn_to_heatmap,
 )
@@ -34,51 +34,104 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 ROTATIONS = [0, 90, 180, 270]
 
 
+# ============================================================================
+# Legacy checkpoint 호환
+# ============================================================================
+
+def _detect_model_config(state_dict):
+    """체크포인트에서 num_stages, use_ape 자동 감지."""
+    stages = set()
+    for k in state_dict:
+        if k.startswith('encoder.blocks_m.'):
+            stages.add(int(k.split('.')[2]))
+    num_stages = len(stages) if stages else 2
+
+    use_ape = 'encoder.pos_embed_m' in state_dict
+
+    # Legacy key 감지: nn.TransformerEncoderLayer 패턴
+    is_legacy = any('self_attn.in_proj_weight' in k
+                     for k in state_dict if k.startswith('encoder.blocks_'))
+
+    return num_stages, use_ape, is_legacy
+
+
+def _remap_legacy_encoder_keys(state_dict):
+    """nn.TransformerEncoderLayer → custom TransformerBlock key 변환.
+
+    self_attn.in_proj_weight → qkv.weight
+    self_attn.in_proj_bias   → qkv.bias
+    self_attn.out_proj.*     → proj.*
+    linear1.*                → mlp.0.*
+    linear2.*                → mlp.2.*
+    """
+    remap = {
+        'self_attn.in_proj_weight': 'qkv.weight',
+        'self_attn.in_proj_bias': 'qkv.bias',
+        'self_attn.out_proj.weight': 'proj.weight',
+        'self_attn.out_proj.bias': 'proj.bias',
+        'linear1.weight': 'mlp.0.weight',
+        'linear1.bias': 'mlp.0.bias',
+        'linear2.weight': 'mlp.2.weight',
+        'linear2.bias': 'mlp.2.bias',
+    }
+    new_sd = {}
+    for k, v in state_dict.items():
+        new_k = k
+        if k.startswith('encoder.blocks_'):
+            for old_suffix, new_suffix in remap.items():
+                if k.endswith(old_suffix):
+                    new_k = k[:k.rfind(old_suffix)] + new_suffix
+                    break
+        new_sd[new_k] = v
+    return new_sd
+
+
+def load_model(checkpoint_path, device):
+    """체크포인트 로드 — num_stages, APE/RoPE, legacy keys 자동 처리."""
+    ck = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    sd = ck['model_state_dict']
+
+    num_stages, use_ape, is_legacy = _detect_model_config(sd)
+    epoch = ck.get('epoch', '?')
+    pos_type = 'APE' if use_ape else 'RoPE'
+
+    print(f"  config: stages={num_stages}, pos={pos_type}, "
+          f"legacy={is_legacy}, epoch={epoch}")
+
+    if is_legacy:
+        sd = _remap_legacy_encoder_keys(sd)
+
+    model = TwoStreamModel(depth=12, num_stages=num_stages)
+
+    # APE: 현재 모델에 pos_embed 버퍼 등록 후 로드
+    if use_ape:
+        model.encoder.register_buffer('pos_embed_m', sd['encoder.pos_embed_m'])
+        model.encoder.register_buffer('pos_embed_p', sd['encoder.pos_embed_p'])
+
+    missing, unexpected = model.load_state_dict(sd, strict=False)
+    # freqs_cis는 buffer라 missing에 안 뜸, pos_embed은 APE면 이미 등록됨
+    # 의미 있는 missing만 출력
+    real_missing = [k for k in missing if 'freqs_cis' not in k]
+    if real_missing:
+        print(f"  ⚠ missing keys: {real_missing[:5]}")
+
+    model.to(device).eval()
+    return model, epoch, num_stages, use_ape
+
+
 def rotate_frame(img_chw, k):
-    """torch rot90: [C, H, W] -> [C, H, W] counter-clockwise by k*90°."""
+    """torch rot90: [C, H, W] → [C, H, W] counter-clockwise by k*90°."""
     return torch.rot90(img_chw, k=k // 90, dims=(-2, -1))
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--frame-t", required=True, help="Frame t 이미지 경로")
-    parser.add_argument("--frame-tk", required=True, help="Frame t+k 이미지 경로")
-    parser.add_argument("--output", default="results/viz_rotation/attn_rotation.png")
-    parser.add_argument("--depth", type=int, default=12)
-    parser.add_argument("--num-stages", type=int, default=2)
-    parser.add_argument("--mask-ratio", type=float, default=0.3)
-    parser.add_argument("--mask-ratio-p", type=float, default=0.5)
-    args = parser.parse_args()
-
-    os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
-
-    # Load model
-    print(f"Loading: {args.checkpoint}")
-    model = TwoStreamModel(
-        depth=args.depth, num_stages=args.num_stages,
-        mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p,
-    ).to(DEVICE)
-    ck = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
-    model.load_state_dict(ck["model_state_dict"], strict=False)
-    model.eval()
-    epoch = ck.get('epoch', '?')
-    print(f"  Epoch {epoch}")
-
-    # Load frames → center crop 224
-    img_t = load_image(args.frame_t)
-    img_tk = load_image(args.frame_tk)
-    crop = transforms.CenterCrop(224)
-    img_t_c = crop(img_t.permute(2, 0, 1))   # [3, 224, 224]
-    img_tk_c = crop(img_tk.permute(2, 0, 1))
-
-    # Build figure: 4 rows (rotations) × 6 cols
+def run_rotation_diagnostic(model, img_t_c, img_tk_c, model_label, epoch,
+                            output_path):
+    """단일 모델에 대해 4×6 rotation diagnostic figure 생성."""
     fig, axes = plt.subplots(4, 6, figsize=(30, 20))
     col_titles = ['Frame t (rot)', 'Frame t+k (rot)',
                   'M Attn on ΔL', 'P Attn on ΔL', 'Pred M', 'Pred P']
 
     for row, deg in enumerate(ROTATIONS):
-        # Rotate input pair *identically*
         img_t_rot = rotate_frame(img_t_c, deg)
         img_tk_rot = rotate_frame(img_tk_c, deg)
 
@@ -116,15 +169,54 @@ def main():
     for col in range(6):
         axes[0][col].set_title(col_titles[col], fontsize=12, fontweight='bold')
 
-    sample_id = os.path.basename(os.path.dirname(args.frame_t))
     fig.suptitle(
-        f'Two-Stream Epoch {epoch} — Rotation Diagnostic (sample: {sample_id})\n'
+        f'{model_label} (epoch {epoch}) — Rotation Diagnostic\n'
         f'If model is content-driven, attention should rotate WITH input.',
         fontsize=14, y=1.01,
     )
     plt.tight_layout()
-    plt.savefig(args.output, dpi=150, bbox_inches='tight')
-    print(f"\nSaved: {args.output}")
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {output_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Multi-model rotation diagnostic")
+    parser.add_argument("--checkpoints", nargs='+', required=True,
+                        help="체크포인트 경로 (여러 개 가능)")
+    parser.add_argument("--labels", nargs='+', default=None,
+                        help="모델 라벨 (--checkpoints와 같은 수)")
+    parser.add_argument("--frame-t", required=True)
+    parser.add_argument("--frame-tk", required=True)
+    parser.add_argument("--output-dir", default="results/viz_rotation")
+    args = parser.parse_args()
+
+    if args.labels is None:
+        args.labels = [f"model_{i}" for i in range(len(args.checkpoints))]
+    assert len(args.labels) == len(args.checkpoints)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # 프레임 로드 + center crop 224
+    img_t = load_image(args.frame_t)
+    img_tk = load_image(args.frame_tk)
+    crop = transforms.CenterCrop(224)
+    img_t_c = crop(img_t.permute(2, 0, 1))
+    img_tk_c = crop(img_tk.permute(2, 0, 1))
+
+    sample_id = os.path.basename(os.path.dirname(args.frame_t))
+
+    for ckpt_path, label in zip(args.checkpoints, args.labels):
+        print(f"\n=== {label} ===")
+        print(f"Loading: {ckpt_path}")
+        model, epoch, num_stages, use_ape = load_model(ckpt_path, DEVICE)
+
+        safe_label = label.replace(' ', '_').replace('/', '_')
+        output_path = os.path.join(
+            args.output_dir, f"rotation_{safe_label}_{sample_id}.png")
+        run_rotation_diagnostic(
+            model, img_t_c, img_tk_c, label, epoch, output_path)
 
 
 if __name__ == "__main__":
