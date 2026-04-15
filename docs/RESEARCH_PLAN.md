@@ -177,6 +177,11 @@
 
 **추가 검토 예정 (APE 결과 후)**:
 - [ ] 결과에 따라 A(mask ratio 상향) + B(block masking) + C(rotation aug) 조합 재학습 의사결정
+
+**마스킹 상향에 대한 관찰 (2026-04-16)**:
+- M channel attention이 회전에 둔감한 현상은 **shortcut overfitting 양상** — visible token으로부터 motion signal을 실제로 해석하지 않고 "patch 위치 = 손 위치"를 외우는 쪽으로 수렴
+- 따라서 mask ratio를 **낮춰 task를 쉽게 만드는 방향은 역효과**. 0.5 이상으로 올리는 편이 prior shortcut 차단에 기여
+- M/P 모두 비슷한 비율(예: 0.5 ~ 0.6)로 상향하는 방향을 기본으로. 차등화는 필요 시 재검토
 - [ ] APE 결과가 좋으면 full 50ep APE 재학습 검토 (현재 main 모델 교체 가능성)
 
 ##### 🔗 통합 가설: "RoPE가 V-JEPA 실패의 공범?"
