@@ -227,12 +227,14 @@ class InterleavedTwoStreamViT(nn.Module):
         mlp_ratio: float = 4.0,
         image_size: int = 224,
         patch_size: int = 16,
+        use_ape: bool = False,
     ):
         super().__init__()
 
         self.embed_dim = embed_dim
         self.num_stages = num_stages
         self.blocks_per_stage = depth // num_stages
+        self.use_ape = use_ape
 
         # Patch embeddings for M (3ch: ΔL + Sobel(ΔL)) and P (5ch: Sobel + RGB)
         self.patch_embed_m = nn.Conv2d(
@@ -255,10 +257,17 @@ class InterleavedTwoStreamViT(nn.Module):
         num_patches = (image_size // patch_size) ** 2
         num_patches_per_side = image_size // patch_size
 
-        # 2D RoPE frequencies (not a parameter, just a buffer)
-        head_dim = embed_dim // num_heads
-        freqs_cis = build_2d_rope_freqs(num_patches_per_side, head_dim)
-        self.register_buffer("freqs_cis", freqs_cis, persistent=False)
+        if use_ape:
+            # APE path: learnable positional embedding (CLS + patches)
+            # RoPE buffer는 만들지 않음. block에는 freqs_cis=None 전달
+            self.pos_embed_m = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+            self.pos_embed_p = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+            self.freqs_cis = None
+        else:
+            # 2D RoPE frequencies (not a parameter, just a buffer)
+            head_dim = embed_dim // num_heads
+            freqs_cis = build_2d_rope_freqs(num_patches_per_side, head_dim)
+            self.register_buffer("freqs_cis", freqs_cis, persistent=False)
 
         # Transformer blocks per stage for each stream
         self.blocks_m = nn.ModuleList()
@@ -291,6 +300,9 @@ class InterleavedTwoStreamViT(nn.Module):
         """Initialize weights following ViT convention."""
         nn.init.trunc_normal_(self.cls_token_m, std=0.02)
         nn.init.trunc_normal_(self.cls_token_p, std=0.02)
+        if self.use_ape:
+            nn.init.trunc_normal_(self.pos_embed_m, std=0.02)
+            nn.init.trunc_normal_(self.pos_embed_p, std=0.02)
 
     def forward(
         self, m_channel: torch.Tensor, p_channel: torch.Tensor
@@ -322,15 +334,21 @@ class InterleavedTwoStreamViT(nn.Module):
         m_tokens = torch.cat([m_cls, m_patches], dim=1)  # [B, N+1, D]
         p_tokens = torch.cat([p_cls, p_patches], dim=1)
 
-        # 3. RoPE는 attention 내부에서 적용 (APE 대신)
+        # 3. Positional encoding: APE (broadcast add) or RoPE (attention 내부)
+        if self.use_ape:
+            m_tokens = m_tokens + self.pos_embed_m
+            p_tokens = p_tokens + self.pos_embed_p
+            freqs = None
+        else:
+            freqs = self.freqs_cis
 
         # 4. Interleaved processing with CLS exchange
         for stage_idx in range(self.num_stages):
             for block_m in self.blocks_m[stage_idx]:
-                m_tokens = block_m(m_tokens, freqs_cis=self.freqs_cis)
+                m_tokens = block_m(m_tokens, freqs_cis=freqs)
 
             for block_p in self.blocks_p[stage_idx]:
-                p_tokens = block_p(p_tokens, freqs_cis=self.freqs_cis)
+                p_tokens = block_p(p_tokens, freqs_cis=freqs)
 
             # Extract CLS tokens
             m_cls = m_tokens[:, 0:1]  # [B, 1, D]
@@ -528,6 +546,7 @@ class TwoStreamModel(nn.Module):
         patch_size: int = 16,
         mask_ratio: float = 0.0,
         mask_ratio_p: float = None,
+        use_ape: bool = False,
     ):
         super().__init__()
 
@@ -546,6 +565,7 @@ class TwoStreamModel(nn.Module):
             mlp_ratio=mlp_ratio,
             image_size=image_size,
             patch_size=patch_size,
+            use_ape=use_ape,
         )
         self.decoder_m = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
         self.decoder_p = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
@@ -670,19 +690,27 @@ class TwoStreamModel(nn.Module):
         m_patches = enc.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
         p_patches = enc.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
 
-        # CLS + patches (RoPE는 attention 내부에서 적용, APE 없음)
+        # CLS + patches
         m_cls = enc.cls_token_m.expand(batch_size, -1, -1)
         p_cls = enc.cls_token_p.expand(batch_size, -1, -1)
         m_tokens = torch.cat([m_cls, m_patches], dim=1)
         p_tokens = torch.cat([p_cls, p_patches], dim=1)
 
+        # APE path: masking 전에 pos_embed를 더함 (standard MAE 방식)
+        if enc.use_ape:
+            m_tokens = m_tokens + enc.pos_embed_m
+            p_tokens = p_tokens + enc.pos_embed_p
+
         # 마스킹 적용 (CLS 보존) + visible position index 반환
         m_tokens, ids_keep_m = self._apply_mask(m_tokens, mask_m)
         p_tokens, ids_keep_p = self._apply_mask(p_tokens, mask_p)
 
-        # Visible patch 위치의 RoPE frequencies만 gather
-        freqs_m = enc.freqs_cis[ids_keep_m]  # [N_vis_m, D_head//2]
-        freqs_p = enc.freqs_cis[ids_keep_p]  # [N_vis_p, D_head//2]
+        # RoPE path: visible patch 위치의 freqs만 gather. APE이면 freqs=None
+        if enc.use_ape:
+            freqs_m = freqs_p = None
+        else:
+            freqs_m = enc.freqs_cis[ids_keep_m]  # [N_vis_m, D_head//2]
+            freqs_p = enc.freqs_cis[ids_keep_p]  # [N_vis_p, D_head//2]
 
         # Interleaved processing with CLS exchange
         for stage_idx in range(enc.num_stages):

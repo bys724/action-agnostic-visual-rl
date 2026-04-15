@@ -94,6 +94,9 @@ def main():
                         help='MAE-style mask ratio for M stream (0=disabled, 0.3 recommended)')
     parser.add_argument('--mask-ratio-p', type=float, default=None,
                         help='P stream mask ratio (default: same as --mask-ratio, higher recommended)')
+    parser.add_argument('--use-ape', action='store_true',
+                        help='[Two-Stream] Use APE (learnable pos embed) instead of 2D RoPE. '
+                             '진단용: RoPE vs APE 편향 비교 실험')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -171,7 +174,8 @@ def main():
 
     if args.model == 'two-stream':
         model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
-                               mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p)
+                               mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p,
+                               use_ape=args.use_ape)
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':

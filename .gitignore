@@ -71,3 +71,6 @@ temp/
 
 # 전처리 비교 샘플 이미지 (문서만 추적, 이미지는 제외)
 docs/preprocessing/*/samples/
+
+# Claude Code 로컬 설정 (팀 공유 설정 생기면 개별 force add)
+.claude/

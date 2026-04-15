@@ -147,12 +147,64 @@
 
 ##### 검증용 Action Items
 
-- [ ] **V3 체크포인트를 로컬 워크스테이션에서 조회 후 동일 rotation diagnostic 실행** (`/mnt/data/checkpoints/two_stream/...` 추정)
-  - V3는 APE (절대 position embedding), M 채널 3ch (ΔL + Sobel(ΔL))라 구조 다름
-  - V3도 동일 편향을 보이면 "구조 무관 공통 실패" → 원인이 mask ratio / 데이터 편향에 가까움
-  - V3는 괜찮은데 V4만 망가졌으면 "RoPE 전환 or mask 별도 비율 변경이 도입한 문제"
-- [ ] V4 ep04 체크포인트 (학습 초기)로 rotation diagnostic → 학습 과정에서 position prior로 붕괴하는지 확인
-- [ ] 위 결과 종합 후 A+B+C 조합 재학습 의사결정
+**완료 (2026-04-15)**:
+- [x] **V3_APE_s3_ep29, V4_mask30_APE_s2_ep4, V4_nomask_APE_s2_ep4 rotation diagnostic** (로컬 워크스테이션, 커밋 4e59777)
+  - 3개 모두 **content-driven attention** 확인. 회전 대응 정상
+- [x] **V4_mask30_RoPE_s2_ep4** rotation diagnostic ([rotation_V4_mask30_RoPE_s2_ep4_4.png](architecture/rotation_V4_mask30_RoPE_s2_ep4_4.png), 클러스터)
+  - ep4 RoPE는 이미 부분적 position-bias 경향 관찰 (ep48만큼 완전 고정 아니나 APE와 분명한 차이) → 사용자 판정
+
+**진단 가설 요약 (2026-04-15 관찰 기반)**:
+- V3/V4 APE 체크포인트(ep4 또는 ep29): content-driven 유지
+- V4 RoPE ep4: 부분 content + 초기 prior 축적
+- V4 RoPE ep48: 강한 position prior 고정
+- → **RoPE + 학습량 상호작용 가설**: RoPE가 위치 단축경로를 구조적으로 허용 → 학습 진행하며 position prior가 점진적으로 심화. APE는 add 방식이라 content/pos 분리가 구조적으로 유지됨 (논리적 가설)
+
+**검증 실험 (진행 중)**:
+- [ ] **APE 진단 학습** (JobID 33012271, 2 nodes × 4 H100, EPOCHS=50이나 ep5에서 수동 cancel)
+  - Config: reference V4 RoPE와 **완전 동일** (depth=12, num_stages=2, mask 0.3/0.5, max_gap=60, triangular sample_center=30, 5 splits, batch=64 per GPU, LR=2e-4, warmup 5ep)
+  - 유일한 차이: `--use-ape` (2D RoPE → learnable APE)
+  - 체크포인트: `$CHECKPOINT_ROOT/two_stream_ape_diagnostic/<timestamp>/checkpoint_epoch000N.pt`
+  - ep5 확인 후 `scancel 33012271`
+
+**해석 매트릭스** (APE ep5 결과 기준):
+
+| APE ep5 rotation | APE ep5 probing R² | 결론 | 다음 스텝 |
+|---|---|---|---|
+| Content-driven | 0.5~0.7+ | **RoPE 단독 원인 확정** | PE를 APE로 되돌리거나 RoPE frequency/dropout 재설계 (전략 D) |
+| Content-driven | < 0.3 | PE 바꿔도 R² 낮음 → **content 학습 자체가 약함** (전략 A+B+C 필요, mask 0.3이 지배 원인) | A+B+C 재학습 |
+| 부분 bias | 중간 | PE 외 공범 있음 (mask ratio, M channel 설계 등) | 다변수 ablation |
+| 완전 고정 | 낮음 | **PE 무관**, 원인은 mask ratio/데이터 regularity | RoPE 복귀 + A+B+C 집중 |
+
+**추가 검토 예정 (APE 결과 후)**:
+- [ ] 결과에 따라 A(mask ratio 상향) + B(block masking) + C(rotation aug) 조합 재학습 의사결정
+- [ ] APE 결과가 좋으면 full 50ep APE 재학습 검토 (현재 main 모델 교체 가능성)
+
+##### 🔗 통합 가설: "RoPE가 V-JEPA 실패의 공범?"
+
+**PE 사용 현황 (2026-04-15 재확인)**:
+- Two-Stream V4: 2D RoPE (encoder) → 수렴 + position prior 편향
+- V-JEPA-ours: 2D RoPE (encoder, `two_stream.build_2d_rope_freqs` import) + sin-cos APE (predictor) → 3회 발산
+- VideoMAE-ours (학습 중 33003926): **sin-cos APE** (공식 VideoMAE) → 결과 대기
+
+**통합 해석 가능성**:
+- V-JEPA 실패 = 수렴 자체 불가 (1차 원인: mask ratio 과다 + EMA target drift)
+- Two-Stream RoPE 편향 = 안정 수렴 후 점진적 position prior 축적
+- 다른 실패 유형이지만 **"2D RoPE × 2-frame egocentric SSL"의 구조적 부적합**이라는 **공통 근본 원인** 가능성
+- RoPE는 QK 곱셈에 절대좌표를 결합 → content와 position이 분리 불가능하게 얽힘 → sparse masking + EMA target + 강한 공간 규칙성(EgoDex)이 만나면 (a) 수렴 실패 또는 (b) 위치 단축경로 학습으로 귀결
+
+**자연 실험 (이미 진행 중)**:
+VideoMAE-ours (33003926)는 같은 2-frame EgoDex + sin-cos APE. 결과 판정:
+
+| VideoMAE-ours (APE) 결과 | 통합 해석 |
+|---|---|
+| 수렴 + content-driven attention | **PE 축 확정**: RoPE가 2-frame SSL의 공통 실패 원인. V-JEPA 부정적 결과에 "RoPE confound" 주석 또는 paper 축 재구성 ("PE choice가 2-frame SSL 성패 결정") 고려 |
+| 수렴 + position prior 편향 | PE 무관. 원인은 mask ratio (0.5도 부족) or 데이터 regularity |
+| 수렴 실패 | 2-frame + EgoDex 자체 한계. PE 무관 |
+
+**검증 잡**:
+- 33003926 (VideoMAE-ours, ~3일 잔여) → 이 결과 + Two-Stream APE 결과(33012271) 통합 해석
+- 둘 다 APE가 우수 → **paper 서사 재구성**: "2D RoPE는 2-frame egocentric self-supervised에서 구조적 실패 모드 유발. 본 연구는 이를 Two-Stream APE 전환으로 해결"
+- 둘 다 APE도 같은 문제 → RoPE 무관, 원인은 mask ratio / 데이터 편향
 
 #### VideoMAE-ours 구현 상태 (작업 불필요)
 
