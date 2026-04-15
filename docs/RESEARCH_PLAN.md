@@ -159,12 +159,12 @@
 - V4 RoPE ep48: 강한 position prior 고정
 - → **RoPE + 학습량 상호작용 가설**: RoPE가 위치 단축경로를 구조적으로 허용 → 학습 진행하며 position prior가 점진적으로 심화. APE는 add 방식이라 content/pos 분리가 구조적으로 유지됨 (논리적 가설)
 
-**검증 실험 (진행 중)**:
-- [ ] **APE 진단 학습** (JobID 33012271, 2 nodes × 4 H100, EPOCHS=50이나 ep5에서 수동 cancel)
-  - Config: reference V4 RoPE와 **완전 동일** (depth=12, num_stages=2, mask 0.3/0.5, max_gap=60, triangular sample_center=30, 5 splits, batch=64 per GPU, LR=2e-4, warmup 5ep)
-  - 유일한 차이: `--use-ape` (2D RoPE → learnable APE)
-  - 체크포인트: `$CHECKPOINT_ROOT/two_stream_ape_diagnostic/<timestamp>/checkpoint_epoch000N.pt`
-  - ep5 확인 후 `scancel 33012271`
+**검증 실험 (완료, 2026-04-16)**:
+- [x] **APE 진단 학습** (JobID 33012271, ep4까지 저장 후 cancel)
+  - Config: reference V4 RoPE와 완전 동일, 유일한 차이 `--use-ape`
+  - ep4 rotation diagnostic: **Content-driven 유지** ([rotation_APE_diag_ep4_4.png](architecture/rotation_APE_diag_ep4_4.png))
+  - ep4 action probing (33179673): **peak R² = 0.2191** (RoPE ep48의 0.1972와 거의 동일)
+  - → **매트릭스 L174 적중**: "PE 바꿔도 R² 낮음 → content 학습 자체 약함, mask 0.3이 지배"
 
 **해석 매트릭스** (APE ep5 결과 기준):
 
@@ -175,8 +175,11 @@
 | 부분 bias | 중간 | PE 외 공범 있음 (mask ratio, M channel 설계 등) | 다변수 ablation |
 | 완전 고정 | 낮음 | **PE 무관**, 원인은 mask ratio/데이터 regularity | RoPE 복귀 + A+B+C 집중 |
 
-**추가 검토 예정 (APE 결과 후)**:
-- [ ] 결과에 따라 A(mask ratio 상향) + B(block masking) + C(rotation aug) 조합 재학습 의사결정
+**다음 실험 (2026-04-16 제출)**:
+- [ ] **Two-Stream v5** full training (JobID 33179788, 2 nodes × 4 H100, 50ep, `CHECKPOINT_SUFFIX=v5_ape_mask50`)
+  - 변경: PE=APE (회전 equivariance 확보) + mask ratio 0.5/0.5 (M/P 공통 상향, shortcut 차단)
+  - 나머지 V4와 동일 (depth=12, num_stages=2, max_gap=60, triangular center=30)
+  - PE와 mask를 동시에 바꾸므로 단일 요인 귀속 불가 — 이후 필요 시 부분 ablation
 
 **마스킹 상향에 대한 관찰 (2026-04-16)**:
 - M channel attention이 회전에 둔감한 현상은 **shortcut overfitting 양상** — visible token으로부터 motion signal을 실제로 해석하지 않고 "patch 위치 = 손 위치"를 외우는 쪽으로 수렴

@@ -789,6 +789,13 @@ class TwoStreamEncoder(nn.Module):
         self._embed_dim = embed_dim
         self.num_patches = (image_size // patch_size) ** 2
 
+        # Auto-detect use_ape from checkpoint (pos_embed_m 존재 → APE)
+        use_ape = False
+        if checkpoint_path:
+            _ckpt = torch.load(checkpoint_path, map_location="cpu")
+            _sd = _ckpt.get("model_state_dict", _ckpt)
+            use_ape = any("encoder.pos_embed_m" in k for k in _sd)
+
         # Build encoder components
         self.preprocessing = TwoStreamPreprocessing()
         self.encoder = InterleavedTwoStreamViT(
@@ -798,6 +805,7 @@ class TwoStreamEncoder(nn.Module):
             num_stages=num_stages,
             image_size=image_size,
             patch_size=patch_size,
+            use_ape=use_ape,
         )
         self.fusion = PixelwiseFusion(embed_dim=embed_dim, fusion_type="separate")
 
