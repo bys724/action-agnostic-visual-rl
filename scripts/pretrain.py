@@ -97,6 +97,9 @@ def main():
     parser.add_argument('--use-ape', action='store_true',
                         help='[Two-Stream] Use APE (learnable pos embed) instead of 2D RoPE. '
                              '진단용: RoPE vs APE 편향 비교 실험')
+    parser.add_argument('--rotation-aug', action='store_true',
+                        help='[Two-Stream] 학습 시 입력 프레임 회전 augmentation. '
+                             'Position prior overfit 방지 (90%% 동일회전 + 10%% 독립회전)')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -175,7 +178,8 @@ def main():
     if args.model == 'two-stream':
         model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
                                mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p,
-                               use_ape=args.use_ape)
+                               use_ape=args.use_ape,
+                               rotation_aug=args.rotation_aug)
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':

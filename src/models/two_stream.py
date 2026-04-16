@@ -547,6 +547,8 @@ class TwoStreamModel(nn.Module):
         mask_ratio: float = 0.0,
         mask_ratio_p: float = None,
         use_ape: bool = False,
+        rotation_aug: bool = False,
+        independent_rotation_prob: float = 0.1,
     ):
         super().__init__()
 
@@ -554,6 +556,8 @@ class TwoStreamModel(nn.Module):
         # P stream은 자기 입력만으로 복원이 쉬워 표현이 shallow해지는 문제가 있음.
         # P의 masking을 M보다 높게 설정하면 CLS exchange 의존도가 높아져 표현 품질 개선.
         self.mask_ratio_p = mask_ratio_p if mask_ratio_p is not None else mask_ratio
+        self.rotation_aug = rotation_aug
+        self.independent_rotation_prob = independent_rotation_prob
         self.num_patches = (image_size // patch_size) ** 2
 
         self.preprocessing = TwoStreamPreprocessing()
@@ -742,6 +746,30 @@ class TwoStreamModel(nn.Module):
 
         return pred_m, pred_p, cls_embedding
 
+    def _apply_rotation_aug(
+        self, image_current: torch.Tensor, image_future: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Training-time rotation augmentation으로 position prior overfit 방지.
+
+        90%: 동일 회전 (두 프레임 같은 각도, motion 보존 + position prior 깨기)
+        10%: 독립 회전 (각 프레임 다른 각도, 극단적 viewpoint 변화 대응)
+        """
+        if torch.rand(1).item() < self.independent_rotation_prob:
+            # 독립 회전: 각 프레임 별도 각도
+            k_curr = torch.randint(0, 4, (1,)).item()
+            k_fut = torch.randint(0, 4, (1,)).item()
+        else:
+            # 동일 회전: 두 프레임 같은 각도 (0/90/180/270 균등)
+            k_curr = torch.randint(0, 4, (1,)).item()
+            k_fut = k_curr
+
+        if k_curr != 0:
+            image_current = torch.rot90(image_current, k_curr, dims=(2, 3))
+        if k_fut != 0:
+            image_future = torch.rot90(image_future, k_fut, dims=(2, 3))
+
+        return image_current, image_future
+
     def compute_loss(
         self, image_current: torch.Tensor, image_future: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -752,6 +780,11 @@ class TwoStreamModel(nn.Module):
             loss: MSE(M_pred, future) + MSE(P_pred, future)
             pred_p: [B, 3, H, W] - P stream prediction for visualization
         """
+        if self.rotation_aug and self.training:
+            image_current, image_future = self._apply_rotation_aug(
+                image_current, image_future
+            )
+
         pred_m, pred_p, _ = self.forward(image_current, image_future)
         loss_m = F.mse_loss(pred_m, image_future)
         loss_p = F.mse_loss(pred_p, image_future)
