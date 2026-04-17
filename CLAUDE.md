@@ -167,118 +167,49 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-15)
+## 현재 Phase (2026-04-17)
 
-**Phase 1.5 — Two-Stream 수렴 완료, VideoMAE-ours 학습 시작**
+**Phase 1.5 — EgoDex Probing 진행 중, Two-Stream v6 + VideoMAE 비교**
 
-- **Two-Stream v4**: 50 epoch 중 **48 완료** (32712324, TIMEOUT). ep33부터 완전 plateau (loss 0.0008) → resume 불필요 판단, best_model.pt 확정
-- **V-JEPA-ours**: 3차례 시도 모두 발산, **3차는 30 epoch 도달 후 2026-04-15 01:16 계획대로 CANCEL** (32950553, 2d2h41m, 405.5 GPU·h). Paper Appendix negative result로 보존.
-  - 1차(32867433): warmup 없음 → epoch 4 취소
-  - 2차(32867645): warmup 추가, mask 0.80/0.85 → epoch 7 취소
-  - 3차(32950553): warmup + mask 0.50/0.60 → 3단계 패턴 (ep1-12 진동 → ep13-20 collapse(0.002) → ep21-30 재발산(0.15-0.23))
-- **VideoMAE-ours (2-frame)**: **2026-04-15 01:17 학습 시작 (33003926, AIP_long, 2노드×4 H100, 50 epoch)**. mask ratio 0.5, WD param group 분리 (LN/bias/mask_token 제외, 공식 프로토콜)
-- **Two-Stream probing**: 2026-04-15 01:08 제출 (33003822, AIP, 1 H100, ep48 best_model + test split + patch_mean_concat + gap=10)
-- **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기 중
-- **저장소**: 10 TB → 50 TB 증설 완료 (2026-04-14)
+**완료**:
+- **Two-Stream v4** (RoPE, mask 0.3): 48ep 수렴, best_model 확정. Probing R²=0.197
+- **VideoMAE-ours**: 50ep 완료 (loss 0.2215), best_model probing R²=0.326
+- **V-JEPA-ours**: 3차 모두 발산, negative result로 보존
 
-**Encoder lineup 재편 (2026-04-14)**:
-1. **Two-Stream v4** (ours, EgoDex, M/P 구조) — 🔥 학습 (진행 중)
-2. **VideoMAE-ours 2-frame** (ours, EgoDex, vanilla MAE, mask 0.5) — 🔥 학습 (대기)
-3. VideoMAE-official (16-frame 공식) — 📦 공개 가중치
-4. V-JEPA-official (16-frame 공식) — 📦 공개 가중치
-5. VC-1-Base (Ego4D+조작, 로봇 SOTA) — 📦 공개 가중치
-6. DINOv2-Base (LVD-142M 웹) — 📦 공개 가중치
-7. SigLIP-Base (WebLI 웹) — 📦 공개 가중치
+**진행 중**:
+- **Two-Stream v6** (APE + mask 0.5/0.5 + rotation aug): 33222151, 학습 중. Rotation aug로 position prior overfit 차단 → ep8 R²=0.259 (v5 ep8 0.192 대비 +35%)
+- **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기
 
-**평가 프로토콜**:
-- **EgoDex probing**: Two-Stream vs VideoMAE-ours만 (통제 비교, 축 1 — 구조적 bias 기여도)
-- **DROID probing (main)**: 7개 모두 (cross-encoder fair comparison, 전부 OOD)
-- **LIBERO (Phase 3)**: 7개 모두
+**EgoDex Probing 중간 결과** (full test split, gap=10, linear probe):
 
-**주요 관찰**:
-- V-JEPA 실패는 "2-frame 세팅이 feature prediction의 temporal redundancy 전제를 깨뜨림"을 실증 → negative result로 보존
-- VideoMAE-ours는 pixel MAE framework에서 encoder 구조만 바꾼 controlled ablation
-- 파라미터 불균형(213M vs 101M)은 "Two-Stream M/P 설계상 불가피, 각 스트림 ViT-B per-stream capacity는 동일"로 명시
+| 모델 | ep4 R² | ep8 R² | ep50 R² |
+|------|--------|--------|---------|
+| Two-Stream v6 (rotaug) | — | **0.259** | (학습 중) |
+| Two-Stream v5 (no rotaug) | 0.208 | 0.192 ↓ | — |
+| VideoMAE-ours | 0.198 | — | **0.326** |
+
+**Encoder lineup** (7개, 변경 없음):
+1. Two-Stream v6 (ours) / 2. VideoMAE-ours / 3-7. 공개 가중치 (VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP)
 
 **다음 작업**:
-1. VideoMAE-ours 2-frame full training 진행 중 (~3일)
-2. Two-Stream probing 결과 확인 (ep48 best_model, R² vs 이전 30ep R²=0.585 비교)
-3. V-JEPA 3-attempt + Two-Stream overlay 그래프 생성 (Appendix figure)
-4. DROID 프레임 추출 (VideoMAE 완료 전 병행 가능)
-5. Phase 2: DROID action probing (7 encoder)
-6. Phase 3: LIBERO BC + MLP (7 encoder)
-7. Phase 3B: OpenVLA encoder 교체 + LoRA (7 encoder)
+1. v6 학습 완료 후 최종 probing
+2. DROID 프레임 추출
+3. Phase 2: DROID action probing (7 encoder)
+4. Phase 3: LIBERO
 
-자세한 내용은 `docs/RESEARCH_PLAN.md` 참고
+자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 
 ## 트러블슈팅 로그
 
-### EgoDex test symlink 문제 (2026-03-23)
-- **증상**: eval 시 `FileNotFoundError: .../part2/.../frame_000000.jpg`로 학습 크래시
-- **원인**: `scripts/local/pretrain.sh`가 test symlink을 잘못 생성. 추출된 프레임은 `/mnt/data/egodex_frames/test_frames/`
-- **수정**: symlink을 `test_frames`로 교체
-- **교훈**: dataset 객체는 시작 시 경로를 캐싱하므로, 학습 중 symlink 수정해도 효과 없음 → 재시작 필요
+### 재발 가능 — 숙지 필요
 
-### 학습 프로세스 안정성 (2026-03-23)
-- `evaluate()`와 `save_epoch_samples()`를 try/except로 보호
-- eval/시각화 실패 시 WARNING 출력 후 학습 계속 (크래시 방지)
-- `model.train()` 복구를 finally 블록으로 보장
+- **Sanity checkpoint → 본 학습 auto-resume 오염**: 서로 다른 학습 설정의 체크포인트가 같은 디렉토리에 있으면 scheduler/optimizer 상태 오염 (T_max, lr, batch_size). **sanity 잡은 반드시 `CHECKPOINT_SUFFIX` 사용**.
+- **Slurm DDP 3대 함정**: (1) `--gpus-per-task=1` 대신 `--gres=gpu:N` 사용 (NCCL PCI 탐색 실패 방지), (2) `MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))` (포트 충돌 방지), (3) srun에서 `$CONDA_PREFIX/bin/python` 절대 경로 사용
+- **로그인 노드 프로세스 제한**: 대용량 다운로드는 순차 실행, 여러 다운로드 동시 실행 금지. `gsutil -m`은 thread/process count 제한 필수 (`-o parallel_thread_count=8 -o parallel_process_count=4`)
+- **Scratch stage-in 비현실적**: 소형 파일 수백만 개는 메타데이터 병목. GPFS 직접 읽기 사용
 
-### SSIM loss BF16 안정성 (2026-03-31)
-- BF16 autocast에서 sigma_sq가 음수가 되어 NaN 발생
-- 해결: SSIM 연산을 FP32로 강제 + sigma clamp(min=0)
-- GradScaler 제거 (BF16에는 불필요)
+### 해결 완료 — 참고용
 
-### AMP BF16 autocast 비활성화 버그 (2026-04-10)
-- **증상**: "AMP enabled" 로그가 뜨지만 실제 FP32로 실행. H100 throughput의 절반만 활용.
-- **원인**: `scaler = None` → `use_amp = scaler is not None` → False → autocast 꺼짐
-- **수정**: `use_bf16` 플래그로 autocast를 scaler와 분리. BF16은 GradScaler 불필요.
-- **효과**: 37.6 → 62.2 samples/sec (+65%, batch 4 기준)
-
-### Sanity checkpoint → 본 학습 auto-resume 오염 (2026-04-10)
-- **증상**: 본 학습이 sanity test 체크포인트를 auto-resume. CosineAnnealingLR의 T_max=2(sanity)로 덮어써져 lr이 2 epoch 주기로 진동.
-- **원인**: sanity와 본 학습이 같은 checkpoint_dir 사용 + pretrain.py auto-resume 로직이 latest.pt 자동 감지
-- **수정**: sanity 체크포인트 삭제 후 fresh start. 향후 sanity 잡은 반드시 `CHECKPOINT_SUFFIX` 사용.
-- **교훈**: auto-resume은 편리하지만, 서로 다른 학습 설정의 체크포인트가 같은 디렉토리에 있으면 scheduler/optimizer 상태 오염. 특히 T_max, lr, batch_size가 다른 경우 치명적.
-
-### Scratch stage-in 소형 파일 병목 (2026-04-10)
-- **증상**: `cp -a`로 1.25 TB JPG 프레임을 GPFS → scratch 복사 시 1시간 37분에 part1의 2개 dir만 복사됨
-- **원인**: 수천만 개 소형 파일의 per-file 메타데이터 오버헤드 (stat, open, create, close × 1400만 파일)
-- **수정**: scratch stage-in 포기, GPFS 직접 읽기로 전환. tar 파이프 방식은 대안으로 검토 중.
-- **교훈**: scratch는 대용량 파일 소수에 유리. 소형 파일 수백만 개는 tar/WebDataset 패키징 없이 stage-in 비현실적.
-
-### 동시 프로세스 폭증으로 인한 로그인 노드 접속 장애 (2026-04-14)
-- **증상**: `download_all_data.sh`를 로그인 노드에서 nohup으로 실행 후 접속 장애 발생 → 관리자 강제 kill
-- **원인**: **동시 프로세스/스레드 폭증** (로그인 노드 자체는 문제 아님):
-  - `download_all_data.sh`: EgoDex 6 parts를 `curl &`로 **6개 동시** 실행
-  - 이어서 `download_droid.sh`의 `gsutil -m`이 thread-limit 8×4 적용 상태여도 추가 프로세스 생성
-  - 6 curl + gsutil 자식 프로세스 합쳐 사용자별 limit 초과
-- **중요**: IBS 클러스터 정책상 **대용량 다운로드는 로그인 노드에서 실행 권장** (compute 노드는 외부 네트워크 접근 제한). 로그인 노드 차단은 잘못된 대응
-- **수정**:
-  1. `download_all_data.sh`: EgoDex 6 parts를 **순차 다운로드**로 변경 (네트워크 대역폭은 어차피 한 파이프라 전체 시간 유사, 프로세스 수만 감소)
-  2. `download_droid.sh`: `gsutil -o parallel_thread_count=8 -o parallel_process_count=4` 유지 (2026-04-11 수정 그대로)
-  3. 여러 대용량 다운로드 **동시 실행 금지** — 이미 gsutil 돌고 있으면 EgoDex/Ego4D 등을 별도 세션에서 띄우지 말 것
-- **교훈**: 로그인 노드는 공용이므로 "내가 쓰는 프로세스 총량"을 의식적으로 제한. 병렬화는 네트워크 대역폭이 단일 파이프인 이상 실익 없음 — 순차가 안전하고 속도도 유사
-
-### gsutil -m 로그인 노드 thread limit (2026-04-11)
-- **증상**: DROID 다운로드 중 `RuntimeError: can't start new thread` → EOFError → 다운로드 중단
-- **원인**: `gsutil -m`이 기본 수백 개 스레드 spawn. 로그인 노드(공용)의 사용자별 스레드 limit 초과
-- **수정**: (1) `gsutil -o "GSUtil:parallel_thread_count=8" -o "GSUtil:parallel_process_count=4"`로 병렬도 제한, (2) 로그인 노드 대신 sbatch로 compute 노드에서 실행
-- **교훈**: 로그인 노드에서 공격적 병렬 I/O 도구 사용 금지. sbatch 잡으로 독립 리소스 확보
-
-### Slurm DDP 환경 함정 3가지 (2026-04-10)
-- **`--gpus-per-task=1`**: CUDA_VISIBLE_DEVICES 제한 → `set_device(local_rank)` 실패 + NCCL `nvmlDeviceGetHandleByPciBusId` 실패. 해결: `--gres=gpu:N`으로 전환
-- **MASTER_PORT 충돌**: 동일 노드에 여러 DDP 잡 → EADDRINUSE. 해결: `MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`
-- **srun PATH 미전파**: conda activate 후에도 `srun python` 실패. 해결: `$CONDA_PREFIX/bin/python` 절대 경로
-
-### V-JEPA LR warmup 부재로 loss 발산 (2026-04-12)
-- **증상**: V-JEPA 1차 학습(32867433)에서 loss가 epoch 2 이후 단조 상승 (0.17 → 0.25 → 0.35)
-- **원인**: CosineAnnealingLR만 사용, warmup 없음. 학습 시작부터 LR=2e-4(max)로 x-encoder가 급변 → EMA y-encoder(momentum 0.998)가 추적 실패 → predictor target drift → loss 상승
-- **수정**: `SequentialLR(LinearLR(warmup 5ep, 1e-6→2e-4) + CosineAnnealingLR(45ep))` 적용. 모든 모델 공통 (Two-Stream에도 무해)
-- **교훈**: EMA target 기반 학습(V-JEPA, BYOL, DINO 등)은 LR warmup 필수. Pixel reconstruction(Two-Stream)은 target이 고정이라 warmup 없이도 안정적이지만, moving target에서는 초기 LR이 EMA lag와 맞물려 발산 유발
-
-### V-JEPA mask ratio 과다로 2차도 loss 상승 (2026-04-12)
-- **증상**: 2차 학습(32867645, warmup 추가)에서도 epoch 6까지 loss 단조 상승 (0.28 → 0.42). Warmup 종료(epoch 5) 후에도 하강 없음
-- **원인**: mask ratio 80%(short) / 85%(long)로 visible 토큰이 30-40개뿐. 원래 V-JEPA는 16프레임의 temporal redundancy 덕에 90% masking이 가능하지만, 2-frame spatial-only 세팅에서는 그 redundancy가 없음 → predictor가 충분한 context 없이 과도한 예측을 요구받아 학습 실패
-- **수정**: mask ratio 50%(short) / 60%(long)로 완화. visible 토큰 ~78-98개로 확보. 블록 스케일도 축소 (short 0.10-0.15, long 0.30-0.40)
-- **교훈**: V-JEPA의 높은 masking ratio는 temporal redundancy(16프레임)가 전제. 2-frame 적응 시 masking을 대폭 완화해야 함
+- **BF16 autocast**: `use_bf16` 플래그로 scaler와 분리 (GradScaler 불필요). 37.6→62.2 samples/sec
+- **SSIM BF16 NaN**: SSIM 연산 FP32 강제 + sigma clamp(min=0)
+- **V-JEPA 발산**: (1) EMA target 기반 학습은 LR warmup 필수, (2) 2-frame에서는 mask ratio 대폭 완화 필요 (16-frame temporal redundancy 없음). 결국 3차 모두 발산 → negative result

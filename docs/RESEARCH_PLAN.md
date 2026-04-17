@@ -1,6 +1,6 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-04-14
+**마지막 업데이트**: 2026-04-17
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
 ## 연구 동기
@@ -18,7 +18,7 @@
 
 | 구분 | Encoder | 사전학습 데이터 | 파라미터 | 방법 철학 | 학습 주체 |
 |------|---------|---------------|---------|----------|----------|
-| **제안** | **Two-Stream v4 (ours)** | EgoDex (~100M frames) | ~213M | **생물학적 영감 M/P 구조 + pixel reconstruction** | 🔥 우리 학습 |
+| **제안** | **Two-Stream v6 (ours)** | EgoDex (~100M frames) | ~213M | **M/P 구조 + pixel reconstruction + rotation aug** | 🔥 우리 학습 |
 | **Controlled comparison** | **VideoMAE-ours (2-frame)** | **EgoDex (same)** | ~101M (ViT-B + decoder) | Vanilla MAE (구조적 bias 없음, mask 0.5) | 🔥 **우리 학습 (신규)** |
 | **Native 세팅 baseline** | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | 📦 공개 가중치 |
 | **Native 세팅 baseline** | V-JEPA-official | VideoMix2M (16-frame) | ~86M | Feature prediction (공식 세팅) | 📦 공개 가중치 |
@@ -175,17 +175,11 @@
 | 부분 bias | 중간 | PE 외 공범 있음 (mask ratio, M channel 설계 등) | 다변수 ablation |
 | 완전 고정 | 낮음 | **PE 무관**, 원인은 mask ratio/데이터 regularity | RoPE 복귀 + A+B+C 집중 |
 
-**다음 실험 (2026-04-16 제출)**:
-- [ ] **Two-Stream v5** full training (JobID 33179788, 2 nodes × 4 H100, 50ep, `CHECKPOINT_SUFFIX=v5_ape_mask50`)
-  - 변경: PE=APE (회전 equivariance 확보) + mask ratio 0.5/0.5 (M/P 공통 상향, shortcut 차단)
-  - 나머지 V4와 동일 (depth=12, num_stages=2, max_gap=60, triangular center=30)
-  - PE와 mask를 동시에 바꾸므로 단일 요인 귀속 불가 — 이후 필요 시 부분 ablation
-
-**마스킹 상향에 대한 관찰 (2026-04-16)**:
-- M channel attention이 회전에 둔감한 현상은 **shortcut overfitting 양상** — visible token으로부터 motion signal을 실제로 해석하지 않고 "patch 위치 = 손 위치"를 외우는 쪽으로 수렴
-- 따라서 mask ratio를 **낮춰 task를 쉽게 만드는 방향은 역효과**. 0.5 이상으로 올리는 편이 prior shortcut 차단에 기여
-- M/P 모두 비슷한 비율(예: 0.5 ~ 0.6)로 상향하는 방향을 기본으로. 차등화는 필요 시 재검토
-- [ ] APE 결과가 좋으면 full 50ep APE 재학습 검토 (현재 main 모델 교체 가능성)
+**실험 경과 (2026-04-16~17)**:
+- [x] **v5** (APE + mask 0.5/0.5, 33179788): ep4(R²=0.208)→ep8(R²=0.192) 하락 확인. Position prior overfit은 PE/mask 변경만으로 해결 불가 → ep8에서 CANCELLED
+- [x] **v6** (APE + mask 0.5/0.5 + **rotation aug**, 33222151): 학습 중. **ep8 R²=0.259** — v5 ep8(0.192) 대비 +35%. Rotation aug가 position prior 의존을 효과적으로 차단
+- Rotation aug: 90% 동일회전(두 프레임 같은 각도) + 10% 독립회전(각 프레임 다른 각도), {0°,90°,180°,270°}. `compute_loss`에서 `torch.rot90` view op 적용 (오버헤드 무시 가능)
+- v6 reconstruction loss도 v5와 동일 패턴(ep3~4에서 0.002대) — rotation은 epoch 평균 loss에는 큰 영향 없지만 probing R²에는 확실한 효과
 
 ##### 🔗 통합 가설: "RoPE가 V-JEPA 실패의 공범?"
 
@@ -485,162 +479,52 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 
 ---
 
-## 현재 상태 (2026-04-10)
+## 현재 상태 (2026-04-17)
 
-### Phase 1 완료 (모델 설계 + ablation)
-- [x] Two-Stream v4 아키텍처 확정: d=12, s=2, MAE M=0.3/P=0.5, max_gap=60 triangular
-- [x] Architecture ablation, MAE masking, composition consistency, gap 분포 실험 전부 완료
-- [x] VideoMAE 30 epoch baseline 완료
-- [x] Action probing 초기 결과 확보 (EgoDex + DROID)
+### 완료된 Phase
 
-### IBS 클러스터 환경 구축 완료
-- [x] EgoDex part1~5 + test CDN 다운로드 (1.6 TB, 5-way 병렬 ~2시간)
-- [x] EgoDex 프레임 추출 완료 (314,839 train videos, ~1.25 TB frames)
-  - part1: 46,234 / part2: 95,125 / part3: 53,779 / part4: 44,129 / part5: 75,572 / test: 3,243
-- [x] DROID 다운로드 진행 중 (gsutil rsync)
-- [x] scripts/{local,cluster}/ 환경별 launcher 분리
-- [x] conda env 2개: aavrl-extract (cv2), aavrl-train (torch 2.6+cu124)
-- [x] 클러스터 저장소 정책 확인: GPFS 16 GB/s, scratch 7 TB (GPU 노드 로컬 NVMe)
+**Phase 1** (모델 설계 + ablation): v1~v4 iterative ablation, masking/composition/gap 실험 완료. v4 확정.
 
-### DDP 전환 + 학습 가속
-- [x] DataParallel → DistributedDataParallel 변환 (Slurm srun 직접, torchrun 불필요)
-- [x] DDP sanity Stage 2 통과 (1 GPU, 37.6→BF16 검증중)
-- [x] DDP sanity Stage 3 통과 (2 GPU 1 node, NCCL over NVLink, 90.8 samples/sec)
-- [ ] DDP sanity Stage 4 (2 node multi-node NCCL) — 큐 대기
-- [x] AMP BF16 autocast 버그 수정 (기존: scaler 기반 조건문 → 실제 FP32 실행. ~2배 성능 손실)
-- [x] Fused AdamW 적용 (5-10% 가속)
-- [x] torch.compile 선택적 지원 (--compile 플래그)
-- [x] pretrain.sbatch scratch stage-in/out 구현 (USE_SCRATCH=1)
+**인프라**: IBS 클러스터 환경 구축, DDP 전환, EgoDex 다운로드/추출, DROID 다운로드 완료.
 
-### 로컬 워크스테이션 (이전 완료)
-- [x] Two-Stream v1~v4 iterative ablation (part1 기준, 30 epoch)
-- [x] VideoMAE 30 epoch 완료
-- [x] DROID 프레임 추출 완료 (ext1/ext2/wrist)
-- [x] Action probing 코드 (EgoDex, DROID, Bridge)
+### Phase 1.5 진행 중
 
-### Action Probing 초기 결과 (2026-03-31, 500 videos, linear probe, 20 epochs)
+**학습 완료**:
+- Two-Stream v4 (RoPE, mask 0.3/0.5): 48ep, best_model 확정
+- VideoMAE-ours (mask 0.5): 50ep 완료, best_model 확정
+- V-JEPA-ours: 3차 발산, negative result
 
-**모델 간 공정 비교 (patch mean pool 기준)**:
+**학습 중**:
+- **Two-Stream v6** (APE + mask 0.5/0.5 + rotation aug, 33222151): 50ep 진행 중
 
-| Encoder | Split | R² | Cosine Sim | 비고 |
-|---------|-------|----|------------|------|
-| VideoMAE | part1 (학습) | 0.416 | 0.494 | |
-| Two-Stream (patch_mean) | part1 (학습) | 0.389 | 0.482 | gap 0.027 |
-| Two-Stream (patch_mean_p) | part1 (학습) | 0.401 | 0.490 | P stream만 |
-| Two-Stream (patch_mean) | part4 (미사용) | 0.237 | 0.369 | 일반화 |
-| VideoMAE | part4 (미사용) | 0.137 | 0.330 | 일반화 |
+**EgoDex probing 결과** → `docs/PROBING_GUIDE.md` 참고
 
-**Two-Stream CLS 방식별 비교 (part1)**:
+**다음 작업**:
+1. v6 학습 완료 후 최종 probing
+2. DROID 프레임 추출
+3. Phase 2: DROID action probing (7 encoder)
+4. Phase 3: LIBERO
 
-| 방식 | R² | 설명 |
-|------|-----|------|
-| CLS average | 0.326 | (m_cls + p_cls) / 2 |
-| CLS concat | 0.157 | [m_cls; p_cls] |
-| CLS m_only | 0.153 | M stream CLS |
-| CLS p_only | 0.169 | P stream CLS |
-| patch_mean (M+P) | 0.389 | 전체 패치 mean pool |
-| patch_mean_m | 0.184 | M 패치만 |
-| patch_mean_p | 0.401 | P 패치만 |
+### Phase 1 Ablation 결과 요약 (로컬, 500 videos, 30ep)
 
-**해석**:
-1. patch mean pool 기준 VideoMAE와 Two-Stream 격차가 작음 (0.416 vs 0.389)
-2. **미사용 데이터(part4)에서 Two-Stream이 우세** (0.237 vs 0.137) → 일반화 성능
-3. CLS average(768-dim 1개)로 patch mean(196개 평균)의 83% 달성 → CLS exchange 효과
-4. P stream > M stream: 외형 정보가 hand pose probing에 더 유리
-5. 모든 조건에서 R² < 0.7 — 데이터 규모 확대/MLP probe 등으로 개선 여지
+초기 결과는 500-video 소규모 평가로 full test split에서 과대추정 확인됨 (PROBING_GUIDE.md 참조).
+여기서는 ablation 간 **상대적 비교**만 유효:
 
-### Gap별 Embedding 비교 (part4, 미사용 데이터, 2026-04-01)
+- **Masking 효과**: mask30 > nomask (모든 조건에서 우세, CLS 정보 밀도 33% 개선)
+- **Composition loss 불필요**: base가 pixel loss/probing 모두 우세. Composition은 학습시간 5배 + 메모리 3배 증가 대비 이점 없음
+- **max_gap 60 + triangular > gap 30 linear**: eval loss 16% 개선, probing +0.054
+- **patch_mean_concat > patch_mean > CLS average**: M/P 분리 보존이 유리 (full test split에서도 순위 유지)
+- **P stream self-sufficiency 문제**: P가 자기 입력만으로 복원 가능 → `--mask-ratio-p`로 P masking 상향
 
-| Embedding | dim | gap=1 | gap=5 | gap=10 |
-|-----------|-----|-------|-------|--------|
-| TS CLS average | 768 | 0.159 | 0.354 | 0.364 |
-| TS CLS concat | 1536 | -0.150 | 0.330 | 0.353 |
-| TS m_only (CLS) | 768 | 0.046 | 0.276 | 0.359 |
-| TS p_only (CLS) | 768 | -0.266 | 0.311 | 0.325 |
-| TS patch_mean | 768 | 0.225 | 0.466 | 0.532 |
-| **TS patch_mean_concat** | **1536** | **0.117** | **0.489** | **0.585** |
-| VM patch_mean | 768 | 0.138 | 0.474 | 0.571 |
-
-**추가 해석**:
-1. **gap 효과**: gap=1의 delta는 노이즈 수준. gap=10에서 전반적으로 R²가 2~4배 상승
-2. **M stream의 temporal 특성**: gap=1 최하위(0.046) → gap=10 P를 추월(0.359 > 0.325). M/P 분리 설계가 의도대로 작동
-3. **patch_mean_concat(0.585) > VideoMAE(0.571)**: M/P 분리 보존 시 Two-Stream이 역전
-4. **CLS concat < CLS average**: CLS exchange로 이미 동질화되어 concat이 차원만 증가. CLS는 average 방식이 적합
-5. **CLS average(0.364)는 patch_mean(0.532)의 68%**: CLS bottleneck에 개선 여지
-
-### v4 Masking 비교 결과 (5 epoch, 2026-04-06)
-
-| | pmc gap=1 | pmc gap=5 | pmc gap=10 | CLS avg gap=10 |
-|---|---------|---------|----------|--------------|
-| v4_mask30 | -2.501 | **0.277** | **0.437** | **0.397** |
-| v4_nomask | -3.203 | 0.255 | 0.418 | 0.297 |
-
-- mask30이 모든 조건에서 우세
-- **CLS 정보 밀도 33% 개선** (0.397 vs 0.297)
-- masking이 표현 품질 향상 + 연산 30% 절약 + CLS exchange 강제
-
-**P stream self-sufficiency 문제**: P는 현재 프레임 외형을 직접 입력받아 CLS exchange 없이도
-낮은 loss 달성 가능 → 빠른 수렴 + shallow 표현 + blurry 출력. 해결: P의 masking 비율을
-M보다 높게 설정 (`--mask-ratio-p`). P의 자기 입력 의존성을 제한하여 cross-stream 교환 압력 강화.
-
-### Composition Consistency 실험 결과 (30 epoch, 500 videos, 동일 조건 비교)
-
-| | Final train | Final eval | pmc g=5 | pmc g=10 | CLS avg g=10 | M loss | P loss |
-|---|-------------|-----------|---------|----------|--------------|--------|--------|
-| **v4_base (gap30 linear)** | 0.0020 | 0.0387 | 0.246 | 0.290 | **0.239** | 0.0015 | 0.0006 |
-| **v4_base_gap60_tri** | 0.0022 | **0.0326** | **0.260** | **0.344** | 0.218 | 0.0016 | 0.0006 |
-| v4_comp_sg | 0.0052 | 0.0655 | 0.187 | 0.280 | 0.217 | 0.0016 | 0.0015 |
-| v4_comp_grad | 0.0076 | 0.0559 | 0.219 | 0.369 | -0.009 | 0.0028 | 0.0026 |
-
-**핵심 발견**:
-
-1. **Composition loss는 불필요** — composition 없는 base가 pixel loss/probing 모두 우세.
-   - sg는 pixel loss가 2.6배 높고 probing도 base 이하
-   - grad는 CLS collapse(-0.009), patch만 살아남음
-   - 학습 시간 5배 증가 + 메모리 3배 → 이점 없음
-
-2. **max_gap 확장 (30 → 60, triangular)이 더 효과적**:
-   - eval loss 16% 개선 (0.0387 → 0.0326)
-   - probing pmc gap=10: 0.290 → 0.344 (+0.054)
-   - composition 없이 같은 data로 더 나은 결과
-
-3. **M/P loss 균형은 표현 품질과 무관**:
-   - base (M=0.0015, P=0.0006): M>>P인데 probing 최고
-   - comp_sg (M≈P=0.0016): 균형 맞췄지만 probing 낮음
-   - **M/P 균형 자체가 목표가 아님**, 전체 표현 품질이 중요
-   - sg에서 M≈P가 된 이유: composition의 multi-pair 학습 + compositor K/V gradient 상호작용 (P 마스킹 50% 때문이 아니고, gap 때문도 아님)
-
-### 확정된 v4 설정
+### 확정된 v6 설정
 
 ```
-depth=12, num_stages=2 (6 blk/stage, CLS exchange 2회)
-mask_ratio=0.3 (M), mask_ratio_p=0.5 (P)
+depth=12, num_stages=2
+mask_ratio=0.5 (M), mask_ratio_p=0.5 (P)
 max_gap=60, sample_dist=triangular, sample_center=30
-2D RoPE
-Composition 없음 (compositor 제거)
+APE (learnable positional embedding)
+rotation_aug=True (90% 동일회전 + 10% 독립회전)
 ```
-
-### 다음 단계 (2026-04-10)
-- [ ] DDP sanity Stage 4 완료 (멀티노드 NCCL 검증)
-- [ ] **Full training (IBS 8 H100)**: Two-Stream v4 50 epoch
-- [ ] **Full training (IBS 8 H100)**: VideoMAE 50 epoch
-- [ ] DROID action probing (DROID 다운로드 완료 후)
-- [ ] LIBERO fine-tuning + rollout (encoder 비교)
-- [ ] OpenVLA encoder 교체 실험
-
-### 학습 전략 (2026-04-10, IBS 클러스터)
-
-**환경**: IBS olaf 클러스터, AIP/AIP_long 파티션, 노드당 H100 × 4
-
-**본 학습 계획**:
-- 2 노드 × 4 GPU = 8 H100 DDP, AIP_long (14일 max)
-- Per-GPU batch 64, global batch 512, lr=2e-4 (square-root scaling)
-- Scratch stage-in (~10분) → 로컬 NVMe에서 학습 → 체크포인트 stage-out
-- 예상 시간: ~3.5일 (50 epoch), 비용 ~170만원
-
-**대안 (스케줄링 어려울 시)**:
-- 1 노드 × 4 GPU, AIP (3일 max), 25 epoch씩 2번 `--resume`
-- 비용 동일, wall-clock 2배
 
 ---
 
