@@ -21,7 +21,7 @@
 | **제안** | **Two-Stream v6 (ours)** | EgoDex (~100M frames) | ~213M | **M/P 구조 + pixel reconstruction + rotation aug** | 🔥 우리 학습 |
 | **Controlled comparison** | **VideoMAE-ours (2-frame)** | **EgoDex (same)** | ~101M (ViT-B + decoder) | Vanilla MAE (구조적 bias 없음, mask 0.5) | 🔥 **우리 학습 (신규)** |
 | **Native 세팅 baseline** | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | 📦 공개 가중치 |
-| **Native 세팅 baseline** | V-JEPA-official | VideoMix2M (16-frame) | ~86M | Feature prediction (공식 세팅) | 📦 공개 가중치 |
+| **Native 세팅 baseline** | V-JEPA 2.1 ViT-B | VideoMix22M (16-frame, 384px) | 86.8M | Feature prediction + dense loss (최신 video SSL) | 📦 공개 가중치 |
 | **로봇 제어 SOTA** | VC-1-Base | Ego4D + 조작 (~500M frames) | 86M | MAE (embodied AI 표준) | 📦 공개 가중치 |
 | Internet-scale SSL | DINOv2-Base | LVD-142M (웹 이미지) | 86M | Self-distillation | 📦 공개 가중치 |
 | Internet-scale VL | SigLIP-Base | WebLI (웹 10B 이미지-텍스트) | 86M | Vision-language contrastive | 📦 공개 가중치 |
@@ -225,42 +225,41 @@ VideoMAE-ours (33003926)는 같은 2-frame EgoDex + sin-cos APE. 결과 판정:
 | **DROID probing** (main) | Two-Stream, VideoMAE-ours, VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP | Cross-embodiment 전이 비교 |
 | **LIBERO** (Phase 3) | 동일 7개 encoder | Downstream robot control |
 
-**작업**:
-1. frozen encoder로 DROID에서 로봇 행동 linear/MLP probe
-2. 7개 encoder 모두 동일 probe 프로토콜로 비교
-3. 지표: R², cosine similarity
+**데이터**: DROID v1.0.1 (95k episodes Franka, 다운로드 완료 3.4 TiB, 프레임 추출 진행 중)
 
-**데이터**: DROID v1.0.1 (95k episodes Franka, gsutil rsync 진행 중)
+**평가 프로토콜 (2단계)**:
+
+**Primary — 2-frame 통제 비교 (main table)**:
+- 7개 encoder 전부 동일 2프레임 입력 (frame[0], frame[gap])
+- V-JEPA/VideoMAE-official도 2프레임 (정보량 통제)
+- Action target: action[gap] - action[0] (7-DoF delta)
+- 지표: R², cosine similarity
+
+**Supplementary — native input 비교 (부록)**:
+- 각 모델이 설계된 입력 형태로 평가:
+  - CLIP/DINOv2/SigLIP/VC-1: **1프레임** (frame[gap]만, 정적 표현의 한계 노출)
+  - Two-Stream/VideoMAE-ours: **2프레임** (네이티브)
+  - V-JEPA-official/VideoMAE-official: **16프레임** (네이티브)
+- 정보 계층 1 < 2 < 16으로 명확. "정보량 증가 대비 성능 향상"을 정량화
+
+**이상적 결과**: Two-Stream v6가 2-frame 통제에서 최상위 + native 16-frame V-JEPA에 근접/우위 → "2-frame M/P 구조가 정보 효율적"
 
 **Go/No-Go**:
-- 우리 encoder가 baseline 대비 우위 → Phase 3 순항
-- 열세 → 원인 분석 (EgoDex와 DROID 도메인 갭 vs 표현 품질)
+- 2-frame 비교에서 우위 → Phase 3 순항
+- 열세 → 원인 분석 (도메인 갭 vs 표현 품질)
 
-#### 선행 작업: Baseline encoder 로더 보강 (Phase 2 시작 전 필수)
+#### Encoder 로더 구현 현황
 
-`scripts/eval/probe_action.py::load_encoder` 에 현재 지원: two-stream,
-videomae, clip, dinov2. **누락**: SigLIP, VC-1, VideoMAE-official, V-JEPA-official.
-
-**원칙**: 각 baseline 은 **공식 저장소의 검증된 방식**으로만 로드. 자체 구현
-금지. 공식 예제를 먼저 재현해서 feature shape/값이 문서와 일치함을 확인 후
-우리 래퍼로 감싼다.
-
-| Encoder | 공식 저장소 | 로드 방식 | 전처리 |
-|---------|------------|----------|--------|
-| **SigLIP-Base** | google-research/big_vision (HF 미러 `google/siglip-base-patch16-224`) | `transformers.SiglipVisionModel.from_pretrained` | mean=(.5,.5,.5), std=(.5,.5,.5), 224 |
-| **VC-1-Base** | facebookresearch/eai-vc | `vc_models.models.vit.model_utils.load_model(VC1_BASE_NAME)` | ImageNet mean/std, 224 |
-| **VideoMAE-official** | MCG-NJU/VideoMAE (HF `MCG-NJU/videomae-base`) | `transformers.VideoMAEModel.from_pretrained` | ImageNet mean/std, 16 frames 원본 세팅 |
-| **V-JEPA-official** | facebookresearch/jepa (공식 checkpoint) | JEPA repo의 `load_pretrained()`, 16-frame VideoMix2M 모델 | 공식 preprocessing |
-| **VideoMAE-ours (2-frame)** | (자체 학습) | 기존 `VideoMAEEncoderForVLA` 래퍼 그대로 사용 | Two-Stream 과 동일 |
-
-**2-frame 입력 규약**: 모든 단일 프레임 baseline 은 `(img_{t-1}, img_t)` 각
-프레임 독립 forward 후 feature concat. 각 encoder 의 **공식 preprocessing** 을
-그대로 사용 (mean/std, resolution).
-
-**CLIP 제거 검토**: 5-encoder 목록에 없음. SigLIP 이 Internet-scale VL 역할.
-Phase 2 이후 `legacy_baseline` 으로 라벨링 or 삭제.
-
-상세 TODO 는 [scripts/eval/probe_action.py](../scripts/eval/probe_action.py) 상단 주석 참고.
+| Encoder | load_encoder | encode_batch | 패키지 | 상태 |
+|---------|:---:|:---:|--------|------|
+| Two-Stream v6 | ✅ | ✅ | — | 완료 |
+| VideoMAE-ours | ✅ | ✅ | — | 완료 |
+| CLIP | ✅ | ✅ | transformers | 완료 |
+| DINOv2 | ✅ | ✅ | transformers | 완료 |
+| SigLIP | ✅ | ✅ | transformers | 완료 (2026-04-17) |
+| VC-1 | ✅ | ✅ | vc_models (git) | 완료 (2026-04-17) |
+| V-JEPA 2.1 ViT-B | ✅ | ✅ | torch.hub (vjepa2) | 완료 (2026-04-17), 86.8M, 384px, 2-frame 동작 확인 |
+| VideoMAE-official | ✅ | ✅ | transformers | 완료 (2026-04-17), pos_embed slice로 2-frame 지원 |
 
 ### Phase 3: LIBERO BC (메인 downstream 실험) ⏸️ 대기
 

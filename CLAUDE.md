@@ -191,11 +191,23 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 **Encoder lineup** (7개, 변경 없음):
 1. Two-Stream v6 (ours) / 2. VideoMAE-ours / 3-7. 공개 가중치 (VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP)
 
+**DROID Probing 프로토콜** (확정):
+- **Primary (main table)**: 7개 encoder 전부 동일 **2-frame** 입력 (정보량 통제)
+- **Supplementary (부록)**: native input — 1-frame(CLIP/DINOv2/SigLIP/VC-1), 2-frame(ours), 16-frame(V-JEPA/VideoMAE-official)
+
+**준비 현황**:
+- ✅ LIBERO 데이터셋 다운로드 (spatial/object/goal)
+- ✅ SigLIP, VC-1 encoder 코드 구현
+- ✅ DROID 추출 sbatch 작성
+- ⏳ DROID 프레임+action 추출 (sbatch 제출, CPU 큐 대기)
+- ❌ V-JEPA-official, VideoMAE-official encoder 코드
+
 **다음 작업**:
-1. v6 학습 완료 후 최종 probing
-2. DROID 프레임 추출
-3. Phase 2: DROID action probing (7 encoder)
-4. Phase 3: LIBERO
+1. v6 학습 완료 후 최종 probing (~04/20)
+2. DROID 프레임 추출 완료 후 전체 추출 제출
+3. V-JEPA-official, VideoMAE-official encoder 구현
+4. Phase 2: DROID action probing (7 encoder, 2-frame + native)
+5. Phase 3: LIBERO
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 

@@ -169,7 +169,7 @@ def train_probe(probe, train_emb, train_act, eval_emb, eval_act, epochs=20, batc
 def main():
     parser = argparse.ArgumentParser(description="DROID Action Probing")
     parser.add_argument("--encoder", type=str, required=True,
-                        choices=["two-stream", "videomae", "clip", "dinov2"])
+                        choices=["two-stream", "videomae", "clip", "dinov2", "siglip", "vc1", "vjepa2", "videomae-official"])
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--num-stages", type=int, default=3)

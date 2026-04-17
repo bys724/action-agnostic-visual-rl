@@ -361,6 +361,55 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         embed_dim = encoder.config.hidden_size * 2
         return encoder, embed_dim
 
+    elif name == "siglip":
+        from transformers import SiglipVisionModel
+        model_id = "google/siglip-base-patch16-224"
+        encoder = SiglipVisionModel.from_pretrained(model_id)
+        encoder.to(device)
+        encoder.eval()
+        embed_dim = encoder.config.hidden_size * 2  # 768*2 = 1536
+        return encoder, embed_dim
+
+    elif name == "vc1":
+        from vc_models.models.vit import model_utils
+        model, _, model_transforms, _ = model_utils.load_model(
+            model_utils.VC1_BASE_NAME
+        )
+        model.to(device)
+        model.eval()
+        embed_dim = 768 * 2  # ViT-B, 각 프레임 CLS concat
+        # model_transforms를 encoder에 붙여서 encode_batch에서 접근
+        model._vc1_transforms = model_transforms
+        return model, embed_dim
+
+    elif name == "vjepa2":
+        import sys
+        hub_path = os.path.expanduser("~/.cache/torch/hub/facebookresearch_vjepa2_main")
+        if hub_path not in sys.path:
+            sys.path.insert(0, hub_path)
+        from src.hub.backbones import vjepa2_1_vit_base_384, _clean_backbone_key
+        encoder, _ = vjepa2_1_vit_base_384(pretrained=False)
+        ckpt_path = "/proj/external_group/mrg/checkpoints/vjepa2_official/vjepa2_1_vitb_384.pt"
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        encoder_sd = _clean_backbone_key(ckpt["ema_encoder"])
+        encoder.load_state_dict(encoder_sd, strict=True)
+        encoder.to(device)
+        encoder.eval()
+        embed_dim = 768 * 2  # 각 프레임 patch mean → concat
+        return encoder, embed_dim
+
+    elif name == "videomae-official":
+        from transformers import VideoMAEModel
+        model = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base")
+        # 2-frame용: position embedding을 196개로 slice
+        orig_pe = model.embeddings.position_embeddings  # [1, 1568, 768]
+        model.embeddings.position_embeddings = torch.nn.Parameter(orig_pe[:, :196, :])
+        model.config.num_frames = 2
+        model.to(device)
+        model.eval()
+        embed_dim = 768  # patch mean pool
+        return model, embed_dim
+
     else:
         raise ValueError(f"Unknown encoder: {name}")
 
@@ -462,6 +511,78 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             out_t = hidden_t[:, 0]
             out_t1 = hidden_t1[:, 0]
         return torch.cat([out_t, out_t1], dim=-1)  # [B, 1536]
+
+    elif name == "siglip":
+        img_t = pixel_values[:, :3]
+        img_t1 = pixel_values[:, 3:]
+
+        # SigLIP 공식 preprocessing: mean/std = 0.5
+        mean = torch.tensor([0.5, 0.5, 0.5], device=pixel_values.device).view(1, 3, 1, 1)
+        std = torch.tensor([0.5, 0.5, 0.5], device=pixel_values.device).view(1, 3, 1, 1)
+        img_t_norm = (img_t - mean) / std
+        img_t1_norm = (img_t1 - mean) / std
+
+        hidden_t = encoder(pixel_values=img_t_norm).last_hidden_state   # [B, N, 768] (no CLS)
+        hidden_t1 = encoder(pixel_values=img_t1_norm).last_hidden_state
+
+        # SigLIP은 CLS 토큰 없음 → patch mean pool
+        out_t = hidden_t.mean(dim=1)
+        out_t1 = hidden_t1.mean(dim=1)
+        return torch.cat([out_t, out_t1], dim=-1)  # [B, 1536]
+
+    elif name == "vc1":
+        img_t = pixel_values[:, :3]
+        img_t1 = pixel_values[:, 3:]
+
+        # VC-1 공식 preprocessing: ImageNet mean/std
+        mean = torch.tensor([0.485, 0.456, 0.406], device=pixel_values.device).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=pixel_values.device).view(1, 3, 1, 1)
+        img_t_norm = (img_t - mean) / std
+        img_t1_norm = (img_t1 - mean) / std
+
+        # VC-1은 CLS token 출력 [B, 768]
+        out_t = encoder(img_t_norm)
+        out_t1 = encoder(img_t1_norm)
+        return torch.cat([out_t, out_t1], dim=-1)  # [B, 1536]
+
+    elif name == "vjepa2":
+        img_t = pixel_values[:, :3]   # [B, 3, H, W]
+        img_t1 = pixel_values[:, 3:]
+
+        # V-JEPA 2.1 입력: [B, C, T, H, W] — 224→384 resize 필요
+        # probing dataset은 224x224 → 384x384로 resize
+        img_t_384 = F.interpolate(img_t, size=(384, 384), mode="bilinear", align_corners=False)
+        img_t1_384 = F.interpolate(img_t1, size=(384, 384), mode="bilinear", align_corners=False)
+
+        # ImageNet normalization
+        mean = torch.tensor([0.485, 0.456, 0.406], device=pixel_values.device).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=pixel_values.device).view(1, 3, 1, 1)
+        img_t_norm = (img_t_384 - mean) / std
+        img_t1_norm = (img_t1_384 - mean) / std
+
+        # [B, C, T=2, H, W]
+        video = torch.stack([img_t_norm, img_t1_norm], dim=2)
+        tokens = encoder(video)  # [B, N, 768]
+        # patch mean pool 후 단일 embedding (2프레임 동시 처리이므로 concat 불필요)
+        out = tokens.mean(dim=1)  # [B, 768]
+        # 다른 모델과 차원 맞추기: 2배 (768*2=1536은 concat 기반 모델용)
+        # V-JEPA는 2프레임을 동시에 보므로 768로 충분, 하지만 공정 비교를 위해 반복
+        return torch.cat([out, out], dim=-1)  # [B, 1536]
+
+    elif name == "videomae-official":
+        # VideoMAE-official: [B, T=2, C, H, W] 형태
+        img_t = pixel_values[:, :3]
+        img_t1 = pixel_values[:, 3:]
+
+        mean = torch.tensor([0.485, 0.456, 0.406], device=pixel_values.device).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=pixel_values.device).view(1, 3, 1, 1)
+        img_t_norm = (img_t - mean) / std
+        img_t1_norm = (img_t1 - mean) / std
+
+        # [B, T=2, C, H, W]
+        video = torch.stack([img_t_norm, img_t1_norm], dim=1)
+        out = encoder(video).last_hidden_state  # [B, 196, 768]
+        return out.mean(dim=1)  # [B, 768]
 
     else:
         raise ValueError(f"Unknown encoder: {name}")
@@ -633,7 +754,7 @@ def main():
     parser = argparse.ArgumentParser(description="Action Probing Experiment")
 
     parser.add_argument("--encoder", type=str, required=True,
-                        choices=["two-stream", "videomae", "clip", "dinov2"])
+                        choices=["two-stream", "videomae", "clip", "dinov2", "siglip", "vc1", "vjepa2", "videomae-official"])
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Encoder checkpoint path (required for two-stream, videomae)")
     parser.add_argument("--egodex-root", type=str, default="/mnt/data/egodex",
