@@ -132,7 +132,7 @@ CPU도 같은 방식: `청구일수 = ceil(월간 노드·초 누적 / 86400)` �
 | 33179509 | 2026-04-16 02:51 | AIP | 1 노드 × 1 H100 (3분) | APE 진단 ep4 rotation diagnostic 생성 (rotation_APE_diag_ep4_4.png) |
 | 33179673 | 2026-04-16 03:08 | AIP | 1 노드 × 1 H100 (~16분) | APE 진단 ep4 action probing — peak R²=0.2191, ep48 RoPE(0.197)와 거의 동일 → mask 지배 확정 |
 | ~~33179788~~ | ~~2026-04-16 03:30~~ | ~~AIP_long~~ | ~~2 노드 × 4 H100~~ | ~~Two-Stream v5 — APE + mask 0.5/0.5. ep8에서 position prior overfit 확인 후 CANCELLED, v6(rotation aug)으로 대체~~ |
-| **33222151** | **2026-04-16 20:xx** | **AIP_long** | **2 노드 × 4 H100** | **Two-Stream v6 full training — APE + mask 0.5/0.5 + rotation aug (90% 동일/10% 독립), CHECKPOINT_SUFFIX=v6_ape_mask50_rotaug** |
+| ~~33222151~~ | ~~2026-04-16 20:xx~~ | ~~AIP_long~~ | ~~2 노드 × 4 H100~~ | ~~Two-Stream v6 full training — ep23/30에서 scancel. ep8 peak (R²=0.259) → ep12 0.160 → ep20 0.146로 단조 악화, 추가 학습 실익 없음 판단 (약 2일 elapsed)~~ |
 | **33183045** | **2026-04-16 10:20** | **AIP** | **1 노드 × 1 H100** | **VideoMAE-ours ep28 action probing (test split, gap=10, patch_mean)** |
 | **33213615** | **2026-04-16 14:0x** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v4 ep48 probing — cls_mode=average** |
 | **33213616** | **2026-04-16 14:0x** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v4 ep48 probing — cls_mode=concat** |
@@ -146,6 +146,15 @@ CPU도 같은 방식: `청구일수 = ceil(월간 노드·초 누적 / 86400)` �
 | **33257510** | **2026-04-17 09:xx** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v6 ep8 action probing — patch_mean_concat** |
 | **33257511** | **2026-04-17 09:xx** | **AIP** | **1 노드 × 1 H100** | **VideoMAE-ours best_model(ep50) action probing — patch_mean** |
 | **33257672** | **2026-04-17 09:xx** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v6 ep8 rotation diagnostic — DROID 프레임** |
+| **33276335** | **2026-04-18 17:4x** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v6 ep20 rotation diagnostic — EgoDex(338) + DROID(ep_000002)** |
+| **33276338** | **2026-04-18 17:5x** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v6 ep20 action probing — EgoDex test, patch_mean_concat, gap=10** |
+| **33276351** | **2026-04-18 18:4x** | **AIP** | **1 노드 × 1 H100** | **Two-Stream v6 ep12 action probing — 중간 추세 확인용** |
+| **33276769** | **2026-04-18 19:2x** | **AIP** | **1 노드 × 1 H100** | **Random-init Two-Stream action probing — probing 프로토콜 floor 확인** |
+| **33276770** | **2026-04-18 19:2x** | **AIP** | **1 노드 × 1 H100** | **DINOv2 action probing — probing 프로토콜 ceiling 참조** |
+| ~~33277747~~ | ~~2026-04-19 01:2x~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v7-big sanity — dataset path 오설정(`raw` vs `frames`)으로 0 videos, 실패. CPU sanity는 이미 통과했으므로 full training 진행~~ |
+| **33277748** | **2026-04-19 01:3x** | **AIP** | **1 노드 × 1 H100** | **DINOv2 action probing 재시도 (HF_HUB_OFFLINE=1, login node에서 사전 캐싱 완료)** |
+| ~~33277749~~ | ~~2026-04-19 01:3x~~ | ~~AIP_long~~ | ~~2 노드 × 4 H100~~ | ~~v7-big Option 1 (CLS_M in decoder) — DDP FAILED 6분 후. `mask_token_p` 고아 파라미터 + 설계 의도 Option 3로 전환 필요~~ |
+| **33277774** | **2026-04-19 01:4x** | **AIP_long** | **2 노드 × 4 H100** | **v7-big Option 3 pure 재제출 — decoder context는 CLS_P_bg/motion만 (CLS_M 제거), mask_token_p 생성 안 함, σ=0.03, APE, rotation_aug** |
 | 32712320 | 2026-04-10 16:05 | core_s | 72 CPU | 프레임 손상 검증 (validate_frames.py) |
 | 32866942 | 2026-04-11 | mig-1g.10gb | 1 MIG GPU | V-JEPA 모델 sanity check (38초, COMPLETED) |
 | 32867620 | 2026-04-12 12:17 | normal_cpu | 1 노드 8 CPU | DROID 10ep 프레임 추출 (OOM 5ep에서 중단) |

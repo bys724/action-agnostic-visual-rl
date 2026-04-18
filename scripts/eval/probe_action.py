@@ -320,9 +320,10 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
     """
     if name == "two-stream":
         from src.models.two_stream import TwoStreamEncoder
-        assert checkpoint, "--checkpoint required for two-stream"
+        assert checkpoint, "--checkpoint required for two-stream ('random' for untrained baseline)"
+        ckpt_arg = None if checkpoint == "random" else checkpoint
         encoder = TwoStreamEncoder(
-            checkpoint_path=checkpoint, depth=depth, num_stages=num_stages,
+            checkpoint_path=ckpt_arg, depth=depth, num_stages=num_stages,
         )
         encoder.to(device)
         encoder.eval()

@@ -49,6 +49,10 @@ module load miniforge3/24.11.3-2
 source /opt/ibs_lib/apps/miniforge3/24.11.3-2/etc/profile.d/conda.sh
 conda activate "$CONDA_ENV"
 
+# Compute nodes can't reach HF Hub — force offline (cache must be pre-populated on login node)
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+
 cd "$PROJECT_ROOT"
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action.py \
     --encoder "$ENCODER" \

@@ -100,6 +100,12 @@ def main():
     parser.add_argument('--rotation-aug', action='store_true',
                         help='[Two-Stream] 학습 시 입력 프레임 회전 augmentation. '
                              'Position prior overfit 방지 (90%% 동일회전 + 10%% 독립회전)')
+    parser.add_argument('--v7-big', action='store_true',
+                        help='[Two-Stream v7-big] P decoder 제거, M decoder 2개 (bg/motion), '
+                             'CLS_P 2개로 분리. |ΔL| 기반 Gaussian weighted loss.')
+    parser.add_argument('--sigma', type=float, default=0.03,
+                        help='[v7-big] Gaussian weighting σ — w_bg=exp(-(|ΔL|/σ)²). '
+                             'Default 0.03 (EgoDex p75 경계).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -179,7 +185,9 @@ def main():
         model = TwoStreamModel(depth=args.depth, num_stages=args.num_stages,
                                mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p,
                                use_ape=args.use_ape,
-                               rotation_aug=args.rotation_aug)
+                               rotation_aug=args.rotation_aug,
+                               v7_big_mode=args.v7_big,
+                               sigma=args.sigma)
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':

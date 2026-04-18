@@ -228,6 +228,7 @@ class InterleavedTwoStreamViT(nn.Module):
         image_size: int = 224,
         patch_size: int = 16,
         use_ape: bool = False,
+        num_p_cls: int = 1,
     ):
         super().__init__()
 
@@ -235,6 +236,7 @@ class InterleavedTwoStreamViT(nn.Module):
         self.num_stages = num_stages
         self.blocks_per_stage = depth // num_stages
         self.use_ape = use_ape
+        self.num_p_cls = num_p_cls
 
         # Patch embeddings for M (3ch: ΔL + Sobel(ΔL)) and P (5ch: Sobel + RGB)
         self.patch_embed_m = nn.Conv2d(
@@ -250,9 +252,9 @@ class InterleavedTwoStreamViT(nn.Module):
             stride=patch_size,
         )
 
-        # CLS tokens
+        # CLS tokens — M은 1개, P는 num_p_cls개 (v7-big에서 bg/motion 분리용)
         self.cls_token_m = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.cls_token_p = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token_p = nn.Parameter(torch.zeros(1, num_p_cls, embed_dim))
 
         num_patches = (image_size // patch_size) ** 2
         num_patches_per_side = image_size // patch_size
@@ -261,7 +263,9 @@ class InterleavedTwoStreamViT(nn.Module):
             # APE path: learnable positional embedding (CLS + patches)
             # RoPE buffer는 만들지 않음. block에는 freqs_cis=None 전달
             self.pos_embed_m = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
-            self.pos_embed_p = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+            self.pos_embed_p = nn.Parameter(
+                torch.zeros(1, num_patches + num_p_cls, embed_dim)
+            )
             self.freqs_cis = None
         else:
             # 2D RoPE frequencies (not a parameter, just a buffer)
@@ -319,6 +323,7 @@ class InterleavedTwoStreamViT(nn.Module):
             p_tokens: [B, N+1, D] - P stream tokens (CLS + patches)
         """
         batch_size = m_channel.shape[0]
+        K = self.num_p_cls  # P-side CLS token 개수
 
         # 1. Patch embedding
         m_patches = self.patch_embed_m(m_channel)  # [B, D, H', W']
@@ -327,12 +332,12 @@ class InterleavedTwoStreamViT(nn.Module):
         m_patches = m_patches.flatten(2).transpose(1, 2)  # [B, N, D]
         p_patches = p_patches.flatten(2).transpose(1, 2)
 
-        # 2. Add CLS tokens
-        m_cls = self.cls_token_m.expand(batch_size, -1, -1)
-        p_cls = self.cls_token_p.expand(batch_size, -1, -1)
+        # 2. Add CLS tokens  (M: 1개, P: K개)
+        m_cls = self.cls_token_m.expand(batch_size, -1, -1)  # [B, 1, D]
+        p_cls = self.cls_token_p.expand(batch_size, -1, -1)  # [B, K, D]
 
         m_tokens = torch.cat([m_cls, m_patches], dim=1)  # [B, N+1, D]
-        p_tokens = torch.cat([p_cls, p_patches], dim=1)
+        p_tokens = torch.cat([p_cls, p_patches], dim=1)  # [B, N+K, D]
 
         # 3. Positional encoding: APE (broadcast add) or RoPE (attention 내부)
         if self.use_ape:
@@ -342,7 +347,7 @@ class InterleavedTwoStreamViT(nn.Module):
         else:
             freqs = self.freqs_cis
 
-        # 4. Interleaved processing with CLS exchange
+        # 4. Interleaved processing with CLS exchange (1+K tokens)
         for stage_idx in range(self.num_stages):
             for block_m in self.blocks_m[stage_idx]:
                 m_tokens = block_m(m_tokens, freqs_cis=freqs)
@@ -350,17 +355,17 @@ class InterleavedTwoStreamViT(nn.Module):
             for block_p in self.blocks_p[stage_idx]:
                 p_tokens = block_p(p_tokens, freqs_cis=freqs)
 
-            # Extract CLS tokens
-            m_cls = m_tokens[:, 0:1]  # [B, 1, D]
-            p_cls = p_tokens[:, 0:1]
+            # Extract CLS tokens  (M: 1, P: K)
+            m_cls = m_tokens[:, 0:1]     # [B, 1, D]
+            p_cls = p_tokens[:, 0:K]     # [B, K, D]
 
-            # Exchange information between CLS tokens
-            cls_combined = torch.cat([m_cls, p_cls], dim=1)  # [B, 2, D]
+            # Exchange between all CLS tokens  (1+K tokens self-attention)
+            cls_combined = torch.cat([m_cls, p_cls], dim=1)  # [B, 1+K, D]
             cls_exchanged = self.cls_exchange[stage_idx](cls_combined)
 
             # Inject updated CLS back
             m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
-            p_tokens = torch.cat([cls_exchanged[:, 1:2], p_tokens[:, 1:]], dim=1)
+            p_tokens = torch.cat([cls_exchanged[:, 1:1+K], p_tokens[:, K:]], dim=1)
 
         # 5. Final normalization
         m_tokens = self.norm_m(m_tokens)
@@ -444,19 +449,21 @@ class PatchDecoder(nn.Module):
         decoder_num_heads: int = 8,
         image_size: int = 224,
         patch_size: int = 16,
+        num_context: int = 1,
     ):
         super().__init__()
 
         self.patch_size = patch_size
         self.num_patches_per_side = image_size // patch_size  # 14
         num_patches = self.num_patches_per_side ** 2  # 196
+        self.num_context = num_context  # context CLS tokens 개수
 
         # Project encoder dim → decoder dim
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim)
 
-        # Decoder positional embedding (CLS + patches)
+        # Decoder positional embedding (context CLS들 + patches)
         self.decoder_pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, decoder_embed_dim)
+            torch.zeros(1, num_patches + num_context, decoder_embed_dim)
         )
 
         # Lightweight transformer decoder
@@ -487,17 +494,25 @@ class PatchDecoder(nn.Module):
         """
         Args:
             patch_tokens: [B, N, D] - single stream's patch embeddings
-            cls_embedding: [B, D] - fused CLS from encoder
+            cls_embedding: [B, D] (num_context=1) or [B, K, D] (num_context=K)
+                           — encoder로부터의 context CLS 토큰(들)
 
         Returns:
             [B, 3, H, W] - predicted image
         """
-        # 1. Project to decoder dim
-        patches = self.decoder_embed(patch_tokens)        # [B, N, d]
-        cls = self.decoder_embed(cls_embedding).unsqueeze(1)  # [B, 1, d]
+        # 0. Normalize cls_embedding shape → [B, K, D]
+        if cls_embedding.dim() == 2:
+            cls_embedding = cls_embedding.unsqueeze(1)  # [B, 1, D]
+        assert cls_embedding.shape[1] == self.num_context, (
+            f"Expected {self.num_context} context tokens, got {cls_embedding.shape[1]}"
+        )
 
-        # 2. Prepend CLS + add positional embedding
-        tokens = torch.cat([cls, patches], dim=1)  # [B, N+1, d]
+        # 1. Project to decoder dim
+        patches = self.decoder_embed(patch_tokens)   # [B, N, d]
+        cls = self.decoder_embed(cls_embedding)      # [B, K, d]
+
+        # 2. Prepend context CLS tokens + add positional embedding
+        tokens = torch.cat([cls, patches], dim=1)  # [B, K+N, d]
         tokens = tokens + self.decoder_pos_embed
 
         # 3. Transformer decoder
@@ -505,8 +520,8 @@ class PatchDecoder(nn.Module):
             tokens = block(tokens)
         tokens = self.decoder_norm(tokens)
 
-        # 4. Predict pixels from patch tokens (skip CLS)
-        patch_preds = self.pred_head(tokens[:, 1:])  # [B, N, patch_size^2 * 3]
+        # 4. Predict pixels from patch tokens (skip context CLS들)
+        patch_preds = self.pred_head(tokens[:, self.num_context:])  # [B, N, ps²*3]
 
         # 5. Reshape to image
         P = self.num_patches_per_side
@@ -549,6 +564,8 @@ class TwoStreamModel(nn.Module):
         use_ape: bool = False,
         rotation_aug: bool = False,
         independent_rotation_prob: float = 0.1,
+        v7_big_mode: bool = False,
+        sigma: float = 0.03,
     ):
         super().__init__()
 
@@ -559,6 +576,11 @@ class TwoStreamModel(nn.Module):
         self.rotation_aug = rotation_aug
         self.independent_rotation_prob = independent_rotation_prob
         self.num_patches = (image_size // patch_size) ** 2
+        self.v7_big_mode = v7_big_mode
+        self.sigma = sigma
+
+        # v7-big: CLS_P가 bg/motion 2개로 분리됨, M decoder도 2개
+        num_p_cls = 2 if v7_big_mode else 1
 
         self.preprocessing = TwoStreamPreprocessing()
         self.encoder = InterleavedTwoStreamViT(
@@ -570,16 +592,36 @@ class TwoStreamModel(nn.Module):
             image_size=image_size,
             patch_size=patch_size,
             use_ape=use_ape,
+            num_p_cls=num_p_cls,
         )
-        self.decoder_m = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
-        self.decoder_p = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
+        if v7_big_mode:
+            # M decoder 2개: 각각 CLS_P_bg / CLS_P_motion context만 사용 (CLS_M 제외).
+            # 설계 철학: cross-stream 정보는 오직 CLS exchange를 통해서만 흐름.
+            # CLS_M은 exchange에서 CLS_P_bg/motion을 shaping하는 역할로 소진되고,
+            # 그 이후 decoder에서는 사용되지 않음 (pure Option 3).
+            self.decoder_m_bg = PatchDecoder(
+                embed_dim=embed_dim, image_size=image_size,
+                patch_size=patch_size, num_context=1,
+            )
+            self.decoder_m_motion = PatchDecoder(
+                embed_dim=embed_dim, image_size=image_size,
+                patch_size=patch_size, num_context=1,
+            )
+            # [v7-big] P decoder 제거 — CLS_P는 M decoder의 context로만 사용.
+            #          필요 시 복원: self.decoder_p = PatchDecoder(...)
+        else:
+            self.decoder_m = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
+            self.decoder_p = PatchDecoder(embed_dim=embed_dim, image_size=image_size, patch_size=patch_size)
 
         # MAE mask tokens (stream별 독립)
+        # v7-big에서는 P stream의 full patch 복원이 필요 없음(decoder_p 없음) → mask_token_p 생성 안 함.
+        # 생성하면 DDP가 "gradient 없는 파라미터"로 간주해 에러.
         if mask_ratio > 0:
             self.mask_token_m = nn.Parameter(torch.zeros(1, 1, embed_dim))
-            self.mask_token_p = nn.Parameter(torch.zeros(1, 1, embed_dim))
             nn.init.trunc_normal_(self.mask_token_m, std=0.02)
-            nn.init.trunc_normal_(self.mask_token_p, std=0.02)
+            if not v7_big_mode:
+                self.mask_token_p = nn.Parameter(torch.zeros(1, 1, embed_dim))
+                nn.init.trunc_normal_(self.mask_token_p, std=0.02)
 
     def _random_mask(self, B: int, device: torch.device, ratio: float = None) -> torch.Tensor:
         """독립 랜덤 마스크 생성. Returns: [B, N] bool, True=masked."""
@@ -592,19 +634,20 @@ class TwoStreamModel(nn.Module):
         mask.scatter_(1, ids_shuffle[:, :N - num_masked], False)
         return mask
 
-    def _apply_mask(self, tokens: torch.Tensor, mask: torch.Tensor):
-        """마스킹: CLS(idx=0) 보존, 나머지 중 visible만 추출 + ids_keep 반환.
+    def _apply_mask(self, tokens: torch.Tensor, mask: torch.Tensor, num_cls: int = 1):
+        """마스킹: CLS(앞 num_cls개) 보존, 나머지 중 visible만 추출 + ids_keep 반환.
 
         Args:
-            tokens: [B, N+1, D] (CLS + patches)
+            tokens: [B, N+num_cls, D] (CLS들 + patches)
             mask: [B, N] bool, True=masked
+            num_cls: 보존할 CLS 토큰 개수 (M stream: 1, v7-big P stream: 2)
 
         Returns:
-            visible_tokens: [B, N_vis+1, D] (CLS + visible patches)
+            visible_tokens: [B, N_vis+num_cls, D]
             ids_keep: [N_vis] visible patch의 원래 position index (RoPE gather용)
         """
-        cls = tokens[:, :1]        # [B, 1, D]
-        patches = tokens[:, 1:]    # [B, N, D]
+        cls = tokens[:, :num_cls]       # [B, num_cls, D]
+        patches = tokens[:, num_cls:]   # [B, N, D]
         B, N, D = patches.shape
 
         # visible patches만 추출
@@ -616,19 +659,21 @@ class TwoStreamModel(nn.Module):
         return torch.cat([cls, visible], dim=1), ids_keep
 
     def _restore_with_mask_tokens(
-        self, visible_tokens: torch.Tensor, mask: torch.Tensor, mask_token: torch.Tensor
+        self, visible_tokens: torch.Tensor, mask: torch.Tensor, mask_token: torch.Tensor,
+        num_cls: int = 1,
     ) -> torch.Tensor:
         """Visible embeddings + mask tokens → 원래 순서의 전체 패치 복원.
 
         Args:
-            visible_tokens: [B, N_vis+1, D] (CLS + visible)
+            visible_tokens: [B, N_vis+num_cls, D] (CLS들 + visible)
             mask: [B, N] bool, True=masked
             mask_token: [1, 1, D]
+            num_cls: CLS 토큰 개수
 
         Returns:
             full_patches: [B, N, D] (CLS 제외, 원래 patch 순서)
         """
-        visible_patches = visible_tokens[:, 1:]  # [B, N_vis, D]
+        visible_patches = visible_tokens[:, num_cls:]  # [B, N_vis, D]
         B, _, D = visible_patches.shape
         N = mask.shape[1]
 
@@ -664,8 +709,23 @@ class TwoStreamModel(nn.Module):
     def _forward_full(
         self, m_channel: torch.Tensor, p_channel: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """마스킹 없는 기존 forward (eval 또는 mask_ratio=0)."""
+        """마스킹 없는 forward (eval 또는 mask_ratio=0)."""
         m_tokens, p_tokens = self.encoder(m_channel, p_channel)
+
+        if self.v7_big_mode:
+            # v7-big: M patches + (CLS_P_bg 또는 CLS_P_motion) 만. CLS_M은 decoder에 안 들어감.
+            p_cls_bg = p_tokens[:, 0:1]       # [B, 1, D]
+            p_cls_motion = p_tokens[:, 1:2]   # [B, 1, D]
+            m_patches = m_tokens[:, 1:]       # [B, N, D]
+
+            pred_bg = self.decoder_m_bg(m_patches, p_cls_bg)
+            pred_motion = self.decoder_m_motion(m_patches, p_cls_motion)
+
+            # Downstream representation: 3개 CLS 평균 (probing에서 별도 mode로 세분화 가능)
+            cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0] + p_tokens[:, 1]) / 3
+            return pred_bg, pred_motion, cls_embedding
+
+        # Legacy path (v4~v6)
         cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
         m_patches = m_tokens[:, 1:]
         p_patches = p_tokens[:, 1:]
@@ -679,14 +739,13 @@ class TwoStreamModel(nn.Module):
         """MAE-style masked forward (training only)."""
         B = m_channel.shape[0]
         device = m_channel.device
+        K = self.encoder.num_p_cls  # P-side CLS 토큰 개수 (v7-big: 2, legacy: 1)
 
         # M/P 독립 마스크 생성
         mask_m = self._random_mask(B, device, ratio=self.mask_ratio)    # [B, N]
         mask_p = self._random_mask(B, device, ratio=self.mask_ratio_p)  # [B, N]
 
         # 인코더: patch embed + pos embed까지는 전체, 그 후 마스킹
-        # InterleavedTwoStreamViT 내부에서 처리하기 어려우므로
-        # 인코더의 중간 단계를 직접 호출
         enc = self.encoder
         batch_size = B
 
@@ -694,9 +753,9 @@ class TwoStreamModel(nn.Module):
         m_patches = enc.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
         p_patches = enc.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
 
-        # CLS + patches
-        m_cls = enc.cls_token_m.expand(batch_size, -1, -1)
-        p_cls = enc.cls_token_p.expand(batch_size, -1, -1)
+        # CLS + patches  (P는 K개 CLS)
+        m_cls = enc.cls_token_m.expand(batch_size, -1, -1)   # [B, 1, D]
+        p_cls = enc.cls_token_p.expand(batch_size, -1, -1)   # [B, K, D]
         m_tokens = torch.cat([m_cls, m_patches], dim=1)
         p_tokens = torch.cat([p_cls, p_patches], dim=1)
 
@@ -706,8 +765,8 @@ class TwoStreamModel(nn.Module):
             p_tokens = p_tokens + enc.pos_embed_p
 
         # 마스킹 적용 (CLS 보존) + visible position index 반환
-        m_tokens, ids_keep_m = self._apply_mask(m_tokens, mask_m)
-        p_tokens, ids_keep_p = self._apply_mask(p_tokens, mask_p)
+        m_tokens, ids_keep_m = self._apply_mask(m_tokens, mask_m, num_cls=1)
+        p_tokens, ids_keep_p = self._apply_mask(p_tokens, mask_p, num_cls=K)
 
         # RoPE path: visible patch 위치의 freqs만 gather. APE이면 freqs=None
         if enc.use_ape:
@@ -716,34 +775,45 @@ class TwoStreamModel(nn.Module):
             freqs_m = enc.freqs_cis[ids_keep_m]  # [N_vis_m, D_head//2]
             freqs_p = enc.freqs_cis[ids_keep_p]  # [N_vis_p, D_head//2]
 
-        # Interleaved processing with CLS exchange
+        # Interleaved processing with CLS exchange (1+K tokens)
         for stage_idx in range(enc.num_stages):
             for block_m in enc.blocks_m[stage_idx]:
                 m_tokens = block_m(m_tokens, freqs_cis=freqs_m)
             for block_p in enc.blocks_p[stage_idx]:
                 p_tokens = block_p(p_tokens, freqs_cis=freqs_p)
 
-            m_cls_tok = m_tokens[:, 0:1]
-            p_cls_tok = p_tokens[:, 0:1]
-            cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)
+            m_cls_tok = m_tokens[:, 0:1]      # [B, 1, D]
+            p_cls_tok = p_tokens[:, 0:K]      # [B, K, D]
+            cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)  # [B, 1+K, D]
             cls_exchanged = enc.cls_exchange[stage_idx](cls_combined)
             m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
-            p_tokens = torch.cat([cls_exchanged[:, 1:2], p_tokens[:, 1:]], dim=1)
+            p_tokens = torch.cat([cls_exchanged[:, 1:1+K], p_tokens[:, K:]], dim=1)
 
         m_tokens = enc.norm_m(m_tokens)
         p_tokens = enc.norm_p(p_tokens)
 
-        # CLS fusion
+        # Mask token 삽입 → 원래 순서의 전체 패치 복원 (M만)
+        m_full_patches = self._restore_with_mask_tokens(
+            m_tokens, mask_m, self.mask_token_m, num_cls=1)
+
+        if self.v7_big_mode:
+            # v7-big: decoder는 M patches만 복원, context는 CLS_P_bg/motion 각 1개.
+            # p_full_patches 복원 불필요 → mask_token_p도 생성 안 함.
+            p_cls_bg = p_tokens[:, 0:1]             # [B, 1, D]
+            p_cls_motion = p_tokens[:, 1:2]         # [B, 1, D]
+
+            pred_bg = self.decoder_m_bg(m_full_patches, p_cls_bg)
+            pred_motion = self.decoder_m_motion(m_full_patches, p_cls_motion)
+
+            cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0] + p_tokens[:, 1]) / 3
+            return pred_bg, pred_motion, cls_embedding
+
+        # Legacy path (v4~v6): P 복원도 필요
+        p_full_patches = self._restore_with_mask_tokens(
+            p_tokens, mask_p, self.mask_token_p, num_cls=K)
         cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
-
-        # Mask token 삽입 → 원래 순서의 전체 패치 복원
-        m_full_patches = self._restore_with_mask_tokens(m_tokens, mask_m, self.mask_token_m)
-        p_full_patches = self._restore_with_mask_tokens(p_tokens, mask_p, self.mask_token_p)
-
-        # 디코더: 전체 N개 패치 + CLS → future frame
         pred_m = self.decoder_m(m_full_patches, cls_embedding)
         pred_p = self.decoder_p(p_full_patches, cls_embedding)
-
         return pred_m, pred_p, cls_embedding
 
     def _apply_rotation_aug(
@@ -777,19 +847,44 @@ class TwoStreamModel(nn.Module):
         Both streams predict future frame independently.
 
         Returns:
-            loss: MSE(M_pred, future) + MSE(P_pred, future)
-            pred_p: [B, 3, H, W] - P stream prediction for visualization
+            loss: MSE(M_pred, future) + MSE(P_pred, future)  (legacy)
+                  or w_bg·MSE(pred_bg, future) + w_motion·MSE(pred_motion, future)  (v7-big)
+            pred: [B, 3, H, W] - visualization prediction (legacy: pred_p, v7-big: pred_motion)
         """
         if self.rotation_aug and self.training:
             image_current, image_future = self._apply_rotation_aug(
                 image_current, image_future
             )
 
-        pred_m, pred_p, _ = self.forward(image_current, image_future)
-        loss_m = F.mse_loss(pred_m, image_future)
-        loss_p = F.mse_loss(pred_p, image_future)
+        out1, out2, _ = self.forward(image_current, image_future)
+
+        if self.v7_big_mode:
+            # out1 = pred_bg, out2 = pred_motion
+            # |ΔL| 기반 pixel-wise weighting
+            with torch.no_grad():
+                lum_prev = (image_current * self.preprocessing.luminance_weights
+                            .to(image_current.device).view(1, 3, 1, 1)).sum(dim=1, keepdim=True)
+                lum_curr = (image_future * self.preprocessing.luminance_weights
+                            .to(image_future.device).view(1, 3, 1, 1)).sum(dim=1, keepdim=True)
+                delta_mag = (lum_curr - lum_prev).abs()  # [B, 1, H, W]
+                w_bg = torch.exp(-(delta_mag / self.sigma) ** 2)   # [B, 1, H, W]
+                w_motion = 1.0 - w_bg
+
+            sq_bg = (out1 - image_future) ** 2          # [B, 3, H, W]
+            sq_motion = (out2 - image_future) ** 2
+
+            # Weighted mean (broadcasting [B,1,H,W] × [B,3,H,W])
+            # 분모: w.sum() × 3 (RGB 채널 수)
+            loss_bg = (w_bg * sq_bg).sum() / (w_bg.sum() * 3 + 1e-8)
+            loss_motion = (w_motion * sq_motion).sum() / (w_motion.sum() * 3 + 1e-8)
+            loss = loss_bg + loss_motion
+            return loss, out2  # pred_motion for visualization
+
+        # Legacy path (v4~v6)
+        loss_m = F.mse_loss(out1, image_future)
+        loss_p = F.mse_loss(out2, image_future)
         loss = loss_m + loss_p
-        return loss, pred_p
+        return loss, out2
 
 
 class TwoStreamEncoder(nn.Module):

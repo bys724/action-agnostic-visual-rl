@@ -190,17 +190,50 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 weighted_loss = loss
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
-                pred_m, pred_p, _ = model(img_t, img_tk)
-                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                if use_ssim:
-                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                    loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                # rotation_aug: training loop가 compute_loss를 우회하므로 여기서 명시 적용
+                if actual_model.rotation_aug and actual_model.training:
+                    img_t, img_tk = actual_model._apply_rotation_aug(img_t, img_tk)
+
+                out1, out2, _ = model(img_t, img_tk)
+
+                if actual_model.v7_big_mode:
+                    # v7-big: |ΔL| 기반 pixel-wise Gaussian weighting
+                    # out1 = pred_bg, out2 = pred_motion
+                    with torch.no_grad():
+                        lw = actual_model.preprocessing.luminance_weights \
+                            .to(img_t.device).view(1, 3, 1, 1)
+                        lum_prev = (img_t * lw).sum(dim=1, keepdim=True)
+                        lum_curr = (img_tk * lw).sum(dim=1, keepdim=True)
+                        delta_mag = (lum_curr - lum_prev).abs()     # [B, 1, H, W]
+                        sigma = actual_model.sigma
+                        w_bg = torch.exp(-(delta_mag / sigma) ** 2)
+                        w_motion = 1.0 - w_bg
+
+                    sq_bg = (out1 - img_tk) ** 2        # [B, 3, H, W]
+                    sq_motion = (out2 - img_tk) ** 2
+
+                    # Per-sample weighted MSE ([B])
+                    num_bg = (w_bg * sq_bg).sum(dim=(1, 2, 3))
+                    den_bg = w_bg.sum(dim=(1, 2, 3)) * 3 + 1e-8
+                    num_mt = (w_motion * sq_motion).sum(dim=(1, 2, 3))
+                    den_mt = w_motion.sum(dim=(1, 2, 3)) * 3 + 1e-8
+
+                    loss_m = num_bg / den_bg       # bg loss는 m slot에 기록
+                    loss_p = num_mt / den_mt       # motion loss는 p slot에 기록
+                    img_pred = out2                # motion decoder 출력을 시각화
                 else:
-                    loss_m = mse_m
-                    loss_p = mse_p
+                    pred_m, pred_p = out1, out2
+                    mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                    mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                    if use_ssim:
+                        loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                    else:
+                        loss_m = mse_m
+                        loss_p = mse_p
+                    img_pred = pred_p
+
                 per_sample_loss = loss_m + loss_p
-                img_pred = pred_p
 
                 total_loss_current += loss_m.mean().item()
                 total_loss_future += loss_p.mean().item()
@@ -320,17 +353,42 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 weighted_loss = loss
                 unweighted_loss = loss
             elif model_name == 'TwoStreamModel':
-                pred_m, pred_p, _ = model(img_t, img_tk)
-                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                if use_ssim:
-                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                    loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                # eval 모드이므로 rotation_aug는 자동 skip (self.training=False)
+                out1, out2, _ = model(img_t, img_tk)
+
+                if actual_model.v7_big_mode:
+                    with torch.no_grad():
+                        lw = actual_model.preprocessing.luminance_weights \
+                            .to(img_t.device).view(1, 3, 1, 1)
+                        lum_prev = (img_t * lw).sum(dim=1, keepdim=True)
+                        lum_curr = (img_tk * lw).sum(dim=1, keepdim=True)
+                        delta_mag = (lum_curr - lum_prev).abs()
+                        sigma = actual_model.sigma
+                        w_bg = torch.exp(-(delta_mag / sigma) ** 2)
+                        w_motion = 1.0 - w_bg
+
+                    sq_bg = (out1 - img_tk) ** 2
+                    sq_motion = (out2 - img_tk) ** 2
+                    num_bg = (w_bg * sq_bg).sum(dim=(1, 2, 3))
+                    den_bg = w_bg.sum(dim=(1, 2, 3)) * 3 + 1e-8
+                    num_mt = (w_motion * sq_motion).sum(dim=(1, 2, 3))
+                    den_mt = w_motion.sum(dim=(1, 2, 3)) * 3 + 1e-8
+                    loss_m = num_bg / den_bg
+                    loss_p = num_mt / den_mt
+                    img_pred = out2
                 else:
-                    loss_m = mse_m
-                    loss_p = mse_p
+                    pred_m, pred_p = out1, out2
+                    mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                    mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                    if use_ssim:
+                        loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                    else:
+                        loss_m = mse_m
+                        loss_p = mse_p
+                    img_pred = pred_p
+
                 per_sample_loss = loss_m + loss_p
-                img_pred = pred_p
 
                 total_loss_current += loss_m.mean().item()
                 total_loss_future += loss_p.mean().item()
@@ -420,11 +478,14 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                 y = img_tk.unsqueeze(0).to(device)
 
                 if model_name == 'TwoStreamModel':
-                    pred_m, pred_p, _ = actual_model(x, y)
-                    pred_m = pred_m.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
-                    pred_p = pred_p.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
-                    imgs = [img_t, img_tk, pred_m, pred_p]
-                    col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
+                    out1, out2, _ = actual_model(x, y)
+                    out1_np = out1.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    imgs = [img_t, img_tk, out1_np, out2_np]
+                    if actual_model.v7_big_mode:
+                        col_titles = ['Frame t', 'Frame t+k (target)', 'Pred BG', 'Pred Motion']
+                    else:
+                        col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
                 elif model_name in ('VideoMAEModel', 'VJEPAModel'):
                     # 픽셀 복원이 아닌 feature/masked 예측 → 이미지 시각화 생략
                     continue
