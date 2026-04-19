@@ -328,10 +328,13 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         encoder.to(device)
         encoder.eval()
         base_dim = encoder._embed_dim  # 768
+        K = getattr(encoder.encoder, 'num_p_cls', 1)
         if cls_mode in ("concat", "patch_mean_concat"):
-            embed_dim = base_dim * 2  # 1536
-        else:  # average, m_only, p_only, patch_mean, patch_mean_m/p
-            embed_dim = base_dim  # 768
+            embed_dim = base_dim * 2
+        elif cls_mode == "all_cls_concat":
+            embed_dim = base_dim * (1 + K)  # v7-big: 3D, legacy: 2D
+        else:  # average, m_only, p_only, patch_mean, patch_mean_m/p, cls_p_bg, cls_p_motion
+            embed_dim = base_dim
         return encoder, embed_dim
 
     elif name == "videomae":
@@ -438,20 +441,22 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
         image_future = pixel_values[:, 3:]
         m_channel, p_channel = encoder.preprocessing(image_current, image_future)
         m_tokens, p_tokens = encoder.encoder(m_channel, p_channel)
-        m_cls = m_tokens[:, 0]  # [B, D]
-        p_cls = p_tokens[:, 0]  # [B, D]
+        # v7-big 호환: P stream은 num_p_cls개 CLS 토큰 (legacy: 1, v7-big: 2)
+        K = getattr(encoder.encoder, 'num_p_cls', 1)
+        m_cls = m_tokens[:, 0]       # [B, D]
+        p_cls_bg = p_tokens[:, 0]    # [B, D]  (v7-big에선 P_cls_bg, legacy에선 일반 P_cls)
 
         m_patches = m_tokens[:, 1:]  # [B, N, D]
-        p_patches = p_tokens[:, 1:]  # [B, N, D]
+        p_patches = p_tokens[:, K:]  # [B, N, D]  (CLS K개 건너뛰고 patches)
 
         if cls_mode == "average":
-            return (m_cls + p_cls) / 2
+            return (m_cls + p_cls_bg) / 2
         elif cls_mode == "concat":
-            return torch.cat([m_cls, p_cls], dim=-1)  # [B, 2D]
+            return torch.cat([m_cls, p_cls_bg], dim=-1)  # [B, 2D]
         elif cls_mode == "m_only":
             return m_cls
         elif cls_mode == "p_only":
-            return p_cls
+            return p_cls_bg
         elif cls_mode == "patch_mean":
             # M+P patch mean pool → VideoMAE와 동일 조건
             all_patches = torch.cat([m_patches, p_patches], dim=1)  # [B, 2N, D]
@@ -465,6 +470,18 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             m_mean = m_patches.mean(dim=1)  # [B, D]
             p_mean = p_patches.mean(dim=1)  # [B, D]
             return torch.cat([m_mean, p_mean], dim=-1)  # [B, 2D]
+        # v7-big 전용 CLS specialization 검증 모드
+        elif cls_mode == "cls_p_bg":
+            assert K >= 1, "cls_p_bg needs num_p_cls >= 1"
+            return p_tokens[:, 0]  # [B, D]
+        elif cls_mode == "cls_p_motion":
+            assert K >= 2, "cls_p_motion needs num_p_cls >= 2 (v7-big only)"
+            return p_tokens[:, 1]  # [B, D]
+        elif cls_mode == "all_cls_concat":
+            # v7-big: [CLS_M, CLS_P_bg, CLS_P_motion] concat
+            if K == 1:
+                return torch.cat([m_cls, p_cls_bg], dim=-1)
+            return torch.cat([m_cls] + [p_tokens[:, i] for i in range(K)], dim=-1)
         else:
             raise ValueError(f"Unknown cls_mode: {cls_mode}")
 
@@ -780,7 +797,8 @@ def main():
     parser.add_argument("--cls-mode", type=str, default="average",
                         choices=["average", "concat", "m_only", "p_only",
                                  "patch_mean", "patch_mean_m", "patch_mean_p",
-                                 "patch_mean_concat"],
+                                 "patch_mean_concat",
+                                 "cls_p_bg", "cls_p_motion", "all_cls_concat"],
                         help="Two-Stream embedding 추출 방식 (default: average)")
     parser.add_argument("--depth", type=int, default=12,
                         help="Two-Stream transformer depth (default: 12)")

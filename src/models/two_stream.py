@@ -120,11 +120,17 @@ class TransformerBlock(nn.Module):
             nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
         )
 
-    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor,
+        freqs_cis: torch.Tensor = None,
+        attn_mask: torch.Tensor = None,
+    ) -> torch.Tensor:
         """
         Args:
             x: [B, N, D]
             freqs_cis: [N_patches, D_head//2] — None이면 RoPE 없이 동작
+            attn_mask: [N, N] or [B, N, N] additive mask (-inf로 차단)
+                        — v7-big P stream에서 CLS_P_bg ↔ CLS_P_motion 상호 attention 차단용
         """
         # Self-attention with RoPE
         h = self.norm1(x)
@@ -140,7 +146,7 @@ class TransformerBlock(nn.Module):
         q = q.transpose(1, 2)  # [B, H, N, D_head]
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
-        attn = F.scaled_dot_product_attention(q, k, v)  # [B, H, N, D_head]
+        attn = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
         attn = attn.transpose(1, 2).reshape(B, N, D)  # [B, N, D]
 
         x = x + self.proj(attn)
@@ -177,19 +183,26 @@ class CLSExchangeBlock(nn.Module):
             nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
         )
 
-    def forward(self, cls_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, cls_tokens: torch.Tensor,
+        attn_mask: torch.Tensor = None,
+    ) -> torch.Tensor:
         """
         Exchange information between M and P CLS tokens.
 
         Args:
-            cls_tokens: [B, 2, D] - concatenated M_cls and P_cls
+            cls_tokens: [B, 1+K, D] - concatenated M_cls and P_cls (K개)
+            attn_mask: [1+K, 1+K] additive mask — v7-big: CLS_P_bg ↔ CLS_P_motion 차단
 
         Returns:
-            cls_tokens: [B, 2, D] - updated CLS tokens after exchange
+            cls_tokens: [B, 1+K, D] - updated CLS tokens after exchange
         """
-        # Self-attention between M_cls and P_cls
+        # Self-attention between CLS tokens (optionally masked)
         normed = self.norm1(cls_tokens)
-        attended, _ = self.attention(normed, normed, normed, need_weights=False)
+        attended, _ = self.attention(
+            normed, normed, normed,
+            attn_mask=attn_mask, need_weights=False,
+        )
         cls_tokens = cls_tokens + attended
 
         # MLP
@@ -298,6 +311,33 @@ class InterleavedTwoStreamViT(nn.Module):
         self.norm_m = nn.LayerNorm(embed_dim)
         self.norm_p = nn.LayerNorm(embed_dim)
 
+        # Attention isolation masks (v7-big only: CLS_P_bg ↔ CLS_P_motion 직접 attend 차단)
+        #   - P-stream self-attn mask:  [K+N, K+N], CLS 간 non-self 위치를 -inf로 차단
+        #   - CLS exchange mask:        [1+K, 1+K], CLS_M은 양쪽 모두 보되 P_bg ↔ P_motion 차단
+        #   - Patches → CLS 방향은 열어둠 (patches는 자연스레 context 흡수)
+        if num_p_cls >= 2:
+            # P-stream self-attn: shape [K+num_patches, K+num_patches]
+            p_len = num_p_cls + num_patches
+            p_mask = torch.zeros(p_len, p_len)
+            # CLS 간 off-diagonal만 -inf (CLS_i가 CLS_j≠i를 못 보게 — diagonal은 self-attention 허용)
+            for i in range(num_p_cls):
+                for j in range(num_p_cls):
+                    if i != j:
+                        p_mask[i, j] = float('-inf')
+            self.register_buffer('p_attn_mask', p_mask, persistent=False)
+
+            # Exchange block: [1+K, 1+K] — idx 0 = CLS_M, idx 1..K = CLS_P들
+            ex_len = 1 + num_p_cls
+            ex_mask = torch.zeros(ex_len, ex_len)
+            for i in range(1, 1 + num_p_cls):
+                for j in range(1, 1 + num_p_cls):
+                    if i != j:
+                        ex_mask[i, j] = float('-inf')
+            self.register_buffer('exchange_mask', ex_mask, persistent=False)
+        else:
+            self.p_attn_mask = None
+            self.exchange_mask = None
+
         self._init_weights()
 
     def _init_weights(self):
@@ -348,20 +388,23 @@ class InterleavedTwoStreamViT(nn.Module):
             freqs = self.freqs_cis
 
         # 4. Interleaved processing with CLS exchange (1+K tokens)
+        #    v7-big (K>=2): P-stream self-attn + exchange에서 CLS_P 간 cross-attention 차단
         for stage_idx in range(self.num_stages):
             for block_m in self.blocks_m[stage_idx]:
                 m_tokens = block_m(m_tokens, freqs_cis=freqs)
 
             for block_p in self.blocks_p[stage_idx]:
-                p_tokens = block_p(p_tokens, freqs_cis=freqs)
+                p_tokens = block_p(p_tokens, freqs_cis=freqs, attn_mask=self.p_attn_mask)
 
             # Extract CLS tokens  (M: 1, P: K)
             m_cls = m_tokens[:, 0:1]     # [B, 1, D]
             p_cls = p_tokens[:, 0:K]     # [B, K, D]
 
-            # Exchange between all CLS tokens  (1+K tokens self-attention)
+            # Exchange between all CLS tokens  (1+K tokens self-attention, with mask)
             cls_combined = torch.cat([m_cls, p_cls], dim=1)  # [B, 1+K, D]
-            cls_exchanged = self.cls_exchange[stage_idx](cls_combined)
+            cls_exchanged = self.cls_exchange[stage_idx](
+                cls_combined, attn_mask=self.exchange_mask,
+            )
 
             # Inject updated CLS back
             m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
@@ -775,17 +818,31 @@ class TwoStreamModel(nn.Module):
             freqs_m = enc.freqs_cis[ids_keep_m]  # [N_vis_m, D_head//2]
             freqs_p = enc.freqs_cis[ids_keep_p]  # [N_vis_p, D_head//2]
 
+        # v7-big: P-stream self-attn mask를 현재 visible 길이에 맞춰 구성
+        #         (CLS_P 간 cross-attention만 차단, patches는 정상)
+        if K >= 2:
+            p_seq_len = p_tokens.shape[1]  # K + N_vis_p
+            p_mask_run = torch.zeros(p_seq_len, p_seq_len, device=device, dtype=p_tokens.dtype)
+            for i in range(K):
+                for j in range(K):
+                    if i != j:
+                        p_mask_run[i, j] = float('-inf')
+        else:
+            p_mask_run = None
+
         # Interleaved processing with CLS exchange (1+K tokens)
         for stage_idx in range(enc.num_stages):
             for block_m in enc.blocks_m[stage_idx]:
                 m_tokens = block_m(m_tokens, freqs_cis=freqs_m)
             for block_p in enc.blocks_p[stage_idx]:
-                p_tokens = block_p(p_tokens, freqs_cis=freqs_p)
+                p_tokens = block_p(p_tokens, freqs_cis=freqs_p, attn_mask=p_mask_run)
 
             m_cls_tok = m_tokens[:, 0:1]      # [B, 1, D]
             p_cls_tok = p_tokens[:, 0:K]      # [B, K, D]
             cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)  # [B, 1+K, D]
-            cls_exchanged = enc.cls_exchange[stage_idx](cls_combined)
+            cls_exchanged = enc.cls_exchange[stage_idx](
+                cls_combined, attn_mask=enc.exchange_mask,
+            )
             m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
             p_tokens = torch.cat([cls_exchanged[:, 1:1+K], p_tokens[:, K:]], dim=1)
 
@@ -917,12 +974,18 @@ class TwoStreamEncoder(nn.Module):
         self._embed_dim = embed_dim
         self.num_patches = (image_size // patch_size) ** 2
 
-        # Auto-detect use_ape from checkpoint (pos_embed_m 존재 → APE)
+        # Auto-detect use_ape, num_p_cls from checkpoint
         use_ape = False
+        num_p_cls = 1
         if checkpoint_path:
             _ckpt = torch.load(checkpoint_path, map_location="cpu")
             _sd = _ckpt.get("model_state_dict", _ckpt)
             use_ape = any("encoder.pos_embed_m" in k for k in _sd)
+            # cls_token_p shape [1, num_p_cls, D]에서 num_p_cls 추출
+            for k, v in _sd.items():
+                if k.endswith("encoder.cls_token_p"):
+                    num_p_cls = int(v.shape[1])
+                    break
 
         # Build encoder components
         self.preprocessing = TwoStreamPreprocessing()
@@ -934,6 +997,7 @@ class TwoStreamEncoder(nn.Module):
             image_size=image_size,
             patch_size=patch_size,
             use_ape=use_ape,
+            num_p_cls=num_p_cls,
         )
         self.fusion = PixelwiseFusion(embed_dim=embed_dim, fusion_type="separate")
 
