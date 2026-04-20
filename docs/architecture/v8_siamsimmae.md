@@ -455,7 +455,36 @@ L_P = (2.0 - 2.0 * cos_pp).mean()                   # ∈ [0, 4], literature-sta
 - Ep1 (λ=0): L_P = 1.9679 ≈ 2.0 ✓ (예상치 정확히 일치)
 - Ep2 (λ=0.05): L_P = 0.0889 (toy data라 빠른 수렴, scale 올바르게 감소)
 - L_M scale 변화 없음 (0.022~0.055)
-- 결론: BYOL form + λ=0.05로 scale 정합 달성, full training 재제출 준비 완료
+- 결론: BYOL form + λ=0.05로 scale 정합 달성
+
+### 3차 수정: M stream trivialization 대책 (2026-04-21, 4차 수정 직후)
+
+1차 run 붕괴 진단에서 scale mismatch 외에도 **M stream 내부 문제**가 의심됨:
+
+- L_M이 ep8 0.0008까지 감소 → M stream이 ΔL pixel 복원에 과적합 (low-level shortcut)
+- `cls_m.detach()` 완전 격리로 L_P gradient가 M으로 **전혀** 안 흐름 → M이 유의미한 표현으로 발전할 pull 부재
+- 결과: CLS exchange forward-only, M은 "완벽한 pixel 복원" 외 목표 없음 → representation 퇴보
+
+**(c) `cls_m.detach()` → partial flow**
+```python
+# Before: m_cls_tok = m_tokens[:, 0:1].detach()
+# After:
+cls_m_raw = m_tokens[:, 0:1]
+m_cls_tok = cls_m_raw * ratio + cls_m_raw.detach() * (1 - ratio)  # ratio=0.3
+```
+- `cls_m_grad_ratio=0.3`: L_P gradient의 30%만 M stream으로 유입
+- Forward value는 변함 없음 (CLS exchange 자체는 동일 동작)
+- 완전 detach(0.0) / 완전 역류(1.0)의 중간. role separation 느슨하게 유지
+
+**(d) mask_ratio_m 0.3 → 0.5**
+- L_M task 난이도 상향 → 시각 패치의 절반만 보고 전체 ΔL 복원
+- L_M이 0.0008까지 쉽게 떨어지지 못하게 함 → M stream이 richer representation 형성 강요
+
+**sanity 5차 검증** (JobID 33451982):
+- Ep1 (λ=0): L_P = 2.04, L_M = 0.0557
+- Ep2 (λ=0.05): L_P = 0.098, L_M = 0.022 → Total 0.042 (4차 0.058 대비 -28%)
+- Forward/backward 무결, NaN 없음, soft detach 정상 작동
+- 결론: 코드 무결성 확인, full run 제출 준비
 
 ### 다음 체크포인트 viz 재제출 (과거 ep4 체크포인트 참고용)
 

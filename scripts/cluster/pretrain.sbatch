@@ -170,12 +170,13 @@ if [ "$MODEL" = "two-stream" ]; then
     )
 elif [ "$MODEL" = "two-stream-v8" ]; then
     # v8: L_M + λ·L_P [+ α·L_var] (EMA teacher on P-stream, collapse 방어 포함)
-    # 2차 재설정 근거 (1차 full run ep8 probing R² = -0.22 관찰, L_P scale mismatch 진단):
-    # - L_P에 L2 normalize 적용 (BYOL/SimSiam 관례) → L_P ∈ [0, 4], 학습 후 ~0.2
-    # - λ_max 0.05: L_P (norm, ~0.2) vs L_M (pixel MSE, ~0.005) 기준 λ·L_P ≈ 2~3·L_M 목표
-    # - λ warmup 10ep: L_M anchor 확립 기간 (초기 L_P dominance 방지)
-    # - α_var 0.1: VICReg-lite variance regularization (collapse 2차 방어선)
-    # 참고: docs/architecture/v8_siamsimmae.md, 조정 여지 섹션
+    # 2차 재설정 (1차 full run ep8 probing R² = -0.22, collapse 확정):
+    # [a] L_P BYOL form — L_P = 2·(1 - cos_sim) ∈ [0, 4], scale 문제 해소
+    # [b] λ_max 0.05 — λ·L_P ≈ 2~5·L_M (L_P 약간 우위, L_M anchor 유지)
+    # [c] cls_m grad ratio 0.3 — 완전 detach 대신 partial flow 허용
+    #     (L_M task 자체가 trivial하므로 L_P pull 없으면 M stream이 low-level shortcut에 수렴)
+    # [d] mask_ratio_m 0.3 → 0.5 — M task 난이도 상향으로 L_M 지나친 저점 수렴 방지
+    # 참고: docs/architecture/v8_siamsimmae.md, 조정 여지 + 실행 기록 섹션
     MODEL_ARGS=(
         --depth 12 --num-stages 2
         --use-ape --rotation-aug
@@ -186,7 +187,8 @@ elif [ "$MODEL" = "two-stream-v8" ]; then
         --v8-pred-head-ratio 2.0
         --v8-alpha-var 0.1
         --v8-var-target 1.0
-        --mask-ratio 0.3 --mask-ratio-p 0.5
+        --v8-cls-m-grad-ratio 0.3
+        --mask-ratio 0.5 --mask-ratio-p 0.5
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
     # v8 체크포인트는 별도 디렉토리

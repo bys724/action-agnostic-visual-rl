@@ -130,6 +130,9 @@ def main():
     parser.add_argument('--v8-var-target', type=float, default=1.0,
                         help='[v8] Variance target γ for VICReg-lite (default 1.0). '
                              'L_var = mean(relu(γ - std_per_dim)).')
+    parser.add_argument('--v8-cls-m-grad-ratio', type=float, default=0.0,
+                        help='[v8] CLS exchange 직전 cls_m의 L_P gradient 유입 비율 (default 0.0 = 완전 detach). '
+                             '0.3 권장: M stream이 L_M에 주로 반응하되 L_P의 약한 pull 허용 (L_M trivial 문제 완화).')
     parser.add_argument('--drop-path-rate', type=float, default=0.0,
                         help='DropPath (stochastic depth) rate (default 0.0, 미래 확장 대비). '
                              '현재는 파라미터만 저장. ViT-Base 관례 0.1.')
@@ -217,6 +220,7 @@ def main():
                                sigma=args.sigma,
                                v8_mode=args.v8_mode,
                                pred_head_ratio=args.v8_pred_head_ratio,
+                               cls_m_grad_ratio=args.v8_cls_m_grad_ratio,
                                drop_path_rate=args.drop_path_rate)
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)

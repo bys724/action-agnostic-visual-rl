@@ -4,14 +4,14 @@
 # - forward/backward 무결성, teacher forward, EMA update 동작 확인
 # - **collapse 방어(A+B+D)가 실제로 작동하는지 진단**
 #
-# 3차 sanity (L_P L2 normalize 적용 후):
-# - 1차(λ=0.5) collapse → 2차(λ=0.2) 돌파 → full run ep8 R² = -0.22 (scale mismatch 진단)
-# - 이번 변경: prediction head 출력 + teacher 양쪽 L2 normalize → L_P ∈ [0, 4], 학습 후 ~0.2
-# - 동반 조정: λ_max 0.05 (normalize 후 L_P가 훨씬 작은 scale이므로 λ·L_P ≈ 2~3·L_M 목표)
+# 5차 sanity (BYOL form + M trivialization 대책 적용 후):
+# - 1차(λ=0.5) collapse → 2차(λ=0.2) 돌파 → full run ep8 R² = -0.22 (scale + detach 복합 원인)
+# - 4차 sanity: BYOL form + λ=0.05 scale 검증 통과
+# - 5차 변경: cls_m_grad_ratio=0.3 (L_P 일부 역류 허용) + mask_ratio_m 0.3→0.5 (L_M 난이도 상향)
 # 확인 포인트:
-#   · L_P 초기 ≈ 1.0~2.0 (normalized, 랜덤 상태), epoch 진행에 따라 감소 기대
-#   · L_M 기존과 동일 (~0.01 시작)
-#   · std_s > 0.02, cos_st < 0.95 (이전 기준 유지)
+#   · L_P 초기 ≈ 1.0~2.0 (BYOL form), epoch 진행에 따라 감소
+#   · L_M 초기 ≈ 0.03~0.08 (mask 상향으로 전보다 높게 시작), 0.0008 같은 trivial level로 급락 금지
+#   · std_s > 0.02, cos_st < 0.95
 #SBATCH --job-name=aavrl_v8_sanity
 #SBATCH --partition=AIP
 #SBATCH --nodes=1
@@ -52,7 +52,8 @@ echo ""
     --v8-ema-tau-base 0.996 \
     --v8-alpha-var 0.1 \
     --v8-var-target 1.0 \
-    --mask-ratio 0.3 --mask-ratio-p 0.5 \
+    --v8-cls-m-grad-ratio 0.3 \
+    --mask-ratio 0.5 --mask-ratio-p 0.5 \
     --rotation-aug \
     --train-data egodex --egodex-root "$FRAMES_ROOT" \
     --egodex-splits part1 --max-videos 20 \

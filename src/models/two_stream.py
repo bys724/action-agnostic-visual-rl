@@ -612,6 +612,7 @@ class TwoStreamModel(nn.Module):
         sigma: float = 0.03,
         v8_mode: bool = False,
         pred_head_ratio: float = 2.0,
+        cls_m_grad_ratio: float = 0.0,
         drop_path_rate: float = 0.0,
     ):
         super().__init__()
@@ -626,6 +627,11 @@ class TwoStreamModel(nn.Module):
         self.v7_big_mode = v7_big_mode
         self.sigma = sigma
         self.v8_mode = v8_mode
+        # CLS exchange 직전 cls_m의 L_P gradient 유입 비율 (v8):
+        #   0.0 = 완전 detach (original v8 설계, M stream 격리)
+        #   1.0 = detach 없음 (v4 스타일, L_P gradient가 M stream 전체로 역류)
+        #   중간값 = partial gradient flow (L_M task 너무 trivial한 문제 보완)
+        self.cls_m_grad_ratio = cls_m_grad_ratio
         self.drop_path_rate = drop_path_rate  # 현재 미사용, 미래 확장(DropPath)용 파라미터 유지
 
         if v7_big_mode and v8_mode:
@@ -1101,15 +1107,25 @@ class TwoStreamModel(nn.Module):
             freqs_m = enc.freqs_cis[ids_keep_m]
             freqs_p = enc.freqs_cis[ids_keep_p]
 
-        # Interleaved processing with detach (v8 설계 조항)
+        # Interleaved processing with soft-detach (v8 설계 조항 — 2차 수정)
+        # 원래 완전 detach였으나, L_M task가 너무 trivial(ep8 L_M=0.0008)해서
+        # L_P gradient가 M stream에 전혀 안 흐르면 M이 low-level shortcut에 수렴하는 문제 관찰
+        # → cls_m_grad_ratio로 partial flow 허용 (0.3 권장: 역류는 있되 M의 L_M 주 학습은 유지)
         for stage_idx in range(enc.num_stages):
             for bm in enc.blocks_m[stage_idx]:
                 m_tokens = bm(m_tokens, freqs_cis=freqs_m)
             for bp in enc.blocks_p[stage_idx]:
                 p_tokens = bp(p_tokens, freqs_cis=freqs_p)
 
-            # CLS exchange — v8 detach: L_P가 M stream으로 역류 차단
-            m_cls_tok = m_tokens[:, 0:1].detach()  # ← v8 핵심 조항
+            cls_m_raw = m_tokens[:, 0:1]
+            if self.cls_m_grad_ratio >= 1.0:
+                m_cls_tok = cls_m_raw
+            elif self.cls_m_grad_ratio <= 0.0:
+                m_cls_tok = cls_m_raw.detach()
+            else:
+                # Forward value는 그대로, backward는 ratio만큼만 흐름
+                m_cls_tok = cls_m_raw * self.cls_m_grad_ratio \
+                            + cls_m_raw.detach() * (1.0 - self.cls_m_grad_ratio)
             p_cls_tok = p_tokens[:, 0:1]
             cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)
             cls_exchanged = enc.cls_exchange[stage_idx](cls_combined)
