@@ -168,6 +168,28 @@ if [ "$MODEL" = "two-stream" ]; then
         --mask-ratio 0.3 --mask-ratio-p 0.5
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
+elif [ "$MODEL" = "two-stream-v8" ]; then
+    # v8: L_M + λ·L_P [+ α·L_var] (EMA teacher on P-stream, collapse 방어 포함)
+    # 하이퍼 선택 근거 (1차 sanity collapse 관찰 대응):
+    # - λ_max 0.2 (B): L_P 기여 축소 (0.5 → 0.2)
+    # - λ warmup 10ep (A): L_M 안정화 기간 연장 (기존 5ep)
+    # - α_var 0.1 (D): VICReg-lite variance regularization (collapse 직접 방어)
+    # 참고: docs/architecture/v8_siamsimmae.md, 조정 여지 섹션 참조
+    MODEL_ARGS=(
+        --depth 12 --num-stages 2
+        --use-ape --rotation-aug
+        --v8-mode
+        --v8-lambda-max 0.2
+        --v8-lambda-warmup-epochs 10
+        --v8-ema-tau-base 0.996
+        --v8-pred-head-ratio 2.0
+        --v8-alpha-var 0.1
+        --v8-var-target 1.0
+        --mask-ratio 0.3 --mask-ratio-p 0.5
+        --max-gap 60 --sample-dist triangular --sample-center 30
+    )
+    # v8 체크포인트는 별도 디렉토리
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v8${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12
@@ -187,11 +209,20 @@ fi
 
 log "Model args: ${MODEL_ARGS[*]}"
 
+# ── MODEL alias 해석 ────────────────────────────────────────────────────────
+# scripts/pretrain.py의 --model은 ['two-stream','v-jepa','videomae']만 받음.
+# two-stream-v8은 --model two-stream + --v8-mode 조합이므로 여기서 번역.
+if [ "$MODEL" = "two-stream-v8" ]; then
+    MODEL_NAME_FOR_PY="two-stream"
+else
+    MODEL_NAME_FOR_PY="$MODEL"
+fi
+
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
 # CRITICAL: srun이 새 shell을 띄우면서 PATH 전파 안 됨 → 절대 경로 사용.
 srun --kill-on-bad-exit=1 --export=ALL \
     "$CONDA_PREFIX/bin/python" -u "$PROJECT_ROOT/scripts/pretrain.py" \
-    --model "$MODEL" \
+    --model "$MODEL_NAME_FOR_PY" \
     --train-data egodex \
     --egodex-root "$DATA_ROOT" \
     --egodex-splits "$SPLITS" \

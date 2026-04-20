@@ -107,6 +107,33 @@ def main():
                         help='[v7-big] Gaussian weighting σ — w_bg=exp(-(|ΔL|/σ)²). '
                              'Default 0.03 (EgoDex p75 경계).')
 
+    # v8: SimSiam-like temporal SSL (EMA on P-stream, M stream shared & detached from L_P)
+    parser.add_argument('--v8-mode', action='store_true',
+                        help='[Two-Stream v8] L_M (pixel) + λ·L_P (representation prediction). '
+                             'Teacher는 student P의 EMA, input (t+k, t+k) → zero M. '
+                             'Student CLS exchange 직전 cls_m.detach() → L_P는 M stream에 안 흐름. '
+                             '자세한 설계: docs/architecture/v8_siamsimmae.md')
+    parser.add_argument('--v8-lambda-max', type=float, default=0.5,
+                        help='[v8] L_P weight max after warmup (default 0.5). '
+                             '조정 여지: collapse 시 낮춤 (0.1~0.2), 정체 시 상향 (1.0)')
+    parser.add_argument('--v8-lambda-warmup-epochs', type=int, default=5,
+                        help='[v8] λ cosine warmup epochs (default 5). '
+                             '조정 여지: L_M 안정화 느리면 연장 (10ep)')
+    parser.add_argument('--v8-ema-tau-base', type=float, default=0.996,
+                        help='[v8] EMA momentum τ base (0.996 BYOL/I-JEPA 표준). '
+                             'Cosine schedule로 1.0까지 증가. 빠른 teacher 원하면 0.99')
+    parser.add_argument('--v8-pred-head-ratio', type=float, default=2.0,
+                        help='[v8] Prediction head hidden ratio (default 2.0 → hidden=2D)')
+    parser.add_argument('--v8-alpha-var', type=float, default=0.0,
+                        help='[v8] VICReg-lite variance regularization weight (default 0.0, 비활성). '
+                             'Collapse 방어용: 0.1 권장. 강하면 0.2, 미미한 효과면 0.05.')
+    parser.add_argument('--v8-var-target', type=float, default=1.0,
+                        help='[v8] Variance target γ for VICReg-lite (default 1.0). '
+                             'L_var = mean(relu(γ - std_per_dim)).')
+    parser.add_argument('--drop-path-rate', type=float, default=0.0,
+                        help='DropPath (stochastic depth) rate (default 0.0, 미래 확장 대비). '
+                             '현재는 파라미터만 저장. ViT-Base 관례 0.1.')
+
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -187,7 +214,10 @@ def main():
                                use_ape=args.use_ape,
                                rotation_aug=args.rotation_aug,
                                v7_big_mode=args.v7_big,
-                               sigma=args.sigma)
+                               sigma=args.sigma,
+                               v8_mode=args.v8_mode,
+                               pred_head_ratio=args.v8_pred_head_ratio,
+                               drop_path_rate=args.drop_path_rate)
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':
@@ -298,6 +328,12 @@ def main():
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
+        # v8 하이퍼파라미터 (v8_mode=True일 때만 사용됨)
+        v8_lambda_max=args.v8_lambda_max,
+        v8_lambda_warmup_epochs=args.v8_lambda_warmup_epochs,
+        v8_ema_tau_base=args.v8_ema_tau_base,
+        v8_alpha_var=args.v8_alpha_var,
+        v8_var_target=args.v8_var_target,
     )
 
     if is_master:

@@ -11,6 +11,7 @@ Multi-GPU 지원:
 """
 
 import json
+import math
 import os
 import random
 import subprocess
@@ -137,7 +138,9 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
 
 
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
-                scaler=None, use_ssim=False, use_bf16=True):
+                scaler=None, use_ssim=False, use_bf16=True,
+                v8_lambda=0.0, v8_tau=0.996, v8_total_steps=None, v8_step_offset=0,
+                v8_alpha_var=0.0, v8_var_target=1.0):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -189,6 +192,25 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
+            elif model_name == 'TwoStreamModel' and getattr(actual_model, 'v8_mode', False):
+                # v8: compute_loss_v8 내부에서 student(+detach) + teacher(EMA, no_grad) + L_M + L_P [+ α·L_var] 처리.
+                # rotation_aug도 compute_loss_v8 내부에서 적용.
+                v8_loss, img_pred, v8_metrics = actual_model.compute_loss_v8(
+                    img_t, img_tk, lam=v8_lambda,
+                    alpha_var=v8_alpha_var, var_target=v8_var_target,
+                )
+                weighted_loss = v8_loss
+                unweighted_loss = v8_loss.detach()
+                # 기존 metric slot에 매핑: loss_current = L_M (pixel), loss_future = L_P (repr)
+                total_loss_current += v8_metrics['L_M'].item()
+                total_loss_future += v8_metrics['L_P'].item()
+                # v8 전용 monitoring metrics 누적 (main에서 TB 기록용)
+                if not hasattr(train_epoch, '_v8_metrics_buf'):
+                    train_epoch._v8_metrics_buf = {}
+                buf = train_epoch._v8_metrics_buf
+                for k in ('cos_st', 'std_s', 'std_t', 'L_var'):
+                    buf[k] = buf.get(k, 0.0) + v8_metrics[k].item()
+                buf['_count'] = buf.get('_count', 0) + 1
             elif model_name == 'TwoStreamModel':
                 # rotation_aug: training loop가 compute_loss를 우회하므로 여기서 명시 적용
                 if actual_model.rotation_aug and actual_model.training:
@@ -272,6 +294,17 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         # V-JEPA: optimizer step 후 y-encoder (EMA teacher) 업데이트
         if model_name == 'VJEPAModel':
             actual_model.update_ema()
+
+        # v8: P-stream EMA 업데이트 (cosine schedule로 τ 산정)
+        if model_name == 'TwoStreamModel' and getattr(actual_model, 'v8_mode', False):
+            # 현재 step 기준 τ 계산 (tau_base → 1.0 cosine)
+            if v8_total_steps is None or v8_total_steps <= 0:
+                tau_now = v8_tau
+            else:
+                step_now = v8_step_offset + batch_idx
+                t_frac = min(1.0, max(0.0, step_now / float(v8_total_steps)))
+                tau_now = 1.0 - (1.0 - v8_tau) * (math.cos(math.pi * t_frac) + 1.0) / 2.0
+            actual_model.update_ema_v8(tau_now)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -548,6 +581,12 @@ def train(
     multi_gpu=True,
     use_ssim=False,
     num_workers=16,
+    # v8 전용 하이퍼파라미터 (v8_mode=True인 TwoStreamModel에서만 유효)
+    v8_lambda_max=0.5,
+    v8_lambda_warmup_epochs=5,
+    v8_ema_tau_base=0.996,
+    v8_alpha_var=0.0,
+    v8_var_target=1.0,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -662,17 +701,22 @@ def train(
     _actual = model.module if hasattr(model, 'module') else model
     _model_name = type(_actual).__name__
 
-    if _model_name == 'VideoMAEModel':
+    if _model_name == 'VideoMAEModel' or (
+        _model_name == 'TwoStreamModel' and getattr(_actual, 'v8_mode', False)
+    ):
+        # v8도 VideoMAE와 동일한 ViT SSL 관례 따름:
+        # bias, LayerNorm γ/β, cls_token, pos_embed, mask_token → wd=0
         decay_params, no_decay_params = [], []
         for name, p in _actual.named_parameters():
             if not p.requires_grad:
                 continue
-            # 1D 파라미터(bias, LayerNorm γ/β) 또는 mask_token은 weight decay 제외
-            if p.ndim <= 1 or 'mask_token' in name:
+            # 1D 파라미터(bias, LN γ/β) 또는 cls_token/pos_embed/mask_token → no decay
+            no_decay_kw = ('cls_token', 'pos_embed', 'mask_token')
+            if p.ndim <= 1 or any(kw in name for kw in no_decay_kw):
                 no_decay_params.append(p)
             else:
                 decay_params.append(p)
-        log(f"VideoMAE optimizer param_groups: decay={len(decay_params)}, "
+        log(f"{_model_name} optimizer param_groups: decay={len(decay_params)}, "
             f"no_decay={len(no_decay_params)}")
         optimizer = torch.optim.AdamW([
             {'params': decay_params, 'weight_decay': 0.01},
@@ -688,8 +732,10 @@ def train(
     warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer, start_factor=1e-6 / lr, total_iters=warmup_epochs,
     )
+    # Guard: num_epochs <= warmup_epochs (sanity test 등) → T_max=0 division 방지
+    cosine_T_max = max(1, num_epochs - warmup_epochs)
     cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=num_epochs - warmup_epochs,
+        optimizer, T_max=cosine_T_max,
     )
     scheduler = torch.optim.lr_scheduler.SequentialLR(
         optimizer,
@@ -788,9 +834,37 @@ def train(
         if type(_inner).__name__ == 'VJEPAModel':
             _inner.set_ema_momentum(epoch - 1, num_epochs)
 
+        # v8: λ warmup (L_P 가중치 cosine warmup 0 → λ_max over warmup_epochs)
+        v8_is_active = (
+            type(_inner).__name__ == 'TwoStreamModel'
+            and getattr(_inner, 'v8_mode', False)
+        )
+        if v8_is_active:
+            wu = max(1, v8_lambda_warmup_epochs)
+            if epoch - 1 < wu:
+                v8_lambda = v8_lambda_max * 0.5 * (
+                    1.0 - math.cos(math.pi * (epoch - 1) / wu)
+                )
+            else:
+                v8_lambda = v8_lambda_max
+            v8_total_steps = len(dataloader) * num_epochs
+            v8_step_offset = len(dataloader) * (epoch - 1)
+        else:
+            v8_lambda = 0.0
+            v8_total_steps = None
+            v8_step_offset = 0
+
         # Train
-        train_result = train_epoch(model, dataloader, optimizer, device, epoch,
-                                   dataset=train_dataset, use_ssim=use_ssim, use_bf16=use_bf16)
+        train_result = train_epoch(
+            model, dataloader, optimizer, device, epoch,
+            dataset=train_dataset, use_ssim=use_ssim, use_bf16=use_bf16,
+            v8_lambda=v8_lambda, v8_tau=v8_ema_tau_base,
+            v8_total_steps=v8_total_steps, v8_step_offset=v8_step_offset,
+            v8_alpha_var=v8_alpha_var, v8_var_target=v8_var_target,
+        )
+        if v8_is_active:
+            log(f"  v8: λ = {v8_lambda:.4f} (warmup {v8_lambda_warmup_epochs}ep, max {v8_lambda_max}), "
+                f"α_var = {v8_alpha_var}")
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
@@ -842,6 +916,18 @@ def train(
             writer.add_scalar('lr', current_lr, epoch)
             writer.add_scalar('perf/samples_per_sec', samples_per_sec, epoch)
             writer.add_scalar('perf/epoch_time_sec', epoch_duration, epoch)
+            # v8 전용 monitoring metrics (train_epoch 누적 버퍼에서 추출)
+            if v8_is_active and hasattr(train_epoch, '_v8_metrics_buf'):
+                buf = train_epoch._v8_metrics_buf
+                n = buf.get('_count', 0)
+                if n > 0:
+                    writer.add_scalar('v8/lambda', v8_lambda, epoch)
+                    writer.add_scalar('v8/cos_st', buf['cos_st'] / n, epoch)
+                    writer.add_scalar('v8/std_s', buf['std_s'] / n, epoch)
+                    writer.add_scalar('v8/std_t', buf['std_t'] / n, epoch)
+                    writer.add_scalar('v8/L_var', buf.get('L_var', 0.0) / n, epoch)
+                # Reset buffer for next epoch
+                train_epoch._v8_metrics_buf = {}
             writer.flush()
 
         # Save prediction samples every epoch (rank 0)

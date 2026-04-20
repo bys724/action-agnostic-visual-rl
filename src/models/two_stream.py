@@ -19,6 +19,7 @@ while giving decoders enough spatial information for meaningful reconstruction.
 Inspired by biological M/P visual pathways.
 """
 
+import copy
 import math
 
 import torch
@@ -609,6 +610,9 @@ class TwoStreamModel(nn.Module):
         independent_rotation_prob: float = 0.1,
         v7_big_mode: bool = False,
         sigma: float = 0.03,
+        v8_mode: bool = False,
+        pred_head_ratio: float = 2.0,
+        drop_path_rate: float = 0.0,
     ):
         super().__init__()
 
@@ -621,8 +625,13 @@ class TwoStreamModel(nn.Module):
         self.num_patches = (image_size // patch_size) ** 2
         self.v7_big_mode = v7_big_mode
         self.sigma = sigma
+        self.v8_mode = v8_mode
+        self.drop_path_rate = drop_path_rate  # 현재 미사용, 미래 확장(DropPath)용 파라미터 유지
 
-        # v7-big: CLS_P가 bg/motion 2개로 분리됨, M decoder도 2개
+        if v7_big_mode and v8_mode:
+            raise ValueError("v7_big_mode와 v8_mode는 동시 활성화 불가")
+
+        # v7-big: CLS_P 2개, v8/v4: 1개
         num_p_cls = 2 if v7_big_mode else 1
 
         self.preprocessing = TwoStreamPreprocessing()
@@ -659,12 +668,53 @@ class TwoStreamModel(nn.Module):
         # MAE mask tokens (stream별 독립)
         # v7-big에서는 P stream의 full patch 복원이 필요 없음(decoder_p 없음) → mask_token_p 생성 안 함.
         # 생성하면 DDP가 "gradient 없는 파라미터"로 간주해 에러.
+        # v8도 P decoder 미사용 → mask_token_p 생성 안 함.
         if mask_ratio > 0:
             self.mask_token_m = nn.Parameter(torch.zeros(1, 1, embed_dim))
             nn.init.trunc_normal_(self.mask_token_m, std=0.02)
-            if not v7_big_mode:
+            if not v7_big_mode and not v8_mode:
                 self.mask_token_p = nn.Parameter(torch.zeros(1, 1, embed_dim))
                 nn.init.trunc_normal_(self.mask_token_p, std=0.02)
+
+        # ========================================================================
+        # v8: Prediction head (student-only) + EMA copies of P-related modules
+        # ========================================================================
+        # 설계 근거: docs/architecture/v8_siamsimmae.md
+        # - Teacher = student의 P-stream만 EMA copy (M은 shared)
+        # - Teacher forward는 no_grad, 입력 (img_tk, img_tk) → ΔL=0
+        # - Prediction head는 student P patches[visible]를 teacher space로 projection
+        # - LayerNorm 사용 (DDP sync 불필요, patch-level + zero-M edge case 안전)
+        if v8_mode:
+            hidden = int(embed_dim * pred_head_ratio)
+            self.prediction_head_p = nn.Sequential(
+                nn.Linear(embed_dim, hidden),
+                nn.LayerNorm(hidden),
+                nn.GELU(),
+                nn.Linear(hidden, embed_dim),
+            )
+
+            # EMA copies of P-related modules (deepcopy + freeze)
+            self.ema_patch_embed_p = copy.deepcopy(self.encoder.patch_embed_p)
+            self.ema_blocks_p = copy.deepcopy(self.encoder.blocks_p)
+            self.ema_cls_exchange = copy.deepcopy(self.encoder.cls_exchange)
+            self.ema_norm_p = copy.deepcopy(self.encoder.norm_p)
+            # Parameter 복사 (shape [1, 1, D] for single CLS)
+            self.ema_cls_token_p = nn.Parameter(
+                self.encoder.cls_token_p.data.clone(), requires_grad=False,
+            )
+            if self.encoder.use_ape:
+                self.ema_pos_embed_p = nn.Parameter(
+                    self.encoder.pos_embed_p.data.clone(), requires_grad=False,
+                )
+            else:
+                self.ema_pos_embed_p = None
+
+            # Freeze EMA Module 파라미터 (gradient 없음, optimizer가 건드리지 않음)
+            for p in list(self.ema_patch_embed_p.parameters()) + \
+                     list(self.ema_blocks_p.parameters()) + \
+                     list(self.ema_cls_exchange.parameters()) + \
+                     list(self.ema_norm_p.parameters()):
+                p.requires_grad = False
 
     def _random_mask(self, B: int, device: torch.device, ratio: float = None) -> torch.Tensor:
         """독립 랜덤 마스크 생성. Returns: [B, N] bool, True=masked."""
@@ -896,6 +946,230 @@ class TwoStreamModel(nn.Module):
             image_future = torch.rot90(image_future, k_fut, dims=(2, 3))
 
         return image_current, image_future
+
+    # ========================================================================
+    # v8 methods: EMA update, teacher forward, combined loss
+    # ========================================================================
+
+    @torch.no_grad()
+    def update_ema_v8(self, tau: float):
+        """EMA 업데이트: ema = tau·ema + (1-tau)·student, P-related 파라미터만.
+        optimizer.step() 직후 호출."""
+        if not self.v8_mode:
+            return
+
+        def _ema_step(ema, cur):
+            ema.data.mul_(tau).add_(cur.data, alpha=1.0 - tau)
+
+        _ema_step(self.ema_cls_token_p, self.encoder.cls_token_p)
+        if self.ema_pos_embed_p is not None:
+            _ema_step(self.ema_pos_embed_p, self.encoder.pos_embed_p)
+        for ema_p, cur_p in zip(
+            self.ema_patch_embed_p.parameters(),
+            self.encoder.patch_embed_p.parameters(),
+        ):
+            _ema_step(ema_p, cur_p)
+        for ema_p, cur_p in zip(
+            self.ema_blocks_p.parameters(),
+            self.encoder.blocks_p.parameters(),
+        ):
+            _ema_step(ema_p, cur_p)
+        for ema_p, cur_p in zip(
+            self.ema_cls_exchange.parameters(),
+            self.encoder.cls_exchange.parameters(),
+        ):
+            _ema_step(ema_p, cur_p)
+        for ema_p, cur_p in zip(
+            self.ema_norm_p.parameters(),
+            self.encoder.norm_p.parameters(),
+        ):
+            _ema_step(ema_p, cur_p)
+
+    def _forward_teacher_v8(self, image_future: torch.Tensor) -> torch.Tensor:
+        """Teacher forward: EMA P-stream + shared M-stream, no_grad.
+
+        Teacher 입력: (img_tk, img_tk) → ΔL = 0 (zero M channel).
+        P 입력: P(img_tk).
+        No masking.
+
+        Returns: teacher_p_patches [B, N, D] (CLS 제외, 전체 N=num_patches).
+        """
+        B = image_future.shape[0]
+        H, W = image_future.shape[2], image_future.shape[3]
+        # Zero M channel (same as (img_tk, img_tk) → ΔL=0 but skip Sobel normalizer)
+        m_channel = torch.zeros(
+            B, 3, H, W, device=image_future.device, dtype=image_future.dtype,
+        )
+        p_channel = self.preprocessing.compute_p_channel(image_future)
+
+        enc = self.encoder
+
+        # Patch embedding: M shared, P EMA
+        m_patches_emb = enc.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
+        p_patches_emb = self.ema_patch_embed_p(p_channel).flatten(2).transpose(1, 2)
+
+        # CLS: M shared, P EMA
+        m_cls = enc.cls_token_m.expand(B, -1, -1)
+        p_cls = self.ema_cls_token_p.expand(B, -1, -1)
+        m_tokens = torch.cat([m_cls, m_patches_emb], dim=1)
+        p_tokens = torch.cat([p_cls, p_patches_emb], dim=1)
+
+        # APE (shared M, EMA P) or RoPE
+        if enc.use_ape:
+            m_tokens = m_tokens + enc.pos_embed_m
+            p_tokens = p_tokens + self.ema_pos_embed_p
+            freqs_m = freqs_p = None
+        else:
+            freqs_m = enc.freqs_cis
+            freqs_p = enc.freqs_cis
+
+        # Interleaved processing: M shared, P EMA
+        for stage_idx in range(enc.num_stages):
+            for bm in enc.blocks_m[stage_idx]:
+                m_tokens = bm(m_tokens, freqs_cis=freqs_m)
+            for bp in self.ema_blocks_p[stage_idx]:
+                p_tokens = bp(p_tokens, freqs_cis=freqs_p)
+
+            # CLS exchange: EMA exchange block
+            m_cls_tok = m_tokens[:, 0:1]
+            p_cls_tok = p_tokens[:, 0:1]
+            cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)
+            cls_exchanged = self.ema_cls_exchange[stage_idx](cls_combined)
+            m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
+            p_tokens = torch.cat([cls_exchanged[:, 1:2], p_tokens[:, 1:]], dim=1)
+
+        # Final norm (M shared, P EMA); return P patches only
+        p_tokens = self.ema_norm_p(p_tokens)
+        return p_tokens[:, 1:]  # [B, N, D]
+
+    def compute_loss_v8(
+        self,
+        image_current: torch.Tensor,
+        image_future: torch.Tensor,
+        lam: float = 0.5,
+        alpha_var: float = 0.0,
+        var_target: float = 1.0,
+    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+        """v8 loss: L_M (pixel reconstruction) + λ·L_P (representation prediction) [+ α·L_var].
+
+        Student forward는 _forward_masked와 유사하되:
+        - 매 CLS exchange 직전 cls_m.detach() → L_P gradient가 M stream으로 역류 차단
+        - P decoder 불사용, 대신 student p_patches (visible)을 L_P로 사용
+        Teacher forward는 _forward_teacher_v8 (EMA P, shared M, no_grad).
+
+        Returns:
+            loss: L_M + λ·L_P (scalar)
+            pred_m: [B, 3, H, W] for visualization
+            metrics: {L_M, L_P, cos_st, std_s, std_t}
+        """
+        # Rotation augmentation (training only)
+        if self.rotation_aug and self.training:
+            image_current, image_future = self._apply_rotation_aug(
+                image_current, image_future,
+            )
+
+        # Student preprocessing
+        m_channel, p_channel = self.preprocessing(image_current, image_future)
+
+        B = m_channel.shape[0]
+        device = m_channel.device
+        enc = self.encoder
+
+        # Independent random masks
+        mask_m = self._random_mask(B, device, ratio=self.mask_ratio)
+        mask_p = self._random_mask(B, device, ratio=self.mask_ratio_p)
+
+        # Patch embedding + CLS + position
+        m_patches_emb = enc.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
+        p_patches_emb = enc.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
+        m_cls = enc.cls_token_m.expand(B, -1, -1)
+        p_cls = enc.cls_token_p.expand(B, -1, -1)
+        m_tokens = torch.cat([m_cls, m_patches_emb], dim=1)
+        p_tokens = torch.cat([p_cls, p_patches_emb], dim=1)
+
+        if enc.use_ape:
+            m_tokens = m_tokens + enc.pos_embed_m
+            p_tokens = p_tokens + enc.pos_embed_p
+
+        # Masking (visible patches만 추출)
+        m_tokens, ids_keep_m = self._apply_mask(m_tokens, mask_m, num_cls=1)
+        p_tokens, ids_keep_p = self._apply_mask(p_tokens, mask_p, num_cls=1)
+
+        if enc.use_ape:
+            freqs_m = freqs_p = None
+        else:
+            freqs_m = enc.freqs_cis[ids_keep_m]
+            freqs_p = enc.freqs_cis[ids_keep_p]
+
+        # Interleaved processing with detach (v8 설계 조항)
+        for stage_idx in range(enc.num_stages):
+            for bm in enc.blocks_m[stage_idx]:
+                m_tokens = bm(m_tokens, freqs_cis=freqs_m)
+            for bp in enc.blocks_p[stage_idx]:
+                p_tokens = bp(p_tokens, freqs_cis=freqs_p)
+
+            # CLS exchange — v8 detach: L_P가 M stream으로 역류 차단
+            m_cls_tok = m_tokens[:, 0:1].detach()  # ← v8 핵심 조항
+            p_cls_tok = p_tokens[:, 0:1]
+            cls_combined = torch.cat([m_cls_tok, p_cls_tok], dim=1)
+            cls_exchanged = enc.cls_exchange[stage_idx](cls_combined)
+            m_tokens = torch.cat([cls_exchanged[:, 0:1], m_tokens[:, 1:]], dim=1)
+            p_tokens = torch.cat([cls_exchanged[:, 1:2], p_tokens[:, 1:]], dim=1)
+
+        m_tokens = enc.norm_m(m_tokens)
+        p_tokens = enc.norm_p(p_tokens)
+
+        # Student P patches (visible only, CLS 제외) → L_P 입력
+        student_p_visible = p_tokens[:, 1:]  # [B, N_vis_p, D]
+
+        # M decoder: mask_token 삽입 → 전체 패치 → pixel 예측
+        m_full = self._restore_with_mask_tokens(
+            m_tokens, mask_m, self.mask_token_m, num_cls=1,
+        )
+        cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
+        pred_m = self.decoder_m(m_full, cls_embedding)
+
+        # Teacher forward (no_grad, EMA P, shared M, zero M input)
+        with torch.no_grad():
+            teacher_p_all = self._forward_teacher_v8(image_future)  # [B, N, D]
+
+        # L_M: pixel reconstruction of future frame
+        L_M = F.mse_loss(pred_m, image_future)
+
+        # L_P: student visible P vs teacher same-position P (prediction head 통과)
+        # Teacher는 no masking이므로 mask_p로 visible 위치만 gather
+        _, _, D = student_p_visible.shape
+        teacher_p_visible = teacher_p_all[~mask_p].reshape(B, -1, D)  # [B, N_vis_p, D]
+        z = self.prediction_head_p(student_p_visible)
+        L_P = F.mse_loss(z, teacher_p_visible.detach())
+
+        # VICReg-lite variance regularization (D 옵션)
+        # per-sample pool → per-dim std across batch → max(0, γ - std) penalty
+        # collapse 방어: 모든 샘플이 같은 벡터로 수렴하면 std→0, penalty 최대화됨
+        s_pool = student_p_visible.mean(dim=1)  # [B, D]
+        t_pool = teacher_p_visible.mean(dim=1)  # [B, D]
+        if alpha_var > 0.0:
+            s_std = s_pool.std(dim=0) + 1e-6  # [D], numerical stability
+            L_var = F.relu(var_target - s_std).mean()
+        else:
+            L_var = torch.zeros((), device=s_pool.device, dtype=s_pool.dtype)
+
+        # Collapse 모니터링 지표 (여전히 no_grad, s_pool/t_pool은 L_var에 재사용)
+        with torch.no_grad():
+            cos_st = F.cosine_similarity(s_pool, t_pool, dim=-1).mean()
+            std_s = s_pool.std(dim=0).mean()
+            std_t = t_pool.std(dim=0).mean()
+
+        loss = L_M + lam * L_P + alpha_var * L_var
+        metrics = {
+            "L_M": L_M.detach(),
+            "L_P": L_P.detach(),
+            "L_var": L_var.detach(),
+            "cos_st": cos_st,
+            "std_s": std_s,
+            "std_t": std_t,
+        }
+        return loss, pred_m, metrics
 
     def compute_loss(
         self, image_current: torch.Tensor, image_future: torch.Tensor
