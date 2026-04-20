@@ -413,7 +413,51 @@ Ep4 sanity check
   - 단, 현재는 λ=0 단계라 L_P가 representation에 아직 signal을 주지 않았으므로 collapse 판정은 **ep12 이후** (λ warmup 종료 후) viz에서 결판
   - Pred M은 flat/blur → ep4는 LR warmup 중이라 복원 품질 초기 수준
 
-### 다음 체크포인트 viz 재제출
+### ep8 결과 + 1차 run 폐기 결정 (2026-04-21)
+
+- **ep8 attention viz** (JobID 33451969): `attn_v8_ep8.png` — ep4 대비 M/P attention이 sparse/focused로 변질 (v7-big 붕괴 초기 패턴과 유사)
+- **ep8 probing** (JobID 33451974, EgoDex test, gap=10, patch_mean_concat): **R² = -0.2214** (random 이하, collapse 확정)
+
+### 붕괴 원인 진단: L_M ↔ L_P scale mismatch
+
+1차 run component loss 재분석:
+
+| Ep | L_M | L_P (raw MSE) | λ | λ·L_P | **λ·L_P / L_M** |
+|----|------|-------|----|--------|----------------------|
+| 1 | 0.0121 | 1.1636 | 0.000 | 0 | 0 |
+| 5 | 0.0011 | 0.2157 | 0.069 | 0.0149 | 13.5× |
+| 8 | 0.0008 | 0.1323 | 0.159 | 0.0210 | 26.3× |
+| 9 | 0.0008 | 0.1531 | 0.181 | 0.0277 | **34.6×** |
+
+- 설계 의도: L_M을 anchor로 유지 (λ·L_P ≈ L_M)
+- 실제: L_P가 raw embedding MSE라 magnitude 큼 → λ=0.2만으로도 **L_P가 L_M을 35배 압도** → 사실상 L_P-only 학습 + L_M anchor 와해
+
+### 2차 수정 (2026-04-21)
+
+**(1) L_P 정규화**: `F.cosine_similarity` 기반 BYOL form 전환
+```python
+# Before: L_P = F.mse_loss(z, teacher_p_visible)    # raw embedding MSE, scale unstable
+# After:
+cos_pp = F.cosine_similarity(z, teacher_p_visible.detach(), dim=-1)
+L_P = (2.0 - 2.0 * cos_pp).mean()                   # ∈ [0, 4], literature-standard
+```
+- 초기(cos≈0): L_P ≈ 2
+- 학습(cos≈0.9): L_P ≈ 0.2
+- 붕괴(cos=1): L_P = 0
+- 장점: embedding magnitude에 robust, BYOL/I-JEPA/SimSiam λ 직접 이식 가능
+
+**(2) λ_max 재설정**: 0.2 → **0.05**
+
+- L_P (post-warmup) ≈ 0.2~0.4 예상, L_M ≈ 0.002~0.005 예상
+- λ·L_P / L_M ≈ 0.05 · 0.3 / 0.003 ≈ 5 (L_P 약간 우위, L_M anchor 유지)
+
+**(3) sanity 4차 검증** (JobID 33451976, 1 GPU × 2ep × 2000 samples):
+- Ep1 (λ=0): L_P = 1.9679 ≈ 2.0 ✓ (예상치 정확히 일치)
+- Ep2 (λ=0.05): L_P = 0.0889 (toy data라 빠른 수렴, scale 올바르게 감소)
+- L_M scale 변화 없음 (0.022~0.055)
+- 결론: BYOL form + λ=0.05로 scale 정합 달성, full training 재제출 준비 완료
+
+### 다음 체크포인트 viz 재제출 (과거 ep4 체크포인트 참고용)
 
 ```
 CKPT=/proj/external_group/mrg/checkpoints/two_stream_v8/20260420_142651/checkpoint_epoch0008.pt \

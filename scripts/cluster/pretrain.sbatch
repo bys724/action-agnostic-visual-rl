@@ -170,16 +170,17 @@ if [ "$MODEL" = "two-stream" ]; then
     )
 elif [ "$MODEL" = "two-stream-v8" ]; then
     # v8: L_M + λ·L_P [+ α·L_var] (EMA teacher on P-stream, collapse 방어 포함)
-    # 하이퍼 선택 근거 (1차 sanity collapse 관찰 대응):
-    # - λ_max 0.2 (B): L_P 기여 축소 (0.5 → 0.2)
-    # - λ warmup 10ep (A): L_M 안정화 기간 연장 (기존 5ep)
-    # - α_var 0.1 (D): VICReg-lite variance regularization (collapse 직접 방어)
-    # 참고: docs/architecture/v8_siamsimmae.md, 조정 여지 섹션 참조
+    # 2차 재설정 근거 (1차 full run ep8 probing R² = -0.22 관찰, L_P scale mismatch 진단):
+    # - L_P에 L2 normalize 적용 (BYOL/SimSiam 관례) → L_P ∈ [0, 4], 학습 후 ~0.2
+    # - λ_max 0.05: L_P (norm, ~0.2) vs L_M (pixel MSE, ~0.005) 기준 λ·L_P ≈ 2~3·L_M 목표
+    # - λ warmup 10ep: L_M anchor 확립 기간 (초기 L_P dominance 방지)
+    # - α_var 0.1: VICReg-lite variance regularization (collapse 2차 방어선)
+    # 참고: docs/architecture/v8_siamsimmae.md, 조정 여지 섹션
     MODEL_ARGS=(
         --depth 12 --num-stages 2
         --use-ape --rotation-aug
         --v8-mode
-        --v8-lambda-max 0.2
+        --v8-lambda-max 0.05
         --v8-lambda-warmup-epochs 10
         --v8-ema-tau-base 0.996
         --v8-pred-head-ratio 2.0

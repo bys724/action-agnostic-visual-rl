@@ -1137,11 +1137,16 @@ class TwoStreamModel(nn.Module):
         L_M = F.mse_loss(pred_m, image_future)
 
         # L_P: student visible P vs teacher same-position P (prediction head 통과)
-        # Teacher는 no masking이므로 mask_p로 visible 위치만 gather
+        # Teacher는 no masking이므로 mask_p로 visible 위치만 gather.
+        # BYOL/SimSiam convention: L_P = 2·(1 - cos_sim) ∈ [0, 4]
+        #   · F.cosine_similarity가 L2 normalize 내장 → 명시적 normalize 불필요
+        #   · F.mse_loss(mean)는 D=768 차원까지 평균내서 값이 1/D로 줄어들어 λ·L_P ≪ L_M 현상 발생
+        #     → 현재 form은 embedding magnitude에 robust하고 문헌 hyperparam과 직접 비교 가능
         _, _, D = student_p_visible.shape
         teacher_p_visible = teacher_p_all[~mask_p].reshape(B, -1, D)  # [B, N_vis_p, D]
         z = self.prediction_head_p(student_p_visible)
-        L_P = F.mse_loss(z, teacher_p_visible.detach())
+        cos_pp = F.cosine_similarity(z, teacher_p_visible.detach(), dim=-1)  # [B, N_vis]
+        L_P = (2.0 - 2.0 * cos_pp).mean()
 
         # VICReg-lite variance regularization (D 옵션)
         # per-sample pool → per-dim std across batch → max(0, γ - std) penalty

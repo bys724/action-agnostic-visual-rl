@@ -4,9 +4,14 @@
 # - forward/backward 무결성, teacher forward, EMA update 동작 확인
 # - **collapse 방어(A+B+D)가 실제로 작동하는지 진단**
 #
-# 1차 sanity(warmup=0, λ_max=0.5) 결과: ep2에서 std_s 0.094→0.002 (collapse 전형).
-# 본 2차는 A(warmup=0, 단 sanity 2ep라 효과 제한), B(λ_max 0.2), D(α_var 0.1) 적용.
-# 판단 기준: std_s > 0.02, cos_st < 0.95, L_var가 활성화되어 collapse 방향으로 증가하지 않음.
+# 3차 sanity (L_P L2 normalize 적용 후):
+# - 1차(λ=0.5) collapse → 2차(λ=0.2) 돌파 → full run ep8 R² = -0.22 (scale mismatch 진단)
+# - 이번 변경: prediction head 출력 + teacher 양쪽 L2 normalize → L_P ∈ [0, 4], 학습 후 ~0.2
+# - 동반 조정: λ_max 0.05 (normalize 후 L_P가 훨씬 작은 scale이므로 λ·L_P ≈ 2~3·L_M 목표)
+# 확인 포인트:
+#   · L_P 초기 ≈ 1.0~2.0 (normalized, 랜덤 상태), epoch 진행에 따라 감소 기대
+#   · L_M 기존과 동일 (~0.01 시작)
+#   · std_s > 0.02, cos_st < 0.95 (이전 기준 유지)
 #SBATCH --job-name=aavrl_v8_sanity
 #SBATCH --partition=AIP
 #SBATCH --nodes=1
@@ -42,7 +47,7 @@ echo ""
     --depth 12 --num-stages 2 \
     --use-ape \
     --v8-mode \
-    --v8-lambda-max 0.2 \
+    --v8-lambda-max 0.05 \
     --v8-lambda-warmup-epochs 0 \
     --v8-ema-tau-base 0.996 \
     --v8-alpha-var 0.1 \
