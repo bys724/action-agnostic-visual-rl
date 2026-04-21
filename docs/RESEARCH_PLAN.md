@@ -1,6 +1,6 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-04-17
+**마지막 업데이트**: 2026-04-21
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
 ## 연구 동기
@@ -478,7 +478,7 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 
 ---
 
-## 현재 상태 (2026-04-17)
+## 현재 상태 (2026-04-21)
 
 ### 완료된 Phase
 
@@ -486,23 +486,43 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 
 **인프라**: IBS 클러스터 환경 구축, DDP 전환, EgoDex 다운로드/추출, DROID 다운로드 완료.
 
-### Phase 1.5 진행 중
+### Phase 1.5 진행 — v7-big/v8 실패 후 v9로 전환
 
 **학습 완료**:
-- Two-Stream v4 (RoPE, mask 0.3/0.5): 48ep, best_model 확정
-- VideoMAE-ours (mask 0.5): 50ep 완료, best_model 확정
+- Two-Stream v4 (RoPE, mask 0.3/0.5): 48ep, best_model 확정. Probing R²=0.197
+- Two-Stream v6 (APE + mask 0.5/0.5 + rotation aug): ep23 scancel. ep8 peak R²=0.259
+- VideoMAE-ours (mask 0.5): 50ep 완료, R²=0.326
 - V-JEPA-ours: 3차 발산, negative result
 
-**학습 중**:
-- **Two-Stream v6** (APE + mask 0.5/0.5 + rotation aug, 33222151): 50ep 진행 중
+**폐기된 접근 (EMA teacher + L_P feature prediction 라인)**:
+- **Two-Stream v7-big** (CLS_P bg/motion 분리, isolation ablation): ep8 cos=0.9997 → **collapse 확정**
+- **Two-Stream v8 1차** (L_P + EMA P teacher, λ=0.2): ep8 probing R²=-0.22. L_P scale mismatch
+- **Two-Stream v8 2차** (BYOL form, λ=0.05, cls_m_grad 0.3): **ep12 scancel**. ep12 probing 결과:
+  - `patch_mean_concat` R²=-0.147 (FAIL)
+  - `patch_mean_m` R²=**+0.160** (M stream에 motion signal 보존)
+  - `patch_mean_p` R²=**-0.468** (P가 action-harmful static feature로 수렴)
+  - `m_only` CLS R²=+0.011 (CLS level에서 정보 희석)
+- **진단**: Teacher가 M=zero 입력을 받는 설계 → L_P target이 "미래 static appearance"로 수렴 → student P가 static salience detector 학습. v7-big/v8 공통 실패 모드
+- **결론**: "EMA teacher + feature prediction" 접근은 2-frame EgoDex 세팅에서 collapse inevitable. 전면 폐기
 
-**EgoDex probing 결과** → `docs/PROBING_GUIDE.md` 참고
+**진행 중 — Two-Stream v9 (v4/v6 회귀 + residual P target)**:
+- **설계**: v4 base 구조 유지 (양방향 CLS exchange + 양쪽 stream decoder), 단 두 가지 수정
+  - P decoder target을 `frame_{t+k} - frame_t` (residual)로 변경 → temporal identity shortcut 차단
+  - P mask ratio 0.5 → 0.75 상향 → spatial shortcut 차단 (MAE 표준)
+- **철학**: M은 full RGB 생성(색상 없는 입력) 자체가 challenge라 target 수정 불필요. P는 변화량 예측으로 motion cue 활용 의무화
+- **Collapse detector 추가**: `feat_std_m/p`, `cos_intra_m/p`, `loss_m_raw / loss_p_raw` ratio
+- **속도**: v8 대비 ~2.1× 빠름 (teacher forward 제거 기여), 50 epoch 예상 ~33h
+
+**v8 M-only probing의 시사점**:
+- M이 +0.160로 양수 나온 것 → 역할 분담은 발생했으나 설계가 의도와 반대 (P가 보조 역할이어야 하는데 distractor로 작용)
+- v9는 이 역할 방향을 구조로 강제 (residual이 P에 motion 압력 부여)
 
 **다음 작업**:
-1. v6 학습 완료 후 최종 probing
-2. DROID 프레임 추출
-3. Phase 2: DROID action probing (7 encoder)
-4. Phase 3: LIBERO
+1. v9 sanity로 collapse 거동 정밀 확인 (cos_intra_p=1.000 경고 분석)
+2. 필요 시 설계 보정 후 v9 full run (단일 노드 × 4 H100 또는 2 노드 × 4 H100)
+3. v9 probing (patch_mean_concat + patch_mean_m/p 분리)
+4. DROID 프레임 추출 + Phase 2 전면 개시
+5. Phase 3: LIBERO
 
 ### Phase 1 Ablation 결과 요약 (로컬, 500 videos, 30ep)
 

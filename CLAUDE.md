@@ -167,46 +167,40 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 
-## 현재 Phase (2026-04-17)
+## 현재 Phase (2026-04-21)
 
-**Phase 1.5 — EgoDex Probing 진행 중, Two-Stream v6 + VideoMAE 비교**
+**Phase 1.5 — v7-big/v8 폐기, v9 설계 및 sanity 단계**
 
-**완료**:
-- **Two-Stream v4** (RoPE, mask 0.3): 48ep 수렴, best_model 확정. Probing R²=0.197
-- **VideoMAE-ours**: 50ep 완료 (loss 0.2215), best_model probing R²=0.326
-- **V-JEPA-ours**: 3차 모두 발산, negative result로 보존
+**완료 (Two-Stream lineup)**:
+- **v4** (RoPE, mask 0.3/0.5): 48ep. Probing R²=0.197
+- **v6** (APE + mask 0.5/0.5 + rotation aug): ep23 scancel, ep8 peak R²=0.259
+- **VideoMAE-ours**: 50ep, R²=0.326
+- **V-JEPA-ours**: 3차 발산, negative result
 
-**진행 중**:
-- **Two-Stream v6** (APE + mask 0.5/0.5 + rotation aug): 33222151, 학습 중. Rotation aug로 position prior overfit 차단 → ep8 R²=0.259 (v5 ep8 0.192 대비 +35%)
-- **DROID**: 다운로드 완료 (3.4 TiB), 프레임 추출 대기
+**폐기 (EMA teacher + L_P feature prediction 라인)**:
+- **v7-big**: ep8 cos_st=0.9997 완전 collapse
+- **v8 1차**: ep8 R²=-0.22 (L_P scale mismatch)
+- **v8 2차** (BYOL form, λ=0.05, grad 0.3, mask 0.5/0.5): **ep12 scancel (2026-04-21)**. Probing 분해:
+  - `patch_mean_concat` R²=-0.147, `patch_mean_m` R²=**+0.160**, `patch_mean_p` R²=**-0.468**
+  - 진단: Teacher M=zero 설계 → P가 static salience로 수렴. M의 motion signal이 concat에서 P에 오염됨
+- **결론**: "EMA teacher + feature prediction"은 2-frame EgoDex 세팅에서 **구조적 failure mode**. 전면 폐기
 
-**EgoDex Probing 중간 결과** (full test split, gap=10, linear probe):
+**진행 중 — Two-Stream v9** (v4/v6 회귀 + residual P target):
+- P decoder target: `frame_{t+k} - frame_t` (residual) → temporal identity shortcut 차단
+- P mask ratio: 0.5 → 0.75 (MAE 표준) → spatial shortcut 차단
+- EMA teacher 완전 제거, v4 구조 재활용
+- Collapse detector 추가 (`feat_std_m/p`, `cos_intra_m/p`, loss ratio)
+- v8 대비 ~2.1x 빠름 (teacher forward 제거), 50 epoch 예상 ~33h
+- Sanity 완료 (JobID 33477204, 1:07 elapsed) — full run 제출 대기
 
-| 모델 | ep4 R² | ep8 R² | ep50 R² |
-|------|--------|--------|---------|
-| Two-Stream v6 (rotaug) | — | **0.259** | (학습 중) |
-| Two-Stream v5 (no rotaug) | 0.208 | 0.192 ↓ | — |
-| VideoMAE-ours | 0.198 | — | **0.326** |
-
-**Encoder lineup** (7개, 변경 없음):
-1. Two-Stream v6 (ours) / 2. VideoMAE-ours / 3-7. 공개 가중치 (VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP)
-
-**DROID Probing 프로토콜** (확정):
-- **Primary (main table)**: 7개 encoder 전부 동일 **2-frame** 입력 (정보량 통제)
-- **Supplementary (부록)**: native input — 1-frame(CLIP/DINOv2/SigLIP/VC-1), 2-frame(ours), 16-frame(V-JEPA/VideoMAE-official)
-
-**준비 현황**:
-- ✅ LIBERO 데이터셋 다운로드 (spatial/object/goal)
-- ✅ SigLIP, VC-1 encoder 코드 구현
-- ✅ DROID 추출 sbatch 작성
-- ⏳ DROID 프레임+action 추출 (sbatch 제출, CPU 큐 대기)
-- ❌ V-JEPA-official, VideoMAE-official encoder 코드
+**Encoder lineup** (변경 없음):
+1. Two-Stream v9 (ours, 진행 중) / 2. VideoMAE-ours / 3-7. 공개 가중치
 
 **다음 작업**:
-1. v6 학습 완료 후 최종 probing (~04/20)
-2. DROID 프레임 추출 완료 후 전체 추출 제출
-3. V-JEPA-official, VideoMAE-official encoder 구현
-4. Phase 2: DROID action probing (7 encoder, 2-frame + native)
+1. v9 sanity 분석 (cos_intra_p=1.000 경고 조사) 후 설계 확정
+2. v9 full run 제출 (2노드 × 4 H100 DDP)
+3. v9 probing (patch_mean_concat + patch_mean_m/p 분리)
+4. DROID 프레임 추출 + Phase 2 개시
 5. Phase 3: LIBERO
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
