@@ -216,7 +216,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 if actual_model.rotation_aug and actual_model.training:
                     img_t, img_tk = actual_model._apply_rotation_aug(img_t, img_tk)
 
-                out1, out2, _ = model(img_t, img_tk)
+                out1, out2, info = model(img_t, img_tk)
 
                 if actual_model.v7_big_mode:
                     # v7-big: |ΔL| 기반 pixel-wise Gaussian weighting
@@ -245,15 +245,59 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                     img_pred = out2                # motion decoder 출력을 시각화
                 else:
                     pred_m, pred_p = out1, out2
+                    # v9: P target은 residual (frame_{t+k} - frame_t), 아니면 frame_{t+k}
+                    if actual_model.residual_p_target:
+                        target_p = img_tk - img_t
+                    else:
+                        target_p = img_tk
                     mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                    mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                    mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
                     if use_ssim:
                         loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                        # v9 residual에는 SSIM 의미 없음 (target 자체가 diff image)
+                        if actual_model.residual_p_target:
+                            loss_p = mse_p
+                        else:
+                            loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
                     else:
                         loss_m = mse_m
                         loss_p = mse_p
+                    # v9: loss_weight_p로 residual magnitude 보정 (default 1.0 = v4 동일)
+                    loss_p_raw = loss_p  # weight 곱 전 (monitoring / balance 결정용)
+                    loss_p = loss_p * actual_model.loss_weight_p
                     img_pred = pred_p
+
+                    # v9 전용 metrics (residual_p_target일 때만 의미 있음, 그 외엔 skip)
+                    if actual_model.residual_p_target and isinstance(info, dict):
+                        with torch.no_grad():
+                            cls_m = info.get('cls_m')
+                            cls_p = info.get('cls_p')
+                            # Per-dim std across batch (collapse시 0 근처)
+                            std_m = cls_m.std(dim=0).mean()
+                            std_p = cls_p.std(dim=0).mean()
+                            # Intra-batch cosine (trivial이면 1.0 근처)
+                            cp_norm = F.normalize(cls_p.float(), dim=-1)
+                            B = cp_norm.shape[0]
+                            sim = cp_norm @ cp_norm.T
+                            eye_mask = ~torch.eye(B, device=sim.device, dtype=torch.bool)
+                            cos_intra_p = sim[eye_mask].mean()
+                            # M stream도 동일 진단
+                            cm_norm = F.normalize(cls_m.float(), dim=-1)
+                            sim_m = cm_norm @ cm_norm.T
+                            cos_intra_m = sim_m[eye_mask].mean()
+                            resid_mag = (img_tk - img_t).abs().mean()
+                        if not hasattr(train_epoch, '_v9_metrics_buf'):
+                            train_epoch._v9_metrics_buf = {}
+                        buf = train_epoch._v9_metrics_buf
+                        buf['loss_m_raw'] = buf.get('loss_m_raw', 0.0) + loss_m.mean().item()
+                        buf['loss_p_raw'] = buf.get('loss_p_raw', 0.0) + loss_p_raw.mean().item()
+                        buf['loss_p_weighted'] = buf.get('loss_p_weighted', 0.0) + loss_p.mean().item()
+                        buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
+                        buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
+                        buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
+                        buf['cos_intra_p'] = buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
+                        buf['resid_mag'] = buf.get('resid_mag', 0.0) + resid_mag.item()
+                        buf['_count'] = buf.get('_count', 0) + 1
 
                 per_sample_loss = loss_m + loss_p
 
@@ -411,14 +455,25 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                     img_pred = out2
                 else:
                     pred_m, pred_p = out1, out2
+                    # v9: P target은 residual (frame_{t+k} - frame_t), 아니면 frame_{t+k}
+                    if actual_model.residual_p_target:
+                        target_p = img_tk - img_t
+                    else:
+                        target_p = img_tk
                     mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                    mse_p = F.mse_loss(pred_p, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                    mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
                     if use_ssim:
                         loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), img_tk.float())
+                        # v9 residual에는 SSIM 의미 없음 (target 자체가 diff image)
+                        if actual_model.residual_p_target:
+                            loss_p = mse_p
+                        else:
+                            loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
                     else:
                         loss_m = mse_m
                         loss_p = mse_p
+                    # v9: loss_weight_p로 residual magnitude 보정 (default 1.0 = v4 동일)
+                    loss_p = loss_p * actual_model.loss_weight_p
                     img_pred = pred_p
 
                 per_sample_loss = loss_m + loss_p
@@ -928,6 +983,32 @@ def train(
                     writer.add_scalar('v8/L_var', buf.get('L_var', 0.0) / n, epoch)
                 # Reset buffer for next epoch
                 train_epoch._v8_metrics_buf = {}
+            # v9 전용 monitoring metrics (residual P target, collapse detector)
+            if hasattr(train_epoch, '_v9_metrics_buf'):
+                buf = train_epoch._v9_metrics_buf
+                n = buf.get('_count', 0)
+                if n > 0:
+                    lm_raw = buf['loss_m_raw'] / n
+                    lp_raw = buf['loss_p_raw'] / n
+                    lp_w = buf['loss_p_weighted'] / n
+                    writer.add_scalar('v9/loss_m_raw', lm_raw, epoch)
+                    writer.add_scalar('v9/loss_p_raw', lp_raw, epoch)
+                    writer.add_scalar('v9/loss_p_weighted', lp_w, epoch)
+                    writer.add_scalar('v9/loss_ratio_p_over_m', lp_raw / max(lm_raw, 1e-8), epoch)
+                    writer.add_scalar('v9/feat_std_m', buf['feat_std_m'] / n, epoch)
+                    writer.add_scalar('v9/feat_std_p', buf['feat_std_p'] / n, epoch)
+                    writer.add_scalar('v9/cos_intra_m', buf['cos_intra_m'] / n, epoch)
+                    writer.add_scalar('v9/cos_intra_p', buf['cos_intra_p'] / n, epoch)
+                    writer.add_scalar('v9/resid_mag', buf['resid_mag'] / n, epoch)
+                    log(
+                        f"  [v9] L_m={lm_raw:.5f} L_p_raw={lp_raw:.5f} "
+                        f"(ratio p/m={lp_raw/max(lm_raw,1e-8):.3f}) "
+                        f"weighted L_p={lp_w:.5f} | "
+                        f"std_m={buf['feat_std_m']/n:.3f} std_p={buf['feat_std_p']/n:.3f} | "
+                        f"cos_intra_m={buf['cos_intra_m']/n:.3f} cos_intra_p={buf['cos_intra_p']/n:.3f} | "
+                        f"resid_mag={buf['resid_mag']/n:.4f}"
+                    )
+                train_epoch._v9_metrics_buf = {}
             writer.flush()
 
         # Save prediction samples every epoch (rank 0)

@@ -614,6 +614,8 @@ class TwoStreamModel(nn.Module):
         pred_head_ratio: float = 2.0,
         cls_m_grad_ratio: float = 0.0,
         drop_path_rate: float = 0.0,
+        residual_p_target: bool = False,
+        loss_weight_p: float = 1.0,
     ):
         super().__init__()
 
@@ -627,6 +629,10 @@ class TwoStreamModel(nn.Module):
         self.v7_big_mode = v7_big_mode
         self.sigma = sigma
         self.v8_mode = v8_mode
+        # v9: P decoder target을 residual(frame_{t+k} - frame_t)로 변경하여 temporal
+        # identity shortcut 차단. loss_weight_p는 residual MSE의 낮은 magnitude 보정용.
+        self.residual_p_target = residual_p_target
+        self.loss_weight_p = loss_weight_p
         # CLS exchange 직전 cls_m의 L_P gradient 유입 비율 (v8):
         #   0.0 = 완전 detach (original v8 설계, M stream 격리)
         #   1.0 = detach 없음 (v4 스타일, L_P gradient가 M stream 전체로 역류)
@@ -822,15 +828,26 @@ class TwoStreamModel(nn.Module):
 
             # Downstream representation: 3개 CLS 평균 (probing에서 별도 mode로 세분화 가능)
             cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0] + p_tokens[:, 1]) / 3
-            return pred_bg, pred_motion, cls_embedding
+            info = {
+                'cls_avg': cls_embedding,
+                'cls_m': m_tokens[:, 0],
+                'cls_p_bg': p_tokens[:, 0],
+                'cls_p_motion': p_tokens[:, 1],
+            }
+            return pred_bg, pred_motion, info
 
-        # Legacy path (v4~v6)
+        # Legacy path (v4~v6/v9)
         cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
         m_patches = m_tokens[:, 1:]
         p_patches = p_tokens[:, 1:]
         pred_m = self.decoder_m(m_patches, cls_embedding)
         pred_p = self.decoder_p(p_patches, cls_embedding)
-        return pred_m, pred_p, cls_embedding
+        info = {
+            'cls_avg': cls_embedding,
+            'cls_m': m_tokens[:, 0],
+            'cls_p': p_tokens[:, 0],
+        }
+        return pred_m, pred_p, info
 
     def _forward_masked(
         self, m_channel: torch.Tensor, p_channel: torch.Tensor
@@ -919,15 +936,26 @@ class TwoStreamModel(nn.Module):
             pred_motion = self.decoder_m_motion(m_full_patches, p_cls_motion)
 
             cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0] + p_tokens[:, 1]) / 3
-            return pred_bg, pred_motion, cls_embedding
+            info = {
+                'cls_avg': cls_embedding,
+                'cls_m': m_tokens[:, 0],
+                'cls_p_bg': p_tokens[:, 0],
+                'cls_p_motion': p_tokens[:, 1],
+            }
+            return pred_bg, pred_motion, info
 
-        # Legacy path (v4~v6): P 복원도 필요
+        # Legacy path (v4~v6/v9): P 복원도 필요
         p_full_patches = self._restore_with_mask_tokens(
             p_tokens, mask_p, self.mask_token_p, num_cls=K)
         cls_embedding = (m_tokens[:, 0] + p_tokens[:, 0]) / 2
         pred_m = self.decoder_m(m_full_patches, cls_embedding)
         pred_p = self.decoder_p(p_full_patches, cls_embedding)
-        return pred_m, pred_p, cls_embedding
+        info = {
+            'cls_avg': cls_embedding,
+            'cls_m': m_tokens[:, 0],
+            'cls_p': p_tokens[:, 0],
+        }
+        return pred_m, pred_p, info
 
     def _apply_rotation_aug(
         self, image_current: torch.Tensor, image_future: torch.Tensor
@@ -1232,10 +1260,14 @@ class TwoStreamModel(nn.Module):
             loss = loss_bg + loss_motion
             return loss, out2  # pred_motion for visualization
 
-        # Legacy path (v4~v6)
+        # Legacy path (v4~v6) + v9 (residual P target)
         loss_m = F.mse_loss(out1, image_future)
-        loss_p = F.mse_loss(out2, image_future)
-        loss = loss_m + loss_p
+        if self.residual_p_target:
+            target_p = image_future - image_current
+        else:
+            target_p = image_future
+        loss_p = F.mse_loss(out2, target_p)
+        loss = loss_m + self.loss_weight_p * loss_p
         return loss, out2
 
 

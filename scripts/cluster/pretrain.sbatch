@@ -193,6 +193,23 @@ elif [ "$MODEL" = "two-stream-v8" ]; then
     )
     # v8 체크포인트는 별도 디렉토리
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v8${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v9" ]; then
+    # v9: v4/v6 구조 + P decoder target을 residual로 변경 + P mask 0.75 상향
+    # 설계 근거:
+    # - v8 L_P + EMA teacher 접근 폐기 (probing R² < 0 확정, static salience로 collapse)
+    # - P가 frame_{t+k}를 직접 예측하되 mask 0.75로 visible shortcut 차단
+    # - residual target (frame_{t+k} - frame_t)으로 temporal identity shortcut 추가 차단
+    # - 변화 없는 영역의 target=0 → P가 motion이 있는 영역만 학습 압력 받음
+    # - CLS exchange 양방향 유지 — loss 구조가 자동으로 M↔P 비대칭 활용 유도
+    # - loss_weight_p 5.0: residual MSE magnitude가 작아 loss_m과 balance 보정
+    MODEL_ARGS=(
+        --depth 12 --num-stages 2
+        --use-ape --rotation-aug
+        --mask-ratio 0.3 --mask-ratio-p 0.75
+        --v9-residual-p --v9-loss-weight-p 5.0
+        --max-gap 60 --sample-dist triangular --sample-center 30
+    )
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v9${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12
@@ -215,7 +232,7 @@ log "Model args: ${MODEL_ARGS[*]}"
 # ── MODEL alias 해석 ────────────────────────────────────────────────────────
 # scripts/pretrain.py의 --model은 ['two-stream','v-jepa','videomae']만 받음.
 # two-stream-v8은 --model two-stream + --v8-mode 조합이므로 여기서 번역.
-if [ "$MODEL" = "two-stream-v8" ]; then
+if [ "$MODEL" = "two-stream-v8" ] || [ "$MODEL" = "two-stream-v9" ]; then
     MODEL_NAME_FOR_PY="two-stream"
 else
     MODEL_NAME_FOR_PY="$MODEL"
