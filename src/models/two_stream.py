@@ -29,6 +29,40 @@ import torch.nn.functional as F
 from .common import TwoStreamPreprocessing
 
 
+def patch_normalize(target: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
+    """Patch-wise pixel normalization (MAE `norm_pix_loss=True`와 동일 방식).
+
+    각 patch 내부 픽셀을 (x - μ) / σ 로 정규화하여 decoder가 "상수 0 출력"
+    trivial minimum에 빠지지 않도록 함. residual target (frame diff)이
+    전체적으로 작을 때 특히 유효 — 정규화 후엔 static patch도 std=1 스케일.
+
+    Args:
+        target: [B, C, H, W]
+        patch_size: patch 한 변 크기
+    Returns:
+        normalized target with same shape [B, C, H, W]
+    """
+    B, C, H, W = target.shape
+    ps = patch_size
+    assert H % ps == 0 and W % ps == 0, f"H={H}, W={W} not divisible by {ps}"
+    Hp, Wp = H // ps, W // ps
+
+    # [B,C,H,W] → [B, Hp, Wp, C*ps*ps]
+    x = target.unfold(2, ps, ps).unfold(3, ps, ps)       # [B, C, Hp, Wp, ps, ps]
+    x = x.permute(0, 2, 3, 1, 4, 5).contiguous()         # [B, Hp, Wp, C, ps, ps]
+    x = x.view(B, Hp * Wp, C * ps * ps)                  # [B, N, C*ps*ps]
+
+    mean = x.mean(dim=-1, keepdim=True)
+    std = x.std(dim=-1, keepdim=True)
+    x = (x - mean) / (std + 1e-6)
+
+    # Unpatchify back: [B, N, C*ps*ps] → [B, C, H, W]
+    x = x.view(B, Hp, Wp, C, ps, ps)
+    x = x.permute(0, 3, 1, 4, 2, 5).contiguous()         # [B, C, Hp, ps, Wp, ps]
+    x = x.view(B, C, H, W)
+    return x
+
+
 # ============================================================================
 # 2D Rotary Position Embedding (RoPE)
 # ============================================================================
@@ -1270,7 +1304,8 @@ class TwoStreamModel(nn.Module):
         if self.p_target == 'current':
             target_p = image_current  # MAE on frame_t
         elif self.p_target == 'residual':
-            target_p = image_future - image_current
+            # Patch-wise normalization — trivial 0-output minimum 방지 (MAE 표준)
+            target_p = patch_normalize(image_future - image_current)
         else:
             target_p = image_future
         loss_p = F.mse_loss(out2, target_p)

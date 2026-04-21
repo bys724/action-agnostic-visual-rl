@@ -32,6 +32,8 @@ try:
 except ImportError:
     HAS_TENSORBOARD = False
 
+from src.models.two_stream import patch_normalize
+
 
 # ── 분산 학습 (DDP) 헬퍼 ──────────────────────────────────────────────────────
 
@@ -250,7 +252,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                     if p_target_mode == 'current':
                         target_p = img_t
                     elif p_target_mode == 'residual':
-                        target_p = img_tk - img_t
+                        # Patch-wise norm — 0-output trivial minimum 방지 (MAE 표준)
+                        target_p = patch_normalize(img_tk - img_t)
                     else:
                         target_p = img_tk
                     mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
@@ -463,7 +466,8 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                     if p_target_mode == 'current':
                         target_p = img_t
                     elif p_target_mode == 'residual':
-                        target_p = img_tk - img_t
+                        # Patch-wise norm — train loop와 동일 (MAE 표준)
+                        target_p = patch_normalize(img_tk - img_t)
                     else:
                         target_p = img_tk
                     mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))

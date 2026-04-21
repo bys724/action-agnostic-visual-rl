@@ -185,23 +185,30 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
   - 진단: Teacher M=zero 설계 → P가 static salience로 수렴. M의 motion signal이 concat에서 P에 오염됨
 - **결론**: "EMA teacher + feature prediction"은 2-frame EgoDex 세팅에서 **구조적 failure mode**. 전면 폐기
 
-**진행 중 — Two-Stream v9** (v4 base + MAE P target):
-- P decoder target: `frame_t` (standard MAE, mask 0.75) — semantic 학습
-- M decoder target: `frame_{t+k}` (mask 0.3, 기존 유지) — motion 학습
-- CLS exchange 양방향 유지 — loss 비대칭성이 역할 분담 자동 유도
-- EMA teacher 완전 제거
-- **설계 반복 과정**:
-  1. Residual target 시도 → sanity에서 P 완전 collapse (`cos_intra_p=1.000`, `std_p=0.028`) → decoder가 "0 출력" trivial minimum으로 수렴
-  2. MAE 방식(frame_t 복원)으로 전환 → healthy 학습 확인 (`std_p=0.327`, `cos_intra_p=0.857`, ratio p/m=1.25)
-- **v8 대비 ~2.1x 빠름** (teacher forward 제거)
-- **Full run**: JobID 33492965 (2026-04-21 15:48~), AIP_long 2노드×4 H100, 50 epoch, 예상 ~33-40h
+**진행 중 — Two-Stream v9** (v4 base + residual P target + patch-wise pixel normalization):
+- M decoder target: `frame_{t+k}` (full RGB, mask 0.3) — motion 학습
+- P decoder target: `frame_{t+k} - frame_t` (residual, mask 0.75) — motion appearance 학습
+- P target에 **patch-wise normalization** 적용 (MAE `norm_pix_loss=True`와 동일):
+  각 16×16 patch 내부를 (x-μ)/σ로 정규화 → 0-output trivial minimum 차단
+- EMA teacher 완전 제거, CLS exchange 양방향 유지
+- **설계 반복 과정** (2026-04-21 전부):
+  1. `P=residual` 초기 시도 → sanity에서 P encoder 완전 collapse (`cos_intra_p=1.000`, `std_p=0.028`).
+     원인: residual magnitude ~0.08로 너무 작아 decoder가 "0 출력" trivial minimum 수렴
+  2. `P=current` (MAE frame_t) 우회 시도 → ep4 probing M=+0.188, concat=+0.154, P=-0.102.
+     v8 대비 크게 개선되었으나 P=current 자체가 trivial (input=target에 mask만, 학습 pressure 약함)
+  3. `P=residual + patch_normalize` 재설계 → 현재. patch-wise norm으로 trivial minimum 제거,
+     residual target으로 motion appearance 역할 분화 복구
+- **Sanity 측정** (JobID 33555312, 100v × 3ep): L_m=0.0147, L_p_raw=0.999 (이론 경계 ~1.0),
+  ratio p/m=68 → `loss_weight_p=0.02` 결정 (weighted L_p ≈ 1.4 × L_m, M anchor 유지)
+- **Full run**: JobID 33555333 (2026-04-21 23:41~), AIP_long 2노드×4 H100, 50ep, `--time=3d`
+- **폐기된 시도** (resume 가능, 체크포인트 보존): `two_stream_v9/20260421_160719/` (P=current ep6)
 
 **Encoder lineup** (변경 없음):
 1. Two-Stream v9 (ours, 진행 중) / 2. VideoMAE-ours / 3-7. 공개 가중치
 
 **다음 작업**:
-1. v9 sanity 분석 (cos_intra_p=1.000 경고 조사) 후 설계 확정
-2. v9 full run 제출 (2노드 × 4 H100 DDP)
+1. v9 residual+norm sanity 분석 (L_p_raw 스케일, feat_std_p, cos_intra_p)
+2. loss_weight_p 결정 후 full run 제출 (2노드 × 4 H100, AIP_long)
 3. v9 probing (patch_mean_concat + patch_mean_m/p 분리)
 4. DROID 프레임 추출 + Phase 2 개시
 5. Phase 3: LIBERO

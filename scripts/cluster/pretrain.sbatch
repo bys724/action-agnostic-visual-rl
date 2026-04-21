@@ -204,11 +204,15 @@ elif [ "$MODEL" = "two-stream-v9" ]; then
     # - CLS exchange 양방향 유지: M stream이 L_M 위해 P semantic 적극 활용, P는 frame_t
     #   복원만 책임지므로 M 정보 선택적 활용
     # - P mask 0.75 (MAE 표준), M mask 0.3 유지
+    # V9_P_TARGET 환경변수로 P decoder target 오버라이드 (current/future/residual)
+    # - current (기본): frame_t 복원 (MAE 방식)
+    # - future: frame_{t+k} 복원 (v4 base와 동일, mask 0.75로 aggressive masking)
+    # - residual: collapse 확인됨 (사용 지양)
     MODEL_ARGS=(
         --depth 12 --num-stages 2
         --use-ape --rotation-aug
         --mask-ratio 0.3 --mask-ratio-p 0.75
-        --v9-p-target current --v9-loss-weight-p 1.0
+        --v9-p-target "${V9_P_TARGET:-current}" --v9-loss-weight-p 1.0
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v9${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"

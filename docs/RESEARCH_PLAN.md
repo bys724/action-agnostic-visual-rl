@@ -505,38 +505,51 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 - **진단**: Teacher가 M=zero 입력을 받는 설계 → L_P target이 "미래 static appearance"로 수렴 → student P가 static salience detector 학습. v7-big/v8 공통 실패 모드
 - **결론**: "EMA teacher + feature prediction" 접근은 2-frame EgoDex 세팅에서 collapse inevitable. 전면 폐기
 
-**진행 중 — Two-Stream v9 (v4 base + MAE P target)**:
+**진행 중 — Two-Stream v9 (v4 base + residual P target + patch-wise pixel normalization)**:
 
-**설계 확정 경로**:
-1. 초기안 (residual P target) → 중간 sanity(200 videos × 5 ep)에서 **P encoder 완전 collapse** 확인
+**설계 확정 경로** (2026-04-21 3단계 반복):
+1. 초기안 `P=residual` (plain MSE) → 중간 sanity(200 videos × 5 ep)에서 **P encoder 완전 collapse**
    - `cos_intra_p=1.000` 5 epoch 내내 고정, `std_p=0.028` 매우 낮음
-   - 원인: residual target magnitude(~0.08) 작아 decoder가 "0 출력" trivial minimum으로 수렴 → encoder gradient 소실
-2. **MAE 방식(frame_t 복원)으로 전환** → 중간 sanity에서 healthy 학습 궤도 확인
-   - `std_p=0.327` (residual 대비 12배), `cos_intra_p=0.857` (분화 진행)
-   - `L_p_raw=0.015` 꾸준히 하락, `ratio p/m=1.25` (weight 1.0 적정)
+   - 원인: residual magnitude(~0.08) 작아 decoder가 "0 출력" trivial minimum으로 수렴 → encoder gradient 소실
+2. 우회안 `P=current` (MAE frame_t, mask 0.75) → full run 7h14m (ep6까지 진행 후 scancel)
+   - ep4 probing: M=+0.188, concat=+0.154, P=-0.102 (v8 ep12 -0.468 대비 크게 개선)
+   - 문제: frame_t가 입력이자 target → mask된 patch 복원이 surrounding patch로 trivial. "M stream에 전달할 정보 압축" 외엔 학습 pressure 약함
+3. 최종안 `P=residual + patch-wise normalization` → 현재 sanity → full 재제출 예정
+   - 각 16×16 patch를 `(x - μ) / σ`로 정규화 (MAE `norm_pix_loss=True`와 동일)
+   - 정규화 후 0-output → MSE≈1.0 (bounded below) → trivial minimum 차단
+   - residual target 복구로 motion appearance 역할 분화 강제
 
 **최종 설계**:
-- P decoder target: `frame_t` (standard MAE, mask 0.75) — semantic 학습 강제
 - M decoder target: `frame_{t+k}` (full RGB, mask 0.3) — motion 학습
-- CLS exchange 양방향 유지 → loss 비대칭성이 역할 분담 자동 유도
-  - P encoder는 frame_t 복원에만 gradient → semantic encoder로 수렴
-  - M encoder는 색상 없는 ΔL 입력으로 full RGB 맞추기 위해 P semantic을 CLS exchange로 적극 활용
+- P decoder target: **`patch_normalize(frame_{t+k} - frame_t)`** (mask 0.75) — motion appearance 학습
+- CLS exchange 양방향 유지 → target 비대칭성(RGB vs residual patch-norm)이 역할 분화 자동 유도
 - EMA teacher 완전 제거 (v4 구조 재활용)
 - Collapse detector (TB/stdout): `feat_std_m/p`, `cos_intra_m/p`, `loss_m/p_raw` ratio
 - 속도: v8 대비 ~2.1× 빠름 (teacher forward 제거), 50 epoch 예상 ~33-40h
 
 **v8 M-only probing의 시사점 (설계에 반영)**:
 - M이 +0.160로 양수 → M stream은 motion 정보 정상 학습
-- v9에서 P가 semantic 담당하면 `patch_mean_concat`의 M+P가 상보적 feature → 예상 R² 개선
+- v9에서 P가 motion appearance 담당하면 `patch_mean_concat`의 M+P가 상보적 feature → 예상 R² 개선
 
-**Full run 상태** (2026-04-21 15:48 제출):
-- JobID 33492965, AIP_long 2노드 × 4 H100, 50 epoch
-- 예상 완료: ~33-40h (2026-04-23 00:00~08:00)
+**Sanity 측정 결과** (JobID 33555312, 100 videos × 3 ep):
+- L_m=0.0147, L_p_raw=0.999 (patch-norm의 이론 경계 ~1.0 확인)
+- ratio p/m=68 → **loss_weight_p=0.02** 결정 (weighted L_p ≈ 1.4 × L_m, M anchor 유지)
+- std_p=0.047, cos_intra_p=0.995 — 3ep 끝 시점의 LR=0 상태 artifact로 추정. full run에서 관측 필요
+
+**Full run** (JobID 33555333, 2026-04-21 23:41 제출):
+- AIP_long 2노드 × 4 H100, 50 epoch, `--time=3d`
+- 체크포인트: `two_stream_v9_residual_norm/` (별도 디렉토리 — P=current run과 분리)
+- 예상 완료: ~75h (ep4 도달 ~6h 후)
+
+**폐기된 run (체크포인트 보존, resume 가능)**:
+- JobID 33492965 (P=current full, 2026-04-21 16:04~23:19, 07:14:48 elapsed): `two_stream_v9/20260421_160719/`
+  — 만약 residual+norm 실패 시 이 체크포인트에서 resume하여 ep50까지 가는 옵션 유지
 
 **다음 작업**:
-1. v9 full run 학습 완료 + probing (`patch_mean_concat`, `patch_mean_m/p` 분리)
-2. DROID 프레임 추출 + Phase 2 전면 개시 (7 encoder DROID probing)
-3. Phase 3: LIBERO
+1. ep4 probing + attention viz (사용자 요청 시) → P=current ep4와 직접 비교
+2. 유효성 확인 시 full 50ep 완주, 아니면 P=current resume
+3. DROID 프레임 추출 + Phase 2 전면 개시 (7 encoder DROID probing)
+4. Phase 3: LIBERO
 
 ### Phase 1 Ablation 결과 요약 (로컬, 500 videos, 30ep)
 

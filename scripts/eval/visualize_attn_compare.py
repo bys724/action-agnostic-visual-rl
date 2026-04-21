@@ -169,21 +169,31 @@ def main():
     parser.add_argument("--num-stages", type=int, default=2)
     parser.add_argument("--mask-ratio", type=float, default=0.3)
     parser.add_argument("--mask-ratio-p", type=float, default=0.5)
+    parser.add_argument("--p-target", choices=["future", "current", "residual"],
+                        default="future",
+                        help="Pred P 비교 대상 (v4=future, v9=current)")
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
+
+    # use_ape: checkpoint에서 auto-detect (TwoStreamEncoder와 동일 패턴)
+    _ckpt_peek = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    _sd_keys = _ckpt_peek["model_state_dict"].keys()
+    use_ape = any("encoder.pos_embed_m" in k for k in _sd_keys)
+    print(f"  Detected use_ape={use_ape} from checkpoint")
 
     # Load model
     print(f"Loading: {args.checkpoint}")
     model = TwoStreamModel(
         depth=args.depth, num_stages=args.num_stages,
         mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p,
+        use_ape=use_ape, p_target=args.p_target,
     ).to(DEVICE)
-    ck = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
+    ck = _ckpt_peek
     model.load_state_dict(ck["model_state_dict"], strict=False)
     model.eval()
     epoch = ck.get('epoch', '?')
-    print(f"  Epoch {epoch}")
+    print(f"  Epoch {epoch}, p_target={args.p_target}")
 
     # Select high-change pairs
     print(f"\nSelecting high-change pairs from EgoDex...")
@@ -199,8 +209,15 @@ def main():
 
     # Build figure: 4 rows × 6 cols
     fig, axes = plt.subplots(4, 6, figsize=(30, 20))
+    _p_tgt_label = {
+        'future': f'frame_t+{args.gap}',
+        'current': 'frame_t',
+        'residual': 'Δframe',
+    }[args.p_target]
     col_titles = ['Frame t', f'Frame t+{args.gap}',
-                  'M Attn on ΔL', 'P Attn on ΔL', 'Pred M', 'Pred P']
+                  'M Attn on ΔL', 'P Attn on ΔL',
+                  f'Pred M (→frame_t+{args.gap})',
+                  f'Pred P (→{_p_tgt_label})']
 
     for row, ((path_t, path_tk, ep_label, gap, mse), dataset) in enumerate(zip(all_pairs, labels)):
         img_t = load_image(path_t)
@@ -237,7 +254,12 @@ def main():
         axes[row][5].imshow(pred_p)
 
         mse_m = ((img_tk_np - pred_m) ** 2).mean()
-        mse_p = ((img_tk_np - pred_p) ** 2).mean()
+        if args.p_target == 'future':
+            mse_p = ((img_tk_np - pred_p) ** 2).mean()
+        elif args.p_target == 'current':
+            mse_p = ((img_t_np - pred_p) ** 2).mean()
+        else:  # residual
+            mse_p = ((img_tk_np - img_t_np - pred_p) ** 2).mean()
 
         axes[row][0].set_ylabel(
             f'{dataset}\n{ep_label[:25]}\nΔ={mse:.3f}',
@@ -254,7 +276,8 @@ def main():
         axes[0][col].set_title(col_titles[col], fontsize=12, fontweight='bold')
 
     fig.suptitle(
-        f'Two-Stream Epoch {epoch} — Attention + Prediction (high-change samples, gap={args.gap})',
+        f'Two-Stream Epoch {epoch} — Attention + Prediction '
+        f'(p_target={args.p_target}, gap={args.gap})',
         fontsize=15, y=1.01,
     )
     plt.tight_layout()
