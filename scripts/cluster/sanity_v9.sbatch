@@ -15,16 +15,23 @@
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH --output=/proj/external_group/mrg/logs/sanity_v9_%j.out
 #SBATCH --error=/proj/external_group/mrg/logs/sanity_v9_%j.err
 
 set -euo pipefail
 
+# Overridable via sbatch --export=ALL,MAX_VIDEOS=...,BATCH_SIZE=...,EPOCHS=...,SUFFIX=mid
+MAX_VIDEOS="${MAX_VIDEOS:-20}"
+BATCH_SIZE="${BATCH_SIZE:-8}"
+EPOCHS="${EPOCHS:-2}"
+LOSS_WEIGHT_P="${LOSS_WEIGHT_P:-1.0}"
+SUFFIX="${SUFFIX:-}"
+
 PROJECT_ROOT="/proj/home/mrg/bys724/action-agnostic-visual-rl"
 FRAMES_ROOT="/proj/external_group/mrg/datasets/egodex/frames"
 CONDA_ENV="/proj/external_group/mrg/conda_envs/aavrl-train"
-CHECKPOINT_DIR="/proj/external_group/mrg/checkpoints/two_stream_v9_sanity"
+CHECKPOINT_DIR="/proj/external_group/mrg/checkpoints/two_stream_v9_sanity${SUFFIX:+_$SUFFIX}"
 
 # Clean previous sanity checkpoints (avoid resume contamination)
 rm -rf "$CHECKPOINT_DIR" 2>/dev/null || true
@@ -36,24 +43,22 @@ conda activate "$CONDA_ENV"
 cd "$PROJECT_ROOT"
 
 echo "=== v9 sanity test ==="
+echo "Suffix=$SUFFIX | videos=$MAX_VIDEOS | batch=$BATCH_SIZE | epochs=$EPOCHS | loss_weight_p=$LOSS_WEIGHT_P"
 echo "Check: residual P target, loss_m vs loss_p_raw ratio, feat_std, cos_intra"
-echo "loss_weight_p=1.0으로 시작해 balance 확인 후 본 학습에서 조정"
 echo ""
 
-# Note: loss_weight_p 1.0으로 sanity 돌려 raw ratio 측정 후,
-#       본 학습에서는 ratio * loss_weight_p ≈ 1.0이 되도록 조정.
-#       예: raw ratio 0.1이면 loss_weight_p=10
+P_TARGET="${P_TARGET:-current}"
 "$CONDA_PREFIX/bin/python" scripts/pretrain.py \
     --model two-stream \
     --depth 12 --num-stages 2 \
     --use-ape --rotation-aug \
     --mask-ratio 0.3 --mask-ratio-p 0.75 \
-    --v9-residual-p \
-    --v9-loss-weight-p 1.0 \
+    --v9-p-target "$P_TARGET" \
+    --v9-loss-weight-p "$LOSS_WEIGHT_P" \
     --train-data egodex --egodex-root "$FRAMES_ROOT" \
-    --egodex-splits part1 --max-videos 20 \
+    --egodex-splits part1 --max-videos "$MAX_VIDEOS" \
     --max-gap 60 --sample-dist triangular --sample-center 30 \
-    --epochs 2 --batch-size 8 --lr 2e-4 \
+    --epochs "$EPOCHS" --batch-size "$BATCH_SIZE" --lr 2e-4 \
     --checkpoint-dir "$CHECKPOINT_DIR" \
     --save-interval 999 \
     --eval-interval 999 \

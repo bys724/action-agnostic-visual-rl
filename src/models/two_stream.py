@@ -614,10 +614,12 @@ class TwoStreamModel(nn.Module):
         pred_head_ratio: float = 2.0,
         cls_m_grad_ratio: float = 0.0,
         drop_path_rate: float = 0.0,
-        residual_p_target: bool = False,
+        p_target: str = 'future',
         loss_weight_p: float = 1.0,
     ):
         super().__init__()
+        assert p_target in ('future', 'current', 'residual'), \
+            f"p_target must be one of ('future', 'current', 'residual'), got {p_target}"
 
         self.mask_ratio = mask_ratio
         # P stream은 자기 입력만으로 복원이 쉬워 표현이 shallow해지는 문제가 있음.
@@ -629,9 +631,12 @@ class TwoStreamModel(nn.Module):
         self.v7_big_mode = v7_big_mode
         self.sigma = sigma
         self.v8_mode = v8_mode
-        # v9: P decoder target을 residual(frame_{t+k} - frame_t)로 변경하여 temporal
-        # identity shortcut 차단. loss_weight_p는 residual MSE의 낮은 magnitude 보정용.
-        self.residual_p_target = residual_p_target
+        # v9: P decoder target 선택
+        #   'future'  - frame_{t+k} 예측 (v4 기본)
+        #   'current' - frame_t 예측 (standard MAE on frame_t, semantic 강제)
+        #   'residual' - frame_{t+k} - frame_t 예측 (변화량, P가 motion cue 활용 의무화)
+        #              ※ residual은 sanity에서 P encoder collapse 관찰됨 → 사용 주의
+        self.p_target = p_target
         self.loss_weight_p = loss_weight_p
         # CLS exchange 직전 cls_m의 L_P gradient 유입 비율 (v8):
         #   0.0 = 완전 detach (original v8 설계, M stream 격리)
@@ -1260,9 +1265,11 @@ class TwoStreamModel(nn.Module):
             loss = loss_bg + loss_motion
             return loss, out2  # pred_motion for visualization
 
-        # Legacy path (v4~v6) + v9 (residual P target)
+        # Legacy path (v4~v6) + v9 (alternative P target)
         loss_m = F.mse_loss(out1, image_future)
-        if self.residual_p_target:
+        if self.p_target == 'current':
+            target_p = image_current  # MAE on frame_t
+        elif self.p_target == 'residual':
             target_p = image_future - image_current
         else:
             target_p = image_future

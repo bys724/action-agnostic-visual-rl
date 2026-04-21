@@ -245,8 +245,11 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                     img_pred = out2                # motion decoder 출력을 시각화
                 else:
                     pred_m, pred_p = out1, out2
-                    # v9: P target은 residual (frame_{t+k} - frame_t), 아니면 frame_{t+k}
-                    if actual_model.residual_p_target:
+                    # v9: P target 선택 — future(v4), current(MAE), residual
+                    p_target_mode = getattr(actual_model, 'p_target', 'future')
+                    if p_target_mode == 'current':
+                        target_p = img_t
+                    elif p_target_mode == 'residual':
                         target_p = img_tk - img_t
                     else:
                         target_p = img_tk
@@ -254,8 +257,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                     mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
                     if use_ssim:
                         loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        # v9 residual에는 SSIM 의미 없음 (target 자체가 diff image)
-                        if actual_model.residual_p_target:
+                        # residual target은 diff image라 SSIM 의미 없음
+                        if p_target_mode == 'residual':
                             loss_p = mse_p
                         else:
                             loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
@@ -267,8 +270,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                     loss_p = loss_p * actual_model.loss_weight_p
                     img_pred = pred_p
 
-                    # v9 전용 metrics (residual_p_target일 때만 의미 있음, 그 외엔 skip)
-                    if actual_model.residual_p_target and isinstance(info, dict):
+                    # v9 전용 metrics (p_target != 'future'일 때만 수집, v4 default는 skip)
+                    if p_target_mode != 'future' and isinstance(info, dict):
                         with torch.no_grad():
                             cls_m = info.get('cls_m')
                             cls_p = info.get('cls_p')
@@ -455,8 +458,11 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                     img_pred = out2
                 else:
                     pred_m, pred_p = out1, out2
-                    # v9: P target은 residual (frame_{t+k} - frame_t), 아니면 frame_{t+k}
-                    if actual_model.residual_p_target:
+                    # v9: P target 선택 — future(v4), current(MAE), residual
+                    p_target_mode = getattr(actual_model, 'p_target', 'future')
+                    if p_target_mode == 'current':
+                        target_p = img_t
+                    elif p_target_mode == 'residual':
                         target_p = img_tk - img_t
                     else:
                         target_p = img_tk
@@ -464,8 +470,8 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                     mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
                     if use_ssim:
                         loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        # v9 residual에는 SSIM 의미 없음 (target 자체가 diff image)
-                        if actual_model.residual_p_target:
+                        # residual target은 diff image라 SSIM 의미 없음
+                        if p_target_mode == 'residual':
                             loss_p = mse_p
                         else:
                             loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())

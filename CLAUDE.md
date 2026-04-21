@@ -185,13 +185,16 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
   - 진단: Teacher M=zero 설계 → P가 static salience로 수렴. M의 motion signal이 concat에서 P에 오염됨
 - **결론**: "EMA teacher + feature prediction"은 2-frame EgoDex 세팅에서 **구조적 failure mode**. 전면 폐기
 
-**진행 중 — Two-Stream v9** (v4/v6 회귀 + residual P target):
-- P decoder target: `frame_{t+k} - frame_t` (residual) → temporal identity shortcut 차단
-- P mask ratio: 0.5 → 0.75 (MAE 표준) → spatial shortcut 차단
-- EMA teacher 완전 제거, v4 구조 재활용
-- Collapse detector 추가 (`feat_std_m/p`, `cos_intra_m/p`, loss ratio)
-- v8 대비 ~2.1x 빠름 (teacher forward 제거), 50 epoch 예상 ~33h
-- Sanity 완료 (JobID 33477204, 1:07 elapsed) — full run 제출 대기
+**진행 중 — Two-Stream v9** (v4 base + MAE P target):
+- P decoder target: `frame_t` (standard MAE, mask 0.75) — semantic 학습
+- M decoder target: `frame_{t+k}` (mask 0.3, 기존 유지) — motion 학습
+- CLS exchange 양방향 유지 — loss 비대칭성이 역할 분담 자동 유도
+- EMA teacher 완전 제거
+- **설계 반복 과정**:
+  1. Residual target 시도 → sanity에서 P 완전 collapse (`cos_intra_p=1.000`, `std_p=0.028`) → decoder가 "0 출력" trivial minimum으로 수렴
+  2. MAE 방식(frame_t 복원)으로 전환 → healthy 학습 확인 (`std_p=0.327`, `cos_intra_p=0.857`, ratio p/m=1.25)
+- **v8 대비 ~2.1x 빠름** (teacher forward 제거)
+- **Full run**: JobID 33492965 (2026-04-21 15:48~), AIP_long 2노드×4 H100, 50 epoch, 예상 ~33-40h
 
 **Encoder lineup** (변경 없음):
 1. Two-Stream v9 (ours, 진행 중) / 2. VideoMAE-ours / 3-7. 공개 가중치

@@ -505,24 +505,38 @@ torchrun --nproc_per_node=8 scripts/pretrain.py \
 - **진단**: Teacher가 M=zero 입력을 받는 설계 → L_P target이 "미래 static appearance"로 수렴 → student P가 static salience detector 학습. v7-big/v8 공통 실패 모드
 - **결론**: "EMA teacher + feature prediction" 접근은 2-frame EgoDex 세팅에서 collapse inevitable. 전면 폐기
 
-**진행 중 — Two-Stream v9 (v4/v6 회귀 + residual P target)**:
-- **설계**: v4 base 구조 유지 (양방향 CLS exchange + 양쪽 stream decoder), 단 두 가지 수정
-  - P decoder target을 `frame_{t+k} - frame_t` (residual)로 변경 → temporal identity shortcut 차단
-  - P mask ratio 0.5 → 0.75 상향 → spatial shortcut 차단 (MAE 표준)
-- **철학**: M은 full RGB 생성(색상 없는 입력) 자체가 challenge라 target 수정 불필요. P는 변화량 예측으로 motion cue 활용 의무화
-- **Collapse detector 추가**: `feat_std_m/p`, `cos_intra_m/p`, `loss_m_raw / loss_p_raw` ratio
-- **속도**: v8 대비 ~2.1× 빠름 (teacher forward 제거 기여), 50 epoch 예상 ~33h
+**진행 중 — Two-Stream v9 (v4 base + MAE P target)**:
 
-**v8 M-only probing의 시사점**:
-- M이 +0.160로 양수 나온 것 → 역할 분담은 발생했으나 설계가 의도와 반대 (P가 보조 역할이어야 하는데 distractor로 작용)
-- v9는 이 역할 방향을 구조로 강제 (residual이 P에 motion 압력 부여)
+**설계 확정 경로**:
+1. 초기안 (residual P target) → 중간 sanity(200 videos × 5 ep)에서 **P encoder 완전 collapse** 확인
+   - `cos_intra_p=1.000` 5 epoch 내내 고정, `std_p=0.028` 매우 낮음
+   - 원인: residual target magnitude(~0.08) 작아 decoder가 "0 출력" trivial minimum으로 수렴 → encoder gradient 소실
+2. **MAE 방식(frame_t 복원)으로 전환** → 중간 sanity에서 healthy 학습 궤도 확인
+   - `std_p=0.327` (residual 대비 12배), `cos_intra_p=0.857` (분화 진행)
+   - `L_p_raw=0.015` 꾸준히 하락, `ratio p/m=1.25` (weight 1.0 적정)
+
+**최종 설계**:
+- P decoder target: `frame_t` (standard MAE, mask 0.75) — semantic 학습 강제
+- M decoder target: `frame_{t+k}` (full RGB, mask 0.3) — motion 학습
+- CLS exchange 양방향 유지 → loss 비대칭성이 역할 분담 자동 유도
+  - P encoder는 frame_t 복원에만 gradient → semantic encoder로 수렴
+  - M encoder는 색상 없는 ΔL 입력으로 full RGB 맞추기 위해 P semantic을 CLS exchange로 적극 활용
+- EMA teacher 완전 제거 (v4 구조 재활용)
+- Collapse detector (TB/stdout): `feat_std_m/p`, `cos_intra_m/p`, `loss_m/p_raw` ratio
+- 속도: v8 대비 ~2.1× 빠름 (teacher forward 제거), 50 epoch 예상 ~33-40h
+
+**v8 M-only probing의 시사점 (설계에 반영)**:
+- M이 +0.160로 양수 → M stream은 motion 정보 정상 학습
+- v9에서 P가 semantic 담당하면 `patch_mean_concat`의 M+P가 상보적 feature → 예상 R² 개선
+
+**Full run 상태** (2026-04-21 15:48 제출):
+- JobID 33492965, AIP_long 2노드 × 4 H100, 50 epoch
+- 예상 완료: ~33-40h (2026-04-23 00:00~08:00)
 
 **다음 작업**:
-1. v9 sanity로 collapse 거동 정밀 확인 (cos_intra_p=1.000 경고 분석)
-2. 필요 시 설계 보정 후 v9 full run (단일 노드 × 4 H100 또는 2 노드 × 4 H100)
-3. v9 probing (patch_mean_concat + patch_mean_m/p 분리)
-4. DROID 프레임 추출 + Phase 2 전면 개시
-5. Phase 3: LIBERO
+1. v9 full run 학습 완료 + probing (`patch_mean_concat`, `patch_mean_m/p` 분리)
+2. DROID 프레임 추출 + Phase 2 전면 개시 (7 encoder DROID probing)
+3. Phase 3: LIBERO
 
 ### Phase 1 Ablation 결과 요약 (로컬, 500 videos, 30ep)
 

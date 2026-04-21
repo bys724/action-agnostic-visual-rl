@@ -137,15 +137,15 @@ def main():
                         help='DropPath (stochastic depth) rate (default 0.0, 미래 확장 대비). '
                              '현재는 파라미터만 저장. ViT-Base 관례 0.1.')
 
-    # v9: P decoder residual target (frame_{t+k} - frame_t) — v4 base 구조에서 loss만 수정
-    parser.add_argument('--v9-residual-p', action='store_true',
-                        help='[Two-Stream v9] P decoder target을 residual (frame_{t+k} - frame_t)로 변경. '
-                             'P가 frame_t identity shortcut을 학습 못 하도록 강제 → motion cue 활용 의무화. '
-                             'v4/v6 구조 그대로 + loss 수정만 (EMA teacher 없음).')
+    # v9: P decoder target 선택 — v4 base 구조 유지, decoder target만 교체
+    parser.add_argument('--v9-p-target', type=str, default='future',
+                        choices=['future', 'current', 'residual'],
+                        help='[v9] P decoder target. '
+                             'future=frame_{t+k} (v4 기본). '
+                             'current=frame_t (standard MAE, semantic 강제). '
+                             'residual=frame_{t+k}-frame_t (변화량, P encoder collapse 위험 관찰됨).')
     parser.add_argument('--v9-loss-weight-p', type=float, default=1.0,
-                        help='[v9] P loss weight (residual MSE magnitude 보정용). '
-                             'Residual MSE는 full frame MSE 대비 작으므로 5~10 권장. '
-                             'Default 1.0 = v4 동일 (residual-p 미사용 시).')
+                        help='[v9] P loss weight. residual은 magnitude 작아 5~10, current/future는 1.0 권장.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -232,7 +232,7 @@ def main():
                                pred_head_ratio=args.v8_pred_head_ratio,
                                cls_m_grad_ratio=args.v8_cls_m_grad_ratio,
                                drop_path_rate=args.drop_path_rate,
-                               residual_p_target=args.v9_residual_p,
+                               p_target=args.v9_p_target,
                                loss_weight_p=args.v9_loss_weight_p)
     elif args.model == 'v-jepa':
         model = VJEPAModel(depth=args.depth)
