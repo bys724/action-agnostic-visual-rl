@@ -28,6 +28,7 @@ from src.models import TwoStreamModel
 
 from scripts.eval.visualize_attn_compare import (
     load_image, extract_attention_and_predict, attn_to_heatmap,
+    reconstruct_from_residual_pred,
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -124,24 +125,64 @@ def rotate_frame(img_chw, k):
     return torch.rot90(img_chw, k=k // 90, dims=(-2, -1))
 
 
+def _cls_attn_grid(attn_weights, patch_grid=14):
+    """[1, N, N] CLS→patch attention → [patch_grid, patch_grid] numpy."""
+    return attn_weights[0, 0, 1:].reshape(patch_grid, patch_grid).numpy()
+
+
+def _pearson_corr(a, b):
+    """Zero-mean normalized correlation. Uniform input/softmax 영향 제거."""
+    a = a.ravel() - a.mean()
+    b = b.ravel() - b.mean()
+    na, nb = np.linalg.norm(a), np.linalg.norm(b)
+    if na < 1e-8 or nb < 1e-8:
+        return 0.0
+    return float(np.dot(a, b) / (na * nb))
+
+
 def run_rotation_diagnostic(model, img_t_c, img_tk_c, model_label, epoch,
-                            output_path):
-    """단일 모델에 대해 4×6 rotation diagnostic figure 생성."""
+                            output_path, p_target='future'):
+    """4×6 rotation diagnostic + 원본 좌표계 정렬 후 attn correlation.
+
+    회전 후 attention map을 역회전하여 0° 좌표계로 정렬 → 0° attn과 Pearson corr 계산.
+    - high corr (>0.8): content-driven (원본 content 위치 따라감)
+    - low corr (<0.3): position-driven (회전된 이미지의 absolute position에 고정)
+    """
     fig, axes = plt.subplots(4, 6, figsize=(30, 20))
+    _p_tgt_label = {
+        'future': 'frame_t+k',
+        'current': 'frame_t',
+        'residual': 'Recon frame_t+k',
+    }[p_target]
     col_titles = ['Frame t (rot)', 'Frame t+k (rot)',
-                  'M Attn on ΔL', 'P Attn on ΔL', 'Pred M', 'Pred P']
+                  'M Attn on ΔL', 'P Attn on ΔL',
+                  'Pred M', f'Pred P (→{_p_tgt_label})']
+
+    # rotation별 attention grid 저장 (정렬 후 비교용)
+    m_grids, p_grids = {}, {}
 
     for row, deg in enumerate(ROTATIONS):
         img_t_rot = rotate_frame(img_t_c, deg)
         img_tk_rot = rotate_frame(img_tk_c, deg)
 
-        attn_maps, pred_m, pred_p, delta_l_rgb = extract_attention_and_predict(
-            model, img_t_rot, img_tk_rot)
+        attn_maps, pred_m, pred_p, delta_l_rgb, pred_p_tensor = \
+            extract_attention_and_predict(model, img_t_rot, img_tk_rot)
 
         img_t_vis = img_t_rot.permute(1, 2, 0).numpy()
         img_tk_vis = img_tk_rot.permute(1, 2, 0).numpy()
         m_hm = attn_to_heatmap(attn_maps['m'])
         p_hm = attn_to_heatmap(attn_maps['p'])
+
+        m_grids[deg] = _cls_attn_grid(attn_maps['m'])
+        p_grids[deg] = _cls_attn_grid(attn_maps['p'])
+
+        # residual: decoder output(normalized) → reconstructed frame_{t+k}
+        if p_target == 'residual':
+            with torch.no_grad():
+                it_b = img_t_rot.unsqueeze(0).to(DEVICE)
+                itk_b = img_tk_rot.unsqueeze(0).to(DEVICE)
+                recon = reconstruct_from_residual_pred(pred_p_tensor, it_b, itk_b)
+            pred_p = recon.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
 
         axes[row][0].imshow(img_t_vis)
         axes[row][1].imshow(img_tk_vis)
@@ -166,13 +207,32 @@ def run_rotation_diagnostic(model, img_t_c, img_tk_c, model_label, epoch,
             axes[row][col].set_xticks([])
             axes[row][col].set_yticks([])
 
+    # 원본 좌표계 정렬 (rot90 역회전) 후 0°와 correlation
+    m_ref, p_ref = m_grids[0], p_grids[0]
+    corr_lines = []
+    for deg in ROTATIONS:
+        k_inv = -(deg // 90)
+        m_aligned = np.rot90(m_grids[deg], k=k_inv)
+        p_aligned = np.rot90(p_grids[deg], k=k_inv)
+        cm = _pearson_corr(m_ref, m_aligned)
+        cp = _pearson_corr(p_ref, p_aligned)
+        corr_lines.append(f'{deg}°: corr(M)={cm:+.3f}, corr(P)={cp:+.3f}')
+        # 각 row 하단에도 수치 표시
+        axes[deg // 90][2].set_xlabel(f'corr(M vs 0°)={cm:+.3f}', fontsize=9)
+        axes[deg // 90][3].set_xlabel(f'corr(P vs 0°)={cp:+.3f}', fontsize=9)
+
     for col in range(6):
         axes[0][col].set_title(col_titles[col], fontsize=12, fontweight='bold')
 
+    print(f"  [corr vs 0° after inverse-rotating attention to original frame]")
+    for line in corr_lines:
+        print(f"    {line}")
+
     fig.suptitle(
         f'{model_label} (epoch {epoch}) — Rotation Diagnostic\n'
-        f'If model is content-driven, attention should rotate WITH input.',
-        fontsize=14, y=1.01,
+        f'content-driven ⇒ high corr after inverse-rotating attn to 0° frame. '
+        + ' | '.join(corr_lines),
+        fontsize=12, y=1.01,
     )
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -190,6 +250,9 @@ def main():
     parser.add_argument("--frame-t", required=True)
     parser.add_argument("--frame-tk", required=True)
     parser.add_argument("--output-dir", default="results/viz_rotation")
+    parser.add_argument("--p-target", choices=['future', 'current', 'residual'],
+                        default='future',
+                        help='v9 P decoder target (Pred P 시각화 방식 결정)')
     args = parser.parse_args()
 
     if args.labels is None:
@@ -216,7 +279,8 @@ def main():
         output_path = os.path.join(
             args.output_dir, f"rotation_{safe_label}_{sample_id}.png")
         run_rotation_diagnostic(
-            model, img_t_c, img_tk_c, label, epoch, output_path)
+            model, img_t_c, img_tk_c, label, epoch, output_path,
+            p_target=args.p_target)
 
 
 if __name__ == "__main__":

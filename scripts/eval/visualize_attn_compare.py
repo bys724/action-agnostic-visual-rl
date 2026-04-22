@@ -146,7 +146,46 @@ def extract_attention_and_predict(model, img_t_tensor, img_tk_tensor):
     delta_l_norm = (delta_l - delta_l.min()) / (delta_l.max() - delta_l.min() + 1e-8)
     delta_l_rgb = np.stack([delta_l_norm] * 3, axis=-1)
 
-    return attn_maps, pred_m_np, pred_p_np, delta_l_rgb
+    return attn_maps, pred_m_np, pred_p_np, delta_l_rgb, pred_p
+
+
+def reconstruct_from_residual_pred(pred_norm, img_t, img_tk, patch_size=16):
+    """P=residual+patch_normalize 예측을 frame_{t+k} 복원으로 변환.
+
+    Decoder는 per-patch normalized residual을 예측 → GT residual의 per-patch
+    (μ, σ)로 denormalize → frame_t에 더해 reconstructed frame_{t+k}.
+    시각화 전용 (학습에선 patch-norm target만 사용).
+
+    Args:
+        pred_norm: [B, 3, H, W] decoder output (normalized residual)
+        img_t, img_tk: [B, 3, H, W] input pair (μ, σ 계산용)
+    Returns:
+        reconstructed: [B, 3, H, W], roughly same scale as img_tk
+    """
+    B, C, H, W = pred_norm.shape
+    ps = patch_size
+    Hp, Wp = H // ps, W // ps
+
+    def _patchify(x):
+        x = x.unfold(2, ps, ps).unfold(3, ps, ps)          # [B,C,Hp,Wp,ps,ps]
+        x = x.permute(0, 2, 3, 1, 4, 5).contiguous()       # [B,Hp,Wp,C,ps,ps]
+        return x.view(B, Hp * Wp, C * ps * ps)             # [B,N,D]
+
+    def _unpatchify(x):
+        x = x.view(B, Hp, Wp, C, ps, ps)
+        x = x.permute(0, 3, 1, 4, 2, 5).contiguous()       # [B,C,Hp,ps,Wp,ps]
+        return x.view(B, C, H, W)
+
+    gt_residual = img_tk - img_t
+    gt_patches = _patchify(gt_residual)
+    mean = gt_patches.mean(dim=-1, keepdim=True)
+    std = gt_patches.std(dim=-1, keepdim=True)
+
+    pred_patches = _patchify(pred_norm)
+    denorm_patches = pred_patches * (std + 1e-6) + mean
+    pred_residual = _unpatchify(denorm_patches)
+
+    return img_t + pred_residual
 
 
 def attn_to_heatmap(attn_weights, size=224, patch_grid=14):
@@ -212,7 +251,7 @@ def main():
     _p_tgt_label = {
         'future': f'frame_t+{args.gap}',
         'current': 'frame_t',
-        'residual': 'Δframe',
+        'residual': f'Recon frame_t+{args.gap}',
     }[args.p_target]
     col_titles = ['Frame t', f'Frame t+{args.gap}',
                   'M Attn on ΔL', 'P Attn on ΔL',
@@ -230,13 +269,22 @@ def main():
         img_t_tensor = img_t_c.permute(2, 0, 1)  # [3, 224, 224]
         img_tk_tensor = img_tk_c.permute(2, 0, 1)
 
-        attn_maps, pred_m, pred_p, delta_l_rgb = extract_attention_and_predict(
-            model, img_t_tensor, img_tk_tensor)
+        attn_maps, pred_m, pred_p, delta_l_rgb, pred_p_tensor = \
+            extract_attention_and_predict(model, img_t_tensor, img_tk_tensor)
 
         img_t_np = img_t_c.numpy()
         img_tk_np = img_tk_c.numpy()
         m_hm = attn_to_heatmap(attn_maps['m'])
         p_hm = attn_to_heatmap(attn_maps['p'])
+
+        # residual 모드: decoder output은 normalized residual → GT per-patch μ,σ로
+        # denormalize 후 frame_t에 더해 reconstructed frame_{t+k}로 표시
+        if args.p_target == 'residual':
+            with torch.no_grad():
+                it_b = img_t_tensor.unsqueeze(0).to(DEVICE)
+                itk_b = img_tk_tensor.unsqueeze(0).to(DEVICE)
+                recon = reconstruct_from_residual_pred(pred_p_tensor, it_b, itk_b)
+            pred_p = recon.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
 
         # Col 0: Frame t
         axes[row][0].imshow(img_t_np)
@@ -258,8 +306,8 @@ def main():
             mse_p = ((img_tk_np - pred_p) ** 2).mean()
         elif args.p_target == 'current':
             mse_p = ((img_t_np - pred_p) ** 2).mean()
-        else:  # residual
-            mse_p = ((img_tk_np - img_t_np - pred_p) ** 2).mean()
+        else:  # residual: pred_p는 reconstructed frame_{t+k}
+            mse_p = ((img_tk_np - pred_p) ** 2).mean()
 
         axes[row][0].set_ylabel(
             f'{dataset}\n{ep_label[:25]}\nΔ={mse:.3f}',
