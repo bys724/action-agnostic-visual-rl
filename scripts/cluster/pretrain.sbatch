@@ -216,6 +216,22 @@ elif [ "$MODEL" = "two-stream-v9" ]; then
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v9${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v10" ]; then
+    # v10: v6 base (APE + rotation aug + P target=frame_{t+k} full RGB)
+    #      + mask_p 0.5 → 0.75 (MAE-style P mask)
+    # 설계 근거:
+    # - v6 ep8 concat R²=0.259 챔피언. P target/loss/encoder 구조 유지
+    # - v9 resnorm에서 M/P 역할 분화 가치 확인했으나 residual+patch-norm은 P degrade
+    # - v6에서 P만 MAE-style로 난이도 상향해 역할 분화 강화 (M=appearance 유지, P=semantic 예측)
+    # V10_LOSS_WEIGHT_P 환경변수로 loss weight 오버라이드 (sanity 결과 반영용)
+    MODEL_ARGS=(
+        --depth 12 --num-stages 2
+        --use-ape --rotation-aug
+        --mask-ratio 0.5 --mask-ratio-p 0.75
+        --v9-p-target future --v9-loss-weight-p "${V10_LOSS_WEIGHT_P:-1.0}"
+        --max-gap 60 --sample-dist triangular --sample-center 30
+    )
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v10${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12
@@ -238,7 +254,7 @@ log "Model args: ${MODEL_ARGS[*]}"
 # ── MODEL alias 해석 ────────────────────────────────────────────────────────
 # scripts/pretrain.py의 --model은 ['two-stream','v-jepa','videomae']만 받음.
 # two-stream-v8은 --model two-stream + --v8-mode 조합이므로 여기서 번역.
-if [ "$MODEL" = "two-stream-v8" ] || [ "$MODEL" = "two-stream-v9" ]; then
+if [ "$MODEL" = "two-stream-v8" ] || [ "$MODEL" = "two-stream-v9" ] || [ "$MODEL" = "two-stream-v10" ]; then
     MODEL_NAME_FOR_PY="two-stream"
 else
     MODEL_NAME_FOR_PY="$MODEL"
