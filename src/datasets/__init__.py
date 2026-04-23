@@ -5,13 +5,11 @@
 """
 
 from .base import VideoFrameDataset
-from .bridge import BridgeDataset
 from .droid import DROIDDataset
 from .egodex import EgoDexDataset
 
 __all__ = [
     "VideoFrameDataset",
     "EgoDexDataset",
-    "BridgeDataset",
     "DROIDDataset",
 ]

@@ -11,7 +11,6 @@ Multi-GPU 지원:
 """
 
 import json
-import math
 import os
 import random
 import subprocess
@@ -140,9 +139,7 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
 
 
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
-                scaler=None, use_ssim=False, use_bf16=True,
-                v8_lambda=0.0, v8_tau=0.996, v8_total_steps=None, v8_step_offset=0,
-                v8_alpha_var=0.0, v8_var_target=1.0):
+                scaler=None, use_ssim=False, use_bf16=True):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -190,29 +187,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         model_name = type(actual_model).__name__
 
         with amp_ctx:
-            if model_name in ('VideoMAEModel', 'VJEPAModel'):
+            if model_name == 'VideoMAEModel':
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
-            elif model_name == 'TwoStreamModel' and getattr(actual_model, 'v8_mode', False):
-                # v8: compute_loss_v8 내부에서 student(+detach) + teacher(EMA, no_grad) + L_M + L_P [+ α·L_var] 처리.
-                # rotation_aug도 compute_loss_v8 내부에서 적용.
-                v8_loss, img_pred, v8_metrics = actual_model.compute_loss_v8(
-                    img_t, img_tk, lam=v8_lambda,
-                    alpha_var=v8_alpha_var, var_target=v8_var_target,
-                )
-                weighted_loss = v8_loss
-                unweighted_loss = v8_loss.detach()
-                # 기존 metric slot에 매핑: loss_current = L_M (pixel), loss_future = L_P (repr)
-                total_loss_current += v8_metrics['L_M'].item()
-                total_loss_future += v8_metrics['L_P'].item()
-                # v8 전용 monitoring metrics 누적 (main에서 TB 기록용)
-                if not hasattr(train_epoch, '_v8_metrics_buf'):
-                    train_epoch._v8_metrics_buf = {}
-                buf = train_epoch._v8_metrics_buf
-                for k in ('cos_st', 'std_s', 'std_t', 'L_var'):
-                    buf[k] = buf.get(k, 0.0) + v8_metrics[k].item()
-                buf['_count'] = buf.get('_count', 0) + 1
             elif model_name == 'TwoStreamModel':
                 # rotation_aug: training loop가 compute_loss를 우회하므로 여기서 명시 적용
                 if actual_model.rotation_aug and actual_model.training:
@@ -220,90 +198,64 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
                 out1, out2, info = model(img_t, img_tk)
 
-                if actual_model.v7_big_mode:
-                    # v7-big: |ΔL| 기반 pixel-wise Gaussian weighting
-                    # out1 = pred_bg, out2 = pred_motion
-                    with torch.no_grad():
-                        lw = actual_model.preprocessing.luminance_weights \
-                            .to(img_t.device).view(1, 3, 1, 1)
-                        lum_prev = (img_t * lw).sum(dim=1, keepdim=True)
-                        lum_curr = (img_tk * lw).sum(dim=1, keepdim=True)
-                        delta_mag = (lum_curr - lum_prev).abs()     # [B, 1, H, W]
-                        sigma = actual_model.sigma
-                        w_bg = torch.exp(-(delta_mag / sigma) ** 2)
-                        w_motion = 1.0 - w_bg
-
-                    sq_bg = (out1 - img_tk) ** 2        # [B, 3, H, W]
-                    sq_motion = (out2 - img_tk) ** 2
-
-                    # Per-sample weighted MSE ([B])
-                    num_bg = (w_bg * sq_bg).sum(dim=(1, 2, 3))
-                    den_bg = w_bg.sum(dim=(1, 2, 3)) * 3 + 1e-8
-                    num_mt = (w_motion * sq_motion).sum(dim=(1, 2, 3))
-                    den_mt = w_motion.sum(dim=(1, 2, 3)) * 3 + 1e-8
-
-                    loss_m = num_bg / den_bg       # bg loss는 m slot에 기록
-                    loss_p = num_mt / den_mt       # motion loss는 p slot에 기록
-                    img_pred = out2                # motion decoder 출력을 시각화
+                pred_m, pred_p = out1, out2
+                # v9: P target 선택 — future(v4), current(MAE), residual
+                p_target_mode = getattr(actual_model, 'p_target', 'future')
+                if p_target_mode == 'current':
+                    target_p = img_t
+                elif p_target_mode == 'residual':
+                    # Patch-wise norm — 0-output trivial minimum 방지 (MAE 표준)
+                    target_p = patch_normalize(img_tk - img_t)
                 else:
-                    pred_m, pred_p = out1, out2
-                    # v9: P target 선택 — future(v4), current(MAE), residual
-                    p_target_mode = getattr(actual_model, 'p_target', 'future')
-                    if p_target_mode == 'current':
-                        target_p = img_t
-                    elif p_target_mode == 'residual':
-                        # Patch-wise norm — 0-output trivial minimum 방지 (MAE 표준)
-                        target_p = patch_normalize(img_tk - img_t)
-                    else:
-                        target_p = img_tk
-                    mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                    mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
-                    if use_ssim:
-                        loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        # residual target은 diff image라 SSIM 의미 없음
-                        if p_target_mode == 'residual':
-                            loss_p = mse_p
-                        else:
-                            loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
-                    else:
-                        loss_m = mse_m
+                    target_p = img_tk
+                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
+                if use_ssim:
+                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                    # residual target은 diff image라 SSIM 의미 없음
+                    if p_target_mode == 'residual':
                         loss_p = mse_p
-                    # v9: loss_weight_p로 residual magnitude 보정 (default 1.0 = v4 동일)
-                    loss_p_raw = loss_p  # weight 곱 전 (monitoring / balance 결정용)
-                    loss_p = loss_p * actual_model.loss_weight_p
-                    img_pred = pred_p
+                    else:
+                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
+                else:
+                    loss_m = mse_m
+                    loss_p = mse_p
+                # v9: loss_weight_p로 residual magnitude 보정 (default 1.0 = v4 동일)
+                loss_p_raw = loss_p  # weight 곱 전 (monitoring / balance 결정용)
+                loss_p = loss_p * actual_model.loss_weight_p
+                img_pred = pred_p
 
-                    # v9 전용 metrics (p_target != 'future'일 때만 수집, v4 default는 skip)
-                    if p_target_mode != 'future' and isinstance(info, dict):
-                        with torch.no_grad():
-                            cls_m = info.get('cls_m')
-                            cls_p = info.get('cls_p')
-                            # Per-dim std across batch (collapse시 0 근처)
-                            std_m = cls_m.std(dim=0).mean()
-                            std_p = cls_p.std(dim=0).mean()
-                            # Intra-batch cosine (trivial이면 1.0 근처)
-                            cp_norm = F.normalize(cls_p.float(), dim=-1)
-                            B = cp_norm.shape[0]
-                            sim = cp_norm @ cp_norm.T
-                            eye_mask = ~torch.eye(B, device=sim.device, dtype=torch.bool)
-                            cos_intra_p = sim[eye_mask].mean()
-                            # M stream도 동일 진단
-                            cm_norm = F.normalize(cls_m.float(), dim=-1)
-                            sim_m = cm_norm @ cm_norm.T
-                            cos_intra_m = sim_m[eye_mask].mean()
-                            resid_mag = (img_tk - img_t).abs().mean()
-                        if not hasattr(train_epoch, '_v9_metrics_buf'):
-                            train_epoch._v9_metrics_buf = {}
-                        buf = train_epoch._v9_metrics_buf
-                        buf['loss_m_raw'] = buf.get('loss_m_raw', 0.0) + loss_m.mean().item()
-                        buf['loss_p_raw'] = buf.get('loss_p_raw', 0.0) + loss_p_raw.mean().item()
-                        buf['loss_p_weighted'] = buf.get('loss_p_weighted', 0.0) + loss_p.mean().item()
-                        buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
-                        buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
-                        buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
-                        buf['cos_intra_p'] = buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
-                        buf['resid_mag'] = buf.get('resid_mag', 0.0) + resid_mag.item()
-                        buf['_count'] = buf.get('_count', 0) + 1
+                # v9 전용 metrics (p_target != 'future'일 때만 수집, v4 default는 skip)
+                if p_target_mode != 'future' and isinstance(info, dict):
+                    with torch.no_grad():
+                        cls_m = info.get('cls_m')
+                        cls_p = info.get('cls_p')
+                        # Per-dim std across batch (collapse시 0 근처)
+                        std_m = cls_m.std(dim=0).mean()
+                        std_p = cls_p.std(dim=0).mean()
+                        # Intra-batch cosine (trivial이면 1.0 근처)
+                        cp_norm = F.normalize(cls_p.float(), dim=-1)
+                        B = cp_norm.shape[0]
+                        sim = cp_norm @ cp_norm.T
+                        eye_mask = ~torch.eye(B, device=sim.device, dtype=torch.bool)
+                        cos_intra_p = sim[eye_mask].mean()
+                        # M stream도 동일 진단
+                        cm_norm = F.normalize(cls_m.float(), dim=-1)
+                        sim_m = cm_norm @ cm_norm.T
+                        cos_intra_m = sim_m[eye_mask].mean()
+                        resid_mag = (img_tk - img_t).abs().mean()
+                    if not hasattr(train_epoch, '_v9_metrics_buf'):
+                        train_epoch._v9_metrics_buf = {}
+                    buf = train_epoch._v9_metrics_buf
+                    buf['loss_m_raw'] = buf.get('loss_m_raw', 0.0) + loss_m.mean().item()
+                    buf['loss_p_raw'] = buf.get('loss_p_raw', 0.0) + loss_p_raw.mean().item()
+                    buf['loss_p_weighted'] = buf.get('loss_p_weighted', 0.0) + loss_p.mean().item()
+                    buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
+                    buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
+                    buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
+                    buf['cos_intra_p'] = buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
+                    buf['resid_mag'] = buf.get('resid_mag', 0.0) + resid_mag.item()
+                    buf['_count'] = buf.get('_count', 0) + 1
 
                 per_sample_loss = loss_m + loss_p
 
@@ -340,21 +292,6 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         weighted_loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-
-        # V-JEPA: optimizer step 후 y-encoder (EMA teacher) 업데이트
-        if model_name == 'VJEPAModel':
-            actual_model.update_ema()
-
-        # v8: P-stream EMA 업데이트 (cosine schedule로 τ 산정)
-        if model_name == 'TwoStreamModel' and getattr(actual_model, 'v8_mode', False):
-            # 현재 step 기준 τ 계산 (tau_base → 1.0 cosine)
-            if v8_total_steps is None or v8_total_steps <= 0:
-                tau_now = v8_tau
-            else:
-                step_now = v8_step_offset + batch_idx
-                t_frac = min(1.0, max(0.0, step_now / float(v8_total_steps)))
-                tau_now = 1.0 - (1.0 - v8_tau) * (math.cos(math.pi * t_frac) + 1.0) / 2.0
-            actual_model.update_ema_v8(tau_now)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -431,7 +368,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
         model_name = type(actual_model).__name__
 
         with torch.no_grad(), torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            if model_name in ('VideoMAEModel', 'VJEPAModel'):
+            if model_name == 'VideoMAEModel':
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -439,52 +376,31 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 # eval 모드이므로 rotation_aug는 자동 skip (self.training=False)
                 out1, out2, _ = model(img_t, img_tk)
 
-                if actual_model.v7_big_mode:
-                    with torch.no_grad():
-                        lw = actual_model.preprocessing.luminance_weights \
-                            .to(img_t.device).view(1, 3, 1, 1)
-                        lum_prev = (img_t * lw).sum(dim=1, keepdim=True)
-                        lum_curr = (img_tk * lw).sum(dim=1, keepdim=True)
-                        delta_mag = (lum_curr - lum_prev).abs()
-                        sigma = actual_model.sigma
-                        w_bg = torch.exp(-(delta_mag / sigma) ** 2)
-                        w_motion = 1.0 - w_bg
-
-                    sq_bg = (out1 - img_tk) ** 2
-                    sq_motion = (out2 - img_tk) ** 2
-                    num_bg = (w_bg * sq_bg).sum(dim=(1, 2, 3))
-                    den_bg = w_bg.sum(dim=(1, 2, 3)) * 3 + 1e-8
-                    num_mt = (w_motion * sq_motion).sum(dim=(1, 2, 3))
-                    den_mt = w_motion.sum(dim=(1, 2, 3)) * 3 + 1e-8
-                    loss_m = num_bg / den_bg
-                    loss_p = num_mt / den_mt
-                    img_pred = out2
+                pred_m, pred_p = out1, out2
+                # v9: P target 선택 — future(v4), current(MAE), residual
+                p_target_mode = getattr(actual_model, 'p_target', 'future')
+                if p_target_mode == 'current':
+                    target_p = img_t
+                elif p_target_mode == 'residual':
+                    # Patch-wise norm — train loop와 동일 (MAE 표준)
+                    target_p = patch_normalize(img_tk - img_t)
                 else:
-                    pred_m, pred_p = out1, out2
-                    # v9: P target 선택 — future(v4), current(MAE), residual
-                    p_target_mode = getattr(actual_model, 'p_target', 'future')
-                    if p_target_mode == 'current':
-                        target_p = img_t
-                    elif p_target_mode == 'residual':
-                        # Patch-wise norm — train loop와 동일 (MAE 표준)
-                        target_p = patch_normalize(img_tk - img_t)
-                    else:
-                        target_p = img_tk
-                    mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
-                    mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
-                    if use_ssim:
-                        loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
-                        # residual target은 diff image라 SSIM 의미 없음
-                        if p_target_mode == 'residual':
-                            loss_p = mse_p
-                        else:
-                            loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
-                    else:
-                        loss_m = mse_m
+                    target_p = img_tk
+                mse_m = F.mse_loss(pred_m, img_tk, reduction='none').mean(dim=(1, 2, 3))
+                mse_p = F.mse_loss(pred_p, target_p, reduction='none').mean(dim=(1, 2, 3))
+                if use_ssim:
+                    loss_m = mse_m + 0.1 * ssim_loss(pred_m.float(), img_tk.float())
+                    # residual target은 diff image라 SSIM 의미 없음
+                    if p_target_mode == 'residual':
                         loss_p = mse_p
-                    # v9: loss_weight_p로 residual magnitude 보정 (default 1.0 = v4 동일)
-                    loss_p = loss_p * actual_model.loss_weight_p
-                    img_pred = pred_p
+                    else:
+                        loss_p = mse_p + 0.1 * ssim_loss(pred_p.float(), target_p.float())
+                else:
+                    loss_m = mse_m
+                    loss_p = mse_p
+                # v9: loss_weight_p로 residual magnitude 보정 (default 1.0 = v4 동일)
+                loss_p = loss_p * actual_model.loss_weight_p
+                img_pred = pred_p
 
                 per_sample_loss = loss_m + loss_p
 
@@ -580,11 +496,8 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     out1_np = out1.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, out1_np, out2_np]
-                    if actual_model.v7_big_mode:
-                        col_titles = ['Frame t', 'Frame t+k (target)', 'Pred BG', 'Pred Motion']
-                    else:
-                        col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
-                elif model_name in ('VideoMAEModel', 'VJEPAModel'):
+                    col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
+                elif model_name == 'VideoMAEModel':
                     # 픽셀 복원이 아닌 feature/masked 예측 → 이미지 시각화 생략
                     continue
                 else:
@@ -646,12 +559,6 @@ def train(
     multi_gpu=True,
     use_ssim=False,
     num_workers=16,
-    # v8 전용 하이퍼파라미터 (v8_mode=True인 TwoStreamModel에서만 유효)
-    v8_lambda_max=0.5,
-    v8_lambda_warmup_epochs=5,
-    v8_ema_tau_base=0.996,
-    v8_alpha_var=0.0,
-    v8_var_target=1.0,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -759,17 +666,14 @@ def train(
     # Weight decay param group 정책:
     # - VideoMAEModel: 공식 VideoMAE 프로토콜 준수 → LN/bias/mask_token 제외
     #   (공식 optim_factory.py의 no_weight_decay() 동작 재현)
-    # - TwoStreamModel, VJEPAModel: 기존 uniform weight_decay 유지 (이미 학습된
+    # - TwoStreamModel: 기존 uniform weight_decay 유지 (이미 학습된
     #   체크포인트와 호환성 보존, optimizer state_dict 구조 변경 회피)
     # 논문 메소드 섹션에 "VideoMAE-ours만 공식 optimizer 프로토콜 적용, 우리 모델은
     # simpler uniform weight decay 사용"으로 투명하게 기재.
     _actual = model.module if hasattr(model, 'module') else model
     _model_name = type(_actual).__name__
 
-    if _model_name == 'VideoMAEModel' or (
-        _model_name == 'TwoStreamModel' and getattr(_actual, 'v8_mode', False)
-    ):
-        # v8도 VideoMAE와 동일한 ViT SSL 관례 따름:
+    if _model_name == 'VideoMAEModel':
         # bias, LayerNorm γ/β, cls_token, pos_embed, mask_token → wd=0
         decay_params, no_decay_params = [], []
         for name, p in _actual.named_parameters():
@@ -894,42 +798,11 @@ def train(
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
-        # V-JEPA: EMA momentum 스케줄 (선형 anneal start → end)
-        _inner = model.module if hasattr(model, 'module') else model
-        if type(_inner).__name__ == 'VJEPAModel':
-            _inner.set_ema_momentum(epoch - 1, num_epochs)
-
-        # v8: λ warmup (L_P 가중치 cosine warmup 0 → λ_max over warmup_epochs)
-        v8_is_active = (
-            type(_inner).__name__ == 'TwoStreamModel'
-            and getattr(_inner, 'v8_mode', False)
-        )
-        if v8_is_active:
-            wu = max(1, v8_lambda_warmup_epochs)
-            if epoch - 1 < wu:
-                v8_lambda = v8_lambda_max * 0.5 * (
-                    1.0 - math.cos(math.pi * (epoch - 1) / wu)
-                )
-            else:
-                v8_lambda = v8_lambda_max
-            v8_total_steps = len(dataloader) * num_epochs
-            v8_step_offset = len(dataloader) * (epoch - 1)
-        else:
-            v8_lambda = 0.0
-            v8_total_steps = None
-            v8_step_offset = 0
-
         # Train
         train_result = train_epoch(
             model, dataloader, optimizer, device, epoch,
             dataset=train_dataset, use_ssim=use_ssim, use_bf16=use_bf16,
-            v8_lambda=v8_lambda, v8_tau=v8_ema_tau_base,
-            v8_total_steps=v8_total_steps, v8_step_offset=v8_step_offset,
-            v8_alpha_var=v8_alpha_var, v8_var_target=v8_var_target,
         )
-        if v8_is_active:
-            log(f"  v8: λ = {v8_lambda:.4f} (warmup {v8_lambda_warmup_epochs}ep, max {v8_lambda_max}), "
-                f"α_var = {v8_alpha_var}")
         avg_loss = train_result['loss']
         scheduler.step()
         history['train_loss'].append(avg_loss)
@@ -981,18 +854,6 @@ def train(
             writer.add_scalar('lr', current_lr, epoch)
             writer.add_scalar('perf/samples_per_sec', samples_per_sec, epoch)
             writer.add_scalar('perf/epoch_time_sec', epoch_duration, epoch)
-            # v8 전용 monitoring metrics (train_epoch 누적 버퍼에서 추출)
-            if v8_is_active and hasattr(train_epoch, '_v8_metrics_buf'):
-                buf = train_epoch._v8_metrics_buf
-                n = buf.get('_count', 0)
-                if n > 0:
-                    writer.add_scalar('v8/lambda', v8_lambda, epoch)
-                    writer.add_scalar('v8/cos_st', buf['cos_st'] / n, epoch)
-                    writer.add_scalar('v8/std_s', buf['std_s'] / n, epoch)
-                    writer.add_scalar('v8/std_t', buf['std_t'] / n, epoch)
-                    writer.add_scalar('v8/L_var', buf.get('L_var', 0.0) / n, epoch)
-                # Reset buffer for next epoch
-                train_epoch._v8_metrics_buf = {}
             # v9 전용 monitoring metrics (residual P target, collapse detector)
             if hasattr(train_epoch, '_v9_metrics_buf'):
                 buf = train_epoch._v9_metrics_buf

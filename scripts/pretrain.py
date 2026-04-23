@@ -20,8 +20,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, VJEPAModel, VideoMAEModel
-from src.datasets import EgoDexDataset, BridgeDataset
+from src.models import TwoStreamModel, VideoMAEModel
+from src.datasets import EgoDexDataset
 from src.training.pretrain import train
 
 
@@ -30,7 +30,7 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'v-jepa', 'videomae'],
+                        choices=['two-stream', 'videomae'],
                         help='Model type (default: two-stream)')
 
     # Training parameters
@@ -42,17 +42,12 @@ def main():
                         help='Learning rate (default: 1e-4)')
 
     # Dataset parameters
-    parser.add_argument('--train-data', type=str, default='bridge',
-                        choices=['bridge', 'egodex'],
-                        help='Training dataset (default: bridge)')
-    parser.add_argument('--bridge-root', type=str,
-                        default='/workspace/data/datasets/bridge_v2',
-                        help='Bridge V2 data root')
+    parser.add_argument('--train-data', type=str, default='egodex',
+                        choices=['egodex'],
+                        help='Training dataset (default: egodex)')
     parser.add_argument('--egodex-root', type=str,
                         default='/workspace/data/egodex',
                         help='EgoDex data root')
-    parser.add_argument('--max-trajectories', type=int, default=None,
-                        help='Max trajectories for Bridge (None = all)')
     parser.add_argument('--max-videos', type=int, default=None,
                         help='Max videos for EgoDex (None = all)')
     parser.add_argument('--egodex-splits', type=str, default='part1',
@@ -100,39 +95,6 @@ def main():
     parser.add_argument('--rotation-aug', action='store_true',
                         help='[Two-Stream] 학습 시 입력 프레임 회전 augmentation. '
                              'Position prior overfit 방지 (90%% 동일회전 + 10%% 독립회전)')
-    parser.add_argument('--v7-big', action='store_true',
-                        help='[Two-Stream v7-big] P decoder 제거, M decoder 2개 (bg/motion), '
-                             'CLS_P 2개로 분리. |ΔL| 기반 Gaussian weighted loss.')
-    parser.add_argument('--sigma', type=float, default=0.03,
-                        help='[v7-big] Gaussian weighting σ — w_bg=exp(-(|ΔL|/σ)²). '
-                             'Default 0.03 (EgoDex p75 경계).')
-
-    # v8: SimSiam-like temporal SSL (EMA on P-stream, M stream shared & detached from L_P)
-    parser.add_argument('--v8-mode', action='store_true',
-                        help='[Two-Stream v8] L_M (pixel) + λ·L_P (representation prediction). '
-                             'Teacher는 student P의 EMA, input (t+k, t+k) → zero M. '
-                             'Student CLS exchange 직전 cls_m.detach() → L_P는 M stream에 안 흐름. '
-                             '자세한 설계: docs/architecture/v8_siamsimmae.md')
-    parser.add_argument('--v8-lambda-max', type=float, default=0.5,
-                        help='[v8] L_P weight max after warmup (default 0.5). '
-                             '조정 여지: collapse 시 낮춤 (0.1~0.2), 정체 시 상향 (1.0)')
-    parser.add_argument('--v8-lambda-warmup-epochs', type=int, default=5,
-                        help='[v8] λ cosine warmup epochs (default 5). '
-                             '조정 여지: L_M 안정화 느리면 연장 (10ep)')
-    parser.add_argument('--v8-ema-tau-base', type=float, default=0.996,
-                        help='[v8] EMA momentum τ base (0.996 BYOL/I-JEPA 표준). '
-                             'Cosine schedule로 1.0까지 증가. 빠른 teacher 원하면 0.99')
-    parser.add_argument('--v8-pred-head-ratio', type=float, default=2.0,
-                        help='[v8] Prediction head hidden ratio (default 2.0 → hidden=2D)')
-    parser.add_argument('--v8-alpha-var', type=float, default=0.0,
-                        help='[v8] VICReg-lite variance regularization weight (default 0.0, 비활성). '
-                             'Collapse 방어용: 0.1 권장. 강하면 0.2, 미미한 효과면 0.05.')
-    parser.add_argument('--v8-var-target', type=float, default=1.0,
-                        help='[v8] Variance target γ for VICReg-lite (default 1.0). '
-                             'L_var = mean(relu(γ - std_per_dim)).')
-    parser.add_argument('--v8-cls-m-grad-ratio', type=float, default=0.0,
-                        help='[v8] CLS exchange 직전 cls_m의 L_P gradient 유입 비율 (default 0.0 = 완전 detach). '
-                             '0.3 권장: M stream이 L_M에 주로 반응하되 L_P의 약한 pull 허용 (L_M trivial 문제 완화).')
     parser.add_argument('--drop-path-rate', type=float, default=0.0,
                         help='DropPath (stochastic depth) rate (default 0.0, 미래 확장 대비). '
                              '현재는 파라미터만 저장. ViT-Base 관례 0.1.')
@@ -226,19 +188,12 @@ def main():
                                mask_ratio=args.mask_ratio, mask_ratio_p=args.mask_ratio_p,
                                use_ape=args.use_ape,
                                rotation_aug=args.rotation_aug,
-                               v7_big_mode=args.v7_big,
-                               sigma=args.sigma,
-                               v8_mode=args.v8_mode,
-                               pred_head_ratio=args.v8_pred_head_ratio,
-                               cls_m_grad_ratio=args.v8_cls_m_grad_ratio,
                                drop_path_rate=args.drop_path_rate,
                                p_target=args.v9_p_target,
                                loss_weight_p=args.v9_loss_weight_p)
-    elif args.model == 'v-jepa':
-        model = VJEPAModel(depth=args.depth)
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
-        # V-JEPA 실패 사례와 동일한 이유로 2-frame에서는 masking 완화 필요.
+        # 2-frame에서는 masking 완화 필요.
         vm_mask = args.mask_ratio if args.mask_ratio > 0 else 0.5
         model = VideoMAEModel(mask_ratio=vm_mask)
     else:
@@ -262,36 +217,27 @@ def main():
         print(f"Loading training dataset: {args.train_data}")
         print("="*60)
 
-    if args.train_data == 'bridge':
-        train_dataset = BridgeDataset(
-            data_root=args.bridge_root,
+    splits = [s.strip() for s in args.egodex_splits.split(',')]
+    split_datasets = []
+    for split in splits:
+        ds = EgoDexDataset(
+            data_root=args.egodex_root,
+            split=split,
             max_gap=args.max_gap,
             sample_decay=args.sample_decay,
             loss_decay=args.loss_decay,
-            max_trajectories=args.max_trajectories,
+            max_videos=args.max_videos,
+            sample_dist=args.sample_dist,
+            sample_center=args.sample_center,
         )
-    else:  # egodex
-        splits = [s.strip() for s in args.egodex_splits.split(',')]
-        split_datasets = []
-        for split in splits:
-            ds = EgoDexDataset(
-                data_root=args.egodex_root,
-                split=split,
-                max_gap=args.max_gap,
-                sample_decay=args.sample_decay,
-                loss_decay=args.loss_decay,
-                max_videos=args.max_videos,
-                sample_dist=args.sample_dist,
-                sample_center=args.sample_center,
-            )
-            split_datasets.append(ds)
-        if len(split_datasets) == 1:
-            train_dataset = split_datasets[0]
-        else:
-            from torch.utils.data import ConcatDataset
-            train_dataset = ConcatDataset(split_datasets)
-            if is_master:
-                print(f"  Combined {len(splits)} splits: {splits} → {len(train_dataset)} samples")
+        split_datasets.append(ds)
+    if len(split_datasets) == 1:
+        train_dataset = split_datasets[0]
+    else:
+        from torch.utils.data import ConcatDataset
+        train_dataset = ConcatDataset(split_datasets)
+        if is_master:
+            print(f"  Combined {len(splits)} splits: {splits} → {len(train_dataset)} samples")
 
     # Create evaluation dataset (always use EgoDex test)
     if is_master:
@@ -344,12 +290,6 @@ def main():
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
-        # v8 하이퍼파라미터 (v8_mode=True일 때만 사용됨)
-        v8_lambda_max=args.v8_lambda_max,
-        v8_lambda_warmup_epochs=args.v8_lambda_warmup_epochs,
-        v8_ema_tau_base=args.v8_ema_tau_base,
-        v8_alpha_var=args.v8_alpha_var,
-        v8_var_target=args.v8_var_target,
     )
 
     if is_master:
