@@ -2,308 +2,66 @@
 
 ## 실험 개요
 
-**평가 우선순위 (2026-04-14 재편)**: Two-Stream과 VideoMAE-ours만 EgoDex로 학습하므로 EgoDex within-domain probing은 **controlled comparison 전용**(Two-Stream vs VideoMAE-ours). 공개 가중치(VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official)와의 main 비교는 모두 OOD인 **DROID에서 수행**.
+**평가 전략 (2026-04-14 재편)**: Two-Stream과 VideoMAE-ours만 EgoDex로 학습하므로 EgoDex within-domain probing은 **controlled comparison 전용**(Two-Stream vs VideoMAE-ours). 공개 가중치(VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official)와의 main 비교는 OOD인 **DROID에서 수행**.
 
 | 평가 | 비교 대상 | 역할 |
 |------|----------|------|
-| EgoDex probing | Two-Stream vs VideoMAE-ours (둘 다 EgoDex 학습) | 구조적 bias 기여 sanity (축 1) |
+| EgoDex probing | Two-Stream vs VideoMAE-ours (둘 다 EgoDex 학습) | 구조적 bias 기여 sanity |
 | **DROID probing (main)** | 상기 2개 + VideoMAE-official, V-JEPA-official, VC-1, DINOv2, SigLIP | Cross-encoder fair comparison |
 
 **핵심 주장**:
-> "Action-agnostic pretraining으로 학습한 변화 임베딩은 action-informative하다. 따라서 VLM은 임베딩 공간에서만 sequence modeling을 수행하면서도 실질적으로 action planning을 할 수 있다."
+> "Action-agnostic pretraining으로 학습한 변화 임베딩은 action-informative하다. 따라서 VLM은 임베딩 공간에서 sequence modeling만으로 실질적 action planning이 가능하다."
 
-### 3-Stage Framework
+### Probing 프로토콜
 
-```
-Phase 1: Action-Agnostic Pretraining
-  ├─ Input: (img_prev, img_curr) - 과거와 현재
-  ├─ Encoder: 변화를 압축 → embedding
-  ├─ Decoder: img_prev + embedding → img_curr 예측
-  └─ 의미: Decoder는 변화 정보로 미래를 생성하는 법 학습
+- **Linear probe**: frozen encoder → linear layer → action 회귀
+- **Encoder frozen**: backbone 가중치 고정, probe만 학습
+- **Input**: `(img_t, img_{t+gap})` 2-frame pair
+- **Target**:
+  - EgoDex: hand pose delta (within-domain)
+  - DROID: robot 7-DoF joint velocity (cross-domain, Franka)
+- **Epochs**: 20, **Gap**: 10 (기본)
 
-Phase 2: Action Probing (Linear Evaluation)
-  ├─ EgoDex Probing (within-domain)
-  │   ├─ Input: (img_t, img_t+1) - 관찰된 변화
-  │   ├─ Frozen Encoder → embedding
-  │   ├─ Linear Probe → action_t (변화를 만든 action)
-  │   └─ 증명: 임베딩이 action-informative함
-  │
-  ├─ DROID Probing (cross-domain, primary)
-  │   ├─ Input: Same frozen encoder
-  │   ├─ Output: Robot actions (7-DoF, Franka)
-  │   └─ 증명: 로봇 도메인으로 cross-domain transfer 가능
-  │
-  └─ Bridge Probing (cross-embodiment, secondary)
-      ├─ Input: Same frozen encoder
-      ├─ Output: Robot actions (7-DoF, WidowX)
-      └─ 증명: 다른 로봇에도 transfer 가능 (필요 시 추가)
+### Dataset Split
 
-Phase 3: VLM/VLA Training (Future)
-  ├─ Encoder: (img_prev, img_curr) → embedding_t
-  ├─ VLM: embedding_t → embedding_t+1 (미래 변화)
-  └─ Action Decoder: embedding_t+1 → action_t
-```
-
-### Probing의 의미
-
-**Without Probing**:
-- Encoder가 변화를 압축한다 ✓
-- 하지만 임베딩 ↔ action 연결 가능한지 미지수 ❓
-
-**With Probing (R² > 0.7)**:
-- 임베딩 → action 복원 가능 ✓
-- 따라서: VLM이 임베딩만 다루면서도 action planning 가능 ✓
-- Cross-embodiment: 하나의 encoder로 여러 embodiment 지원 ✓
-
-## Phase 1: Pretraining
-
-### 학습 실행
-
-```bash
-# Two-Stream v4 (확정 설정)
-python scripts/pretrain.py --model two-stream \
-    --depth 12 --num-stages 2 \
-    --mask-ratio 0.3 --mask-ratio-p 0.5 \
-    --max-gap 60 --sample-dist triangular --sample-center 30 \
-    --epochs 30
-
-# VideoMAE baseline
-python scripts/pretrain.py --model videomae --epochs 30
-```
-
-## Phase 2: Action Probing
-
-### 2.1 EgoDex Probing (Within-Domain)
-
-```bash
-# Docker 컨테이너에서
-docker exec -it simpler-eval bash
-
-# Two-Stream probing
-python scripts/probe_action.py \
-    --encoder two-stream \
-    --checkpoint /workspace/data/checkpoints/two_stream/best_model.pt \
-    --egodex-root /workspace/data/egodex \
-    --epochs 20 \
-    --probe linear
-
-# Single-Stream probing
-python scripts/probe_action.py \
-    --encoder single-stream \
-    --checkpoint /workspace/data/checkpoints/single_stream/best_model.pt \
-    --egodex-root /workspace/data/egodex \
-    --probe linear
-
-# VideoMAE probing
-python scripts/probe_action.py \
-    --encoder videomae \
-    --checkpoint /workspace/data/checkpoints/videomae/best_model.pt \
-    --egodex-root /workspace/data/egodex \
-    --probe linear
-
-# Baseline: CLIP
-python scripts/probe_action.py --encoder clip --probe linear
-
-# Baseline: DINOv2
-python scripts/probe_action.py --encoder dinov2 --probe linear
-```
-
-**출력 예시**:
-```
-RESULTS
-==================================================
-Encoder:    two-stream
-Probe:      linear
-R²:         0.8234  PASS (threshold: 0.7)
-MSE:        0.000142
-Cosine Sim: 0.9112
-
-Per-joint R²:
-  rightHand                    : 0.8521
-  rightThumbTip                : 0.7892
-  rightIndexFingerTip          : 0.8334
-  ...
-```
-
-### 2.2 DROID Probing (Cross-Domain, Primary)
-
-```bash
-# Two-Stream on DROID
-python scripts/probe_action_droid.py \
-    --encoder two-stream \
-    --checkpoint /workspace/data/checkpoints/two_stream/best_model.pt \
-    --droid-frames /workspace/data/droid_frames \
-    --epochs 20 \
-    --probe linear
-
-# Baselines
-python scripts/probe_action_droid.py --encoder clip --probe linear
-python scripts/probe_action_droid.py --encoder dinov2 --probe linear
-```
-
-DROID 데이터:
-- 3카메라 (ext1, ext2, wrist) → ext1을 기본 사용
-- 95,658 에피소드, Franka Panda, 7-DoF joint velocity
-- 프레임: 256x256 리사이즈 (crop 없음, 180x320 원본)
-
-### 2.3 Bridge Probing (Cross-Embodiment, Secondary)
-
-DROID probing 결과가 충분하면 생략 가능. 리뷰어가 로봇 다양성을 요구할 경우 추가.
-
-```bash
-# Two-Stream on Bridge
-python scripts/probe_action_bridge.py \
-    --encoder two-stream \
-    --checkpoint /workspace/data/checkpoints/two_stream/best_model.pt \
-    --bridge-root /workspace/data/datasets/bridge_v2 \
-    --epochs 20 \
-    --probe linear
-```
-
-## 초기 실험 결과 (2026-03-31, d=12 s=3, 30ep, 500 videos)
-
-### Baseline 비교 (part4, 미사용 데이터, gap=1)
-
-| Encoder | Embedding | R² | Cosine Sim |
-|---------|-----------|-----|------------|
-| Two-Stream | patch_mean | 0.249 | 0.363 |
-| Two-Stream | CLS average | 0.143 | 0.303 |
-| VideoMAE | patch_mean | 0.090 | 0.301 |
-| CLIP | CLS concat | -1.744 | 0.137 |
-| DINOv2 | CLS concat | -99.154 | 0.008 |
-
-EgoDex 학습 모델 >> pretrained baseline. CLIP/DINOv2는 hand pose delta에 무용.
-
-### Gap별 Embedding 비교 (part4, 미사용 데이터)
-
-| Embedding | dim | gap=1 | gap=5 | gap=10 |
-|-----------|-----|-------|-------|--------|
-| TS CLS average | 768 | 0.159 | 0.354 | 0.364 |
-| TS CLS concat | 1536 | -0.150 | 0.330 | 0.353 |
-| TS m_only (CLS) | 768 | 0.046 | 0.276 | 0.359 |
-| TS p_only (CLS) | 768 | -0.266 | 0.311 | 0.325 |
-| TS patch_mean | 768 | 0.225 | 0.466 | 0.532 |
-| **TS patch_mean_concat** | **1536** | **0.117** | **0.489** | **0.585** |
-| VM patch_mean | 768 | 0.138 | 0.474 | 0.571 |
-
-### 해석
-
-**1. Gap 효과**: gap=1의 delta는 노이즈 수준 (mean ~0.0006). gap이 커질수록 의미 있는 변화를 포착하게 되어 R²가 크게 상승. full training 후 평가 시 **gap=5, 10을 기본으로 사용**할 것.
-
-**2. M stream의 temporal 특성**: gap=1에서 M은 최하위(0.046)지만 gap=10에서는 P를 추월(0.359 > 0.325). M channel이 temporal change를 인코딩하므로, 변화량이 작을 때는 정보가 빈약하지만 충분한 간격에서는 motion 정보가 드러남. **M/P 분리 설계가 의도대로 작동**한다는 근거.
-
-**3. patch_mean_concat > patch_mean**: M/P를 분리 보존한 concat(0.585)이 혼합 mean(0.532)보다 우수. Patch level에서 M/P는 서로 다른 정보를 담고 있어서 probe가 독립적으로 활용 가능.
-
-**4. CLS concat < CLS average**: CLS는 exchange를 거치며 이미 비슷해져서 concat이 차원만 늘림. CLS average가 768-dim으로 compact하면서 효율적 → VLA에서 CLS를 representation으로 쓸 때 average 방식이 적합.
-
-**5. Two-Stream vs VideoMAE**: patch_mean 기준 VideoMAE가 약간 우세(0.571 vs 0.532)하지만, patch_mean_concat 시 Two-Stream이 역전(0.585 vs 0.571). M/P 분리 구조의 이점이 적절한 embedding 추출 방식에서 드러남.
-
-**⚠️ 주의**: 위 결과는 500 videos 소규모 평가. Full test split에서 수치가 크게 달라짐 (아래 참고).
-
----
-
-## Full Test Split 결과 (2026-04-16, 클러스터, part4 test split 전체)
-
-이전 500-video 실험의 과대추정 문제를 확인하기 위해 full test split (180K train / 40K eval)으로 재평가.
-모든 실험: linear probe, gap=10, 20 epochs.
-
-### Two-Stream v4 (ep48, RoPE) cls_mode 비교
-
-| cls_mode | dim | R² | Cosine Sim | 초기 500-video R² |
-|----------|-----|----|------------|------------------|
-| patch_mean_concat | 1536 | **0.197** | 0.236 | 0.585 |
-| concat (CLS) | 1536 | 0.177 | 0.260 | 0.353 |
-| patch_mean | 768 | 0.164 | 0.209 | 0.532 |
-| average (CLS) | 768 | 0.052 | 0.197 | 0.364 |
-
-순위 패턴 동일 (patch_mean_concat > concat > patch_mean > average), 하지만 전반적으로 500-video 대비 대폭 하락. CLS average는 사실상 무용 (0.052).
-
-### Epoch 4 동일 조건 비교 (구조적 차이만 분리)
-
-| 모델 | Checkpoint | R² | Cosine Sim |
-|------|-----------|-----|------------|
-| Two-Stream v5 (APE + mask 0.5/0.5) | ep4 | **0.208** | 0.251 |
-| VideoMAE-ours (mask 0.5) | ep4 | 0.198 | 0.233 |
-
-**ep4에서는 거의 동일** — 구조 자체의 초기 표현력은 비슷.
-
-### 학습 진행에 따른 R² 변화
-
-| 모델 | ep4 R² | ep8 R² | ep28 R² | ep50 R² | 추세 |
-|------|--------|--------|---------|---------|------|
-| **Two-Stream v6 (rotaug)** | — | **0.259** | — | (학습 중) | **상승 확인** |
-| Two-Stream v5 (no rotaug) | 0.208 | 0.192 ↓ | — | — | CANCELLED |
-| Two-Stream v4 (RoPE) | ~0.2* | — | — | 0.197 | 정체 |
-| **VideoMAE-ours** | 0.198 | — | 0.317 | **0.326** | 수렴 |
-
-*v4 ep4 직접 측정 없음, APE diagnostic ep4 (0.219)로 추정
-
-### 해석
-
-**1. 초기 500-video 결과는 과대추정**: 두 모델 모두 full test split에서 R²가 크게 하락. 500 videos의 제한된 분포에서 probe가 overfit한 결과였음.
-
-**2. Rotation augmentation이 결정적**: v5(rotaug 없음)는 ep4→ep8에서 R² 하락(0.208→0.192). v6(rotaug)는 ep8에서 0.259로 **+35% 상승**. Position prior 의존을 차단하면 학습이 진행될수록 표현 품질이 개선됨.
-
-**3. 구조 차이보다 학습 동역학이 중요**: ep4에서는 Two-Stream(0.208) ≈ VideoMAE(0.198)로 거의 동일. 이후 학습 효율에서 차이 발생. VideoMAE는 꾸준히 상승(→0.326), Two-Stream은 rotaug 없이는 정체.
-
-**4. VideoMAE ep28→ep50 수렴**: R² 0.317→0.326으로 거의 수렴. v6가 학습 진행에 따라 이 격차를 줄일 수 있는지가 관건.
-
-## Two-Stream v8 Probing 결과 (2026-04-21) — 실패 + 역할분담 확인
-
-### v8 2차 (BYOL form, λ=0.05, grad 0.3) ep12 probing
-
-v8 2차 full run (JobID 33451989) ep12 checkpoint에 대해 다양한 cls_mode로 probing 수행:
-
-| cls_mode | dim | R² | Cosine | 해석 |
-|----------|-----|----|---------|------|
-| `patch_mean_concat` (M+P) | 1536 | **-0.147** | 0.163 | 전체 FAIL. P가 M 정보를 능동적으로 오염 |
-| `patch_mean_m` (M only) | 768 | **+0.160** | 0.212 | M stream에 의미있는 motion signal |
-| `patch_mean_p` (P only) | 768 | **-0.468** | 0.037 | P가 action-harmful static feature로 완전 수렴 |
-| `m_only` (CLS_M) | 768 | +0.011 | 0.095 | CLS 수준은 정보 희석 (cls_exchange 혼합) |
-
-### 진단: Static Salience Collapse
-
-- **M stream**: L_M (pixel reconstruction)으로 학습되어 자연스럽게 motion/appearance change 정보 보존. Patch-level에 +0.160의 positive signal
-- **P stream**: L_P (teacher M=zero 구조에서 feature prediction) → target 자체가 "미래 static appearance"라 P가 **static salience detector**로 수렴. Action 관점에서 심하게 오염된 feature (R²=-0.468)
-- **Concat이 M 단독보다 나쁜 것**: P의 action-harmful feature가 M의 positive signal을 상쇄. 둘이 상보 관계가 아닌 간섭 관계
-- **Attention viz 확인**: P가 1-3 patch 극도 sparse 핀포인트(static salience 전형), M이 배경 전역 분산 (자연 motion cue 학습)
-
-### 결론
-
-"EMA teacher + L_P feature prediction" 접근은 **teacher M=zero 설계 제약 때문에 구조적으로 static representation으로 수렴**. v7-big도 동일 기제로 붕괴(cos=0.9997). 2-frame EgoDex 세팅에서 이 접근은 **fundamentally misaligned**. 전면 폐기 결정.
-
-v9는 v4/v6 base로 회귀하되 P target을 residual(`frame_{t+k} - frame_t`)로 변경해 motion cue 활용을 구조적으로 강제.
+- **EgoDex**: train = part1~3 (학습 미사용 보장), **test = part4** (180K train / 40K eval pair)
+- **DROID**: 95,658 에피소드, ext1 카메라 기본 사용, 256x256 리사이즈 (180x320 원본, crop 없음)
 
 ## 실행 방법
 
-### 기본 사용
+### EgoDex Probing (within-domain)
 
 ```bash
-# Docker 컨테이너 내에서 실행
-# Two-Stream probing (다양한 embedding/gap 조합)
 python scripts/eval/probe_action.py \
     --encoder two-stream \
-    --checkpoint /mnt/data/checkpoints/two_stream/.../best_model.pt \
+    --checkpoint /mnt/data/checkpoints/two_stream/.../checkpoint_epochXXXX.pt \
     --egodex-root /mnt/data/egodex \
     --frames-root /mnt/data/egodex_frames \
     --egodex-split part4 \
     --cls-mode patch_mean_concat \
-    --gap 10 \
-    --max-videos 500 --epochs 20
+    --gap 10 --epochs 20
 
 # VideoMAE
-python scripts/eval/probe_action.py \
-    --encoder videomae \
-    --checkpoint /mnt/data/checkpoints/videomae/.../best_model.pt \
-    --egodex-root /mnt/data/egodex \
-    --frames-root /mnt/data/egodex_frames \
-    --egodex-split part4 \
-    --gap 10 \
-    --max-videos 500 --epochs 20
+python scripts/eval/probe_action.py --encoder videomae \
+    --checkpoint <ckpt> --egodex-split part4 --gap 10
 
-# Baseline (CLIP, DINOv2)
-python scripts/eval/probe_action.py --encoder clip ...
-python scripts/eval/probe_action.py --encoder dinov2 ...
+# Baseline
+python scripts/eval/probe_action.py --encoder dinov2 --egodex-split part4 --gap 10
+```
+
+### DROID Probing (cross-domain, primary)
+
+```bash
+python scripts/eval/probe_action_droid.py \
+    --encoder two-stream --checkpoint <ckpt> \
+    --droid-root /mnt/data/droid_frames/ext1 \
+    --gap 10 --epochs 20
+```
+
+### 클러스터 실행
+
+```bash
+sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 ```
 
 ### 주요 옵션
@@ -311,11 +69,9 @@ python scripts/eval/probe_action.py --encoder dinov2 ...
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
 | `--cls-mode` | embedding 추출 방식 | average |
-| `--gap` | 프레임 간격 | 1 |
-| `--egodex-split` | 데이터 파티션 (part1~5) | part1 |
-| `--depth` | Two-Stream depth (ablation용) | 12 |
-| `--num-stages` | CLS exchange 횟수 (ablation용) | 3 |
-| `--max-videos` | 비디오 수 제한 (디버깅/간이실험) | None (전체) |
+| `--gap` | 프레임 간격 | 10 |
+| `--egodex-split` | 데이터 파티션 | part4 (test) |
+| `--max-videos` | 비디오 수 제한 (디버깅) | None (전체) |
 
 ### cls-mode 선택 가이드
 
@@ -326,28 +82,65 @@ python scripts/eval/probe_action.py --encoder dinov2 ...
 | `m_only` | 768 | M stream CLS만, temporal 분석 |
 | `p_only` | 768 | P stream CLS만, spatial 분석 |
 | `patch_mean` | 768 | M+P 패치 전체 mean pool |
-| `patch_mean_concat` | 1536 | M/P 패치 각각 mean → concat (최고 성능) |
-| `patch_mean_m` | 768 | M 패치만 mean pool |
-| `patch_mean_p` | 768 | P 패치만 mean pool |
+| **`patch_mean_concat`** | **1536** | **M/P 패치 각각 mean → concat (기본 권장)** |
+| `patch_mean_m` | 768 | M 패치만 mean pool (stream 진단) |
+| `patch_mean_p` | 768 | P 패치만 mean pool (stream 진단) |
 
-### Full training 후 권장 평가 프로토콜
+## Probing 결과 (EgoDex part4, gap=10, linear probe, 20ep)
+
+### 활성 모델 lineup
+
+| 모델 | 체크포인트 | cls_mode | R² | 비고 |
+|------|-----------|----------|-----|------|
+| **v6 (APE + rotaug)** | ep8 | patch_mean_concat | **+0.259** | 현재 챔피언 |
+| **VideoMAE-ours** | ep50 | patch_mean | **+0.326** | 수렴 (ep28 +0.317) |
+| v4 (RoPE) | ep48 | patch_mean_concat | +0.197 | 정체 |
+| Two-Stream v10 (v6 base + mask_p 0.75) | ep4 | patch_mean_concat | +0.195 | 진행 중 |
+| Two-Stream v10 | ep8 | patch_mean_concat | **+0.206** | peak |
+| Two-Stream v10 | ep12 | patch_mean_concat | +0.148 | collapse 추세 |
+| Two-Stream v10 | ep16 | patch_mean_concat | +0.144 | collapse 확인 |
+| DINOv2 (frozen) | — | CLS concat | (ceiling 참조) | 공개 weight |
+| Random-init | — | — | (floor) | 구조적 prior 측정 |
+
+### v10 (mask_p 0.75) 분석
+
+- **Peak ep8 +0.206**: v6 ep8 +0.259 대비 **-0.053 하락**. mask_p 0.75는 P 난이도 상향 의도였으나 EgoDex 2-frame에서는 P 학습 효율을 떨어뜨림
+- **ep12/16에서 collapse 추세**: +0.206 → +0.148 → +0.144. aggressive P mask가 장기 학습에서 표현 품질을 서서히 훼손
+- **결론 (잠정)**: mask_p 0.5 (v6) 대비 0.75는 EgoDex 세팅에서 역효과. M-stream은 0.5 고정이 합리적 (Two-Stream masking philosophy 원칙 재확인)
+
+### cls_mode 비교 (v4 ep48 기준)
+
+| cls_mode | dim | R² | Cosine Sim |
+|----------|-----|----|------------|
+| patch_mean_concat | 1536 | **0.197** | 0.236 |
+| concat (CLS) | 1536 | 0.177 | 0.260 |
+| patch_mean | 768 | 0.164 | 0.209 |
+| average (CLS) | 768 | 0.052 | 0.197 |
+
+**순위 패턴**: patch_mean_concat > concat > patch_mean > average. CLS average는 사실상 무용 (0.052).
+
+### 해석
+
+1. **Rotation augmentation이 결정적**: v5(rotaug 없음) ep4→ep8 하락(0.208→0.192) vs v6(rotaug) ep8 0.259. Position prior 의존을 차단하면 표현 품질이 개선됨
+2. **patch_mean > CLS**: CLS는 cls_exchange로 혼합되어 정보 희석. Patch level에서 M/P는 서로 다른 정보를 담고 있어 probe가 독립적으로 활용 가능
+3. **Two-Stream vs VideoMAE**: ep4에서 거의 동등(0.208 vs 0.198). 이후 학습 효율에서 차이 — VideoMAE 수렴(→0.326), Two-Stream은 rotaug/mask 설정에 민감
+4. **Gap 효과**: gap=1은 노이즈 수준(~0.0006). full training 후 평가는 **gap=10 기본**
+
+## 권장 평가 프로토콜
 
 ```bash
 # 1. 공정 비교: part4 (미사용), gap=10, patch_mean_concat
-#    → Two-Stream vs VideoMAE vs baseline 비교
+#    → Two-Stream vs VideoMAE-ours 비교
 
-# 2. Ablation: 같은 조건에서 cls-mode별 비교
-#    → M/P 분리 효과, CLS vs patch 비교
+# 2. Stream 진단: cls_mode={patch_mean_m, patch_mean_p}
+#    → M/P 각각의 action-informativeness 분리 측정
 
-# 3. Gap sweep: gap=1,5,10,20,30
-#    → M stream의 temporal 특성 분석
-
-# 4. Architecture ablation: --depth/--num-stages 변경
-#    → 구조 효과 vs 파라미터 효과 분리
+# 3. DROID cross-domain: probe_action_droid.py 동일 프로토콜
+#    → 공개 weight 포함 main comparison
 ```
 
 ## 다음 단계
 
-1. Architecture ablation (d=6s=3, d=6s=2, d=4s=2) 학습 → probing 비교
-2. DROID action probing (cross-domain, 로봇 7-DoF velocity)
-3. Full training 후 전체 비디오로 최종 평가
+1. v10 ep12/16 collapse 원인 검증 (attention viz 병행 중)
+2. DROID 프레임 추출 완료 → Phase 2 DROID probing 개시
+3. 공개 weight lineup (VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official) DROID 평가
