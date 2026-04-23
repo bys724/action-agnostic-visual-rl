@@ -47,21 +47,22 @@
 
 ### 1. EgoDex Pre-training
 
-2개 모델 사전학습: **Two-Stream v4** (제안), **VideoMAE** (baseline)
+2개 모델 사전학습: **Two-Stream v10** (현재 활성), **VideoMAE** (baseline)
 
-**v4 확정 설정**:
+**v10 확정 설정** (v6 base + mask_p 0.75):
 ```bash
+# 클러스터 (sbatch, 권장 — 8 GPU DDP)
+MODEL=two-stream-v10 sbatch scripts/cluster/pretrain.sbatch
+
 # 로컬 (Docker dev-env)
 docker exec -it dev-env bash
 python scripts/pretrain.py --model two-stream \
-    --depth 12 --num-stages 2 \
-    --mask-ratio 0.3 --mask-ratio-p 0.5 \
+    --depth 12 --num-stages 2 --use-ape --rotation-aug \
+    --mask-ratio 0.5 --mask-ratio-p 0.75 \
+    --v9-p-target future --v9-loss-weight-p 1.0 \
     --max-gap 60 --sample-dist triangular --sample-center 30 \
     --egodex-splits part1,part2,part3,part4,part5 \
-    --epochs 30 --batch-size 64
-
-# 클러스터 (sbatch)
-sbatch scripts/cluster/pretrain.sbatch  # TODO: 작성 예정
+    --epochs 50 --batch-size 64
 ```
 
 **데이터 다운로드** (EgoDex CDN 직접):
@@ -164,12 +165,12 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 
 ### 기존 사례
 - **EgoDex** (1920x1080): 센터크롭 → 256x256
-- **Bridge V2** (480x640, 4:3): 리사이즈 → 256x256 (crop 없음)
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
+- **Ego4D** (가변): 다운로드 진행 중, 전처리 결정 미정
 
-## 현재 Phase (2026-04-22)
+## 현재 Phase (2026-04-24)
 
-**Phase 1.5 — v9 폐기, v10 (v6 base + mask_p 0.75) 진행 중**
+**Phase 1.5 — v10 학습 진행 (ep27, W-shape 회복 관찰)**
 
 **완료 (Two-Stream lineup)**:
 - **v4** (RoPE, mask 0.3/0.5): 48ep. Probing R²=0.197
@@ -194,9 +195,23 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - v6 ep8이 R²=0.259 챔피언 → P/M target/loss/encoder 구조 그대로 유지
 - 변경: P-stream만 mask_ratio 0.5 → 0.75 (MAE-style aggressive mask로 P 역할 분화 강화)
 - M-stream은 mask 0.5 유지 (motion sparse, aggressive mask 금지 원칙 준수)
-- **Sanity** (JobID 33570865, 1m45s OK) → ratio L_p/L_m ≈ 1:1 → `loss_weight_p=1.0` 그대로
-- **Full run**: JobID 33570871 (2026-04-22 13:04~, AIP_long 2노드×4 H100, 50ep, `--time=3d`)
-  - 현재 ep4 저장 완료 (`two_stream_v10/20260422_130827/checkpoint_epoch0004.pt`)
+- **Full run**: JobID 33570871 (2026-04-22 13:04~, AIP_long 2노드×4 H100, 50ep, `--time=3d`). 현재 ep27 진행 중
+
+**Probing 추세** (`patch_mean_concat / M / P`):
+
+| Epoch | concat | M | P | 비고 |
+|-------|--------|---|---|------|
+| ep4   | +0.195 | +0.176 | +0.126 | v9 lineup 전체 추월 |
+| ep8   | **+0.206** | +0.150 | +0.152 | 1차 peak |
+| ep12  | +0.148 | +0.129 | +0.083 | 큰 collapse 시작 |
+| ep16  | +0.144 | +0.125 | +0.038 | P sparse pinpoint viz 확인 |
+| ep20  | +0.137 | +0.135 | +0.022 | 단조 하락, 회복 신호 부재 |
+| ep24  | **+0.202** | +0.138 | +0.092 | **W-shape 회복** (concat ep8 peak 근접) |
+
+- 비교 기준: v6 ep8 +0.259 (챔피언), VideoMAE-ours +0.326
+- **ep24의 회복은 LR cosine decay 후반 효과 가능성** (BYOL/SimSiam 후반 안정화 사례와 일치). ep28/ep32 추가 검증 필요
+- ep24 concat이 ep8 peak에 근접 → 학습으로 극복 가능한 collapse였다는 가설 일부 지지
+- 단, P는 ep8 peak (+0.152)의 60% 수준. 진정한 회복인지 single-epoch noise인지 ep28에서 판별
 
 **Encoder lineup**:
 1. Two-Stream v10 (ours, 진행 중) / 2. VideoMAE-ours / 3-7. 공개 가중치
@@ -210,11 +225,12 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - 구현 대기 조건: v10 ep50 probing 결과 + v6/VM DROID probing 결과 확인 후 착수
 
 **다음 작업**:
-1. v10 ep4 attention viz + action probing (진행 중)
-2. v10 ep8/ep12 probing 누적 → v6 ep8 R²=0.259 비교
-3. DROID 프레임 추출 + Phase 2 개시
-4. v11 최소 proto 구현 착수 (v10 결과 확인 후)
-5. Phase 3: LIBERO
+1. v10 ep28 probing — W-shape 회복 진위 판별 (single-epoch noise vs 진짜 회복)
+2. v10 ep32+ 추가 probing (회복 추세 지속 시 v6 챔피언 추월 가능성 확인)
+3. Ego4D full_scale 다운로드 완료 후 전처리 결정
+4. DROID Phase 2 개시 (cross-domain probing)
+5. v11 최소 proto 구현 (v10 결과 확정 후)
+6. Phase 3: LIBERO
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 

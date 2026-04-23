@@ -95,18 +95,32 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 | **v6 (APE + rotaug)** | ep8 | patch_mean_concat | **+0.259** | 현재 챔피언 |
 | **VideoMAE-ours** | ep50 | patch_mean | **+0.326** | 수렴 (ep28 +0.317) |
 | v4 (RoPE) | ep48 | patch_mean_concat | +0.197 | 정체 |
-| Two-Stream v10 (v6 base + mask_p 0.75) | ep4 | patch_mean_concat | +0.195 | 진행 중 |
-| Two-Stream v10 | ep8 | patch_mean_concat | **+0.206** | peak |
-| Two-Stream v10 | ep12 | patch_mean_concat | +0.148 | collapse 추세 |
+| Two-Stream v10 (v6 base + mask_p 0.75) | ep4 | patch_mean_concat | +0.195 | v9 lineup 추월 |
+| Two-Stream v10 | ep8 | patch_mean_concat | **+0.206** | 1차 peak |
+| Two-Stream v10 | ep12 | patch_mean_concat | +0.148 | collapse 시작 |
 | Two-Stream v10 | ep16 | patch_mean_concat | +0.144 | collapse 확인 |
+| Two-Stream v10 | ep20 | patch_mean_concat | +0.137 | 단조 하락 |
+| Two-Stream v10 | ep24 | patch_mean_concat | **+0.202** | **W-shape 회복** (ep8 peak 근접) |
 | DINOv2 (frozen) | — | CLS concat | (ceiling 참조) | 공개 weight |
 | Random-init | — | — | (floor) | 구조적 prior 측정 |
 
+### v10 stream-별 추세 (`patch_mean_{m,p}`)
+
+| Epoch | M | P |
+|-------|---|---|
+| ep4   | +0.176 | +0.126 |
+| ep8   | +0.150 | **+0.152** (peak) |
+| ep12  | +0.129 | +0.083 |
+| ep16  | +0.125 | +0.038 (sparse pinpoint viz) |
+| ep20  | +0.135 | +0.022 |
+| ep24  | +0.138 | **+0.092** (peak의 60% 회복) |
+
 ### v10 (mask_p 0.75) 분석
 
-- **Peak ep8 +0.206**: v6 ep8 +0.259 대비 **-0.053 하락**. mask_p 0.75는 P 난이도 상향 의도였으나 EgoDex 2-frame에서는 P 학습 효율을 떨어뜨림
-- **ep12/16에서 collapse 추세**: +0.206 → +0.148 → +0.144. aggressive P mask가 장기 학습에서 표현 품질을 서서히 훼손
-- **결론 (잠정)**: mask_p 0.5 (v6) 대비 0.75는 EgoDex 세팅에서 역효과. M-stream은 0.5 고정이 합리적 (Two-Stream masking philosophy 원칙 재확인)
+- **1차 peak ep8 +0.206**: v6 ep8 +0.259 대비 -0.053. mask_p 0.75는 ep4-ep8까지 P 학습 강화 효과 확인 (P ep8 +0.152 > v6 ep4 수준)
+- **ep8→ep20 collapse**: P가 +0.152 → +0.022로 단조 하락, attention viz에서 sparse pinpoint 회귀 (v8 static salience 패턴 재현 신호)
+- **ep20→ep24 W-shape 회복**: concat +0.137 → +0.202 (+0.065 점프), P +0.022 → +0.092. ep8 peak 근접. **LR cosine decay 후반 효과 추정** (BYOL/SimSiam 후반 안정화 사례와 일치)
+- **결론 (ep28 결과 대기 중)**: 회복 진위 미확정. ep28에서 추세 지속 시 v6 챔피언 추월 가능성, single-epoch noise면 다시 하락
 
 ### cls_mode 비교 (v4 ep48 기준)
 
@@ -141,6 +155,7 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 
 ## 다음 단계
 
-1. v10 ep12/16 collapse 원인 검증 (attention viz 병행 중)
-2. DROID 프레임 추출 완료 → Phase 2 DROID probing 개시
-3. 공개 weight lineup (VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official) DROID 평가
+1. **v10 ep28 probing** — ep24 W-shape 회복 진위 판별 (single-epoch noise vs LR decay 후반 회복)
+2. v10 ep32+ 추가 — 회복 추세 지속 여부 (v6 +0.259 추월 가능성)
+3. DROID 프레임 추출 완료 → Phase 2 DROID probing 개시
+4. 공개 weight lineup (VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official) DROID 평가
