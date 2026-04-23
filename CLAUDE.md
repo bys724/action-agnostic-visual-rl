@@ -201,11 +201,20 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 **Encoder lineup**:
 1. Two-Stream v10 (ours, 진행 중) / 2. VideoMAE-ours / 3-7. 공개 가중치
 
+**🧪 v11 설계 완료 (2026-04-24, 구현 대기)**:
+- v7~v10의 "P stream 내부 강화" 접근 모두 collapse → 발상 전환
+- M stream을 "P의 semantic-level operator"로 재정의. Motion-routing: Q/K from M, V from P
+- P decoder 3-phase: semantic interpreter_1 → motion-routing × 2 → interpreter_2 (non-shared)
+- Dual-target reconstruction: L_t (현재) + L_tk (미래), shared recon head
+- 전체 구조 + 구현 TODO + ablation 계획은 [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md) "Phase 1.5: 설계 완료, 구현 대기: Two-Stream v11" 섹션 참고
+- 구현 대기 조건: v10 ep50 probing 결과 + v6/VM DROID probing 결과 확인 후 착수
+
 **다음 작업**:
 1. v10 ep4 attention viz + action probing (진행 중)
 2. v10 ep8/ep12 probing 누적 → v6 ep8 R²=0.259 비교
 3. DROID 프레임 추출 + Phase 2 개시
-4. Phase 3: LIBERO
+4. v11 최소 proto 구현 착수 (v10 결과 확인 후)
+5. Phase 3: LIBERO
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 

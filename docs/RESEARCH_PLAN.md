@@ -94,6 +94,114 @@
 
 학습 진행/잡 관리 세부는 [`CLAUDE.md`](../CLAUDE.md) 현재 Phase 섹션 및 [`cluster_sessions.md`](cluster_sessions.md).
 
+#### 🧪 설계 완료, 구현 대기: Two-Stream v11 (Motion-Guided Attention Routing + Dual-Target Reconstruction)
+
+**설계 철학**: v7~v10의 네 가지 시도가 모두 "P stream 내부 강화"였고 모두 collapse. v11은 발상 전환 — **P stream 강화 포기, M이 P를 semantic-level operator로 조작하는 구조**. Dual-target reconstruction으로 collapse anchor 확보.
+
+**핵심 구조 (pseudo code)**:
+
+```
+[Encoder — 둘 다 공식 MAE visible-only]
+M encoder: [ΔL, Sobel_x(ΔL), Sobel_y(ΔL)] → self-attn × 12 → m_visible  (mask 0.3)
+P encoder: [Sobel_x(L), Sobel_y(L), R, G, B] → self-attn × 12 → p_visible  (mask 0.75)
+[Encoder output = downstream representation (pure per-stream)]
+
+[M Decoder — motion field in-painting, P와 무관, loss 없음]
+m_full = inject_mask_token(m_visible, mask_m, mask_token_m) + APE
+self-attn + FFN × 3 → m_completed
+
+[P Decoder — 3-phase dual-target]
+p_full = inject_mask_token(p_visible, mask_p, mask_token_p) + APE
+
+# Phase 1: pre-motion semantic interpretation
+p_semantic_t = interpreter_1(p_full)                  # self-attn × 3
+predicted_t  = recon_head(p_semantic_t[:, 1:])        # shared head
+L_t = MSE(predicted_t · mask_p, img_t · mask_p)
+
+# Phase 2: motion integration (N=2 iterations, projections iteration별 독립)
+p_state = p_semantic_t
+for i in range(2):
+    Q_M_i, K_M_i = projections_M_i(m_completed)       # M stream에서 Q, K 둘 다
+    V_P_i        = projections_V_i(p_state)           # P stream에서 V
+    attn_pattern = softmax(Q_M_i K_M_i^T / √d)
+    p_state      = p_state + attn_pattern @ V_P_i
+    p_state      = p_state + FFN_motion_i(p_state)
+
+# Phase 3: post-motion semantic re-interpretation (non-shared with interpreter_1)
+p_semantic_tk = interpreter_2(p_state)                # self-attn × 3
+predicted_tk  = recon_head(p_semantic_tk[:, 1:])      # same recon_head (SHARED)
+L_tk = MSE(predicted_tk · mask_p, img_{t+k} · mask_p)
+
+L_total = L_t + L_tk
+```
+
+**주요 설계 결정 (확정)**:
+
+| 항목 | 결정 | 근거 |
+|------|------|------|
+| Motion-routing mechanism | Q/K from M, V from P | "M의 self-attention graph를 P value에 적용" = motion-guided spatial routing. 원 novelty |
+| Motion-routing iteration | N=2, projections iteration별 독립 | 표준 multi-layer decoder 패턴, 다양성 확보 |
+| interpreter_1 vs interpreter_2 | **Non-shared** (독립 parameters) | Phase 1 input(mask_token 포함)과 Phase 3 input(motion-routed)의 분포 차이 |
+| Recon head | **Shared** | 두 interpreter output의 "같은 pixel space" alignment |
+| Mask ratio | M 0.3, P 0.75 (asymmetric) | M sparse 보존 + P 도전적 복원. v10 실패 시 motion guide로 보강 |
+| M decoder loss | 없음 (gradient만) | M은 sensor 역할. P 복원에 유용한 motion field 제공으로 간접 학습 |
+| Gradient flow (p_state = p_semantic_t) | Joint (detach 없음) | interpreter_1이 L_t + L_tk 모두 학습, 전체적 일관성 |
+| Total parameters | ~248M | v6 (213M) 대비 +35M. VideoMAE-heavy ablation으로 파라미터 공정성 대응 |
+
+**예상 효과 / 실패 모드 방어**:
+
+| 과거 실패 모드 | v11 방어 기제 |
+|--------------|-------------|
+| v7-big CLS collapse (대칭 구조 공유 parameter) | interpreter_1/2 non-shared + 비대칭 역할 (M sensor, P 해석자) |
+| v8 static salience (EMA teacher + L_P) | EMA teacher 없음, pixel target 유지, L_t가 semantic anchor |
+| v9 residual degrade (target 함수 변경) | Target은 원래 frame, residual 없음 |
+| v10 P aggressive mask collapse | Phase 1 self-attn이 mask 영역을 semantic으로 anchor. Motion 주입은 Phase 2로 분리 |
+
+#### v11 구현 TODO
+
+**P0 — Novelty / Baseline 검증 (Phase 2 병행)**:
+- [ ] arxiv 선행 연구 확인 (CAST 2311.18825, MGMAE 2308.10794, MotionMAE 2210.04154, SiamMAE 2305.14344, MultiMAE 2204.01678) — Q/K 출처, decoder 구조 차별점 명시
+- [ ] EgoDex 논문 2505.11709 전문 확인 (concurrent work 리스크)
+- [ ] V-JEPA 2 (2506.09985) Related work 언급 방침 결정
+- [ ] **v6 ep8 + VM ep50 DROID probing** 결과 확보 → v11 구현 결정의 근거 (Two-Stream 방향 유지 여부 판정)
+
+**P1 — 구현 (`src/models/two_stream_v11.py` 신규)**:
+- [ ] Encoder 재사용: 기존 `TwoStreamEncoder`의 stream-independent self-attn 경로 (CLS exchange 제거)
+- [ ] M decoder: visible tokens + mask_token_m → self-attn × 3 → m_completed
+- [ ] P decoder Phase 1: interpreter_1 (self-attn + FFN × 3)
+- [ ] P decoder Phase 2: Motion-Routing Block × 2
+  - Q_M/K_M projections, V_P projection (iteration별 독립)
+  - `attn_pattern = softmax(Q_M K_M^T / √d)`, output = attn @ V_P
+  - Residual + FFN_motion
+- [ ] P decoder Phase 3: interpreter_2 (self-attn + FFN × 3, non-shared)
+- [ ] Recon head: shared, Phase 1과 Phase 3 공용
+- [ ] Loss: `L = L_t + L_tk`, masked positions에만 MSE
+- [ ] V6 checkpoint와 호환성 없음 (encoder 구조 다름) → strict=True 로드 불가 명시
+
+**P2 — Launcher / Sanity**:
+- [ ] `scripts/pretrain.py`에 `--model two-stream-v11` 분기 추가
+- [ ] `scripts/cluster/sanity_v11.sbatch` 작성 (200 videos × 5 epoch, 1 노드 × 1 H100)
+- [ ] Sanity 검증 항목: L_t, L_tk 수렴 경향 / feat_std_m, feat_std_p / attention_entropy
+- [ ] Sanity 통과 판정 기준:
+  - L_t, L_tk 각각 epoch 간 단조 감소
+  - feat_std_p > 0.1 (collapse 방어)
+  - cos_intra_p < 0.95 (uniformity 방어)
+
+**P3 — Full Training**:
+- [ ] `scripts/cluster/pretrain.sbatch`에 v11 지원 추가
+- [ ] 2노드 × 4 H100 DDP, 50 epoch, `--time=3d`
+- [ ] 중간 checkpoint probing (ep4, ep8, ep16, ep32, ep50)
+- [ ] Attention 시각화 (M/P 분화, motion-routing 시각화)
+
+**P4 — Ablation**:
+- [ ] Motion routing N=1 vs N=2 vs N=4
+- [ ] interpreter shared vs non-shared
+- [ ] L_t only vs L_tk only vs L_t + L_tk
+- [ ] Motion-routing V from P (원안) vs V from M (표준 cross-attn) — novelty 정당성 실증
+- [ ] VideoMAE-heavy baseline (decoder 용량 맞춤) — 파라미터 공정성
+
+자세한 학습 결과 / probing 수치는 [`CLAUDE.md`](../CLAUDE.md) 현재 Phase 섹션 및 [`cluster_sessions.md`](cluster_sessions.md).
+
 #### VideoMAE-ours
 
 - 50 epoch 완주. Probing R²=0.326 (best 중 하나)
