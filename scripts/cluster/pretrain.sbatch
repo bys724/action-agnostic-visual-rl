@@ -232,6 +232,25 @@ elif [ "$MODEL" = "two-stream-v10" ]; then
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v10${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v11" ]; then
+    # v11: Motion-Guided Attention Routing + Dual-Target Reconstruction
+    # 설계 근거:
+    # - v7~v10 "P stream 내부 강화"가 모두 collapse. 발상 전환
+    # - M이 P를 semantic operator로 조작 (Q/K from M, V from P)
+    # - Dual-target (L_t + L_tk)로 Phase 1 self-attn이 collapse anchor
+    # - CLS exchange 제거 — M/P independence 유지
+    # - M/P depth 비대칭: P=12 (semantic backbone), M=6 (motion sensor)
+    #   · M은 P 조작 효과성으로만 학습됨 (aux loss 없음)
+    #   · V11_M_DEPTH 환경변수로 M depth 조정 (4까지 낮출 수 있음)
+    # - v9/v10의 --v9-p-target, --v9-loss-weight-p는 v11에선 무시됨 (hardcoded)
+    MODEL_ARGS=(
+        --depth 12
+        --v11-m-depth "${V11_M_DEPTH:-6}"
+        --rotation-aug
+        --mask-ratio 0.3 --mask-ratio-p 0.75
+        --max-gap 60 --sample-dist triangular --sample-center 30
+    )
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v11${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12
@@ -252,8 +271,9 @@ fi
 log "Model args: ${MODEL_ARGS[*]}"
 
 # ── MODEL alias 해석 ────────────────────────────────────────────────────────
-# scripts/pretrain.py의 --model은 ['two-stream','v-jepa','videomae']만 받음.
-# two-stream-v8은 --model two-stream + --v8-mode 조합이므로 여기서 번역.
+# scripts/pretrain.py의 --model은 ['two-stream','two-stream-v11','v-jepa','videomae']만 받음.
+# v8/v9/v10은 --model two-stream + 추가 args 조합이므로 여기서 번역.
+# v11은 별도 모델 클래스 (TwoStreamV11Model) → --model two-stream-v11 그대로.
 if [ "$MODEL" = "two-stream-v8" ] || [ "$MODEL" = "two-stream-v9" ] || [ "$MODEL" = "two-stream-v10" ]; then
     MODEL_NAME_FOR_PY="two-stream"
 else

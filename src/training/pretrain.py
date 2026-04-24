@@ -191,6 +191,47 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
+            elif model_name == 'TwoStreamV11Model':
+                # v11: dual-target reconstruction (L_t + L_tk, masked positions only)
+                # rotation_aug는 model.forward() 내부에서 처리
+                out = model(img_t, img_tk)
+                loss = out['loss']
+                loss_t = out['loss_t']
+                loss_tk = out['loss_tk']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += loss_t.item()
+                total_loss_future += loss_tk.item()
+
+                # v11 진단 metrics (feat_std, cos_intra: collapse monitoring)
+                with torch.no_grad():
+                    cls_m = out['cls_m']
+                    cls_p = out['cls_p']
+                    std_m = cls_m.std(dim=0).mean()
+                    std_p = cls_p.std(dim=0).mean()
+                    cm_norm = F.normalize(cls_m.float(), dim=-1)
+                    cp_norm = F.normalize(cls_p.float(), dim=-1)
+                    B = cm_norm.shape[0]
+                    if B > 1:
+                        sim_m = cm_norm @ cm_norm.T
+                        sim_p = cp_norm @ cp_norm.T
+                        eye_mask = ~torch.eye(B, device=sim_m.device, dtype=torch.bool)
+                        cos_intra_m = sim_m[eye_mask].mean()
+                        cos_intra_p = sim_p[eye_mask].mean()
+                    else:
+                        cos_intra_m = torch.tensor(0.0)
+                        cos_intra_p = torch.tensor(0.0)
+                if not hasattr(train_epoch, '_v11_metrics_buf'):
+                    train_epoch._v11_metrics_buf = {}
+                buf = train_epoch._v11_metrics_buf
+                buf['loss_t'] = buf.get('loss_t', 0.0) + loss_t.item()
+                buf['loss_tk'] = buf.get('loss_tk', 0.0) + loss_tk.item()
+                buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
+                buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
+                buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
+                buf['cos_intra_p'] = buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
+                buf['_count'] = buf.get('_count', 0) + 1
             elif model_name == 'TwoStreamModel':
                 # rotation_aug: training loop가 compute_loss를 우회하므로 여기서 명시 적용
                 if actual_model.rotation_aug and actual_model.training:
@@ -372,6 +413,14 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
+            elif model_name == 'TwoStreamV11Model':
+                out = model(img_t, img_tk)
+                loss = out['loss']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += out['loss_t'].item()
+                total_loss_future += out['loss_tk'].item()
             elif model_name == 'TwoStreamModel':
                 # eval 모드이므로 rotation_aug는 자동 skip (self.training=False)
                 out1, out2, _ = model(img_t, img_tk)
@@ -497,6 +546,12 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, out1_np, out2_np]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
+                elif model_name == 'TwoStreamV11Model':
+                    out = actual_model(x, y)
+                    pred_t_np = out['pred_t'].squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    pred_tk_np = out['pred_tk'].squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                    imgs = [img_t, img_tk, pred_t_np, pred_tk_np]
+                    col_titles = ['Frame t', 'Frame t+k', 'Pred t (Ph1)', 'Pred t+k (Ph3)']
                 elif model_name == 'VideoMAEModel':
                     # 픽셀 복원이 아닌 feature/masked 예측 → 이미지 시각화 생략
                     continue
@@ -880,6 +935,27 @@ def train(
                         f"resid_mag={buf['resid_mag']/n:.4f}"
                     )
                 train_epoch._v9_metrics_buf = {}
+            # v11 metrics (dual-target + collapse monitoring)
+            if hasattr(train_epoch, '_v11_metrics_buf'):
+                buf = train_epoch._v11_metrics_buf
+                n = buf.get('_count', 0)
+                if n > 0:
+                    lt = buf['loss_t'] / n
+                    ltk = buf['loss_tk'] / n
+                    writer.add_scalar('v11/loss_t', lt, epoch)
+                    writer.add_scalar('v11/loss_tk', ltk, epoch)
+                    writer.add_scalar('v11/loss_ratio_tk_over_t', ltk / max(lt, 1e-8), epoch)
+                    writer.add_scalar('v11/feat_std_m', buf['feat_std_m'] / n, epoch)
+                    writer.add_scalar('v11/feat_std_p', buf['feat_std_p'] / n, epoch)
+                    writer.add_scalar('v11/cos_intra_m', buf['cos_intra_m'] / n, epoch)
+                    writer.add_scalar('v11/cos_intra_p', buf['cos_intra_p'] / n, epoch)
+                    log(
+                        f"  [v11] L_t={lt:.5f} L_tk={ltk:.5f} "
+                        f"(ratio tk/t={ltk/max(lt,1e-8):.3f}) | "
+                        f"std_m={buf['feat_std_m']/n:.3f} std_p={buf['feat_std_p']/n:.3f} | "
+                        f"cos_intra_m={buf['cos_intra_m']/n:.3f} cos_intra_p={buf['cos_intra_p']/n:.3f}"
+                    )
+                train_epoch._v11_metrics_buf = {}
             writer.flush()
 
         # Save prediction samples every epoch (rank 0)

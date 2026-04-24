@@ -20,7 +20,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, VideoMAEModel
+from src.models import TwoStreamModel, TwoStreamV11Model, VideoMAEModel
 from src.datasets import EgoDexDataset
 from src.training.pretrain import train
 
@@ -30,8 +30,9 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'videomae'],
-                        help='Model type (default: two-stream)')
+                        choices=['two-stream', 'two-stream-v11', 'videomae'],
+                        help='Model type (default: two-stream). '
+                             'two-stream-v11 = motion-guided routing + dual-target.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -108,6 +109,11 @@ def main():
                              'residual=frame_{t+k}-frame_t (변화량, P encoder collapse 위험 관찰됨).')
     parser.add_argument('--v9-loss-weight-p', type=float, default=1.0,
                         help='[v9] P loss weight. residual은 magnitude 작아 5~10, current/future는 1.0 권장.')
+
+    # v11: M encoder depth (P와 독립. P는 --depth, M은 motion sensor로 작게)
+    parser.add_argument('--v11-m-depth', type=int, default=6,
+                        help='[v11] M encoder depth (기본 6, sensor 역할이라 작게). '
+                             'P encoder depth은 --depth (기본 12) 사용.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -191,6 +197,21 @@ def main():
                                drop_path_rate=args.drop_path_rate,
                                p_target=args.v9_p_target,
                                loss_weight_p=args.v9_loss_weight_p)
+    elif args.model == 'two-stream-v11':
+        # v11: Motion-Guided Attention Routing + Dual-Target Reconstruction
+        # - v9/v10 P target/weight args는 v11에선 미사용 (hardcoded: L_t + L_tk)
+        # - mask_ratio (M stream), mask_ratio_p (P stream) 사용. 기본 0.3 / 0.75
+        # - P encoder depth = --depth, M encoder depth = --v11-m-depth (비대칭)
+        # - CLS exchange 없음 (stream-independent)
+        v11_mask_m = args.mask_ratio if args.mask_ratio > 0 else 0.3
+        v11_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
+        model = TwoStreamV11Model(
+            p_depth=args.depth,
+            m_depth=args.v11_m_depth,
+            mask_ratio_m=v11_mask_m,
+            mask_ratio_p=v11_mask_p,
+            rotation_aug=args.rotation_aug,
+        )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
         # 2-frame에서는 masking 완화 필요.
