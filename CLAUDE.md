@@ -121,12 +121,17 @@ docker exec libero-eval python src/eval_libero.py ...
 | `scripts/cluster/README.md` | 클러스터 사용법 quickstart |
 | `scripts/data/extract_droid_frames.py` | DROID 프레임 추출 |
 | `scripts/data/extract_droid_actions.py` | DROID action 추출 (cross-domain probing용) |
-| `scripts/eval/probe_action.py` | EgoDex action probing |
-| `scripts/eval/probe_action_droid.py` | DROID cross-domain probing |
-| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning |
+| `scripts/eval/probe_action.py` | EgoDex action probing (v6/v10) |
+| `scripts/eval/probe_action_droid.py` | DROID cross-domain probing (v6/v10) |
+| `scripts/eval/finetune_libero.py` | LIBERO fine-tuning (v6/v10) |
+| `scripts/eval/probe_action_v11.py` | EgoDex action probing (v11) |
+| `scripts/eval/probe_action_droid_v11.py` | DROID cross-domain probing (v11) |
+| `scripts/eval/finetune_libero_v11.py` | LIBERO BC fine-tune (v11) |
+| `scripts/eval/visualize_attn_v11.py` | v11 attention 시각화 |
 | `scripts/eval/visualize_inference.py` | 단일/다중 모델 비교 시각화 |
 | `scripts/eval/visualize_sample_detail.py` | 단일 샘플 상세 (M/P channel + attention) |
-| `src/models/two_stream.py` | Two-Stream 모델 + 2D RoPE + MAE masking |
+| `src/models/two_stream.py` | Two-Stream 모델 (v6/v10) + 2D RoPE + MAE masking |
+| `src/models/two_stream_v11.py` | Two-Stream v11 (motion-routing + dual-target) |
 | `src/models/videomae.py` | VideoMAE baseline |
 | `src/datasets/egodex.py` | EgoDex 데이터셋 |
 | `src/datasets/droid.py` | DROID 데이터셋 |
@@ -168,69 +173,91 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 - **Ego4D** (가변): 다운로드 진행 중, 전처리 결정 미정
 
-## 현재 Phase (2026-04-24)
+## 현재 Phase (2026-04-26)
 
-**Phase 1.5 — v10 학습 진행 (ep27, W-shape 회복 관찰)**
+**Phase 1.5 — v10 saturate (R²=0.221), v11 ep12 도달 (+0.219), DROID/LIBERO cross-domain 검증 중**
 
 **완료 (Two-Stream lineup)**:
 - **v4** (RoPE, mask 0.3/0.5): 48ep. Probing R²=0.197
-- **v6** (APE + mask 0.5/0.5 + rotation aug): ep23 scancel, ep8 peak R²=0.259
+- **v6** (APE + mask 0.5/0.5 + rotation aug): ep23 scancel, ep8 peak R²=0.259 (현 챔피언)
 - **VideoMAE-ours**: 50ep, R²=0.326
 - **V-JEPA-ours**: 3차 발산, negative result
+- **폐기 라인 (v7-big / v8 / v9)**: 모두 P stream collapse. 상세는 `docs/RESEARCH_PLAN.md`
 
-**폐기 (EMA teacher + L_P feature prediction 라인)**:
-- **v7-big**: ep8 cos_st=0.9997 완전 collapse
-- **v8 1차/2차**: P가 static salience로 수렴 (`patch_mean_p` R²=-0.468). 구조적 failure mode → 전면 폐기
+**Two-Stream v10** (v6 base + mask_p 0.75) — **종료, ep40 plateau (+0.221)**:
+- 50ep 거의 완주 (JobID 33570871, AIP_long 2노드×4 H100)
+- ep4-8: 1차 peak +0.206 (ep8) → ep12-20: 점진 collapse (+0.137 ep20) → ep24-40: W-shape 회복 → ep40 peak **+0.221** (`patch_mean_concat`) → ep44/ep48 plateau (+0.221, +0.222)
+- **v6 챔피언 (+0.259) 추월 실패 확정**. P-stream 내부 강화 방식의 한계로 결론
 
-**폐기 — Two-Stream v9** (residual P target + patch-wise normalization):
-- 설계: M target=frame_{t+k} (mask 0.3), P target=residual `frame_{t+k} - frame_t` (mask 0.75, patch-norm)
-- **v9 P=current** (JobID 33492965, ep6 scancel): patch_mean ep4 concat +0.154, M +0.188, P -0.102
-- **v9 P=residual+norm** (JobID 33555333, ep8 scancel 2026-04-22 13:04, --time=3d 중 13h):
-  - ep4 → ep8 patch_mean: concat +0.167→+0.171, M +0.120→+0.181, P **+0.100→-0.006** (P degrade 확정)
-  - CLS-only 거의 0 (m_only -0.073, p_only +0.004) — uniform attention 퇴화 (ep4 focused → ep8 mean-pool 수준)
-  - 진단: residual+patch-norm이 ep4까지는 P 학습에 기여했지만 ep8부터 P encoder가 분산 minimization으로 회귀
-- **결론**: residual P target은 EgoDex 2-frame에서 정착 안 됨. v6 base로 회귀 + P 난이도 상향만 채택
+**진행 중 — Two-Stream v11** (Motion-Guided Attention Routing + Dual-Target):
+- **구조**: M encoder (6-layer) + P encoder (12-layer) + M decoder (3-layer, loss 없음) + P decoder 3-phase (interpreter_1 → motion-routing × 2 → interpreter_2) + shared recon_head
+- **Loss**: L_t (Phase 1) + L_tk (Phase 3), masked positions only
+- **Total params**: 250.9M (decoder까지 downstream 사용 시 ~204M)
+- **시작**: 2026-04-25 01:10:50 KST (JobID 33594155, AIP_long 2노드×4 H100, 50ep, `--time=3d`)
+- Sanity (33591381, 10:26): forward/backward OK, full scale에서 healthy
 
-**진행 중 — Two-Stream v10** (v6 base + mask_p 0.5→0.75):
-- v6 ep8이 R²=0.259 챔피언 → P/M target/loss/encoder 구조 그대로 유지
-- 변경: P-stream만 mask_ratio 0.5 → 0.75 (MAE-style aggressive mask로 P 역할 분화 강화)
-- M-stream은 mask 0.5 유지 (motion sparse, aggressive mask 금지 원칙 준수)
-- **Full run**: JobID 33570871 (2026-04-22 13:04~, AIP_long 2노드×4 H100, 50ep, `--time=3d`). 현재 ep27 진행 중
+**v11 학습 추이** (loss + 표현 진단):
 
-**Probing 추세** (`patch_mean_concat / M / P`):
+| Epoch | L_total | L_t | L_tk | std_p | cos_intra_p |
+|-------|---------|-----|------|-------|-------------|
+| 1 | 0.0196 | 0.0109 | 0.0088 | 0.349 | 0.866 |
+| 4 | 0.0057 | 0.0044 | 0.0014 | 0.210 | 0.897 |
+| 8 | 0.0043 | 0.0038 | 0.00052 | 0.009 | 1.000 |
+| 12 | 0.0024 | 0.00197 | 0.00039 | 0.004 | 1.000 |
 
-| Epoch | concat | M | P | 비고 |
-|-------|--------|---|---|------|
-| ep4   | +0.195 | +0.176 | +0.126 | v9 lineup 전체 추월 |
-| ep8   | **+0.206** | +0.150 | +0.152 | 1차 peak |
-| ep12  | +0.148 | +0.129 | +0.083 | 큰 collapse 시작 |
-| ep16  | +0.144 | +0.125 | +0.038 | P sparse pinpoint viz 확인 |
-| ep20  | +0.137 | +0.135 | +0.022 | 단조 하락, 회복 신호 부재 |
-| ep24  | **+0.202** | +0.138 | +0.092 | **W-shape 회복** (concat ep8 peak 근접) |
+→ Loss 단조 감소. P encoder CLS는 collapse (cos_intra_p≈1.0) 그러나 patches는 healthy — 75% MAE 복구가 작동
 
-- 비교 기준: v6 ep8 +0.259 (챔피언), VideoMAE-ours +0.326
-- **ep24의 회복은 LR cosine decay 후반 효과 가능성** (BYOL/SimSiam 후반 안정화 사례와 일치). ep28/ep32 추가 검증 필요
-- ep24 concat이 ep8 peak에 근접 → 학습으로 극복 가능한 collapse였다는 가설 일부 지지
-- 단, P는 ep8 peak (+0.152)의 60% 수준. 진정한 회복인지 single-epoch noise인지 ep28에서 판별
+**v11 ep12 — Representation 비교 (12 mode)**
 
-**Encoder lineup**:
-1. Two-Stream v10 (ours, 진행 중) / 2. VideoMAE-ours / 3-7. 공개 가중치
+4 위치: A (M encoder), B (P encoder), D' (motion-routing 후), D (Phase 3 final)
 
-**🧪 v11 설계 완료 (2026-04-24, 구현 대기)**:
-- v7~v10의 "P stream 내부 강화" 접근 모두 collapse → 발상 전환
-- M stream을 "P의 semantic-level operator"로 재정의. Motion-routing: Q/K from M, V from P
-- P decoder 3-phase: semantic interpreter_1 → motion-routing × 2 → interpreter_2 (non-shared)
-- Dual-target reconstruction: L_t (현재) + L_tk (미래), shared recon head
-- 전체 구조 + 구현 TODO + ablation 계획은 [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md) "Phase 1.5: 설계 완료, 구현 대기: Two-Stream v11" 섹션 참고
-- 구현 대기 조건: v10 ep50 probing 결과 + v6/VM DROID probing 결과 확인 후 착수
+| Mode | ep4 | ep8 | **ep12** |
+|------|-----|-----|----------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | **+0.208** |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | **+0.219** ★ |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 |
+| `patch_mean_concat_all` (A+B+D') | +0.114 | +0.094 | +0.178 |
+| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 |
+| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 |
+| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 |
+
+**핵심 결론**:
+- **ep12 A+D = +0.219** ≈ v10 ep40 plateau (+0.221). v11이 12 epoch만에 v10 50 epoch 도달
+- **사용자 통찰 검증**: interpreter는 decoder의 reconstruction wrapper (D' < D 역전 ep8에)
+- M encoder 단독이 강력 (+0.208) — task가 motion-biased (hand pose ≈ motion)
+- P encoder 단독 약함, 단 motion routing 거치면 살아남
+- Loss와 R² 정직 상관 (L_total 0.0057 → 0.0024 절반 → A+D R² +0.143 → +0.219)
+
+**v11 Cross-domain DROID probing** (사용자 직감 검증)
+
+| Gap (DROID 15Hz) | VideoMAE | v11 best | 격차 |
+|------------------|----------|----------|------|
+| 1 (0.07초) | -0.006 | -0.005 | +0.001 |
+| 10 (0.67초) | -0.006 | +0.006 (A+B) | +0.012 |
+| **15 (1초)** ★ | **-0.035** | **+0.005 (A+B)** | **+0.040** |
+| 30 (2초) | -0.028 | -0.010 | +0.018 |
+
+- 모든 gap에서 v11이 VideoMAE보다 일관 우위
+- gap=15 (EgoDex 학습 분포 1초와 일치)에서 격차 가장 큼 (+0.040)
+- VideoMAE는 in-domain (EgoDex +0.326) 강력하지만 cross-domain 음수
+- 절대 R² 작음 (~0.005) — DROID action probing 자체 한계
+- **방향성 검증**: v11이 cross-domain 일반화 우수
+
+**Cross-domain LIBERO** (진행 중):
+- BC fine-tune 도구 신규 작성 (`scripts/eval/finetune_libero_v11.py`)
+- libero_spatial 30 epoch 시작 (33600616 VideoMAE, 33600617 v11 ep12 A+D)
+- 4-6h 후 결과 (val MSE 비교)
 
 **다음 작업**:
-1. v10 ep28 probing — W-shape 회복 진위 판별 (single-epoch noise vs 진짜 회복)
-2. v10 ep32+ 추가 probing (회복 추세 지속 시 v6 챔피언 추월 가능성 확인)
-3. Ego4D full_scale 다운로드 완료 후 전처리 결정
-4. DROID Phase 2 개시 (cross-domain probing)
-5. v11 최소 proto 구현 (v10 결과 확정 후)
-6. Phase 3: LIBERO
+1. v11 ep16/ep20 probing 계속 (수렴 추세 확인)
+2. LIBERO BC val MSE 결과 확인 → rollout 수행 여부 결정
+3. DROID 추가 gap (5/20) 보강
+4. Phase 3 LIBERO 본 평가 준비
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 

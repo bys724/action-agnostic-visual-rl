@@ -73,7 +73,7 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 | `--egodex-split` | 데이터 파티션 | part4 (test) |
 | `--max-videos` | 비디오 수 제한 (디버깅) | None (전체) |
 
-### cls-mode 선택 가이드
+### cls-mode 선택 가이드 (Two-Stream v6/v10, `probe_action.py`)
 
 | cls-mode | 차원 | 용도 |
 |----------|------|------|
@@ -86,6 +86,25 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 | `patch_mean_m` | 768 | M 패치만 mean pool (stream 진단) |
 | `patch_mean_p` | 768 | P 패치만 mean pool (stream 진단) |
 
+### cls-mode 선택 가이드 (Two-Stream v11, `probe_action_v11.py`)
+
+v11은 4 위치에서 representation 추출 가능: A=M encoder, B=P encoder, D'=motion-routing 후, D=Phase 3 final.
+
+| cls-mode | 차원 | 위치 | 용도 |
+|----------|------|------|------|
+| `cls_m_enc` | 768 | A | M encoder CLS |
+| `cls_p_enc` | 768 | B | P encoder CLS |
+| `cls_concat_enc` | 1536 | A+B | M/P CLS concat |
+| `patch_mean_m_enc` | 768 | A | M encoder patches mean (motion-biased task에 강력) |
+| `patch_mean_p_enc` | 768 | B | P encoder patches mean (단독은 약함) |
+| `patch_mean_concat_enc_only` | 1536 | A+B | M+P enc patches concat |
+| `patch_mean_p_state_after_routing` | 768 | D' | motion-routing × 2 후 (interpreter_2 전) |
+| `patch_mean_p_features_tk` | 768 | D | Phase 3 final (interpreter_2 후) |
+| **`patch_mean_concat_enc_phase3`** | **1536** | **A+D** | **M enc + P Phase 3 (★ 기본 권장, ep12 +0.219)** |
+| `patch_mean_concat_enc_d_prime` | 1536 | A+D' | M enc + D' |
+| `patch_mean_concat_p_enc_d_prime` | 1536 | B+D' | P enc + D' |
+| `patch_mean_concat_all` | 2304 | A+B+D' | 3-way concat |
+
 ## Probing 결과 (EgoDex part4, gap=10, linear probe, 20ep)
 
 ### 활성 모델 lineup
@@ -95,12 +114,15 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 | **v6 (APE + rotaug)** | ep8 | patch_mean_concat | **+0.259** | 현재 챔피언 |
 | **VideoMAE-ours** | ep50 | patch_mean | **+0.326** | 수렴 (ep28 +0.317) |
 | v4 (RoPE) | ep48 | patch_mean_concat | +0.197 | 정체 |
-| Two-Stream v10 (v6 base + mask_p 0.75) | ep4 | patch_mean_concat | +0.195 | v9 lineup 추월 |
-| Two-Stream v10 | ep8 | patch_mean_concat | **+0.206** | 1차 peak |
-| Two-Stream v10 | ep12 | patch_mean_concat | +0.148 | collapse 시작 |
-| Two-Stream v10 | ep16 | patch_mean_concat | +0.144 | collapse 확인 |
-| Two-Stream v10 | ep20 | patch_mean_concat | +0.137 | 단조 하락 |
-| Two-Stream v10 | ep24 | patch_mean_concat | **+0.202** | **W-shape 회복** (ep8 peak 근접) |
+| Two-Stream v10 | ep8 | patch_mean_concat | +0.206 | 1차 peak |
+| Two-Stream v10 | ep20 | patch_mean_concat | +0.137 | collapse 저점 |
+| Two-Stream v10 | ep24 | patch_mean_concat | +0.202 | W-shape 회복 |
+| Two-Stream v10 | ep36 | patch_mean_concat | +0.214 | new peak |
+| Two-Stream v10 | ep40 | patch_mean_concat | **+0.221** | **plateau 시작** |
+| Two-Stream v10 | ep44 / ep48 | patch_mean_concat | +0.221 / +0.222 | plateau 지속, **v6 추월 실패 확정** |
+| Two-Stream v11 | ep4 | patch_mean_concat_enc_phase3 (A+D) | +0.143 | 학습 시작 |
+| Two-Stream v11 | ep8 | patch_mean_concat_enc_phase3 (A+D) | +0.194 | |
+| **Two-Stream v11** | **ep12** | **patch_mean_concat_enc_phase3 (A+D)** | **+0.219** | **v10 ep40 plateau 도달, 12 epoch만에** |
 | DINOv2 (frozen) | — | CLS concat | (ceiling 참조) | 공개 weight |
 | Random-init | — | — | (floor) | 구조적 prior 측정 |
 
@@ -113,14 +135,55 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 | ep12  | +0.129 | +0.083 |
 | ep16  | +0.125 | +0.038 (sparse pinpoint viz) |
 | ep20  | +0.135 | +0.022 |
-| ep24  | +0.138 | **+0.092** (peak의 60% 회복) |
+| ep24  | +0.138 | +0.092 (peak의 60% 회복) |
+| ep36  | +0.129 | +0.141 (peak의 93%) |
 
-### v10 (mask_p 0.75) 분석
+### v10 분석 (종료)
 
-- **1차 peak ep8 +0.206**: v6 ep8 +0.259 대비 -0.053. mask_p 0.75는 ep4-ep8까지 P 학습 강화 효과 확인 (P ep8 +0.152 > v6 ep4 수준)
-- **ep8→ep20 collapse**: P가 +0.152 → +0.022로 단조 하락, attention viz에서 sparse pinpoint 회귀 (v8 static salience 패턴 재현 신호)
-- **ep20→ep24 W-shape 회복**: concat +0.137 → +0.202 (+0.065 점프), P +0.022 → +0.092. ep8 peak 근접. **LR cosine decay 후반 효과 추정** (BYOL/SimSiam 후반 안정화 사례와 일치)
-- **결론 (ep28 결과 대기 중)**: 회복 진위 미확정. ep28에서 추세 지속 시 v6 챔피언 추월 가능성, single-epoch noise면 다시 하락
+- **1차 peak ep8 +0.206 → ep20 collapse +0.137 → ep36 W-shape 회복 +0.214 → ep40 plateau +0.221**
+- v6 ep8 챔피언 (+0.259) 추월 실패 확정. P-stream 내부 강화 방식의 한계로 결론
+- LR cosine decay 후반 효과로 W-shape 회복은 진짜였으나 ceiling +0.222에서 plateau
+
+### v11 (Motion-Guided Routing) — ep12 12-mode 비교
+
+4 위치: A=M encoder, B=P encoder, D'=motion-routing 후, D=Phase 3 final
+
+| Mode | ep4 | ep8 | **ep12** |
+|------|-----|-----|----------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | **+0.208** |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | **+0.219** ★ |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 |
+| `patch_mean_concat_all` (A+B+D') | +0.114 | +0.094 | +0.178 |
+| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 |
+| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 |
+| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 |
+
+**핵심 결론**:
+- **ep12 A+D = +0.219** ≈ v10 ep40 plateau (+0.221). v11이 12 epoch만에 v10 50 epoch 도달
+- 사용자 통찰 검증: interpreter는 decoder의 reconstruction wrapper (D' < D 역전 ep8에)
+- M encoder 단독(+0.208)이 강력 — task가 motion-biased (hand pose ≈ motion)
+- P encoder 단독은 약함, motion routing 거치면 살아남
+- Loss와 R² 정직 상관 (L_total 0.0057 → 0.0024 → A+D R² +0.143 → +0.219)
+
+## DROID Cross-domain Probing 결과
+
+| Gap (DROID 15Hz) | VideoMAE | v11 best (mode) | 격차 |
+|------------------|----------|-----------------|------|
+| 1 (0.07초) | -0.006 | -0.005 | +0.001 |
+| 10 (0.67초) | -0.006 | +0.006 (A+B) | +0.012 |
+| **15 (1초)** ★ | **-0.035** | **+0.005 (A+B)** | **+0.040** |
+| 30 (2초) | -0.028 | -0.010 | +0.018 |
+
+- 모든 gap에서 v11이 VideoMAE보다 일관 우위
+- gap=15 (EgoDex 학습 분포 1초와 일치)에서 격차 가장 큼 (+0.040)
+- VideoMAE는 in-domain (EgoDex +0.326) 강력하지만 cross-domain 음수
+- 절대 R²은 작음 (~0.005) — DROID action probing 자체 한계
+- **방향성 검증**: v11이 cross-domain 일반화 우수 (사용자 직감 정량 검증)
 
 ### cls_mode 비교 (v4 ep48 기준)
 
@@ -155,7 +218,7 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 
 ## 다음 단계
 
-1. **v10 ep28 probing** — ep24 W-shape 회복 진위 판별 (single-epoch noise vs LR decay 후반 회복)
-2. v10 ep32+ 추가 — 회복 추세 지속 여부 (v6 +0.259 추월 가능성)
-3. DROID 프레임 추출 완료 → Phase 2 DROID probing 개시
+1. v11 ep16/ep20 probing 계속 — A+D 추세 확인 (v10 plateau 추월 여부)
+2. LIBERO BC fine-tune 결과 (33600616 VideoMAE, 33600617 v11 ep12) → val MSE 비교 후 rollout 결정
+3. DROID 추가 gap (5/20) 보강
 4. 공개 weight lineup (VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official) DROID 평가

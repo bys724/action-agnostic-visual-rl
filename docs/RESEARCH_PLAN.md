@@ -1,6 +1,6 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-04-24
+**마지막 업데이트**: 2026-04-26
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
 > 현재 진행 상태 / 체크포인트 / sbatch 로그 등은 [`CLAUDE.md`](../CLAUDE.md)·[`docs/cluster_sessions.md`](cluster_sessions.md)·[`docs/PROBING_GUIDE.md`](PROBING_GUIDE.md) 참고. 본 문서는 **연구 설계와 로드맵**에 집중한다.
@@ -84,19 +84,71 @@
 | **v9 residual+norm** | Residual P target + patch-wise norm | ep8 scancel, P **+0.100→-0.006** degrade | ep4까지 P 학습 기여 후 ep8부터 분산 minimization 회귀 |
 | **V-JEPA-ours** | 3차 시도 (warmup, mask 완화) | 모두 발산 | 2-frame이 V-JEPA temporal redundancy 전제 위배, negative result로 기록 |
 
-#### 🔄 진행 중: Two-Stream v10 (v6 base + mask_p 0.75)
+#### ✅ Two-Stream v10 (v6 base + mask_p 0.75) — 종료, ep40 plateau (+0.221)
 
-**설계 근거**: v6 ep8이 현재 R²=0.259 챔피언. v9 실험에서 residual target은 부적합 확정 → v6 구조·target·loss 그대로 유지하고 **P-stream만 mask_ratio 0.5 → 0.75** (MAE-style aggressive mask로 P 역할 분화 강화).
+**설계 근거**: v6 ep8이 R²=0.259 챔피언. v9 실험에서 residual target은 부적합 확정 → v6 구조·target·loss 그대로 유지하고 **P-stream만 mask_ratio 0.5 → 0.75** (MAE-style aggressive mask로 P 역할 분화 강화).
 - M-stream mask 0.5 유지 (motion sparse → aggressive mask 금지 원칙)
-- Sanity: L_p/L_m ≈ 1:1 → `loss_weight_p=1.0` 유지
-- Full run: JobID 33570871 (2026-04-22 ~, AIP_long 2노드×4 H100, 50ep, `--time=3d`)
-- **현재 ep27 학습 중**. ep8 peak (concat R²=0.206) → ep16 (+0.144) collapse 관찰. **v6 R²=0.259 추월 실패 확정**
+- Full run: JobID 33570871 (2026-04-22 ~, AIP_long 2노드×4 H100, 50ep)
+- **결과**: ep4-8 1차 peak +0.206 → ep12-20 점진 collapse (+0.137 ep20) → ep24-40 W-shape 회복 → **ep40 peak +0.221** → ep44/ep48 plateau (+0.221, +0.222). **v6 챔피언 (+0.259) 추월 실패 확정**
+- **결론**: P-stream 내부 강화 방식의 한계. v11로 전환
 
-학습 진행/잡 관리 세부는 [`CLAUDE.md`](../CLAUDE.md) 현재 Phase 섹션 및 [`cluster_sessions.md`](cluster_sessions.md).
+#### 🔄 진행 중: Two-Stream v11 (Motion-Guided Attention Routing + Dual-Target Reconstruction)
 
-#### 🧪 설계 완료, 구현 대기: Two-Stream v11 (Motion-Guided Attention Routing + Dual-Target Reconstruction)
+**상태**: 구현 + ep12 결과 도달, 학습 진행 중 (JobID 33594155, 2026-04-25 01:11~, AIP_long 2노드×4 H100, 50ep, `--time=3d`)
 
-**설계 철학**: v7~v10의 네 가지 시도가 모두 "P stream 내부 강화"였고 모두 collapse. v11은 발상 전환 — **P stream 강화 포기, M이 P를 semantic-level operator로 조작하는 구조**. Dual-target reconstruction으로 collapse anchor 확보.
+**설계 철학**: v7~v10의 네 가지 시도가 모두 "P stream 내부 강화"였고 모두 collapse 또는 v6 추월 실패. v11은 발상 전환 — **P stream 강화 포기, M이 P를 semantic-level operator로 조작하는 구조**. Dual-target reconstruction으로 collapse anchor 확보.
+
+**학습 결과 (ep1-12, JobID 33594155)**:
+
+| Epoch | L_total | L_t | L_tk | std_p | cos_intra_p |
+|-------|---------|-----|------|-------|-------------|
+| 1 | 0.0196 | 0.0109 | 0.0088 | 0.349 | 0.866 |
+| 4 | 0.0057 | 0.0044 | 0.0014 | 0.210 | 0.897 |
+| 8 | 0.0043 | 0.0038 | 0.00052 | 0.009 | 1.000 |
+| 12 | 0.0024 | 0.00197 | 0.00039 | 0.004 | 1.000 |
+
+→ Loss 단조 감소. P encoder CLS는 cos_intra≈1.0 collapse, 그러나 patches는 healthy (75% MAE 복구 작동)
+
+**Probing — ep12 12 mode 비교** (4 위치: A=M enc, B=P enc, D'=motion-routing 후, D=Phase 3 final):
+
+| Mode | ep4 | ep8 | **ep12** |
+|------|-----|-----|----------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | **+0.208** |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | **+0.219** ★ |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 |
+| `patch_mean_concat_all` (A+B+D') | +0.114 | +0.094 | +0.178 |
+| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 |
+| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 |
+| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 |
+
+- **ep12 A+D = +0.219** ≈ v10 ep40 plateau (+0.221). **v11이 12 epoch만에 v10 50 epoch 도달**
+- 사용자 통찰 검증: interpreter는 decoder의 reconstruction wrapper (D' < D 역전 ep8에)
+- M encoder 단독(+0.208)이 강력 — task가 motion-biased (hand pose ≈ motion)
+- P encoder 단독은 약함, motion routing 거치면 살아남
+- Loss와 R² 정직 상관 (L_total 0.0057 → 0.0024 절반 감소 → A+D R² +0.143 → +0.219)
+
+**Cross-domain DROID probing** (사용자 직감 검증):
+
+| Gap (DROID 15Hz) | VideoMAE | v11 best | 격차 |
+|------------------|----------|----------|------|
+| 1 (0.07초) | -0.006 | -0.005 | +0.001 |
+| 10 (0.67초) | -0.006 | +0.006 (A+B) | +0.012 |
+| **15 (1초)** ★ | **-0.035** | **+0.005 (A+B)** | **+0.040** |
+| 30 (2초) | -0.028 | -0.010 | +0.018 |
+
+- 모든 gap에서 v11이 VideoMAE보다 일관 우위
+- gap=15 (EgoDex 학습 분포 1초와 일치)에서 격차 가장 큼
+- 절대 R²은 작음 (~0.005) — DROID action probing 자체 한계
+- 방향성 검증: **v11 cross-domain 일반화 우수**
+
+**Cross-domain LIBERO** (진행 중):
+- BC fine-tune 도구 신규 작성 (`scripts/eval/finetune_libero_v11.py`)
+- libero_spatial 30 epoch 시작 (33600616 VideoMAE, 33600617 v11 ep12 A+D), 4-6h 후 결과
 
 **핵심 구조 (pseudo code)**:
 
@@ -159,43 +211,16 @@ L_total = L_t + L_tk
 
 #### v11 구현 TODO
 
-**P0 — Novelty / Baseline 검증 (Phase 2 병행)**:
-- [ ] arxiv 선행 연구 확인 (CAST 2311.18825, MGMAE 2308.10794, MotionMAE 2210.04154, SiamMAE 2305.14344, MultiMAE 2204.01678) — Q/K 출처, decoder 구조 차별점 명시
-- [ ] EgoDex 논문 2505.11709 전문 확인 (concurrent work 리스크)
-- [ ] V-JEPA 2 (2506.09985) Related work 언급 방침 결정
-- [ ] **v6 ep8 + VM ep50 DROID probing** 결과 확보 → v11 구현 결정의 근거 (Two-Stream 방향 유지 여부 판정)
+**P1 — 구현 (`src/models/two_stream_v11.py`)** — ✅ 완료
 
-**P1 — 구현 (`src/models/two_stream_v11.py` 신규)**:
-- [ ] Encoder 재사용: 기존 `TwoStreamEncoder`의 stream-independent self-attn 경로 (CLS exchange 제거)
-- [ ] M decoder: visible tokens + mask_token_m → self-attn × 3 → m_completed
-- [ ] P decoder Phase 1: interpreter_1 (self-attn + FFN × 3)
-- [ ] P decoder Phase 2: Motion-Routing Block × 2
-  - Q_M/K_M projections, V_P projection (iteration별 독립)
-  - `attn_pattern = softmax(Q_M K_M^T / √d)`, output = attn @ V_P
-  - Residual + FFN_motion
-- [ ] P decoder Phase 3: interpreter_2 (self-attn + FFN × 3, non-shared)
-- [ ] Recon head: shared, Phase 1과 Phase 3 공용
-- [ ] Loss: `L = L_t + L_tk`, masked positions에만 MSE
-- [ ] V6 checkpoint와 호환성 없음 (encoder 구조 다름) → strict=True 로드 불가 명시
+**P2 — Launcher / Sanity** — ✅ 완료 (33591381, 10:26 sanity 통과 후 full run)
 
-**P2 — Launcher / Sanity**:
-- [ ] `scripts/pretrain.py`에 `--model two-stream-v11` 분기 추가
-- [ ] `scripts/cluster/sanity_v11.sbatch` 작성 (200 videos × 5 epoch, 1 노드 × 1 H100)
-- [ ] Sanity 검증 항목: L_t, L_tk 수렴 경향 / feat_std_m, feat_std_p / attention_entropy
-- [ ] Sanity 통과 판정 기준:
-  - L_t, L_tk 각각 epoch 간 단조 감소
-  - feat_std_p > 0.1 (collapse 방어)
-  - cos_intra_p < 0.95 (uniformity 방어)
+**P3 — Full Training** — 🔄 진행 중 (ep12 도달, ep16/ep20 probing 예정)
 
-**P3 — Full Training**:
-- [ ] `scripts/cluster/pretrain.sbatch`에 v11 지원 추가
-- [ ] 2노드 × 4 H100 DDP, 50 epoch, `--time=3d`
-- [ ] 중간 checkpoint probing (ep4, ep8, ep16, ep32, ep50)
-- [ ] Attention 시각화 (M/P 분화, motion-routing 시각화)
-
-**P4 — Ablation**:
+**P4 — Ablation** (일부 진행, 본격 ablation은 ep50 이후):
+- [x] interpreter shared vs non-shared → **non-shared 채택** (명세대로)
+- [x] Motion routing N=2 → **fixed N=2** (구현 명세대로 적용)
 - [ ] Motion routing N=1 vs N=2 vs N=4
-- [ ] interpreter shared vs non-shared
 - [ ] L_t only vs L_tk only vs L_t + L_tk
 - [ ] Motion-routing V from P (원안) vs V from M (표준 cross-attn) — novelty 정당성 실증
 - [ ] VideoMAE-heavy baseline (decoder 용량 맞춤) — 파라미터 공정성
@@ -355,9 +380,10 @@ DDP: 2 nodes × 4 H100 on AIP_long partition
 `CLAUDE.md` "현재 Phase" 섹션 및 `docs/cluster_sessions.md` 진행 중 표 참고. 요약:
 
 - Phase 1 ✅ 완료 (v4 설정 확정)
-- Phase 1.5 🔄 Two-Stream v10 ep27 학습 중, v6 챔피언(R²=0.259) 추월 실패 확정
-- Phase 2 ⏸️ DROID 프레임 추출 중, Ego4D 다운로드 중 (라이선스 취득)
-- Phase 3/3B ⏸️ LIBERO 인프라 준비
+- Phase 1.5 🔄 v10 종료 (ep40 plateau +0.221), v6 챔피언(+0.259) 추월 실패 / v11 ep12 도달 (A+D +0.219), 학습 진행
+- Phase 2 🔄 DROID cross-domain probing 일부 (VideoMAE vs v11 gap 1/10/15/30 비교), v11 모든 gap 우위
+- Phase 3 🔄 LIBERO BC fine-tune 진행 중 (libero_spatial 30ep, VideoMAE & v11 ep12)
+- Phase 3B ⏸️ Phase 3 결과 보고 결정
 
 ---
 

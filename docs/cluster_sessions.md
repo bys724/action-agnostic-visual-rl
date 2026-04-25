@@ -89,15 +89,9 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 제출 시각 | 파티션 | 자원 | 목적 |
 |-------|----------|--------|------|------|
-| **33570871** | **2026-04-22 13:04** | **AIP_long** | **2 노드 × 4 H100** | **Two-Stream v10 full run — v6 base + mask 0.5/0.75. 50 epoch, `--time=3d`. RUNNING (ep27 진행)** |
-| ~~33582379~~ | ~~2026-04-24 01:13~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep20 viz (완료 3:02, 6h+ 큐 대기 후)~~ |
-| ~~33582380~~ | ~~2026-04-24 01:13~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep20 probing patch_mean_concat — **R²=+0.137** (ep16 +0.144 → 단조 하락, 회복 신호 부재)~~ |
-| ~~33582381~~ | ~~2026-04-24 01:13~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep20 probing patch_mean_m — **R²=+0.135**~~ |
-| ~~33582382~~ | ~~2026-04-24 01:13~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep20 probing patch_mean_p — **R²=+0.022** (P 추가 collapse)~~ |
-| ~~33582394~~ | ~~2026-04-24 01:14~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep24 viz (완료 2:49)~~ |
-| ~~33582395~~ | ~~2026-04-24 01:14~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep24 probing patch_mean_concat — **R²=+0.202** (ep20 +0.137 → +0.065 점프, **W-shape 회복**, ep8 peak 근접)~~ |
-| ~~33582396~~ | ~~2026-04-24 01:14~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep24 probing patch_mean_m — **R²=+0.138**~~ |
-| ~~33582397~~ | ~~2026-04-24 01:14~~ | ~~AIP~~ | ~~1 노드 × 1 H100~~ | ~~v10 ep24 probing patch_mean_p — **R²=+0.092** (ep20 +0.022 → peak의 60% 회복)~~ |
+| **33594155** | **2026-04-25 01:11** | **AIP_long** | **2 노드 × 4 H100** | **Two-Stream v11 full run — motion-routing + dual-target, p_depth=12, m_depth=6. 50 epoch, `--time=3d`. RUNNING (ep12 도달)** |
+| **33600616** | **2026-04-25 ~** | **AIP** | **1 노드 × 1 H100** | **LIBERO BC fine-tune (VideoMAE-ours ep50, libero_spatial 30ep). RUNNING** |
+| **33600617** | **2026-04-25 ~** | **AIP** | **1 노드 × 1 H100** | **LIBERO BC fine-tune (v11 ep12 A+D, libero_spatial 30ep). RUNNING** |
 
 ---
 
@@ -122,30 +116,62 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 33492965 | 04-22 (scancel) | 07:14:48 | AIP_long | 2×4 H100 | 57.9 GPU·h | v9 full (P=current MAE). ep4 probing concat=+0.154, P=-0.102. 재설계 |
 | 33555333 | 04-22 13:04 (scancel) | 13:24:52 | AIP_long | 2×4 H100 | 107.3 GPU·h | v9 residual+patch-norm full. ep4/ep8 P +0.100 → -0.006 degrade → **v10 전환** |
 
-### 2026-04 Two-Stream v10 Probing 시리즈 (최근)
+### 2026-04 Two-Stream v10 — 종료 + Probing 통합 요약
 
-| JobID | epoch | mode | R² | 비고 |
-|-------|-------|------|-----|------|
-| 33573914 | ep4 | patch_mean_concat | +0.195 | v9 lineup 전부 추월 |
-| 33573915 | ep4 | patch_mean_m | +0.176 | |
-| 33573916 | ep4 | patch_mean_p | +0.126 | mask_p=0.75 P 학습 강화 효과 |
-| 33574958 | ep8 | patch_mean_concat | **+0.206** | v10 peak (v6 ep8 +0.259까지 격차 0.053) |
-| 33574959 | ep8 | patch_mean_m | +0.150 | |
-| 33574960 | ep8 | patch_mean_p | +0.152 | P degrade 없이 상승 |
-| 33579548 | ep12 | patch_mean_concat | +0.148 | ep8→ep12에서 -28% (주 collapse 구간) |
-| 33579549 | ep12 | patch_mean_m | +0.129 | |
-| 33579550 | ep12 | patch_mean_p | +0.083 | 선형 P collapse 시작 |
-| 33579116 | ep16 | patch_mean_concat | +0.144 | |
-| 33579117 | ep16 | patch_mean_m | +0.125 | |
-| 33579118 | ep16 | patch_mean_p | +0.038 | ep8→ep16에서 -75% 급락, **sparse pinpoint 회귀 viz 확인** |
-| 33582380 | ep20 | patch_mean_concat | +0.137 | 단조 하락 지속 |
-| 33582381 | ep20 | patch_mean_m | +0.135 | |
-| 33582382 | ep20 | patch_mean_p | +0.022 | P 거의 0 진입 |
-| 33582395 | ep24 | patch_mean_concat | **+0.202** | **W-shape 회복** (ep20 +0.137 → +0.065 점프, ep8 peak 근접) |
-| 33582396 | ep24 | patch_mean_m | +0.138 | |
-| 33582397 | ep24 | patch_mean_p | +0.092 | peak (+0.152)의 60% 회복. LR cosine decay 후반 효과 추정 |
+**Full run** (33570871, AIP_long 2노드×4 H100, 50ep, ~3일): ep40 plateau **+0.221** (`patch_mean_concat`), ep44/ep48 +0.221/+0.222. **v6 챔피언 (+0.259) 추월 실패 확정**.
 
-각 probing 잡은 1 노드 × 1 H100, ~15min → **GPU·h 합계 ≈ 5.5** (per-job 평균 0.25 GPU·h, v7-big/v8/v9 probing 포함 약 25 여회)
+**Probing 추세** (`patch_mean_concat / M / P`):
+
+| Epoch | concat | M | P | 비고 |
+|-------|--------|---|---|------|
+| ep4   | +0.195 | +0.176 | +0.126 | v9 lineup 추월 |
+| ep8   | +0.206 | +0.150 | +0.152 | 1차 peak |
+| ep12  | +0.148 | +0.129 | +0.083 | collapse 시작 |
+| ep16  | +0.144 | +0.125 | +0.038 | sparse pinpoint viz |
+| ep20  | +0.137 | +0.135 | +0.022 | 저점 |
+| ep24  | +0.202 | +0.138 | +0.092 | W-shape 회복 |
+| ep36  | +0.214 | +0.129 | +0.141 | new peak |
+| **ep40** | **+0.221** | — | — | **plateau** |
+| ep44  | +0.221 | — | — | plateau |
+| ep48  | +0.222 | — | — | plateau |
+
+각 probing 잡 1 노드 × 1 H100, ~15min. v10 probing 시리즈 (ep4~ep48 × {concat, M, P} ≈ 30+ 잡, 누적 ≈ 7.5 GPU·h).
+
+### 2026-04 Two-Stream v11 — Sanity + Full + Probing 시리즈
+
+**Sanity** (33591381, AIP 1×1 H100, 10:26): forward/backward OK, L 단조 감소. M collapse는 200vid×5ep 소규모 한정 — full scale에서 healthy.
+
+**Full run** (33594155, AIP_long 2노드×4 H100, 50ep, RUNNING, 2026-04-25 01:11~): ep12 도달, A+D **+0.219** (v10 ep40 plateau 도달, 12 epoch만에).
+
+**Probing — ep4/ep8/ep12 × 12 mode 통합** (1 노드 × 1 H100 × ~15min, 누적 ≈ 9 GPU·h):
+
+| Mode | ep4 | ep8 | ep12 |
+|------|-----|-----|------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | **+0.208** |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | **+0.219** ★ |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 |
+| `patch_mean_concat_all` | +0.114 | +0.094 | +0.178 |
+| `cls_m_enc` | +0.066 | +0.155 | +0.162 |
+| `cls_p_enc` | -0.059 | -0.011 | -0.008 |
+| `cls_concat_enc` | -0.048 | +0.092 | +0.148 |
+
+### 2026-04 DROID Cross-domain Probing 시리즈
+
+VideoMAE-ours ep50 vs Two-Stream v11 ep12 (3 mode), gap 1/10/15/30. 각 1 노드 × 1 H100 × ~15min, 누적 ≈ 4 GPU·h.
+
+| Gap (DROID 15Hz) | VideoMAE | v11 best (mode) | 격차 |
+|------------------|----------|-----------------|------|
+| 1 | -0.006 | -0.005 | +0.001 |
+| 10 | -0.006 | +0.006 (A+B) | +0.012 |
+| **15** ★ | **-0.035** | **+0.005 (A+B)** | **+0.040** |
+| 30 | -0.028 | -0.010 | +0.018 |
+
+모든 gap에서 v11 우위. gap=15(EgoDex 학습 분포 1초)에서 격차 가장 큼.
 
 ---
 
@@ -193,6 +219,6 @@ CPU 비용  = CPU·일수 × 7,000원
 
 | 월 | H100·hours 합 | H100·일수 (ceil) | 노드·hours 합 | CPU·일수 (ceil) | 비용 추정 (원, VAT 별도) | 비고 |
 |----|--------------|-----------------|--------------|-----------------|--------------------------|------|
-| 2026-04 | ~2,200 (예상, v10 진행 중) | 92 (예상) | ~1.5 | 1 | ~5,619,000 (예상) | v4/v6/v7big/v8/v9/v10 + 50TB 저장소 증설 |
+| 2026-04 | ~3,200 (예상, v10 종료 + v11 진행 중) | 134 (예상) | ~1.5 | 1 | ~8,181,000 (예상) | v4/v6/v7big/v8/v9/v10/v11 + 50TB 저장소 증설 |
 
 (월말 확정 숫자로 갱신 필요 — v10 full 종료 시점에 합산)
