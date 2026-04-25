@@ -206,8 +206,9 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--num-stages", type=int, default=2)
-    parser.add_argument("--mask-ratio", type=float, default=0.3)
-    parser.add_argument("--mask-ratio-p", type=float, default=0.5)
+    # 시각화는 mask=0으로 inference 일치해야 정확 (mask 적용 시 random patch 누락)
+    parser.add_argument("--mask-ratio", type=float, default=0.0)
+    parser.add_argument("--mask-ratio-p", type=float, default=0.0)
     parser.add_argument("--p-target", choices=["future", "current", "residual"],
                         default="future",
                         help="Pred P 비교 대상 (v4=future, v9=current)")

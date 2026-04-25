@@ -5,7 +5,13 @@ DROID TFRecord에서 에피소드별 action을 npy로 추출.
 프레임 추출(extract_droid_frames.py)과 동일한 에피소드 순서:
   ep_000000, ep_000001, ... → action_000000.npy, action_000001.npy, ...
 
-각 npy: [T, 7] — 7-DoF action (cartesian_position 6D + gripper 1D)
+각 npy: [T, 7] — 7-DoF (cartesian_position 6D + gripper 1D)
+
+Note: 변수명 'action'이지만 실제 저장값은 commanded EE state
+(`steps/action_dict/cartesian_position` + `steps/action_dict/gripper_position`)
+로, raw policy action 자체보다는 EE pose target에 가까움.
+Probing target으로는 next-step delta(`pose_{t+1} - pose_t`)를 사용해
+6-DoF velocity proxy로 활용 (probe_action_droid*.py 참고).
 
 출력 구조:
   output_dir/
