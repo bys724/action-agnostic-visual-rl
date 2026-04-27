@@ -122,7 +122,9 @@ v11은 4 위치에서 representation 추출 가능: A=M encoder, B=P encoder, D'
 | Two-Stream v10 | ep44 / ep48 | patch_mean_concat | +0.221 / +0.222 | plateau 지속, **v6 추월 실패 확정** |
 | Two-Stream v11 | ep4 | patch_mean_concat_enc_phase3 (A+D) | +0.143 | 학습 시작 |
 | Two-Stream v11 | ep8 | patch_mean_concat_enc_phase3 (A+D) | +0.194 | |
-| **Two-Stream v11** | **ep12** | **patch_mean_concat_enc_phase3 (A+D)** | **+0.219** | **v10 ep40 plateau 도달, 12 epoch만에** |
+| Two-Stream v11 | ep12 | patch_mean_concat_enc_phase3 (A+D) | +0.219 | v10 ep40 plateau 도달, 12 epoch만에 |
+| Two-Stream v11 | ep24 | patch_mean_concat_all (A+B+D') | +0.234 | 점진 향상 |
+| **🏆 Two-Stream v11** | **ep44** | **patch_mean_concat_all (A+B+D')** | **+0.288** | **v6 챔피언 (+0.259) 추월! 새 챔피언 ★** |
 | DINOv2 (frozen) | — | CLS concat | (ceiling 참조) | 공개 weight |
 | Random-init | — | — | (floor) | 구조적 prior 측정 |
 
@@ -144,31 +146,35 @@ v11은 4 위치에서 representation 추출 가능: A=M encoder, B=P encoder, D'
 - v6 ep8 챔피언 (+0.259) 추월 실패 확정. P-stream 내부 강화 방식의 한계로 결론
 - LR cosine decay 후반 효과로 W-shape 회복은 진짜였으나 ceiling +0.222에서 plateau
 
-### v11 (Motion-Guided Routing) — ep12 12-mode 비교
+### v11 (Motion-Guided Routing) — ep4~ep44 12-mode 비교 (resume 학습 후)
 
 4 위치: A=M encoder, B=P encoder, D'=motion-routing 후, D=Phase 3 final
 
-| Mode | ep4 | ep8 | **ep12** |
-|------|-----|-----|----------|
-| `patch_mean_m_enc` (A) | +0.170 | +0.176 | **+0.208** |
-| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 |
-| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 |
-| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 |
-| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 |
-| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | **+0.219** ★ |
-| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 |
-| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 |
-| `patch_mean_concat_all` (A+B+D') | +0.114 | +0.094 | +0.178 |
-| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 |
-| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 |
-| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 |
+| Mode | ep4 | ep8 | ep12 | ep16 | ep20 | ep24 | **ep44** |
+|------|-----|-----|------|------|------|------|----------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | +0.208 | +0.213 | +0.220 | +0.222 | **+0.267** ★ |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 | -0.001 | -0.002 | -0.004 | -0.003 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 | +0.077 | +0.098 | +0.113 | +0.135 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 | +0.047 | +0.060 | +0.057 | +0.050 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 | +0.211 | +0.213 | +0.224 | +0.259 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | +0.219 | +0.217 | +0.230 | +0.232 | +0.264 |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 | +0.205 | +0.196 | +0.232 | +0.284 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 | +0.079 | +0.087 | +0.107 | +0.137 |
+| **`patch_mean_concat_all`** (A+B+D') | +0.114 | +0.094 | +0.178 | +0.223 | +0.185 | +0.234 | **+0.288** ★★ |
+| `cls_m_enc` | +0.066 | +0.155 | +0.162 | +0.163 | +0.172 | +0.158 | +0.125 |
+| `cls_p_enc` | -0.059 | -0.011 | -0.008 | -0.010 | -0.009 | -0.013 | -0.002 |
+| `cls_concat_enc` | -0.048 | +0.092 | +0.148 | +0.139 | +0.162 | +0.140 | +0.114 |
 
-**핵심 결론**:
-- **ep12 A+D = +0.219** ≈ v10 ep40 plateau (+0.221). v11이 12 epoch만에 v10 50 epoch 도달
-- 사용자 통찰 검증: interpreter는 decoder의 reconstruction wrapper (D' < D 역전 ep8에)
-- M encoder 단독(+0.208)이 강력 — task가 motion-biased (hand pose ≈ motion)
-- P encoder 단독은 약함, motion routing 거치면 살아남
-- Loss와 R² 정직 상관 (L_total 0.0057 → 0.0024 → A+D R² +0.143 → +0.219)
+**🏆 핵심 결론 — v6 챔피언 추월 (ep44)**:
+- **A+B+D' = +0.288** — v6 ep8 (+0.259) 추월 +0.029 ★★ (새 챔피언)
+- **A 단독 (+0.267)도 v6 추월** — 단일 mode로
+- **VideoMAE +0.326까지 격차 -0.038** (ep24 -0.092 → 절반 이상 좁힘)
+- **W-shape 패턴**: ep12 plateau → ep16-24 점진 → ep24-44 큰 도약 (+0.054)
+- LR cosine decay 후반 효과 (BYOL/SimSiam 후반 안정화 사례와 일치)
+- 사용자 v11 설계 가설 정량 확정:
+  · 3-way concat (A+B+D')이 best — M+P+motion-routed P 상보적
+  · A+D' (+0.284) > A+D (+0.264) — interpreter_2는 decoder wrapper
+  · CLS 모두 약화 추세, patch_mean이 정답
 
 ## DROID Cross-domain Probing 결과
 

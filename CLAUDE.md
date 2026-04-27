@@ -173,9 +173,9 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 - **Ego4D** (가변): 다운로드 진행 중, 전처리 결정 미정
 
-## 현재 Phase (2026-04-26)
+## 현재 Phase (2026-04-27)
 
-**Phase 1.5 — v10 saturate (R²=0.221), v11 ep12 도달 (+0.219), DROID/LIBERO cross-domain 검증 중**
+**Phase 1.5 — 🏆 v11 ep44가 v6 챔피언 추월 (+0.288), VideoMAE 격차 -0.038로 좁힘**
 
 **완료 (Two-Stream lineup)**:
 - **v4** (RoPE, mask 0.3/0.5): 48ep. Probing R²=0.197
@@ -207,31 +207,37 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 
 → Loss 단조 감소. P encoder CLS는 collapse (cos_intra_p≈1.0) 그러나 patches는 healthy — 75% MAE 복구가 작동
 
-**v11 ep12 — Representation 비교 (12 mode)**
+**v11 Resume**: 33594155 (1차) 23:30 TIMEOUT (--time default 23h30m 함정) → 33600621 resume (--time=3d). 자동 latest.pt detect. 새 ckpt dir `20260426_014333/`에 ep16~ep44 저장.
+
+**v11 ep4-ep44 — Representation 비교 (12 mode, 5 epoch)**
 
 4 위치: A (M encoder), B (P encoder), D' (motion-routing 후), D (Phase 3 final)
 
-| Mode | ep4 | ep8 | **ep12** |
-|------|-----|-----|----------|
-| `patch_mean_m_enc` (A) | +0.170 | +0.176 | **+0.208** |
-| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 |
-| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 |
-| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 |
-| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 |
-| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | **+0.219** ★ |
-| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 |
-| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 |
-| `patch_mean_concat_all` (A+B+D') | +0.114 | +0.094 | +0.178 |
-| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 |
-| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 |
-| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 |
+| Mode | ep4 | ep8 | ep12 | ep16 | ep20 | ep24 | **ep44** |
+|------|-----|-----|------|------|------|------|----------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | +0.208 | +0.213 | +0.220 | +0.222 | **+0.267** ★ |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 | -0.001 | -0.002 | -0.004 | -0.003 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 | +0.077 | +0.098 | +0.113 | +0.135 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 | +0.047 | +0.060 | +0.057 | +0.050 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 | +0.211 | +0.213 | +0.224 | +0.259 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | +0.219 | +0.217 | +0.230 | +0.232 | +0.264 |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 | +0.205 | +0.196 | +0.232 | +0.284 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 | +0.079 | +0.087 | +0.107 | +0.137 |
+| **`patch_mean_concat_all`** (A+B+D') | +0.114 | +0.094 | +0.178 | +0.223 | +0.185 | +0.234 | **+0.288** ★★ |
+| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 | +0.163 | +0.172 | +0.158 | +0.125 |
+| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 | -0.010 | -0.009 | -0.013 | -0.002 |
+| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 | +0.139 | +0.162 | +0.140 | +0.114 |
 
-**핵심 결론**:
-- **ep12 A+D = +0.219** ≈ v10 ep40 plateau (+0.221). v11이 12 epoch만에 v10 50 epoch 도달
-- **사용자 통찰 검증**: interpreter는 decoder의 reconstruction wrapper (D' < D 역전 ep8에)
-- M encoder 단독이 강력 (+0.208) — task가 motion-biased (hand pose ≈ motion)
-- P encoder 단독 약함, 단 motion routing 거치면 살아남
-- Loss와 R² 정직 상관 (L_total 0.0057 → 0.0024 절반 → A+D R² +0.143 → +0.219)
+**🏆 핵심 결론 — v6 챔피언 추월**:
+- **ep44 A+B+D' = +0.288** — v6 ep8 챔피언 (+0.259) **추월 +0.029** ★★ (새 챔피언)
+- **A 단독 (+0.267)도 v6 추월** — 단일 mode로
+- **VideoMAE +0.326까지 격차 -0.038** (ep24 -0.092 → 절반 이상 좁힘)
+- **W-shape 회복 패턴**: ep12 plateau → ep16-24 점진 향상 → ep24-44 큰 도약 (+0.054)
+- LR cosine decay 후반 (LR 0.5e-4 → 0.0e-4) representation 큰 학습
+- **사용자 v11 설계 가설 정량 확정**:
+  · 3-way concat (A+B+D')이 best — M+P+motion-routed P 상보적
+  · A+D' (+0.284) > A+D (+0.264) — interpreter_2는 decoder wrapper, motion-routing 직후가 더 좋은 representation
+  · CLS는 모두 약화 추세, patch_mean이 정답
 
 **v11 Cross-domain DROID probing** (사용자 직감 검증)
 
@@ -254,10 +260,10 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - 4-6h 후 결과 (val MSE 비교)
 
 **다음 작업**:
-1. v11 ep16/ep20 probing 계속 (수렴 추세 확인)
-2. LIBERO BC val MSE 결과 확인 → rollout 수행 여부 결정
-3. DROID 추가 gap (5/20) 보강
-4. Phase 3 LIBERO 본 평가 준비
+1. v11 ep48/ep50 probing — VideoMAE +0.326 추월 가능성 + final 확정
+2. LIBERO BC v11 ep44 재측정 → ep12에선 동등 (0.0290 vs 0.0286)이었으나 ep44면 우위 기대
+3. LIBERO Rollout setup — 진짜 downstream success rate가 v11 채택 결정타
+4. v6 ep20+ 학습 재개 검토 (v6도 W-shape 회복 가능성 미검증)
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 
