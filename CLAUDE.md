@@ -264,6 +264,13 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 2. LIBERO BC v11 ep44 재측정 → ep12에선 동등 (0.0290 vs 0.0286)이었으나 ep44면 우위 기대
 3. LIBERO Rollout setup — 진짜 downstream success rate가 v11 채택 결정타
 4. v6 ep20+ 학습 재개 검토 (v6도 W-shape 회복 가능성 미검증)
+5. **v11 학습 완료 후 ckpt 로컬 워크스테이션 전송**:
+   - 옵션 1 (1-hop, 추천): 워크스테이션 → cluster 직접 SSH 가능 시
+     `rsync -avzP --inplace bys724@<cluster>:/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/{best_model.pt,checkpoint_epoch00{40,44,48}.pt} /mnt/data/checkpoints/two_stream_v11/`
+   - 옵션 2 (3-hop, 맥북 경유): 워크스테이션이 cluster 직접 접근 안 될 때
+     맥북에서 stream pipe — 맥북 디스크 사용 X:
+     `ssh bys724@<cluster> "cd /proj/.../20260426_014333 && tar c best_model.pt checkpoint_epoch00{44,48}.pt" | ssh user@<workstation> "tar x -C /mnt/data/checkpoints/two_stream_v11/"`
+   - inference만 필요하면 cluster에서 model_state_dict만 추출하여 ~60% 절약
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 
