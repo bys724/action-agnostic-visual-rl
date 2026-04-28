@@ -9,11 +9,11 @@
 
 | 항목 | 클러스터 (IBS olaf) | 로컬 워크스테이션 |
 |------|--------------------|-------------------|
-| 프로젝트 root | `/proj/home/mrg/bys724/action-agnostic-visual-rl` | (사용자 환경 — 채우기) |
+| 프로젝트 root | `/proj/home/mrg/bys724/action-agnostic-visual-rl` | `/home/etri/bys/action-agnostic-visual-rl` |
 | 학습 ckpt 루트 | `/proj/external_group/mrg/checkpoints/` | `/mnt/data/checkpoints/` |
 | 데이터셋 루트 | `/proj/external_group/mrg/datasets/` | `/mnt/data/` |
-| Slurm/실행 log | `/proj/external_group/mrg/logs/` | (해당 없음) |
-| Conda/Docker env | `/proj/external_group/mrg/conda_envs/aavrl-train` | Docker `dev-env` |
+| Slurm/실행 log | `/proj/external_group/mrg/logs/` | `/mnt/data/logs/`, `/mnt/data/*.log` |
+| Conda/Docker env | `/proj/external_group/mrg/conda_envs/aavrl-train` | Docker `dev-env` (`action-agnostic-dev:latest`) |
 | Launcher | `scripts/cluster/*.sbatch` | `scripts/local/*.sh` |
 
 ---
@@ -87,32 +87,65 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 
 ## 로컬 워크스테이션
 
-> 첫 작업/전송 시 사용자가 채우기. CLAUDE.md "실행 환경" 섹션의 추정값을 기반으로 골격만 작성.
+- 호스트: `H100` (user `etri`)
+- OS: Ubuntu (Linux 6.8)
+- GPU: NVIDIA H100 PCIe × 2 (각 80 GB)
 
-### 학습 ckpt (클러스터에서 전송된 것)
-- 루트: `/mnt/data/checkpoints/`
-- (전송 완료 시 ckpt 별 디렉토리·시점 기록)
+### 학습 ckpt
+
+루트: `/mnt/data/checkpoints/`
+
+**클러스터에서 전송 받은 모델**
 
 | 모델 | 로컬 경로 | 전송일 | 비고 |
 |------|----------|--------|------|
-| (예시) v11 ep44 | `/mnt/data/checkpoints/two_stream_v11/20260426_014333/checkpoint_epoch0044.pt` | YYYY-MM-DD | inference + LIBERO BC fine-tune용 |
+| (예정) v11 ep44/ep50 | `/mnt/data/checkpoints/two_stream_v11/20260426_014333/` | — | 미전송. 전송 시 `checkpoint_epoch0044.pt`, `latest.pt`, `config.json`, `history.json` 약 7 GB |
+| (예정) VideoMAE-ours 50ep | `/mnt/data/checkpoints/videomae_full/20260407_104721/` | — | 디렉토리 골격(config.json + tb)만 있음. ckpt 본체 미전송 |
 
-### 데이터셋 (자체 다운로드)
+**로컬에서 학습한 모델 (legacy / sanity)**
 
-| 데이터셋 | 경로 | 비고 |
-|---------|------|------|
-| EgoDex raw | `/mnt/data/egodex/` | `bash scripts/local/download_egodex.sh part1..5` |
-| EgoDex frames | `/mnt/data/egodex_frames/` | 추출 결과 |
-| DROID frames | `/mnt/data/droid_frames/ext1/` | (보유 여부 확인 필요) |
-| LIBERO | `/mnt/data/libero/` | HuggingFace |
+| 디렉토리 | 모델 / 용도 |
+|----------|-------------|
+| `two_stream/2026031{9,3,4,5}_*`, `two_stream/2026033{0}_*` | 초기 Two-Stream 실험 ckpt (v3 계열, 16개 run) |
+| `two_stream_ssim/20260331_021059` | SSIM loss 실험 |
+| `v4_base_b16`, `v4_base_gap60_tri`, `v4_composition`, `v4_comp_grad`, `v4_mask30`, `v4_nomask` | v4 ablation 시리즈 |
+| `videomae`, `videomae_full/20260407_104721` | VideoMAE 시도 (full은 빈 골격) |
+| `ablation_A`, `ablation_B`, `ablation_C` | ablation run |
+| `libero_test_{dinov2,videomae,v3}` | LIBERO BC fine-tune 실험 |
+
+→ 본 학습은 클러스터에서 진행 중이므로 위 로컬 ckpt는 sanity / 초기 탐색용. 정리 검토 대상.
+
+### 데이터셋
+
+| 데이터셋 | 경로 | 상태 | 비고 |
+|---------|------|------|------|
+| EgoDex raw | `/mnt/data/egodex/` | ✅ 보유 | `scripts/local/download_egodex.sh part1..5` |
+| EgoDex frames | `/mnt/data/egodex_frames/` + `egodex_frames_part{1..5}/` | ✅ 보유 | 추출 결과 (256×256 center-crop) |
+| DROID raw | `/mnt/data/droid/` | ✅ 보유 | gsutil 다운로드본 |
+| DROID frames | `/mnt/data/droid_frames/{ext1,ext2,wrist}/` | ✅ 보유 | cross-domain probing용 |
+| Bridge V2 | `/mnt/data/bridge_v2/` | ✅ 보유 | 256×256 리사이즈 |
+| Something-Something v2 | `/mnt/data/ssv2/` | ✅ 보유 | (사용 여부 미정) |
+| Tarballs | `/mnt/data/tarballs/` | ✅ 보유 | 백업/업로드용 archive |
+| **LIBERO** | `/mnt/data/libero/` | ❌ **없음** | LIBERO BC/rollout 작업 시 HuggingFace에서 받아야 함 |
 
 ### Docker dev-env
-- 컨테이너명: `dev-env`
-- 사용: `docker exec -it dev-env bash`
-- repo mount: (사용자 환경 — 채우기)
 
-### GPU
-- H100 × 2 (DataParallel)
+- 컨테이너명: `dev-env` (이미지: `action-agnostic-dev:latest`, 5주째 가동 중)
+- 진입: `docker exec -it dev-env bash`
+- 마운트:
+  | 호스트 | 컨테이너 |
+  |-------|----------|
+  | `/home/etri/bys/action-agnostic-visual-rl` | `/workspace` |
+  | `/home/etri/bys/action-agnostic-visual-rl/data` | `/workspace/data` |
+  | `/mnt/data` | `/mnt/data` |
+  | `/home/etri/.cache/huggingface` | `/workspace/.cache/huggingface` |
+
+### Repo 내부 산출물 (git 동기화)
+
+- `data/probing_results/` — probe JSON (CLIP/DINOv2/two-stream/videomae 등)
+- `data/eval_results/` — 평가 결과
+- `data/logs/` — 로컬 학습 로그
+- `data/datasets/` — 메타데이터 / 인덱스
 
 ---
 
@@ -122,9 +155,10 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 
 **옵션 1 (1-hop, 권장)** — 워크스테이션이 클러스터 SSH 직접 접속 가능 시:
 ```bash
+mkdir -p /mnt/data/checkpoints/two_stream_v11/20260426_014333
 rsync -avzP --inplace \
   bys724@<cluster>:/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/{best_model.pt,checkpoint_epoch00{44,48}.pt,latest.pt,config.json,history.json} \
-  /mnt/data/checkpoints/two_stream_v11/
+  /mnt/data/checkpoints/two_stream_v11/20260426_014333/
 ```
 
 **옵션 2 (3-hop, 맥북 경유)** — 워크스테이션이 클러스터 직접 접근 불가, 맥북에서 stream pipe (맥북 디스크 사용 X):
