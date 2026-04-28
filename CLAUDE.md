@@ -8,6 +8,7 @@
 2. **`docs/PROBING_GUIDE.md`** - Action probing 실험 가이드 + 결과
 3. **`docs/setup/LIBERO_TEST_GUIDE.md`** - LIBERO 평가
 4. **`docs/cluster_sessions.md`** - IBS 클러스터 sbatch/salloc 세션 로그 (비용 청구 대조)
+5. **`docs/artifacts.md`** - 클러스터/로컬 워크스테이션 산출물·데이터셋 경로 인덱스 (양쪽 작업 시 참조)
 
 **문서 작성 원칙**:
 - 새 문서를 만들기보다 기존 핵심 문서 **업데이트** 우선
