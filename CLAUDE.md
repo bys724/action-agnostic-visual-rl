@@ -174,9 +174,13 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 - **Ego4D** (가변): 다운로드 진행 중, 전처리 결정 미정
 
-## 현재 Phase (2026-04-28)
+## 현재 Phase (2026-04-29)
 
-**Phase 1.5 — 🏆 v11 학습 종료 (50ep 완주). ep44 A+B+D' = +0.288 final champion 확정. ep48/ep50은 plateau.**
+**Phase 3-1 진입 — LIBERO BC-T 5 encoder × `libero_spatial` × seed=0 학습 중. v11-VfromM ablation도 동시 시작.**
+
+NeurIPS 투고 목표 (~2026-05). V-JEPA은 16-frame × 384² 입력 비용으로 BC main table 제외, paper에서 별도 처리.
+
+**Phase 1.5 (사전학습) — 🏆 v11 학습 종료 (50ep 완주). ep44 A+B+D' = +0.288 final champion 확정. ep48/ep50은 plateau.**
 
 **완료 (Two-Stream lineup)**:
 - **v4** (RoPE, mask 0.3/0.5): 48ep. Probing R²=0.197
@@ -265,17 +269,63 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 
 **시각화 산출물 추가**: `docs/architecture/attn_v11_ep{48,50}.png`
 
-**다음 작업**:
-1. ~~v11 ep48/ep50 probing~~ ✅ 완료 (ep44 final champion 확정)
-2. LIBERO BC v11 ep44/ep50 재측정 — ep12에선 동등(0.0290 vs 0.0286), 학습 진전 ckpt로 우위 기대
-3. LIBERO Rollout setup — 진짜 downstream success rate가 v11 채택 결정타
-4. v6 ep20+ 학습 재개 검토 (v6도 W-shape 회복 가능성 미검증)
-5. **v11 ckpt 로컬 워크스테이션 전송**:
-   - 옵션 1 (1-hop, 추천): `rsync -avzP --inplace bys724@<cluster>:/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/{best_model.pt,checkpoint_epoch00{44,48}.pt,latest.pt} /mnt/data/checkpoints/two_stream_v11/`
-   - 옵션 2 (3-hop, 맥북 경유): `ssh bys724@<cluster> "cd /proj/.../20260426_014333 && tar c best_model.pt checkpoint_epoch00{44,48}.pt latest.pt" | ssh user@<workstation> "tar x -C /mnt/data/checkpoints/two_stream_v11/"`
-   - inference만 필요하면 model_state_dict만 추출하여 ~60% 절약
+---
 
-자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
+## Phase 3-1 LIBERO BC-T 진행 상황 (2026-04-29 시작)
+
+### NeurIPS 투고 실험 매트릭스
+
+**Main BC table** (5 encoder × 3 suite × 3 seed = 45 BC runs):
+- Two-Stream v11 ep44 (ours, A+D' mode)
+- VideoMAE-ours ep50 (controlled comparison)
+- DINOv2-Base, SigLIP-Base, VC-1-Base (공개 가중치)
+- ~~V-JEPA 2.1~~ — 16-frame × 384² 비용으로 BC 비현실적 (sanity 측정 50ep ≈ 30-100일). probing 결과만 paper에 포함, BC main table 제외.
+
+**Suite**: `libero_spatial` (1차 진행 중) → `libero_object` → `libero_goal` (1차 결과 본 후 추가 큐)
+
+### Ablation (paper Section: Architecture Analysis)
+
+**A1: Motion-routing source** — paper title-level novelty 검증
+- Control: v11 (Q,K←M, V←P) — 기존 ep50 ckpt
+- Ablation: v11-VfromM (Q←P, K,V←M) — 표준 cross-attention. 50ep × part1-5 신규 학습
+- 평가: EgoDex probing (12 mode) + DROID probing (gap 1/10/15/30, A+B mode)
+- Param count 동일 (208.33M), 단일 변인
+
+**A2: Feature extraction position** — 이미 완료된 12-mode 분석 그대로 paper에 포함
+- A (M enc), B (P enc), D' (motion-routing 후), D (Phase 3 final), 조합 8개
+- 추가 비용 없음, paper Table로 정리만
+
+### 핵심 코드 추가
+
+| 파일 | 변경 |
+|------|------|
+| [`src/models/two_stream_v11.py`](src/models/two_stream_v11.py) | `MotionRoutingBlock`에 `routing_mode` 파라미터 (`v_from_p` / `v_from_m`) |
+| [`scripts/pretrain.py`](scripts/pretrain.py) | `--v11-routing-mode` CLI 인자 |
+| [`scripts/cluster/pretrain.sbatch`](scripts/cluster/pretrain.sbatch) | `V11_ROUTING_MODE` 환경변수 |
+| [`scripts/eval/finetune_libero_bct.py`](scripts/eval/finetune_libero_bct.py) | `_align_actions(dist, actions)` (V-JEPA T_out trim 대응) + 첫 batch dtype 디버그 로그 |
+| [`src/encoders/adapters/single_frame.py`](src/encoders/adapters/single_frame.py) | SigLIP은 `SiglipVisionModel` 사용, VC-1은 `vc_models` 패키지 사용 (이전 loader 두 인코더 모두 fail) |
+| [`scripts/cluster/finetune_libero_bct.sbatch`](scripts/cluster/finetune_libero_bct.sbatch) | `HF_HUB_OFFLINE=1` (CLIP 다운로드 race 회피) |
+
+### 진행 중 잡 (2026-04-29 06:00 시점)
+
+| JobID | 작업 | 자원 | 상태 |
+|-------|------|------|------|
+| 33615385 | BC-T two-stream-v11 ep44 × spatial | AIP 1×1 H100 | RUNNING (~43h 예상) |
+| 33615386 | BC-T videomae-ours best × spatial | AIP 1×1 H100 | RUNNING (~25h) |
+| 33615387 | BC-T dinov2 × spatial | AIP 1×1 H100 | RUNNING (~20h) |
+| 33615391 | BC-T siglip × spatial | AIP 1×1 H100 | RUNNING (~20h) |
+| 33615392 | BC-T vc1 × spatial | AIP 1×1 H100 | RUNNING (~20h) |
+| 33615394 | v11-VfromM sanity | AIP 1×1 H100, 30min | PENDING |
+| 33615395 | v11-VfromM full ablation 50ep × part1-5 | AIP_long 2×4 H100, 3.5d | PENDING |
+
+### 다음 단계
+
+1. **1차 BC-T spatial 결과 (~2일 후)** → `libero_object`/`goal` 추가 + seed=1, 2 병렬 큐
+2. **v11-VfromM full (33615395) 진행 중 ep4/ep8 probing 가능 시점 확인** (~5-6시간 후 시작 후)
+3. **LIBERO Rollout setup (로컬 워크스테이션)** — BC ckpt 로컬 전송 후 mujoco rollout 평가. main paper의 closed-loop 증거
+4. **V-JEPA 별도 처리 결정** — 옵션 A (pre-extraction) vs 옵션 C (skip from main table). 1차 결과 본 후
+
+자세한 내용은 [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md), probing 결과는 [`docs/PROBING_GUIDE.md`](docs/PROBING_GUIDE.md), 클러스터 자원·잡 추적은 [`docs/cluster_sessions.md`](docs/cluster_sessions.md) 참고
 
 ## 트러블슈팅 로그
 

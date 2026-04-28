@@ -243,9 +243,11 @@ elif [ "$MODEL" = "two-stream-v11" ]; then
     #   · M은 P 조작 효과성으로만 학습됨 (aux loss 없음)
     #   · V11_M_DEPTH 환경변수로 M depth 조정 (4까지 낮출 수 있음)
     # - v9/v10의 --v9-p-target, --v9-loss-weight-p는 v11에선 무시됨 (hardcoded)
+    # V11_ROUTING_MODE: v_from_p (기본, novelty) | v_from_m (ablation, 표준 cross-attn)
     MODEL_ARGS=(
         --depth 12
         --v11-m-depth "${V11_M_DEPTH:-6}"
+        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
         --rotation-aug
         --mask-ratio 0.3 --mask-ratio-p 0.75
         --max-gap 60 --sample-dist triangular --sample-center 30

@@ -1,6 +1,7 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-04-26
+**마지막 업데이트**: 2026-04-29
+**투고 목표**: NeurIPS 2026
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
 > 현재 진행 상태 / 체크포인트 / sbatch 로그 등은 [`CLAUDE.md`](../CLAUDE.md)·[`docs/cluster_sessions.md`](cluster_sessions.md)·[`docs/PROBING_GUIDE.md`](PROBING_GUIDE.md) 참고. 본 문서는 **연구 설계와 로드맵**에 집중한다.
@@ -16,15 +17,17 @@
 
 ## 실험 대상 모델
 
-| 구분 | Encoder | 사전학습 데이터 | 파라미터 | 방법 철학 | 학습 주체 |
-|------|---------|---------------|---------|----------|----------|
-| **제안** | **Two-Stream v11 (ours)** | EgoDex (~100M frames) | ~204M downstream | M/P 구조 + motion-routing + dual-target reconstruction. **A+D' mode** (M enc + P after motion-routing) | 🔥 우리 학습 |
-| **Controlled comparison** | **VideoMAE-ours (2-frame)** | **EgoDex (same)** | ~101M | Vanilla MAE (구조적 bias 없음, mask 0.5) | 🔥 우리 학습 |
-| **Native 세팅 baseline** | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | 📦 공개 가중치 |
-| **Native 세팅 baseline** | V-JEPA 2.1 ViT-B | VideoMix22M (16-frame, 384px) | 86.8M | Feature prediction (최신 video SSL) | 📦 공개 가중치 |
-| **로봇 제어 SOTA** | VC-1-Base | Ego4D + 조작 (~500M frames) | 86M | MAE (embodied AI 표준) | 📦 공개 가중치 |
-| Internet-scale SSL | DINOv2-Base | LVD-142M | 86M | Self-distillation | 📦 공개 가중치 |
-| Internet-scale VL | SigLIP-Base | WebLI (10B 이미지-텍스트) | 86M | Vision-language contrastive | 📦 공개 가중치 |
+| 구분 | Encoder | 사전학습 데이터 | 파라미터 | 방법 철학 | LIBERO BC | Probing |
+|------|---------|---------------|---------|----------|-----------|---------|
+| **제안** | **Two-Stream v11 (ours)** | EgoDex (~100M frames) | ~204M downstream | M/P 구조 + motion-routing + dual-target reconstruction. **A+D' mode** | ✓ main | ✓ main |
+| **Controlled comparison** | **VideoMAE-ours (2-frame)** | **EgoDex (same)** | ~101M | Vanilla MAE (구조적 bias 없음, mask 0.5) | ✓ main | ✓ main |
+| **로봇 제어 SOTA** | VC-1-Base | Ego4D + 조작 (~500M frames) | 86M | MAE (embodied AI 표준) | ✓ main | ✓ main |
+| Internet-scale SSL | DINOv2-Base | LVD-142M | 86M | Self-distillation | ✓ main | ✓ main |
+| Internet-scale VL | SigLIP-Base | WebLI (10B 이미지-텍스트) | 86M | Vision-language contrastive | ✓ main | ✓ main |
+| Video SSL | V-JEPA 2.1 ViT-B | VideoMix22M (16-frame, 384px) | 86.8M | Feature prediction (최신 video SSL) | ✗ skip [^1] | ✓ main |
+| Native 세팅 reference | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | (probing only) | (조건부) |
+
+[^1]: V-JEPA 2.1은 16-frame × 384² 입력 (token count 4,608, 다른 인코더 196 대비 24×). LIBERO BC 학습 환경에서 sanity 측정 결과 50ep ≈ 30-100일 (실현 불가능). DROID/EgoDex probing 결과는 paper에 포함, BC main table에선 footnote 처리. 시간 여유 시 옵션 A (사전 feature extraction → 정책 head만 학습) 시도.
 
 ### 3-축 비교 구조
 
@@ -288,12 +291,12 @@ Two-Stream v6/v10, VideoMAE-ours, CLIP, DINOv2, SigLIP, VC-1, V-JEPA 2.1 ViT-B (
 
 ```
 frozen encoder → encoder adapter → BC-Transformer policy head → action distribution
-  (6종 비교)     (인코더별 차이 통일)  (TemporalTransformer + GMM, LIBERO 공식)
+  (5종 비교)     (인코더별 차이 통일)  (TemporalTransformer + GMM, LIBERO 공식)
 ```
 
-- **정책 head**: LIBERO 공식 [`BCTransformerPolicy`](../external/LIBERO/libero/lifelong/models/bc_transformer_policy.py) 그대로 (TemporalTransformer 4-layer × 6-head + GMM head). 인코더 부분만 우리 인코더로 교체
-- **학습 대상**: BC-T policy head 전체 (encoder frozen)
-- **학습/평가 데이터**: LIBERO demonstrations (50 demo × 10 task × suite). `libero_spatial` 주력
+- **정책 head**: LIBERO 공식 [`BCTransformerPolicy`](../external/LIBERO/libero/lifelong/models/bc_transformer_policy.py) 그대로 (TemporalTransformer 4-layer × 6-head + GMM head). 인코더 부분만 우리 어댑터로 교체
+- **학습 대상**: BC-T policy head 전체 (encoder frozen, 약 3M params)
+- **학습/평가 데이터**: LIBERO demonstrations (50 demo × 10 task × suite). 1차는 `libero_spatial`, 1차 결과 보고 `libero_object` / `libero_goal` 추가
 - **평가 (rollout)**: LIBERO 시뮬레이터, **로컬 워크스테이션** (`docker/libero` Apptainer 또는 docker compose). Task당 50 trials × 3 seed
 - **학습은 클러스터 (1 GPU H100), rollout은 로컬** (clean separation: training은 HDF5만 필요, rollout은 mujoco 시뮬레이터)
 
@@ -303,10 +306,10 @@ frozen encoder → encoder adapter → BC-Transformer policy head → action dis
 |----|------|------|
 | **D1 이미지 사이즈** | 모든 encoder 입력 **224×224**로 resize (LIBERO 원본 128×128) | 인코더 사전학습 분포 일치, 모든 encoder fair. 128 사용 시 16-patch grid 8×8로 정보 손실 |
 | **D2 FiLM language conditioning** | 인코더 단계에서 **FiLM 제거**. Language는 BC-T temporal Transformer의 text token으로만 주입 | 우리 인코더 모두 FiLM 미지원. paper claim ("visual representation quality")에 부합. 모든 encoder fair |
-| **D3 인코더별 입력** | 각 encoder가 **native input 그대로** 받음 (아래 표) | 각 인코더의 사전학습 분포 보존 = 각 인코더의 best protocol 비교. V-JEPA 1등이면 다운그레이드 ablation 추가 (2-frame replicate) |
+| **D3 인코더별 입력** | 각 encoder가 **native input 그대로** 받음 (아래 표) | 각 인코더의 사전학습 분포 보존 = 각 인코더의 best protocol 비교 |
 | **D4 2-frame pair 형성** | 학습 시 (obs_{t-1}, obs_t) 시퀀스에서 직접 생성. Rollout 시 adapter 내부 prev_obs buffer 유지 | episode 시작 t=0은 (obs_0, obs_0) 복제. 표준 video encoder fine-tune 패턴 |
 
-**비교 인코더 (6종) — D3 input format**:
+**비교 인코더 (5종) — D3 input format**:
 
 | Encoder | Native input | Per-timestep 출력 | 비고 |
 |---------|--------------|-------------------|------|
@@ -315,11 +318,22 @@ frozen encoder → encoder adapter → BC-Transformer policy head → action dis
 | **DINOv2-Base** | obs_{t-1}, obs_t 각각 단독 인코딩 | 2 embeddings concat → 2 × 768 | LVD-142M pre-trained |
 | **SigLIP-Base** | obs_{t-1}, obs_t 각각 단독 인코딩 | 2 embeddings concat → 2 × 768 | WebLI pre-trained |
 | **VC-1-Base** | obs_{t-1}, obs_t 각각 단독 인코딩 | 2 embeddings concat → 2 × 768 | Ego4D + 조작 pre-trained |
-| **V-JEPA 2.1** | **16-frame 누적 sliding window** [obs_{t-15}, ..., obs_t] | clip embedding → embed_dim | Episode 시작 t<16에선 obs_0 복제로 padding |
 
-각 어댑터 출력 차원이 다른 건 BC-T의 input projection이 통일.
+**V-JEPA 2.1 별도 처리** (NeurIPS BC main table 제외):
+- Sanity 측정 결과 bs=4 epoch당 460s → bs=32 본격 학습 50ep ≈ 30-100일 (실현 불가능)
+- 16-frame × 384² × seq_len=25 입력으로 token count 4,608 (다른 인코더 196 대비 24×). attention O(N²)에서 ~552× 비싸짐
+- **paper 처리 방안**:
+  - DROID/EgoDex probing 결과는 그대로 포함 (이미 완료)
+  - LIBERO main table에선 footnote로 "16-frame × 384² 입력 비용 prohibitive로 fair BC 비교 불가"
+  - 시간 여유 시 옵션 A (사전 feature extraction + cached feature로 정책 head 학습) 시도
 
 **공정 비교 체크리스트**: 모든 encoder 동일 BC-T 정책 head, 동일 LR/epoch/batch/seed/trial, 동일 task suite, 동일 image preprocessing pipeline 외 인코더 native preprocessing은 각자.
+
+**1차 진행 상황** (2026-04-29 시작, 5 encoder × `libero_spatial` × seed=0):
+- 33615385 (v11 ep44), 33615386 (videomae), 33615387 (dinov2), 33615391 (siglip), 33615392 (vc1) — RUNNING
+- 1차 결과 (~2일 후) 본 후 `object`/`goal` suite + seed=1, 2 병렬 큐 제출
+
+**최종 main table 목표**: 5 encoder × 3 suite × 3 seed = **45 BC runs + rollout**
 
 #### 3-2차: LeRobot ACT (조건부 진입)
 
@@ -332,9 +346,64 @@ frozen encoder → encoder adapter → BC-Transformer policy head → action dis
 - 설계 결정 D1-D4 동일 적용
 - 인코더 어댑터 재사용 (정책 head만 교체)
 
-#### 3-3차: V-JEPA downgrade ablation (조건부)
+### Phase 4: Architecture Ablation (paper Section 5) 🔄 진행 중
 
-V-JEPA 2.1이 1차 또는 2차에서 1등인 경우만 진입. **V-JEPA에 16-frame 대신 2-frame replicate** (motion 신호 무력화) → "video-aware advantage 격리". paper 본문에 "we explicitly tested whether V-JEPA's gain is from temporal context vs. representation quality" 명시 가능.
+**목표**: v11 design choice의 정량 기여도 isolation. paper의 핵심 contribution 입증.
+
+#### A1: Motion-routing source — `V from P` (ours) vs `V from M` (표준 cross-attn)
+
+**Paper claim**: "M의 self-attention graph를 P value에 적용"이 표준 cross-attention보다 표현 품질 우월.
+
+| 항목 | Control (v11) | Ablation (v11-VfromM) |
+|------|--------------|----------------------|
+| Phase 2 routing | Q,K←M, V←P | Q←P, K,V←M (표준) |
+| Param count | 208.33M | 208.33M (동일) |
+| Pre-training | EgoDex part1-5, 50 epoch | EgoDex part1-5, 50 epoch |
+| Mask ratios, M/P depth, optimizer 등 | 동일 | 동일 |
+
+**평가 지표**:
+1. EgoDex action probing R² (12 mode 중 핵심 4개: A, A+B, A+D', A+B+D')
+2. DROID action probing R² (gap 1/10/15/30 × A+B / A+B+D' mode)
+
+**구현**: `MotionRoutingBlock(routing_mode='v_from_m')` — `src/models/two_stream_v11.py:55`. CLI: `--v11-routing-mode {v_from_p|v_from_m}`. sbatch: `V11_ROUTING_MODE=v_from_m`.
+
+**진행 상황** (2026-04-29~):
+- 33615394: sanity (1 GPU × 1 epoch × part1 × 200 vid) — PENDING
+- 33615395: full (8 GPU × 50 epoch × part1-5, AIP_long --time=3-12:00) — PENDING
+- Control: 기존 `/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/` ckpt 그대로 사용 (추가 학습 0)
+- 비용: ~617 GPU·h (33615395만)
+
+**가능한 시나리오**:
+- v11 > VfromM: 핵심 contribution 정량 입증 ✓
+- 동등: design choice는 부수적 — "motion-guided" 표현 약화
+- v11 < VfromM: 핵심 novelty 무너짐 — 다른 contribution(2-frame regime, dual target negative result, M/P functional differentiation)으로 paper 재구성
+
+#### A2: Feature extraction position (12-mode probing) ✅ 이미 완료
+
+추가 학습 없이 기존 ep4~ep50 × 12 mode probing 결과를 paper Table로 정리.
+
+**핵심 메시지**:
+- M encoder (A) +0.267 vs P encoder (B) -0.003: **M이 action 정보 보유, P는 appearance만** (functional differentiation 입증)
+- D' (motion-routing 후, +0.135) > B (P encoder, -0.003): motion-routing이 P를 action-relevant 화 (+0.138 격차)
+- 3-way concat A+B+D' = +0.288 (champion): M + P + motion-routed P 상보적
+
+이 분석은 A1과 상호 보완:
+- A1: pre-training design (motion-routing 메커니즘) 자체가 옳은가
+- A2: 학습된 모델 안에서 motion-routing이 의도대로 functional differentiation을 만들었는가
+
+**Paper에서 위치**: main paper Table 4 (condensed 4-5 row) + Appendix B (full 12-mode 표).
+
+#### A3: 추가 ablation (시간 여유 시, 우선순위 낮음)
+
+| 항목 | 검증 대상 | 평가 방식 |
+|------|----------|----------|
+| Motion-routing N=1 / 2 / 4 | iterative refinement 효과 | probing only |
+| Dual target (L_t + L_tk) vs single (L_tk only) | Phase 1 anchor의 collapse 방지 역할 | probing only |
+| M decoder loss 유무 | M sensor 가설 | probing only |
+
+→ **모두 cheap (probing only)**. 단 추가 pre-training이 비용. paper 본 마감 시점에 시간 여유로 결정.
+
+### Phase 3B: OpenVLA 통합 (축소안, 조건부 진입) ⏸️ 대기
 
 ### Phase 3B: OpenVLA 통합 (축소안, 조건부 진입) ⏸️ 대기
 

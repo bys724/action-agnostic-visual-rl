@@ -22,21 +22,21 @@ _ENCODER_SPECS = {
         "mean": [0.485, 0.456, 0.406],
         "std": [0.229, 0.224, 0.225],
         "img_size": 224,
-        "use_cls": False,  # patch mean
+        "pool": "patch_mean_skip_cls",  # CLS at index 0, skip it
     },
     "siglip": {
         "hf_id": "google/siglip-base-patch16-224",
         "mean": [0.5, 0.5, 0.5],
         "std": [0.5, 0.5, 0.5],
         "img_size": 224,
-        "use_cls": False,
+        "pool": "patch_mean_no_cls",   # SigLIP 출력엔 CLS 없음
     },
     "vc1": {
-        "hf_id": "facebook/vc1-base",  # HF 미등록 시 ckpt 직접 로딩 fallback
+        # VC-1은 facebookresearch/eai-vc 패키지 (`vc_models`)에서 로드
         "mean": [0.485, 0.456, 0.406],
         "std": [0.229, 0.224, 0.225],
         "img_size": 224,
-        "use_cls": True,  # VC-1 공식: CLS 사용
+        "pool": "vc1_direct",          # vc_models 호출 결과는 (B, 768) CLS
     },
 }
 
@@ -57,27 +57,24 @@ class SingleFrameAdapter(EncoderAdapter):
         super().__init__(freeze=freeze)
         spec = _ENCODER_SPECS[encoder_type]
         self.encoder_type = encoder_type
-        self.use_cls = spec["use_cls"]
+        self.pool = spec["pool"]
         self.img_size = spec["img_size"]
 
-        # ── Backbone 로드 ─────────────────────────────────────────────────
+        # ── Backbone 로드 (probe_action.py와 동일 정책) ─────────────────────
         if encoder_type == "vc1":
-            self._load_vc1(spec, checkpoint_path)
-        else:
+            from vc_models.models.vit import model_utils
+            model, _, _, _ = model_utils.load_model(model_utils.VC1_BASE_NAME)
+            self.model = model
+            hidden_size = 768  # ViT-B
+        elif encoder_type == "siglip":
+            # SiglipModel은 forward에서 input_ids 요구 → VisionModel 단독 로드
+            from transformers import SiglipVisionModel
+            self.model = SiglipVisionModel.from_pretrained(spec["hf_id"])
+            hidden_size = self.model.config.hidden_size
+        else:  # dinov2
             from transformers import AutoModel
             self.model = AutoModel.from_pretrained(spec["hf_id"])
-
-        # ── Hidden dim ────────────────────────────────────────────────────
-        if hasattr(self.model, "config"):
-            hidden_size = getattr(self.model.config, "hidden_size", None)
-            if hidden_size is None:
-                # SigLIPVisionModel은 vision_config.hidden_size에 있을 수 있음
-                hidden_size = getattr(
-                    getattr(self.model.config, "vision_config", None),
-                    "hidden_size", 768,
-                )
-        else:
-            hidden_size = 768
+            hidden_size = self.model.config.hidden_size
         self._hidden_size = hidden_size
         self.embed_dim = 2 * hidden_size  # concat (prev, curr)
 
@@ -97,30 +94,6 @@ class SingleFrameAdapter(EncoderAdapter):
             self.freeze_encoder()
         self.prev_obs: Optional[torch.Tensor] = None
 
-    def _load_vc1(self, spec: dict, checkpoint_path: Optional[str]) -> None:
-        """VC-1 로딩. HF id 시도 → 실패 시 timm/torch.hub fallback."""
-        from transformers import AutoModel
-        try:
-            self.model = AutoModel.from_pretrained(spec["hf_id"])
-        except Exception as e_hf:
-            if checkpoint_path is None:
-                raise RuntimeError(
-                    f"VC-1 HF load 실패 ({e_hf}). "
-                    "checkpoint_path를 명시하거나 facebook/eai-vc 코드 통합 필요."
-                )
-            # fallback: timm ViT-B 16 (224)에 ckpt 로드
-            import timm
-            model = timm.create_model(
-                "vit_base_patch16_224", pretrained=False, num_classes=0,
-            )
-            sd = torch.load(checkpoint_path, map_location="cpu")
-            if isinstance(sd, dict) and "model" in sd:
-                sd = sd["model"]
-            sd = {k.replace("module.", ""): v for k, v in sd.items()}
-            missing, unexpected = model.load_state_dict(sd, strict=False)
-            print(f"VC-1 timm fallback: missing={len(missing)}, unexpected={len(unexpected)}")
-            self.model = model
-
     def reset(self) -> None:
         self.prev_obs = None
 
@@ -131,15 +104,17 @@ class SingleFrameAdapter(EncoderAdapter):
     def _encode_one(self, x: torch.Tensor) -> torch.Tensor:
         """x: (N, 3, H, W) → (N, hidden_size)."""
         x = self._normalize(x)
-        # HF transformers: pixel_values=...
-        out = self.model(pixel_values=x) if hasattr(self.model, "config") else self.model(x)
-        if hasattr(out, "last_hidden_state"):
-            hidden = out.last_hidden_state  # (N, 1+P, D)
-            if self.use_cls:
-                return hidden[:, 0]
+        if self.pool == "vc1_direct":
+            # vc_models VC-1: encoder(img) → (N, 768) CLS
+            return self.model(x)
+        # HF VisionModel: pixel_values 인자
+        out = self.model(pixel_values=x)
+        hidden = out.last_hidden_state  # (N, *, D)
+        if self.pool == "patch_mean_skip_cls":
             return hidden[:, 1:].mean(dim=1)
-        # timm fallback: forward_features → (N, D) directly
-        return out
+        if self.pool == "patch_mean_no_cls":
+            return hidden.mean(dim=1)
+        raise ValueError(f"Unknown pool: {self.pool}")
 
     def forward(self, obs_seq: torch.Tensor) -> torch.Tensor:
         B, T, C, H, W = obs_seq.shape

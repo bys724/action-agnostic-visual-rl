@@ -54,6 +54,10 @@ module load miniforge3/24.11.3-2
 source /opt/ibs_lib/apps/miniforge3/24.11.3-2/etc/profile.d/conda.sh
 conda activate "$CONDA_ENV"
 
+# HF cache 사용 (CLIP/DINOv2/SigLIP 미리 캐시됨) — 동시 다운로드 race 회피
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+
 cd "$PROJECT_ROOT"
 
 # Compose CLI args

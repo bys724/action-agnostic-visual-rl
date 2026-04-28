@@ -87,7 +87,54 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
-(없음 — 2026-04-28 20:13 기준 모든 잡 완료)
+### 2026-04-29 LIBERO BC-T 6 encoder 본격 학습 (Phase 3-1)
+
+**1차 제출** (05:36, 모두 AIP 1×1 H100):
+
+| JobID | Encoder | --time | 결과 / 비고 |
+|-------|---------|--------|------------|
+| 33615385 | two-stream-v11 ep44 | 2-00:00:00 | RUNNING. 데이터 62,250 seq → 예상 ~52min/epoch × 50 ≈ **43h** |
+| 33615386 | videomae-ours best | 1-00:00:00 | RUNNING. 예상 ~18h |
+| 33615387 | dinov2 | 1-00:00:00 | RUNNING. 예상 ~16h |
+| 33615388 | siglip | 1-00:00:00 | **FAILED** 40s — `SiglipModel(pixel_values=...)` text input 요구 (VisionModel 사용해야) |
+| 33615389 | vc1 | 1-00:00:00 | **FAILED** 1m23s — CLIPModel HF download race (`HF_HUB_OFFLINE` 미설정), VC-1 loader도 잘못 (vc_models 사용해야) |
+| 33615390 | vjepa2-1 sanity | 01:00:00 | **CANCELLED** — driver의 action loss alignment 버그 (V-JEPA T_out=10 vs actions T=25 mismatch) 발견하여 미실행 |
+
+**Driver 패치 (코드 리뷰 후)**:
+- [scripts/eval/finetune_libero_bct.py](scripts/eval/finetune_libero_bct.py) `_align_actions(dist, actions)` 추가 — V-JEPA causal trim 지원
+- 첫 batch dtype/range/shape debug log 추가 (encoder native 분포 검증)
+- [src/encoders/adapters/single_frame.py](src/encoders/adapters/single_frame.py) SigLIP은 `SiglipVisionModel`, VC-1은 `vc_models` 패키지 사용으로 수정
+- [scripts/cluster/finetune_libero_bct.sbatch](scripts/cluster/finetune_libero_bct.sbatch) `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` (CLIP/DINOv2/SigLIP 캐시 사용으로 race 회피)
+
+**2차 제출** (re-submission after patches):
+
+| JobID | Encoder | --time | 결과 |
+|-------|---------|--------|------|
+| 33615391 | siglip | 1-00:00:00 | RUNNING |
+| 33615392 | vc1 | 1-00:00:00 | RUNNING |
+| 33615393 | vjepa2-1 sanity | 01:00:00 | **PASS** 15m38s. loss 5.27→2.58, `_align_actions` 정상 |
+
+**검증 결과** (2026-04-29):
+- LIBERO obs RGB: float32 [0, 1] (robomimic 정규화 완료) → 어댑터 가정 일치 ✓
+- shape_meta: `ac_dim=7`, RGB (3, 128, 128) → driver의 resize로 224/384 ✓
+- V-JEPA bs=4 epoch당 460s → bs=32 환산 시 50ep ≈ 30-100일 → **본격 학습 불가, 별도 처리 필요**
+  · 옵션: feature pre-extraction (1 pass, ~50 GB cache) → 정책 head만 학습 → 가장 가능성 높음
+  · 옵션: skip V-JEPA from main BC table (probing 결과는 paper에 포함). decision 보류.
+
+### 2026-04-29 v11 ablation A1: motion-routing source (V from P → V from M)
+
+**Paper claim**: v11의 motion-routing (Q,K←M, V←P)이 표준 cross-attn (Q←P, K,V←M)보다 표현 품질 우월.
+
+**구현**: `src/models/two_stream_v11.py` MotionRoutingBlock에 `routing_mode` 파라미터 (기본 `v_from_p`, ablation `v_from_m`). 두 mode 동일 param count (208.33M). CLI: `--v11-routing-mode v_from_m`. sbatch: `V11_ROUTING_MODE=v_from_m`.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33615394 | AIP 1×1 H100 | 30:00 | sanity (1 ep × part1 × 200 vid × bs=64) | PENDING |
+| 33615395 | AIP_long 2×4 H100 | 3-12:00:00 | full ablation (50 ep × part1-5) | PENDING |
+
+**Control은 기존 v11 ep50 ckpt** (`/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/`). 추가 학습 없음.
+
+**예상 비용** (33615395만): v11과 동일 ≈ 617 GPU·h ≈ 1.59M 원 (월누적 ceil).
 
 ---
 

@@ -156,8 +156,40 @@ def resize_obs_inplace(batch: dict, image_keys: list, target_size: int):
 # Training loop
 # ============================================================================
 
+def _align_actions(dist, actions):
+    """GMM dist (B, T_out) batch_shape에 맞게 actions trim (causal: 마지막 T_out개).
+
+    V-JEPA은 어댑터 forward에서 T_in - 15 = T_out으로 줄어들기 때문에
+    actions (B, T_in, ac_dim)도 마지막 T_out개로 정렬해야 log_prob shape match.
+    """
+    T_out = dist.batch_shape[1]
+    T_act = actions.shape[1]
+    if T_out == T_act:
+        return actions
+    if T_out > T_act:
+        raise ValueError(f"dist T_out={T_out} > actions T_act={T_act} (causal trim 불가)")
+    return actions[:, -T_out:]
+
+
+def _log_first_batch_stats(batch, image_keys):
+    """첫 batch에서 image dtype/range/shape 출력 (encoder native 분포 일치 검증용)."""
+    print("[debug] first batch obs/actions stats:")
+    for k in image_keys:
+        v = batch["obs"][k]
+        print(f"  {k}: dtype={v.dtype} shape={tuple(v.shape)} "
+              f"min={v.min().item():.4f} max={v.max().item():.4f} "
+              f"mean={v.mean().item():.4f}")
+    a = batch["actions"]
+    print(f"  actions: dtype={a.dtype} shape={tuple(a.shape)} "
+          f"min={a.min().item():.4f} max={a.max().item():.4f}")
+    if "task_emb" in batch:
+        t = batch["task_emb"]
+        print(f"  task_emb: dtype={t.dtype} shape={tuple(t.shape)} "
+              f"min={t.min().item():.4f} max={t.max().item():.4f}")
+
+
 def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
-                     log_every=50, max_batches=None):
+                     log_every=50, max_batches=None, debug_first_batch=False):
     policy.train()
     total = 0.0
     n = 0
@@ -174,10 +206,14 @@ def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
         # Resize obs to encoder native size
         resize_obs_inplace(batch, image_keys, img_size)
 
+        if debug_first_batch and i == 0:
+            _log_first_batch_stats(batch, image_keys)
+
         # Forward (returns GMM dist via policy_head)
         dist = policy(batch)
-        # GMM negative log-likelihood
-        loss = -dist.log_prob(batch["actions"]).mean()
+        # GMM negative log-likelihood (V-JEPA은 T_out < T_act → causal trim)
+        actions_aligned = _align_actions(dist, batch["actions"])
+        loss = -dist.log_prob(actions_aligned).mean()
 
         optimizer.zero_grad()
         loss.backward()
@@ -207,7 +243,8 @@ def evaluate(policy, loader, device, image_keys, img_size):
             batch["task_emb"] = batch["task_emb"].to(device, non_blocking=True)
         resize_obs_inplace(batch, image_keys, img_size)
         dist = policy(batch)
-        loss = -dist.log_prob(batch["actions"]).mean()
+        actions_aligned = _align_actions(dist, batch["actions"])
+        loss = -dist.log_prob(actions_aligned).mean()
         total += loss.item()
         n += 1
     return total / max(n, 1)
@@ -382,6 +419,7 @@ def main():
         train_loss = train_one_epoch(
             policy, train_loader, optimizer, device, image_keys, img_size,
             max_batches=args.max_train_batches,
+            debug_first_batch=(epoch == 1),
         )
         eval_loss = evaluate(policy, eval_loader, device, image_keys, img_size)
         scheduler.step()

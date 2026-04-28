@@ -58,27 +58,48 @@ from .two_stream import TransformerBlock
 class MotionRoutingBlock(nn.Module):
     """Motion-guided attention routing.
 
-    Q, K는 M stream의 완성된 motion field에서,
-    V는 P stream의 현재 state에서 추출.
+    routing_mode == "v_from_p" (v11 default, paper novelty):
+        Q, K from M (motion field), V from P (current state).
+        "M의 self-attention 그래프를 P의 value에 적용" —
+        M이 정의하는 spatial routing pattern으로 P 내용물을 재조합.
 
-    "M의 self-attention 그래프를 P의 value에 적용" — M이 정의하는
-    spatial routing pattern으로 P 내용물을 재조합.
-
-    표준 cross-attention (V from M)과 차별화되는 핵심 novelty.
+    routing_mode == "v_from_m" (ablation, 표준 cross-attention):
+        Q from P (queries), K, V from M (memory).
+        P가 M에서 motion 정보를 조회하는 conventional design.
+        Paper Table에서 v_from_p와 정량 비교 (NeurIPS A1 ablation).
     """
 
-    def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float = 4.0):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        mlp_ratio: float = 4.0,
+        routing_mode: str = "v_from_p",
+    ):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
+        self.routing_mode = routing_mode
 
-        # Q/K from M (iteration별 독립 projections)
-        self.norm_m = nn.LayerNorm(embed_dim)
-        self.qk_m = nn.Linear(embed_dim, embed_dim * 2)
+        if routing_mode == "v_from_p":
+            # Q, K from M; V from P
+            self.norm_m = nn.LayerNorm(embed_dim)
+            self.qk_m = nn.Linear(embed_dim, embed_dim * 2)
+            self.norm_p = nn.LayerNorm(embed_dim)
+            self.v_p = nn.Linear(embed_dim, embed_dim)
+        elif routing_mode == "v_from_m":
+            # Q from P; K, V from M (표준 cross-attention)
+            self.norm_p = nn.LayerNorm(embed_dim)
+            self.q_p = nn.Linear(embed_dim, embed_dim)
+            self.norm_m = nn.LayerNorm(embed_dim)
+            self.kv_m = nn.Linear(embed_dim, embed_dim * 2)
+        else:
+            raise ValueError(
+                f"Unknown routing_mode: {routing_mode}. "
+                "Expected 'v_from_p' (default) or 'v_from_m' (ablation)."
+            )
 
-        # V from P
-        self.norm_p = nn.LayerNorm(embed_dim)
-        self.v_p = nn.Linear(embed_dim, embed_dim)
+        # 두 모드 모두 동일한 proj_out + FFN — parameter count 일치
         self.proj_out = nn.Linear(embed_dim, embed_dim)
 
         # Post-attention FFN
@@ -99,13 +120,22 @@ class MotionRoutingBlock(nn.Module):
         """
         B, N, D = p_state.shape
 
-        # Q, K from M
-        m_normed = self.norm_m(m_completed)
-        qk = self.qk_m(m_normed).reshape(B, N, 2, self.num_heads, self.head_dim)
-        q, k = qk.unbind(dim=2)  # each: [B, N, H, D_head]
-
-        # V from P
-        v = self.v_p(self.norm_p(p_state)).reshape(B, N, self.num_heads, self.head_dim)
+        if self.routing_mode == "v_from_p":
+            qk = self.qk_m(self.norm_m(m_completed)).reshape(
+                B, N, 2, self.num_heads, self.head_dim,
+            )
+            q, k = qk.unbind(dim=2)
+            v = self.v_p(self.norm_p(p_state)).reshape(
+                B, N, self.num_heads, self.head_dim,
+            )
+        else:  # v_from_m
+            q = self.q_p(self.norm_p(p_state)).reshape(
+                B, N, self.num_heads, self.head_dim,
+            )
+            kv = self.kv_m(self.norm_m(m_completed)).reshape(
+                B, N, 2, self.num_heads, self.head_dim,
+            )
+            k, v = kv.unbind(dim=2)
 
         # SDPA
         q = q.transpose(1, 2)  # [B, H, N, D_head]
@@ -168,8 +198,10 @@ class TwoStreamV11Model(nn.Module):
         num_motion_iters: int = 2,
         rotation_aug: bool = False,
         independent_rotation_prob: float = 0.1,
+        routing_mode: str = "v_from_p",
     ):
         super().__init__()
+        self.routing_mode = routing_mode
 
         self.embed_dim = embed_dim
         self.p_depth = p_depth
@@ -255,7 +287,7 @@ class TwoStreamV11Model(nn.Module):
 
         # ── P decoder Phase 2: motion-routing × N (iteration별 독립 projections) ─
         self.motion_routing = nn.ModuleList([
-            MotionRoutingBlock(embed_dim, num_heads, mlp_ratio)
+            MotionRoutingBlock(embed_dim, num_heads, mlp_ratio, routing_mode=routing_mode)
             for _ in range(num_motion_iters)
         ])
 

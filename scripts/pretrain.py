@@ -115,6 +115,13 @@ def main():
                         help='[v11] M encoder depth (기본 6, sensor 역할이라 작게). '
                              'P encoder depth은 --depth (기본 12) 사용.')
 
+    # v11 ablation: motion-routing 메커니즘 선택
+    parser.add_argument('--v11-routing-mode', type=str, default='v_from_p',
+                        choices=['v_from_p', 'v_from_m'],
+                        help='[v11] Phase 2 routing 방식. '
+                             'v_from_p (기본, paper novelty): Q,K←M, V←P. '
+                             'v_from_m (ablation): 표준 cross-attn (Q←P, K,V←M).')
+
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -211,6 +218,7 @@ def main():
             mask_ratio_m=v11_mask_m,
             mask_ratio_p=v11_mask_p,
             rotation_aug=args.rotation_aug,
+            routing_mode=args.v11_routing_mode,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
