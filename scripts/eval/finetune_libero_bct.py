@@ -22,20 +22,27 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+# robomimic 0.x는 deprecated np.bool 사용 → numpy 1.20+ 호환을 위한 monkeypatch
+if not hasattr(np, "bool"):
+    np.bool = bool
+if not hasattr(np, "float"):
+    np.float = float
+if not hasattr(np, "int"):
+    np.int = int
+
 import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 from torch.utils.data import ConcatDataset, DataLoader
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_LIBERO_REPO = _PROJECT_ROOT / "external" / "LIBERO"
 sys.path.insert(0, str(_PROJECT_ROOT))
-sys.path.insert(0, str(_LIBERO_REPO))
+# libero는 conda env site-packages에서 import (modules/는 setup 시 복사됨)
 
 from libero.libero import get_libero_path
 from libero.libero.benchmark import get_benchmark
 from libero.lifelong.datasets import SequenceVLDataset, get_dataset
-from libero.lifelong.utils import control_seed, get_task_embs
+from libero.lifelong.utils import control_seed
 
 from src.policies.bc_transformer_adapted import AdaptedBCTransformerPolicy
 
@@ -53,11 +60,20 @@ def build_cfg(args, shape_meta) -> OmegaConf:
             "checkpoint": args.checkpoint,
             "adapter_kwargs": {},
         },
+        "train": {"use_augmentation": False},
         "policy": {
             "policy_type": "AdaptedBCTransformerPolicy",
             "embed_size": embed_size,
             "extra_num_layers": 0,
             "extra_hidden_size": 128,
+            "color_aug": {
+                "network": "IdentityAug",
+                "network_kwargs": {},
+            },
+            "translation_aug": {
+                "network": "IdentityAug",
+                "network_kwargs": {},
+            },
             "transformer_input_size": None,
             "transformer_num_layers": 4,
             "transformer_num_heads": 6,
@@ -68,7 +84,7 @@ def build_cfg(args, shape_meta) -> OmegaConf:
             "language_encoder": {
                 "network": "MLPEncoder",
                 "network_kwargs": {
-                    "input_size": 768,  # CLIP/BERT default
+                    "input_size": 512,  # CLIP ViT-B/32 text features
                     "hidden_size": 128,
                     "num_layers": 1,
                     "output_size": embed_size,
@@ -94,19 +110,19 @@ def build_cfg(args, shape_meta) -> OmegaConf:
         "data": {
             "use_joint": False,
             "use_gripper": True,
-            "use_ee": True,
+            "use_ee": False,  # ExtraModalityTokens는 'ee_states' 키 요구 — LIBERO 표준은 ee_pos/ee_ori 분리. ee 비활성화로 단순화.
             "seq_len": args.seq_len,
             "obs": {
                 "modality": {
                     "rgb": ["agentview_rgb", "eye_in_hand_rgb"],
                     "depth": [],
-                    "low_dim": ["gripper_states", "ee_pos", "ee_ori"],
+                    "low_dim": ["gripper_states"],
                 },
             },
             "task_group_size": 1,
             "task_order_index": 0,
         },
-        "shape_meta": shape_meta,
+        # shape_meta는 OrderedDict 포함 → omegaconf 호환 안됨. 별도 인자로 전달.
         "task_embedding_format": "clip",
         "task_embedding_one_hot_offset": 1,
         "device": "cuda",
@@ -140,11 +156,14 @@ def resize_obs_inplace(batch: dict, image_keys: list, target_size: int):
 # Training loop
 # ============================================================================
 
-def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size, log_every=50):
+def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
+                     log_every=50, max_batches=None):
     policy.train()
     total = 0.0
     n = 0
     for i, batch in enumerate(loader):
+        if max_batches is not None and i >= max_batches:
+            break
         # Move to device
         for k in batch["obs"]:
             batch["obs"][k] = batch["obs"][k].to(device, non_blocking=True)
@@ -219,6 +238,10 @@ def main():
     parser.add_argument("--bddl-folder", type=str, default=None)
     parser.add_argument("--seq-len", type=int, default=10,
                         help="V-JEPA용 25, 그 외 10")
+    parser.add_argument("--task-ids", type=int, nargs="+", default=None,
+                        help="task ID 부분집합 (sanity test용). None이면 전체")
+    parser.add_argument("--max-train-batches", type=int, default=None,
+                        help="epoch당 최대 batch 수 제한 (sanity용)")
 
     # Training
     parser.add_argument("--epochs", type=int, default=50)
@@ -258,14 +281,17 @@ def main():
     obs_modality = {
         "rgb": ["agentview_rgb", "eye_in_hand_rgb"],
         "depth": [],
-        "low_dim": ["gripper_states", "ee_pos", "ee_ori"],
+        "low_dim": ["gripper_states"],
     }
 
-    for i in range(n_tasks):
+    task_indices = args.task_ids if args.task_ids is not None else list(range(n_tasks))
+    print(f"Using task IDs: {task_indices}")
+
+    for n, i in enumerate(task_indices):
         ds, sm = get_dataset(
             dataset_path=os.path.join(folder, benchmark.get_task_demonstration(i)),
             obs_modality=obs_modality,
-            initialize_obs_utils=(i == 0),
+            initialize_obs_utils=(n == 0),
             seq_len=args.seq_len,
         )
         if shape_meta is None:
@@ -273,13 +299,27 @@ def main():
         manip_datasets.append(ds)
         descriptions.append(benchmark.get_task(i).language)
 
-    # ── 2. Task embeddings (CLIP) ─────────────────────────────────────────
-    cfg_emb = OmegaConf.create({
-        "task_embedding_format": "clip",
-        "task_embedding_one_hot_offset": 1,
-        "device": str(device),
-    })
-    task_embs = get_task_embs(cfg_emb, descriptions)
+    # ── 2. Task embeddings (CLIP text encoder, 512-d) ─────────────────────
+    # LIBERO get_task_embs는 transformers 버전 호환 이슈 → 직접 호출
+    # 이 conda env의 transformers는 get_text_features가 output object를 반환 →
+    # text_model.pooler_output로 우회 (projection 미적용 — language_encoder MLP가 흡수)
+    from transformers import CLIPTokenizer, CLIPModel
+    clip_tok = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+    clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
+    clip_model.eval()
+    with torch.no_grad():
+        toks = clip_tok(
+            descriptions, padding="max_length", max_length=25,
+            truncation=True, return_tensors="pt",
+        ).to(device)
+        text_out = clip_model.text_model(**toks)
+        # pooler_output: (n_tasks, hidden_dim=512 for ViT-B/32)
+        if hasattr(text_out, "pooler_output"):
+            feats = text_out.pooler_output
+        else:
+            feats = text_out[1] if isinstance(text_out, tuple) else text_out
+    task_embs = feats.detach().cpu()
+    del clip_model, clip_tok
 
     # ── 3. Wrap each dataset with task_emb ────────────────────────────────
     wrapped = [
@@ -341,6 +381,7 @@ def main():
         t0 = time.time()
         train_loss = train_one_epoch(
             policy, train_loader, optimizer, device, image_keys, img_size,
+            max_batches=args.max_train_batches,
         )
         eval_loss = evaluate(policy, eval_loader, device, image_keys, img_size)
         scheduler.step()

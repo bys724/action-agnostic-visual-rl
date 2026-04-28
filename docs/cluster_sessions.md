@@ -87,7 +87,25 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
-(없음 — 2026-04-28 09:36 기준 모든 잡 완료)
+(없음 — 2026-04-28 20:13 기준 모든 잡 완료)
+
+---
+
+## 2026-04-28 LIBERO BC-T sanity 시리즈 — 7회 디버깅 후 통과
+
+`scripts/eval/finetune_libero_bct.py` 첫 동작 확인용. 1 task (libero_spatial task 0), 10 batch × bs=16 × 2 epoch. 1 GPU × ~1분 × 7회. 누적 ≈ 0.15 GPU·h.
+
+| JobID | 결과 | 디버깅 내용 |
+|-------|------|------------|
+| 33615282 | FAIL | conda env libero pip install에 `lifelong/models/modules/` 누락 → external/LIBERO에서 복사 |
+| 33615285 | FAIL | `cfg.data.max_word_len` 누락 → cfg_emb에 추가 |
+| 33615286 | FAIL | `clip_model.get_text_features().detach()` AttributeError (transformers 버전 호환) → text_model.pooler_output 직접 사용 |
+| 33615287 | FAIL | 위 동일 — pooler_output 추출 로직 수정 |
+| 33615288 | FAIL | `omegaconf` OrderedDict 미지원 (shape_meta) → cfg에서 분리, 별도 인자로 전달 |
+| 33615289 | FAIL | BasePolicy가 `cfg.policy.color_aug` + `translation_aug` + `cfg.train.use_augmentation` 요구 → IdentityAug로 추가 |
+| 33615290 | FAIL | robomimic `np.bool` 사용 (numpy 1.20+ deprecated) → monkeypatch |
+| 33615291 | FAIL | ExtraModalityTokens가 'ee_states' 키 요구 → use_ee=False로 비활성화 |
+| **33615297** | ✅ **PASS** | train 4.12→0.80, ckpt 저장 OK. 211.3M params (3.0M trainable, encoder frozen) |
 
 ---
 

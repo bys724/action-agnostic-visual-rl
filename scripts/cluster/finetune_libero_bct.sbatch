@@ -36,6 +36,8 @@ LR="${LR:-1e-4}"
 SEQ_LEN="${SEQ_LEN:-10}"   # V-JEPA = 25
 SEED="${SEED:-0}"
 SUFFIX="${SUFFIX:-}"
+TASK_IDS="${TASK_IDS:-}"               # sanity용 (e.g., "0")
+MAX_TRAIN_BATCHES="${MAX_TRAIN_BATCHES:-}"  # sanity용
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="$CKPT_BASE/${ENCODER}_${TASK_SUITE}_seed${SEED}_${TIMESTAMP}${SUFFIX:+_$SUFFIX}"
@@ -68,6 +70,13 @@ ARGS=(
 )
 if [[ -n "$CHECKPOINT" ]]; then
     ARGS+=(--checkpoint "$CHECKPOINT")
+fi
+if [[ -n "$TASK_IDS" ]]; then
+    # space로 분리된 ID들. eval로 word splitting
+    ARGS+=(--task-ids $TASK_IDS)
+fi
+if [[ -n "$MAX_TRAIN_BATCHES" ]]; then
+    ARGS+=(--max-train-batches "$MAX_TRAIN_BATCHES")
 fi
 
 "$CONDA_PREFIX/bin/python" scripts/eval/finetune_libero_bct.py "${ARGS[@]}"

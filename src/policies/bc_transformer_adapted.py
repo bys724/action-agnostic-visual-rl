@@ -21,11 +21,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import robomimic.utils.tensor_utils as TensorUtils
 
-# LIBERO submodule path
-_LIBERO_REPO = Path(__file__).resolve().parents[2] / "external" / "LIBERO"
-if str(_LIBERO_REPO) not in sys.path:
-    sys.path.insert(0, str(_LIBERO_REPO))
-
+# 주의: libero는 conda env site-packages에서 import. external/LIBERO 는 ref 보관용.
+# (이전 누락 modules/는 셋업 시 conda env로 복사됨)
 from libero.lifelong.models.base_policy import BasePolicy
 from libero.lifelong.models.modules.language_modules import (
     IdentityEncoder,
