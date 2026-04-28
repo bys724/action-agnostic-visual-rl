@@ -72,5 +72,8 @@ temp/
 # 전처리 비교 샘플 이미지 (문서만 추적, 이미지는 제외)
 docs/preprocessing/*/samples/
 
+# 외부 참고 문서 PDF (벤더 자료 등 — 로컬 전용)
+docs/*.pdf
+
 # Claude Code 로컬 설정 (팀 공유 설정 생기면 개별 force add)
 .claude/
