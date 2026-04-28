@@ -92,13 +92,13 @@
 - **결과**: ep4-8 1차 peak +0.206 → ep12-20 점진 collapse (+0.137 ep20) → ep24-40 W-shape 회복 → **ep40 peak +0.221** → ep44/ep48 plateau (+0.221, +0.222). **v6 챔피언 (+0.259) 추월 실패 확정**
 - **결론**: P-stream 내부 강화 방식의 한계. v11로 전환
 
-#### 🔄 진행 중: Two-Stream v11 (Motion-Guided Attention Routing + Dual-Target Reconstruction)
+#### ✅ Two-Stream v11 (Motion-Guided Attention Routing + Dual-Target Reconstruction) — 학습 종료, 🏆 ep44 final champion
 
-**상태**: 구현 + ep12 결과 도달, 학습 진행 중 (JobID 33594155, 2026-04-25 01:11~, AIP_long 2노드×4 H100, 50ep, `--time=3d`)
+**상태**: 50 epoch 완주 (JobID 33594155 1차 → 33600621 resume, 2026-04-25 01:11 ~ 04-28 07:19, AIP 2노드×4 H100). ep4-ep50 12-mode probing 모두 완료.
 
 **설계 철학**: v7~v10의 네 가지 시도가 모두 "P stream 내부 강화"였고 모두 collapse 또는 v6 추월 실패. v11은 발상 전환 — **P stream 강화 포기, M이 P를 semantic-level operator로 조작하는 구조**. Dual-target reconstruction으로 collapse anchor 확보.
 
-**학습 결과 (ep1-12, JobID 33594155)**:
+**학습 결과 (ep1~ep50)**:
 
 | Epoch | L_total | L_t | L_tk | std_p | cos_intra_p |
 |-------|---------|-----|------|-------|-------------|
@@ -106,39 +106,43 @@
 | 4 | 0.0057 | 0.0044 | 0.0014 | 0.210 | 0.897 |
 | 8 | 0.0043 | 0.0038 | 0.00052 | 0.009 | 1.000 |
 | 12 | 0.0024 | 0.00197 | 0.00039 | 0.004 | 1.000 |
+| 50 | 0.00220 | — | — | — | — |
 
 → Loss 단조 감소. P encoder CLS는 cos_intra≈1.0 collapse, 그러나 patches는 healthy (75% MAE 복구 작동)
 
-**Probing — ep4~ep44 12 mode** (4 위치: A=M enc, B=P enc, D'=motion-routing 후, D=Phase 3 final):
+**Probing — ep4~ep50 12 mode** (4 위치: A=M enc, B=P enc, D'=motion-routing 후, D=Phase 3 final):
 
-| Mode | ep4 | ep8 | ep12 | ep16 | ep20 | ep24 | **ep44** |
-|------|-----|-----|------|------|------|------|----------|
-| `patch_mean_m_enc` (A) | +0.170 | +0.176 | +0.208 | +0.213 | +0.220 | +0.222 | **+0.267** ★ |
-| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 | -0.001 | -0.002 | -0.004 | -0.003 |
-| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 | +0.077 | +0.098 | +0.113 | +0.135 |
-| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 | +0.047 | +0.060 | +0.057 | +0.050 |
-| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 | +0.211 | +0.213 | +0.224 | +0.259 |
-| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | +0.219 | +0.217 | +0.230 | +0.232 | +0.264 |
-| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 | +0.205 | +0.196 | +0.232 | +0.284 |
-| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 | +0.079 | +0.087 | +0.107 | +0.137 |
-| **`patch_mean_concat_all`** (A+B+D') | +0.114 | +0.094 | +0.178 | +0.223 | +0.185 | +0.234 | **+0.288** ★★ |
-| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 | +0.163 | +0.172 | +0.158 | +0.125 |
-| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 | -0.010 | -0.009 | -0.013 | -0.002 |
-| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 | +0.139 | +0.162 | +0.140 | +0.114 |
+| Mode | ep4 | ep8 | ep12 | ep16 | ep20 | ep24 | **ep44** | ep48 | ep50 |
+|------|-----|-----|------|------|------|------|----------|------|------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | +0.208 | +0.213 | +0.220 | +0.222 | **+0.267** ★ | +0.264 | +0.265 |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 | -0.001 | -0.002 | -0.004 | -0.003 | -0.000 | -0.001 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 | +0.077 | +0.098 | +0.113 | +0.135 | +0.138 | +0.129 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 | +0.047 | +0.060 | +0.057 | +0.050 | +0.049 | +0.048 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 | +0.211 | +0.213 | +0.224 | +0.259 | +0.263 | +0.263 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | +0.219 | +0.217 | +0.230 | +0.232 | +0.264 | +0.264 | **+0.267** |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 | +0.205 | +0.196 | +0.232 | +0.284 | +0.283 | +0.282 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 | +0.079 | +0.087 | +0.107 | +0.137 | +0.139 | +0.139 |
+| **`patch_mean_concat_all`** (A+B+D') | +0.114 | +0.094 | +0.178 | +0.223 | +0.185 | +0.234 | **+0.288** ★★ | +0.281 | +0.279 |
+| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 | +0.163 | +0.172 | +0.158 | +0.125 | +0.123 | +0.123 |
+| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 | -0.010 | -0.009 | -0.013 | -0.002 | -0.002 | -0.002 |
+| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 | +0.139 | +0.162 | +0.140 | +0.114 | +0.118 | +0.113 |
 
-**🏆 ep44 — v6 챔피언 추월 (새 챔피언 등극)**:
+**🏆 ep44 final champion 확정 — ep48/ep50은 plateau**:
 - **A+B+D' = +0.288** → v6 ep8 (+0.259) **추월 +0.029** ★★
 - **A 단독 (+0.267)도 v6 추월** — 단일 mode로
 - **VideoMAE +0.326까지 격차 -0.038** (ep24 -0.092 → 절반 좁힘)
-- **W-shape 회복 패턴**: ep12 plateau → ep16-24 점진 → ep24-44 큰 도약 (+0.054)
-- LR cosine decay 후반 효과 (BYOL/SimSiam 후반 안정화 사례)
+- **W-shape 회복 패턴 확정**: ep12 +0.219 → ep20 +0.185 dip → ep24 +0.234 → ep44 +0.288 (LR cosine decay 후반 ep24→44 +0.054 큰 도약)
+- **ep44~ep50 plateau**:
+  · A+B+D': ep44 +0.288 → ep48 +0.281 → ep50 +0.279 (-0.010, LR≈0 구간 미세 over-tightening)
+  · A+D': ep44 +0.284 → ep50 +0.282 (가장 robust)
+  · A+D: ep44 +0.264 → ep50 **+0.267** (미세 신피크)
+  → ep44 이후는 새 학습 효과 없음. ep44가 진짜 peak으로 확정
 - 사용자 v11 가설 정량 확정:
   · 3-way concat (A+B+D')이 best — M+P+motion-routed P 상보적
-  · A+D' (+0.284) > A+D (+0.264) — interpreter_2는 decoder wrapper
+  · A+D' (+0.282) > A+D (+0.267) — interpreter_2는 decoder wrapper
   · CLS 모두 약화 추세, patch_mean이 정답
-- Loss와 R² 정직 상관 (L_total 0.0057 → 0.0024 → A+B+D' +0.114 → +0.288, 2.5×)
 
-**Cross-domain DROID probing** (사용자 직감 검증):
+**Cross-domain DROID probing** (ep12 기준, 사용자 직감 검증):
 
 | Gap (DROID 15Hz) | VideoMAE | v11 best | 격차 |
 |------------------|----------|----------|------|
@@ -152,9 +156,15 @@
 - 절대 R²은 작음 (~0.005) — DROID action probing 자체 한계
 - 방향성 검증: **v11 cross-domain 일반화 우수**
 
-**Cross-domain LIBERO** (진행 중):
-- BC fine-tune 도구 신규 작성 (`scripts/eval/finetune_libero_v11.py`)
-- libero_spatial 30 epoch 시작 (33600616 VideoMAE, 33600617 v11 ep12 A+D), 4-6h 후 결과
+**Cross-domain LIBERO BC** (libero_spatial 30 ep, val MSE):
+
+| Encoder | best val MSE |
+|---------|-------------|
+| VideoMAE-ours ep50 | **0.0286** |
+| v11 ep12 A+D | 0.0290 |
+
+- ep12에서는 거의 동등 (격차 +0.0004). VideoMAE in-domain 학습 advantage
+- v11 ep44/ep50 ckpt로 재측정 필요 — A+B+D' best mode 사용 시 우위 기대
 
 **핵심 구조 (pseudo code)**:
 
@@ -221,9 +231,9 @@ L_total = L_t + L_tk
 
 **P2 — Launcher / Sanity** — ✅ 완료 (33591381, 10:26 sanity 통과 후 full run)
 
-**P3 — Full Training** — 🔄 진행 중 (ep12 도달, ep16/ep20 probing 예정)
+**P3 — Full Training** — ✅ 완료 (50 epoch 완주, 2026-04-28 07:19 종료)
 
-**P4 — Ablation** (일부 진행, 본격 ablation은 ep50 이후):
+**P4 — Ablation** (일부 진행, 본격 ablation 시작 가능):
 - [x] interpreter shared vs non-shared → **non-shared 채택** (명세대로)
 - [x] Motion routing N=2 → **fixed N=2** (구현 명세대로 적용)
 - [ ] Motion routing N=1 vs N=2 vs N=4

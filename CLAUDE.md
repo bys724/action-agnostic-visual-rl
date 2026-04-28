@@ -173,28 +173,28 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 - **DROID** (180x320): 리사이즈 → 256x256 (crop 없음)
 - **Ego4D** (가변): 다운로드 진행 중, 전처리 결정 미정
 
-## 현재 Phase (2026-04-27)
+## 현재 Phase (2026-04-28)
 
-**Phase 1.5 — 🏆 v11 ep44가 v6 챔피언 추월 (+0.288), VideoMAE 격차 -0.038로 좁힘**
+**Phase 1.5 — 🏆 v11 학습 종료 (50ep 완주). ep44 A+B+D' = +0.288 final champion 확정. ep48/ep50은 plateau.**
 
 **완료 (Two-Stream lineup)**:
 - **v4** (RoPE, mask 0.3/0.5): 48ep. Probing R²=0.197
-- **v6** (APE + mask 0.5/0.5 + rotation aug): ep23 scancel, ep8 peak R²=0.259 (현 챔피언)
+- **v6** (APE + mask 0.5/0.5 + rotation aug): ep23 scancel, ep8 peak R²=0.259
 - **VideoMAE-ours**: 50ep, R²=0.326
 - **V-JEPA-ours**: 3차 발산, negative result
 - **폐기 라인 (v7-big / v8 / v9)**: 모두 P stream collapse. 상세는 `docs/RESEARCH_PLAN.md`
 
-**Two-Stream v10** (v6 base + mask_p 0.75) — **종료, ep40 plateau (+0.221)**:
+**Two-Stream v10** (v6 base + mask_p 0.75) — 종료, ep40 plateau (+0.221):
 - 50ep 거의 완주 (JobID 33570871, AIP_long 2노드×4 H100)
-- ep4-8: 1차 peak +0.206 (ep8) → ep12-20: 점진 collapse (+0.137 ep20) → ep24-40: W-shape 회복 → ep40 peak **+0.221** (`patch_mean_concat`) → ep44/ep48 plateau (+0.221, +0.222)
-- **v6 챔피언 (+0.259) 추월 실패 확정**. P-stream 내부 강화 방식의 한계로 결론
+- ep4-8: 1차 peak +0.206 → ep20 collapse +0.137 → ep24-40 W-shape 회복 → ep40 peak +0.221 → ep44/48 plateau
+- **v6 챔피언 (+0.259) 추월 실패 확정**. P-stream 내부 강화 방식의 한계
 
-**진행 중 — Two-Stream v11** (Motion-Guided Attention Routing + Dual-Target):
+**Two-Stream v11** (Motion-Guided Attention Routing + Dual-Target) — **🏆 학습 종료**:
 - **구조**: M encoder (6-layer) + P encoder (12-layer) + M decoder (3-layer, loss 없음) + P decoder 3-phase (interpreter_1 → motion-routing × 2 → interpreter_2) + shared recon_head
 - **Loss**: L_t (Phase 1) + L_tk (Phase 3), masked positions only
-- **Total params**: 250.9M (decoder까지 downstream 사용 시 ~204M)
-- **시작**: 2026-04-25 01:10:50 KST (JobID 33594155, AIP_long 2노드×4 H100, 50ep, `--time=3d`)
-- Sanity (33591381, 10:26): forward/backward OK, full scale에서 healthy
+- **Total params**: 250.9M (downstream encoder만 ~204M)
+- **시작**: 2026-04-25 01:11 (JobID 33594155, AIP 2노드×4 H100). 23:30 TIMEOUT → 33600621 resume (--time=3d)
+- **종료**: 2026-04-28 07:19 (resume 2-05:39 elapsed). 50 epoch 완주. ckpt dir `20260426_014333/` (ep16/20/24/28/32/36/40/44/48 + latest=ep50)
 
 **v11 학습 추이** (loss + 표현 진단):
 
@@ -204,42 +204,44 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 | 4 | 0.0057 | 0.0044 | 0.0014 | 0.210 | 0.897 |
 | 8 | 0.0043 | 0.0038 | 0.00052 | 0.009 | 1.000 |
 | 12 | 0.0024 | 0.00197 | 0.00039 | 0.004 | 1.000 |
+| 50 | 0.00220 | — | — | — | — |
 
-→ Loss 단조 감소. P encoder CLS는 collapse (cos_intra_p≈1.0) 그러나 patches는 healthy — 75% MAE 복구가 작동
+→ Loss 단조 감소. P encoder CLS는 collapse (cos_intra_p≈1.0)이지만 patches는 healthy — 75% MAE 복구가 작동
 
-**v11 Resume**: 33594155 (1차) 23:30 TIMEOUT (--time default 23h30m 함정) → 33600621 resume (--time=3d). 자동 latest.pt detect. 새 ckpt dir `20260426_014333/`에 ep16~ep44 저장.
-
-**v11 ep4-ep44 — Representation 비교 (12 mode, 5 epoch)**
+**v11 ep4-ep50 — Representation 비교 (12 mode)**
 
 4 위치: A (M encoder), B (P encoder), D' (motion-routing 후), D (Phase 3 final)
 
-| Mode | ep4 | ep8 | ep12 | ep16 | ep20 | ep24 | **ep44** |
-|------|-----|-----|------|------|------|------|----------|
-| `patch_mean_m_enc` (A) | +0.170 | +0.176 | +0.208 | +0.213 | +0.220 | +0.222 | **+0.267** ★ |
-| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 | -0.001 | -0.002 | -0.004 | -0.003 |
-| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 | +0.077 | +0.098 | +0.113 | +0.135 |
-| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 | +0.047 | +0.060 | +0.057 | +0.050 |
-| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 | +0.211 | +0.213 | +0.224 | +0.259 |
-| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | +0.219 | +0.217 | +0.230 | +0.232 | +0.264 |
-| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 | +0.205 | +0.196 | +0.232 | +0.284 |
-| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 | +0.079 | +0.087 | +0.107 | +0.137 |
-| **`patch_mean_concat_all`** (A+B+D') | +0.114 | +0.094 | +0.178 | +0.223 | +0.185 | +0.234 | **+0.288** ★★ |
-| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 | +0.163 | +0.172 | +0.158 | +0.125 |
-| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 | -0.010 | -0.009 | -0.013 | -0.002 |
-| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 | +0.139 | +0.162 | +0.140 | +0.114 |
+| Mode | ep4 | ep8 | ep12 | ep16 | ep20 | ep24 | **ep44** | ep48 | ep50 |
+|------|-----|-----|------|------|------|------|----------|------|------|
+| `patch_mean_m_enc` (A) | +0.170 | +0.176 | +0.208 | +0.213 | +0.220 | +0.222 | **+0.267** ★ | +0.264 | +0.265 |
+| `patch_mean_p_enc` (B) | -0.041 | -0.025 | 0.000 | -0.001 | -0.002 | -0.004 | -0.003 | -0.000 | -0.001 |
+| `patch_mean_p_state_after_routing` (D') | +0.121 | +0.066 | +0.072 | +0.077 | +0.098 | +0.113 | +0.135 | +0.138 | +0.129 |
+| `patch_mean_p_features_tk` (D) | +0.023 | +0.055 | +0.054 | +0.047 | +0.060 | +0.057 | +0.050 | +0.049 | +0.048 |
+| `patch_mean_concat_enc_only` (A+B) | +0.160 | +0.168 | +0.200 | +0.211 | +0.213 | +0.224 | +0.259 | +0.263 | +0.263 |
+| `patch_mean_concat_enc_phase3` (A+D) | +0.143 | +0.194 | +0.219 | +0.217 | +0.230 | +0.232 | +0.264 | +0.264 | **+0.267** |
+| `patch_mean_concat_enc_d_prime` (A+D') | +0.149 | +0.166 | +0.153 | +0.205 | +0.196 | +0.232 | +0.284 | +0.283 | +0.282 |
+| `patch_mean_concat_p_enc_d_prime` (B+D') | +0.135 | +0.011 | +0.076 | +0.079 | +0.087 | +0.107 | +0.137 | +0.139 | +0.139 |
+| **`patch_mean_concat_all`** (A+B+D') | +0.114 | +0.094 | +0.178 | +0.223 | +0.185 | +0.234 | **+0.288** ★★ | +0.281 | +0.279 |
+| `cls_m_enc` (A CLS) | +0.066 | +0.155 | +0.162 | +0.163 | +0.172 | +0.158 | +0.125 | +0.123 | +0.123 |
+| `cls_p_enc` (B CLS) | -0.059 | -0.011 | -0.008 | -0.010 | -0.009 | -0.013 | -0.002 | -0.002 | -0.002 |
+| `cls_concat_enc` (A+B CLS) | -0.048 | +0.092 | +0.148 | +0.139 | +0.162 | +0.140 | +0.114 | +0.118 | +0.113 |
 
-**🏆 핵심 결론 — v6 챔피언 추월**:
-- **ep44 A+B+D' = +0.288** — v6 ep8 챔피언 (+0.259) **추월 +0.029** ★★ (새 챔피언)
-- **A 단독 (+0.267)도 v6 추월** — 단일 mode로
+**🏆 최종 결론 — ep44 A+B+D' final champion**:
+- **ep44 A+B+D' = +0.288** — v6 ep8 챔피언 (+0.259) **추월 +0.029** ★★ (final champion)
 - **VideoMAE +0.326까지 격차 -0.038** (ep24 -0.092 → 절반 이상 좁힘)
-- **W-shape 회복 패턴**: ep12 plateau → ep16-24 점진 향상 → ep24-44 큰 도약 (+0.054)
-- LR cosine decay 후반 (LR 0.5e-4 → 0.0e-4) representation 큰 학습
+- **ep44~ep50 plateau 확정**:
+  · A+B+D' ep44 +0.288 → ep48 +0.281 → ep50 +0.279 (-0.010, 미세 over-tightening)
+  · A+D' ep44 +0.284 → ep50 +0.282 (stable plateau, 가장 robust)
+  · A+D ep44 +0.264 → ep50 **+0.267** (미세 신피크, 0.003 향상)
+- **W-shape 회복 패턴 확정**: ep12 +0.219 → ep20 +0.185 dip → ep24 +0.234 → ep44 +0.288 (LR cosine decay 후반 ep24→44 +0.054 큰 도약)
+- ep44 이후는 LR≈0 정체 구간으로 새 학습 효과 없음 → ep44가 진짜 peak
 - **사용자 v11 설계 가설 정량 확정**:
   · 3-way concat (A+B+D')이 best — M+P+motion-routed P 상보적
-  · A+D' (+0.284) > A+D (+0.264) — interpreter_2는 decoder wrapper, motion-routing 직후가 더 좋은 representation
+  · A+D' > A+D — interpreter_2는 decoder wrapper, motion-routing 직후가 더 좋은 representation
   · CLS는 모두 약화 추세, patch_mean이 정답
 
-**v11 Cross-domain DROID probing** (사용자 직감 검증)
+**v11 Cross-domain DROID probing** (사용자 직감 검증, ep12 기준)
 
 | Gap (DROID 15Hz) | VideoMAE | v11 best | 격차 |
 |------------------|----------|----------|------|
@@ -248,29 +250,29 @@ IBS 클러스터에서 sbatch/salloc 잡을 다룰 때마다 [`docs/cluster_sess
 | **15 (1초)** ★ | **-0.035** | **+0.005 (A+B)** | **+0.040** |
 | 30 (2초) | -0.028 | -0.010 | +0.018 |
 
-- 모든 gap에서 v11이 VideoMAE보다 일관 우위
-- gap=15 (EgoDex 학습 분포 1초와 일치)에서 격차 가장 큼 (+0.040)
-- VideoMAE는 in-domain (EgoDex +0.326) 강력하지만 cross-domain 음수
-- 절대 R² 작음 (~0.005) — DROID action probing 자체 한계
-- **방향성 검증**: v11이 cross-domain 일반화 우수
+모든 gap에서 v11 우위. gap=15 (EgoDex 학습 분포 1초)에서 격차 가장 큼.
 
-**Cross-domain LIBERO** (진행 중):
-- BC fine-tune 도구 신규 작성 (`scripts/eval/finetune_libero_v11.py`)
-- libero_spatial 30 epoch 시작 (33600616 VideoMAE, 33600617 v11 ep12 A+D)
-- 4-6h 후 결과 (val MSE 비교)
+**Cross-domain LIBERO BC** (libero_spatial 30 ep, val MSE):
+
+| Encoder | best val MSE |
+|---------|-------------|
+| VideoMAE-ours ep50 | **0.0286** |
+| v11 ep12 A+D | 0.0290 |
+
+- 거의 동등 (격차 +0.0004). v11 ep12는 학습 초반 ckpt — ep44/ep50으로 재측정 필요
+- VideoMAE 우위는 in-domain (EgoDex) 동등 학습 기반 advantage. v11의 진짜 강점은 cross-domain (DROID gap=15 +0.040)
+
+**시각화 산출물 추가**: `docs/architecture/attn_v11_ep{48,50}.png`
 
 **다음 작업**:
-1. v11 ep48/ep50 probing — VideoMAE +0.326 추월 가능성 + final 확정
-2. LIBERO BC v11 ep44 재측정 → ep12에선 동등 (0.0290 vs 0.0286)이었으나 ep44면 우위 기대
+1. ~~v11 ep48/ep50 probing~~ ✅ 완료 (ep44 final champion 확정)
+2. LIBERO BC v11 ep44/ep50 재측정 — ep12에선 동등(0.0290 vs 0.0286), 학습 진전 ckpt로 우위 기대
 3. LIBERO Rollout setup — 진짜 downstream success rate가 v11 채택 결정타
 4. v6 ep20+ 학습 재개 검토 (v6도 W-shape 회복 가능성 미검증)
-5. **v11 학습 완료 후 ckpt 로컬 워크스테이션 전송**:
-   - 옵션 1 (1-hop, 추천): 워크스테이션 → cluster 직접 SSH 가능 시
-     `rsync -avzP --inplace bys724@<cluster>:/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/{best_model.pt,checkpoint_epoch00{40,44,48}.pt} /mnt/data/checkpoints/two_stream_v11/`
-   - 옵션 2 (3-hop, 맥북 경유): 워크스테이션이 cluster 직접 접근 안 될 때
-     맥북에서 stream pipe — 맥북 디스크 사용 X:
-     `ssh bys724@<cluster> "cd /proj/.../20260426_014333 && tar c best_model.pt checkpoint_epoch00{44,48}.pt" | ssh user@<workstation> "tar x -C /mnt/data/checkpoints/two_stream_v11/"`
-   - inference만 필요하면 cluster에서 model_state_dict만 추출하여 ~60% 절약
+5. **v11 ckpt 로컬 워크스테이션 전송**:
+   - 옵션 1 (1-hop, 추천): `rsync -avzP --inplace bys724@<cluster>:/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/{best_model.pt,checkpoint_epoch00{44,48}.pt,latest.pt} /mnt/data/checkpoints/two_stream_v11/`
+   - 옵션 2 (3-hop, 맥북 경유): `ssh bys724@<cluster> "cd /proj/.../20260426_014333 && tar c best_model.pt checkpoint_epoch00{44,48}.pt latest.pt" | ssh user@<workstation> "tar x -C /mnt/data/checkpoints/two_stream_v11/"`
+   - inference만 필요하면 model_state_dict만 추출하여 ~60% 절약
 
 자세한 내용은 `docs/RESEARCH_PLAN.md`, probing 결과는 `docs/PROBING_GUIDE.md` 참고
 
