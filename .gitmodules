@@ -10,3 +10,9 @@
 [submodule "external/VideoMAE"]
 	path = external/VideoMAE
 	url = https://github.com/MCG-NJU/VideoMAE.git
+[submodule "external/LIBERO"]
+	path = external/LIBERO
+	url = https://github.com/Lifelong-Robot-Learning/LIBERO.git
+[submodule "external/vjepa2"]
+	path = external/vjepa2
+	url = https://github.com/facebookresearch/vjepa2.git

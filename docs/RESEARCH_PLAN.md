@@ -18,7 +18,7 @@
 
 | 구분 | Encoder | 사전학습 데이터 | 파라미터 | 방법 철학 | 학습 주체 |
 |------|---------|---------------|---------|----------|----------|
-| **제안** | **Two-Stream v10 (ours)** | EgoDex (~100M frames) | ~213M | M/P 구조 + pixel reconstruction + rotation aug + MAE-style P mask 0.75 | 🔥 우리 학습 |
+| **제안** | **Two-Stream v11 (ours)** | EgoDex (~100M frames) | ~204M downstream | M/P 구조 + motion-routing + dual-target reconstruction. **A+D' mode** (M enc + P after motion-routing) | 🔥 우리 학습 |
 | **Controlled comparison** | **VideoMAE-ours (2-frame)** | **EgoDex (same)** | ~101M | Vanilla MAE (구조적 bias 없음, mask 0.5) | 🔥 우리 학습 |
 | **Native 세팅 baseline** | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | 📦 공개 가중치 |
 | **Native 세팅 baseline** | V-JEPA 2.1 ViT-B | VideoMix22M (16-frame, 384px) | 86.8M | Feature prediction (최신 video SSL) | 📦 공개 가중치 |
@@ -46,9 +46,9 @@
 ### 공정성 원칙
 
 - **모든 encoder는 frozen** (downstream에서 학습 안 함)
-- **동일 입력 형식**: 단일 프레임 encoder (DINOv2, SigLIP, VC-1)도 `(img_{t-1}, img_t)` 두 프레임을 각각 forward pass 후 feature concat
-- **각 encoder의 공식 preprocessing 사용** (정규화, resolution)
-- Downstream에서 유일하게 학습되는 것: **MLP action decoder** (Phase 3) 또는 **projection + LoRA** (Phase 3B)
+- **각 encoder는 native input 분포 그대로 사용** — 1-frame encoder는 `(img_{t-1}, img_t)` 각각 인코딩 후 concat / 2-frame encoder는 pair native / V-JEPA 2.1은 16-frame 누적 슬라이딩 window 그대로 (Phase 3 D3 결정)
+- **각 encoder의 공식 preprocessing 사용** (정규화, resolution → 224×224 unified)
+- Downstream에서 유일하게 학습되는 것: **BC-Transformer policy head** (Phase 3, 공식 LIBERO 프로토콜) 또는 **projection + LoRA** (Phase 3B)
 
 ---
 
@@ -280,21 +280,61 @@ L_total = L_t + L_tk
 
 Two-Stream v6/v10, VideoMAE-ours, CLIP, DINOv2, SigLIP, VC-1, V-JEPA 2.1 ViT-B (384px, 2-frame 동작 확인), VideoMAE-official (pos_embed slice로 2-frame) — **모두 완료 (2026-04-17)**
 
-### Phase 3: LIBERO BC (메인 downstream 실험) ⏸️ 대기
+### Phase 3: LIBERO BC (메인 downstream 실험) 🔄 진행 중 (2026-04-28~)
 
 **목표**: "표현에 인코딩된 action 정보가 **실제 제어**에 유용한가"를 검증
 
+#### 3-1차: LIBERO 공식 BC-Transformer (frozen encoder + 정책 head 학습)
+
 ```
-frozen encoder → MLP action decoder → 7-DOF action
-  (7종 비교)     (학습 대상)          (task-conditioned)
+frozen encoder → encoder adapter → BC-Transformer policy head → action distribution
+  (6종 비교)     (인코더별 차이 통일)  (TemporalTransformer + GMM, LIBERO 공식)
 ```
 
-- **학습 대상**: MLP action decoder만 (encoder frozen)
-- **학습 데이터**: LIBERO demonstrations (BC, supervised regression)
-- **태스크 구분**: per-task policy 또는 task ID embedding (자연어 사용 안 함)
-- **평가**: LIBERO 시뮬레이터 closed-loop rollout. Task suite: `libero_spatial` (main), `libero_object/goal/10` (supp). Task당 50 trials × 3 seed 평균. 지표: success rate (%)
+- **정책 head**: LIBERO 공식 [`BCTransformerPolicy`](../external/LIBERO/libero/lifelong/models/bc_transformer_policy.py) 그대로 (TemporalTransformer 4-layer × 6-head + GMM head). 인코더 부분만 우리 인코더로 교체
+- **학습 대상**: BC-T policy head 전체 (encoder frozen)
+- **학습/평가 데이터**: LIBERO demonstrations (50 demo × 10 task × suite). `libero_spatial` 주력
+- **평가 (rollout)**: LIBERO 시뮬레이터, **로컬 워크스테이션** (`docker/libero` Apptainer 또는 docker compose). Task당 50 trials × 3 seed
+- **학습은 클러스터 (1 GPU H100), rollout은 로컬** (clean separation: training은 HDF5만 필요, rollout은 mujoco 시뮬레이터)
 
-**공정 비교 체크리스트**: 모든 encoder 동일 MLP 아키텍처, 단일 프레임 encoder는 (img_{t-1}, img_t) concat, 동일 action 정규화·lr·epoch·batch·trial·seed
+**핵심 설계 결정** (D1-D4):
+
+| ID | 결정 | 근거 |
+|----|------|------|
+| **D1 이미지 사이즈** | 모든 encoder 입력 **224×224**로 resize (LIBERO 원본 128×128) | 인코더 사전학습 분포 일치, 모든 encoder fair. 128 사용 시 16-patch grid 8×8로 정보 손실 |
+| **D2 FiLM language conditioning** | 인코더 단계에서 **FiLM 제거**. Language는 BC-T temporal Transformer의 text token으로만 주입 | 우리 인코더 모두 FiLM 미지원. paper claim ("visual representation quality")에 부합. 모든 encoder fair |
+| **D3 인코더별 입력** | 각 encoder가 **native input 그대로** 받음 (아래 표) | 각 인코더의 사전학습 분포 보존 = 각 인코더의 best protocol 비교. V-JEPA 1등이면 다운그레이드 ablation 추가 (2-frame replicate) |
+| **D4 2-frame pair 형성** | 학습 시 (obs_{t-1}, obs_t) 시퀀스에서 직접 생성. Rollout 시 adapter 내부 prev_obs buffer 유지 | episode 시작 t=0은 (obs_0, obs_0) 복제. 표준 video encoder fine-tune 패턴 |
+
+**비교 인코더 (6종) — D3 input format**:
+
+| Encoder | Native input | Per-timestep 출력 | 비고 |
+|---------|--------------|-------------------|------|
+| **Two-Stream v11** (A+D' mode) | (obs_{t-1}, obs_t) 2-frame pair | A+D' concat → 2 × stream_dim | EgoDex pre-trained (ours) |
+| **VideoMAE-ours** | (obs_{t-1}, obs_t) 2-frame pair | patch mean → embed_dim | EgoDex pre-trained (ours) |
+| **DINOv2-Base** | obs_{t-1}, obs_t 각각 단독 인코딩 | 2 embeddings concat → 2 × 768 | LVD-142M pre-trained |
+| **SigLIP-Base** | obs_{t-1}, obs_t 각각 단독 인코딩 | 2 embeddings concat → 2 × 768 | WebLI pre-trained |
+| **VC-1-Base** | obs_{t-1}, obs_t 각각 단독 인코딩 | 2 embeddings concat → 2 × 768 | Ego4D + 조작 pre-trained |
+| **V-JEPA 2.1** | **16-frame 누적 sliding window** [obs_{t-15}, ..., obs_t] | clip embedding → embed_dim | Episode 시작 t<16에선 obs_0 복제로 padding |
+
+각 어댑터 출력 차원이 다른 건 BC-T의 input projection이 통일.
+
+**공정 비교 체크리스트**: 모든 encoder 동일 BC-T 정책 head, 동일 LR/epoch/batch/seed/trial, 동일 task suite, 동일 image preprocessing pipeline 외 인코더 native preprocessing은 각자.
+
+#### 3-2차: LeRobot ACT (조건부 진입)
+
+**목표**: 강한 정책 head (Action Chunking Transformer)에서 결과 재검증. 절대 SR이 published VLA 수치와 비교 가능 수준으로 상승 → reviewer 설득력 강화
+
+- **진입 조건**: 1차 BC-T 결과 보고 결정
+  - Two-Stream v11 명확히 우위 → "강화 증거" 역할
+  - 박빙 → 정책 head 영향력 점검 후 결정
+- **lerobot 패키지 별도 설치 필요** (현재 conda env 미설치)
+- 설계 결정 D1-D4 동일 적용
+- 인코더 어댑터 재사용 (정책 head만 교체)
+
+#### 3-3차: V-JEPA downgrade ablation (조건부)
+
+V-JEPA 2.1이 1차 또는 2차에서 1등인 경우만 진입. **V-JEPA에 16-frame 대신 2-frame replicate** (motion 신호 무력화) → "video-aware advantage 격리". paper 본문에 "we explicitly tested whether V-JEPA's gain is from temporal context vs. representation quality" 명시 가능.
 
 ### Phase 3B: OpenVLA 통합 (축소안, 조건부 진입) ⏸️ 대기
 
