@@ -23,6 +23,32 @@
 - EgoDex로 행동-독립적(action-agnostic) 시각 표현 사전학습
 - LIBERO에서 로봇 조작 태스크로 평가
 
+## 관련 Obsidian 노트
+
+이 프로젝트의 핵심 아이디어·논문 작성·실험 설계는 Vault에 정리됨. 코드 작업 중 맥락 보충이 필요하면 참조:
+
+| 카테고리 | 경로 |
+|---------|------|
+| 프로젝트 메인 인덱스 | `Projects/Action-Agnostic Paper/README.md` |
+| 단계별 정리 | `Projects/Action-Agnostic Paper/{1. Core Idea, 2. Technical Details, 3. Experiments, 4. Paper Writing, 5. Project Management}.md` |
+| 우려사항 | `Projects/Action-Agnostic Paper/우려사항 및 대응방안.md` |
+| 핵심 개념 | `Concepts/{Action-Agnostic Pretraining Framework, Two Visual Pathways, Two-Stream Image Preprocessing, Pixel-wise Channel Fusion for Behavior Representation, Target LayerNorm (V-JEPA)}.md` |
+| 논문 노트 | `Sources/papers/{EgoDex (2025), V-JEPA 2 (2025)}.md` |
+
+(Vault 루트: `/Users/bys724/LocalVault/Obsidian Vault/`)
+
+### Vault 편집 정책 (이 프로젝트에서 자주 발생)
+
+이 프로젝트는 Vault 노트 ↔ 저장소 코드의 양방향 작업이 잦음. 가드레일:
+
+- ✅ Vault 노트 **읽기**: 자유 (filesystem MCP)
+- ✅ 가벼운 추가 (한두 줄, 링크 걸기): 허용
+- ⚠️ **신규 노트 / 폴더 구조 변경 / 대규모 노트 리팩토링**: 여기서 하지 말 것 → Vault 작업공간에서 별도로 클로드 코드를 띄워 진행
+  - 이유: Vault 컨벤션(`Projects/` 숫자.md 단계 구분, 백링크 스타일, 이모지 규약)을 자동 적용받지 못함
+- 🔁 반대로 Vault 작업공간에서는 이 저장소의 코드/설정을 직접 편집하지 않음. 필요 변경은 사용자에게 알리고 이 저장소에서 별도로 처리
+
+User CLAUDE.md의 "Vault 노트 양방향 편집 가드레일" 정책을 이 프로젝트에 구체화한 것.
+
 ## 실행 환경
 
 이 프로젝트는 **두 개의 실행 환경**에서 동작합니다. Python 코드 (`scripts/pretrain.py`, `scripts/data/`, `scripts/eval/`, `src/`)는 환경 무관이며, bash launcher만 환경별로 분리되어 있습니다.
