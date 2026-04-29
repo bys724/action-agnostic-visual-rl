@@ -93,9 +93,9 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | Encoder | --time | 결과 / 비고 |
 |-------|---------|--------|------------|
-| 33615385 | two-stream-v11 ep44 | 2-00:00:00 | RUNNING. 데이터 62,250 seq → 예상 ~52min/epoch × 50 ≈ **43h** |
-| 33615386 | videomae-ours best | 1-00:00:00 | RUNNING. 예상 ~18h |
-| 33615387 | dinov2 | 1-00:00:00 | RUNNING. 예상 ~16h |
+| 33615385 | two-stream-v11 ep44 | 2-00:00:00 | RUNNING. 11/50 ep, 2477s/ep → ETA **04-30 16:00** |
+| 33615386 | videomae-ours best | 1-00:00:00 | RUNNING. 26/50 ep, 1082s/ep → ETA **04-29 20:30** (가장 일찍) |
+| 33615387 | dinov2 | 1-00:00:00 | **CANCELLED** 04-29 13:14 — ETA 30.3h, --time=24h로 timeout 위험. 2-00:00:00로 재제출 (33616659) |
 | 33615388 | siglip | 1-00:00:00 | **FAILED** 40s — `SiglipModel(pixel_values=...)` text input 요구 (VisionModel 사용해야) |
 | 33615389 | vc1 | 1-00:00:00 | **FAILED** 1m23s — CLIPModel HF download race (`HF_HUB_OFFLINE` 미설정), VC-1 loader도 잘못 (vc_models 사용해야) |
 | 33615390 | vjepa2-1 sanity | 01:00:00 | **CANCELLED** — driver의 action loss alignment 버그 (V-JEPA T_out=10 vs actions T=25 mismatch) 발견하여 미실행 |
@@ -110,9 +110,19 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | Encoder | --time | 결과 |
 |-------|---------|--------|------|
-| 33615391 | siglip | 1-00:00:00 | RUNNING |
-| 33615392 | vc1 | 1-00:00:00 | RUNNING |
+| 33615391 | siglip | 1-00:00:00 | **CANCELLED** 04-29 13:14 — ETA 23.0h, --time=24h 한계 위험. 2-00:00:00로 재제출 (33616660) |
+| 33615392 | vc1 | 1-00:00:00 | **CANCELLED** 04-29 13:30 — ETA 20.8h, --time=24h timeout 위험. 2-00:00:00로 재제출 (33616669) |
 | 33615393 | vjepa2-1 sanity | 01:00:00 | **PASS** 15m38s. loss 5.27→2.58, `_align_actions` 정상 |
+
+**3차 제출** (`--time=2-00:00:00` 일관 적용, 04-29 13:14~13:30):
+
+| JobID | Encoder | --time | 결과 |
+|-------|---------|--------|------|
+| 33616659 | dinov2 | 2-00:00:00 | RUNNING (~13:30 시작). 50 ep × 2731s ≈ **38h** → ETA **05-01 03:30** |
+| 33616660 | siglip | 2-00:00:00 | RUNNING (~13:30 시작). 50 ep × 2180s ≈ **30h** → ETA **04-30 19:30** |
+| 33616669 | vc1 | 2-00:00:00 | PENDING. 50 ep × 2023s ≈ **28h**, 큐 가용 시 즉시 시작 → ETA **04-30 ~18:00** |
+
+**3차 재제출 사유**: 1/2차의 `--time=1-00:00:00`로는 dinov2/siglip/vc1 모두 50 ep 학습 불가능 (epoch당 시간 측정 후 적자 -4.5h ~ -6.3h 확인). dinov2/siglip은 8h 진행 후 cancel 손실, vc1은 7h45m 진행 후 cancel 손실 — 누적 ~24 GPU·h ≈ 0.99 GPU·일 (~6.1k원). main BC table 5 encoder 동일 epoch 비교 우선.
 
 **검증 결과** (2026-04-29):
 - LIBERO obs RGB: float32 [0, 1] (robomimic 정규화 완료) → 어댑터 가정 일치 ✓
