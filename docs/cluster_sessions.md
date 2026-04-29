@@ -136,6 +136,24 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 **예상 비용** (33615395만): v11과 동일 ≈ 617 GPU·h ≈ 1.59M 원 (월누적 ceil).
 
+### 2026-04-29 v11 EgoDex probing 보충 (ep32, ep40 × 12 mode) ✅ 완료
+
+**목적**: paper Figure F1 (representation evolution trajectory)의 ep24~ep44 사이 8 epoch gap 보충. W-shape 회복 구간 해상도 향상.
+
+**ckpt**: `two_stream_v11/20260426_014333/checkpoint_epoch00{32,40}.pt`. 12 mode = patch_mean × {A, B, D, D', A+B, A+D, A+D', B+D', A+B+D'} + cls × {A, B, A+B}.
+
+| JobID 범위 | 자원 | 잡수 | 결과 |
+|-----------|------|-----|------|
+| 33616548-33616559 | AIP 1×1 H100 | 12 (ep32 × 12 mode) | COMPLETED ~12:58-13:06 |
+| 33616560-33616571 | AIP 1×1 H100 | 12 (ep40 × 12 mode) | COMPLETED ~13:05-13:13 |
+
+**실제 비용**: 24 잡, 평균 11.1 min/잡, 누적 **4.45 GPU·h** ≈ 0.19 GPU·일 (월누적 ceil 영향 미미).
+
+**핵심 결과** (`patch_mean_concat_all` = champion mode):
+- ep24 +0.234 → **ep32 +0.263** → **ep40 +0.261** → ep44 +0.288 → ep50 +0.279
+- ep24~ep44 ramp이 단순 monotonic이 아님: ep32에서 +0.263 도약 → ep40 미세 후퇴 → ep44 peak. LR 후반부 oscillation의 정량 증거. F1 figure에서 표현 진화 곡선 더 부드러워짐.
+- CSV 갱신: 11 epoch × 12 mode = 132 rows in `paper_artifacts/probing/v11_egodex_summary.csv`.
+
 ---
 
 ## 2026-04-28 LIBERO BC-T sanity 시리즈 — 7회 디버깅 후 통과
