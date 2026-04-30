@@ -64,16 +64,41 @@ python scripts/eval/probe_action_droid.py \
 sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 ```
 
-### LIBERO Action Probing (Phase 2 보강, 2026-04-30 신규) — TODO
+### LIBERO Action Probing (Phase 2 보강) ✅ POSITIVE (2026-04-30 완료)
 
-DROID action probing 절대 R² ~0.005 한계를 LIBERO sim 환경에서 보완. Gap-matched protocol (DROID 4 gaps 와 시간 매칭). 자세한 plan + 주의사항 + pseudocode: [`libero_action_probing_plan.md`](libero_action_probing_plan.md).
+DROID action probing R²~0.005 한계를 LIBERO sim 환경에서 보완. Gap-matched protocol (LIBERO 20Hz {1,13,20,40} = DROID 15Hz {1,10,15,30}). Plan: [`libero_action_probing_plan.md`](libero_action_probing_plan.md).
 
-**핵심 결정**:
-- Target 은 **actual pose 정보로부터 역산** (cumulative action composition 사용 금지). OSC scaling 영향 무관.
-- LIBERO 20Hz gap {1, 13, 20, 40} = DROID 15Hz {1, 10, 15, 30} 시간 매칭
-- Quaternion convention xyzw (robosuite/scipy 호환)
+**구현**: [`scripts/eval/probe_action_libero.py`](../scripts/eval/probe_action_libero.py) + [`scripts/cluster/probe_action_libero.sbatch`](../scripts/cluster/probe_action_libero.sbatch). 5 encoder × 3 suite × 4 gap = 60 cells, ~3.6 GPU·h. 한 잡 안에서 4 gaps loop (encoder forward 동일 비용, 큐 점유 줄임).
 
-**상태**: 계획만 확정. Implementation 은 별도 dev session 에서 작성 (`scripts/eval/probe_action_libero.py` 신규 예정).
+**Target (plan §3, pose-derived)**: 7-DoF = 3 pos delta (eef_pos[t+k]-eef_pos[t]) + 3 rotvec ((R.from_rotvec(ee_ori[t]).inv()*R.from_rotvec(ee_ori[t+k])).as_rotvec()) + 1 gripper (actions[t+k-1, 6]). **HDF5 schema 발견**: `ee_ori`는 (T,3) **axis-angle** (plan의 `eef_quat` xyzw가 아님 — `R.from_quat`→`R.from_rotvec` substitution).
+
+**주요 결과 (R² aggregate)**:
+
+| Encoder | spatial gap=1 | gap=20 | gap=40 |
+|---------|--------------:|-------:|-------:|
+| **v11 ep44 (A+B+D')** | **+0.660** ★ | +0.555 | +0.374 |
+| videomae-ours | +0.408 | +0.487 | +0.289 |
+| dinov2 | +0.611 | **+0.666** | **+0.502** |
+
+→ **Controlled comparison (v11 > VideoMAE-ours)**: 12/12 cells 전부 v11 우위 (+0.04~+0.25). **v11이 gap=1에서 internet-scale도 추월** (spatial/object). 자세한 매트릭스 + 4가지 발견 + paper framing은 [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) §Phase 2 보강.
+
+**산출물**: `paper_artifacts/libero_action_probing/<encoder>_<suite>_<ts>/gap<k>/{summary.json, all_gaps.csv}`.
+
+**실행 예시**:
+```bash
+# 한 잡 = encoder × suite × 4 gaps
+sbatch --export=ALL,ENCODER=two-stream-v11,\
+CHECKPOINT=/proj/external_group/mrg/checkpoints/two_stream_v11/.../checkpoint_epoch0044.pt,\
+TASK_SUITE=libero_spatial \
+       scripts/cluster/probe_action_libero.sbatch
+
+# baselines (HF cache)
+sbatch --export=ALL,ENCODER=dinov2,TASK_SUITE=libero_spatial scripts/cluster/probe_action_libero.sbatch
+```
+
+**구현 주의사항 (트러블슈팅 — 재발 방지)**:
+- **OOM**: 초기 구현은 train demos 전체 frames을 메모리에 preprocess → OOM_KILL. **streaming refactor** 필수 (demo 단위 forward + embeddings only 누적). raw frames은 즉시 폐기.
+- `ee_ori`는 axis-angle (plan의 quat 아님) — `R.from_rotvec` 사용.
 
 ### Trajectory-Level Value Alignment (VIP-inspired, Phase 2.5) — ❌ NEGATIVE (2026-04-30 완료)
 

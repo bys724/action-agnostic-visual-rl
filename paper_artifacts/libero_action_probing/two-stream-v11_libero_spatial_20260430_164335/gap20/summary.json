@@ -1,0 +1,27 @@
+{
+  "encoder": "two-stream-v11",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/checkpoint_epoch0044.pt",
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "gap": 20,
+  "gap_seconds": 1.0,
+  "v11_mode": "abd_prime",
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 41700,
+  "n_eval_pairs": 9690,
+  "best_epoch": 20,
+  "r2_aggregate": 0.5552939505997528,
+  "r2_per_dim": [
+    0.754918339131716,
+    0.8878517518313784,
+    0.8123751080763114,
+    0.39636648907312866,
+    0.5887683573915186,
+    0.4604153483924843,
+    0.5511748379658441
+  ],
+  "mse": 0.06182001158595085,
+  "cosine_sim": 0.7355313897132874,
+  "elapsed_seconds": 145.60067892074585
+}
