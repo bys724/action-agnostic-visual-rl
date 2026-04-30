@@ -172,6 +172,47 @@ Full sweep (15 잡, AIP 1×1 H100 each, fractions={1.0,0.5,0.3,0.15}):
 
 **3차 재제출 사유**: 1/2차의 `--time=1-00:00:00`로는 dinov2/siglip/vc1 모두 50 ep 학습 불가능 (epoch당 시간 측정 후 적자 -4.5h ~ -6.3h 확인). dinov2/siglip은 8h 진행 후 cancel 손실, vc1은 7h45m 진행 후 cancel 손실 — 누적 ~24 GPU·h ≈ 0.99 GPU·일 (~6.1k원). main BC table 5 encoder 동일 epoch 비교 우선.
 
+### 2026-04-30 LIBERO Action Probing (Phase 2 보강)
+
+신규 [`scripts/eval/probe_action_libero.py`](../scripts/eval/probe_action_libero.py) + [`scripts/cluster/probe_action_libero.sbatch`](../scripts/cluster/probe_action_libero.sbatch). Plan: [`docs/libero_action_probing_plan.md`](libero_action_probing_plan.md). DROID R²~0.005 한계 보완 목적, gap-matched protocol (LIBERO 20Hz {1,13,20,40} = DROID 15Hz {1,10,15,30}). Target = pose-derived 7-DoF (3 pos + 3 rotvec + 1 gripper), cumulative action sum 회피.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33633959 | AIP 1×1 H100 | 01:30:00 | sanity videomae × spatial × task 0 × 5 demos × gap=20 | ✅ COMPLETED 17s. R² agg=+0.053 (per-dim pos 모두 +0.27~+0.52, rotvec 약함) |
+
+**Full sweep 1차** (한 잡 = encoder × suite × 4 gaps loop, 5 × 3 = 15잡, AIP 1×1 H100, --time=01:30:00):
+
+| 33633961~33633975 | 15잡 | **OUT_OF_MEMORY** 38~55s. train demos 전체 frames preprocess해서 메모리에 누적 → OOM_KILL. 결과 없음. ~10 GPU·min 손실 (~0.7원). |
+
+**원인 + 수정**: streaming refactor — demo 단위 forward + embeddings only 누적 (raw frames 즉시 폐기). 코드: [scripts/eval/probe_action_libero.py](../scripts/eval/probe_action_libero.py) `collect_embed()` 함수.
+
+**Sanity (streaming 검증)**:
+| 33633976 | AIP 1×1 H100 | sanity (videomae × spatial × task 0 × 5 demos × gap=20) | ✅ COMPLETED 12s. R²=+0.0527 (1차 sanity와 일치 — 코드 동치성 확인) |
+
+**Full sweep 2차** (streaming, 15잡):
+
+| Encoder | spatial | object | goal |
+|---------|---------|--------|------|
+| two-stream-v11 ep44 (A+B+D') | 33633977 | 33633982 | 33633987 |
+| videomae-ours best | 33633978 | 33633983 | 33633988 |
+| dinov2 | 33633979 | 33633984 | 33633989 |
+| siglip | 33633980 | 33633985 | 33633990 |
+| vc1 | 33633981 | 33633986 | 33633991 |
+
+✅ **모두 COMPLETED 17:14, 누적 13010s = 3.61 GPU·h** ≈ 0.15 GPU·일 (~9k원).
+
+**핵심 결과 (R² aggregate matrix)** — 자세한 분석은 [RESEARCH_PLAN.md §Phase 2 보강](RESEARCH_PLAN.md):
+
+🏆 **Controlled comparison (v11 > VideoMAE-ours, 12/12 cells)**: +0.04~+0.25, 모든 (suite, gap) cell. Architectural contribution 입증.
+
+🏆 **v11 gap=1 dominance**: spatial +0.660 (vs dinov2 +0.611), object +0.702 (vs +0.690). Internet-scale도 fast-motion에서는 추월.
+
+**DINOv2가 internet-scale 강자**: 12 cells 중 9 best (gap≥13). v11의 약점은 long-gap (gap=40 −0.29 ramp).
+
+**Phase 2.5 negative 반전 framing**: action-relevance metric (probing) → v11 win, state-similarity metric (value alignment) → DINOv2 win. 두 metric 두 능력으로 paper §4.5 main supplementary 통합.
+
+
+
 ### 2026-04-30 BC-T 4차 제출 (cfg 결함 수정 후) — `use_joint=True` + `joint_states`
 
 **원인 진단** (commit f6a3b5c): VideoMAE-ours BC-T 33615386 ep50 ckpt 로컬 rollout sanity 0/50 SR. 학습 cfg (`scripts/eval/finetune_libero_bct.py`)가 LIBERO 공식 default와 불일치 — `use_joint=False`로 `robot0_joint_pos` (7-d) 누락 = robot kinematics state 부재로 spatial control 실패. ckpt/inference 코드는 정상.
