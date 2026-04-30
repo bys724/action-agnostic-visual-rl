@@ -283,6 +283,47 @@ L_total = L_t + L_tk
 
 Two-Stream v6/v10, VideoMAE-ours, CLIP, DINOv2, SigLIP, VC-1, V-JEPA 2.1 ViT-B (384px, 2-frame 동작 확인), VideoMAE-official (pos_embed slice로 2-frame) — **모두 완료 (2026-04-17)**
 
+### Phase 2.5: Trajectory-Level Value Alignment (VIP-inspired) 🔜 (2026-04-30 신규)
+
+**동기**: DROID single-step action delta probing R²이 절대값 ~0.005 수준으로 작음. 이는 encoder 부족보다 **single-step action delta가 본질적으로 noisy + DROID task 다양성**으로 인한 average signal 약함이 주요 원인. Trajectory-level multi-step evaluation을 추가해 frozen encoder의 robot-relevant capacity를 더 강하게 측정.
+
+**Inspiration**: VIP (Ma et al., 2022) — Value-Implicit Pretraining. 학습된 representation이 task progress를 monotonically reflect하는지 평가.
+
+**Metric**:
+```
+For each LIBERO demonstration trajectory:
+  1. e_t = encoder(frame_t)  # frame-wise embedding
+  2. V(t) = -cosine_distance(e_t, e_T)  # negative distance to goal frame
+  3. Spearman rank correlation: ρ = spearmanr(t, V(t)).correlation
+Aggregate: mean ± std ρ across trajectories per (encoder × suite)
+```
+
+**비교 대상 (5 encoder main + V-JEPA 2.1/VideoMAE-official optional)**:
+- Two-Stream v11 ep44 (mode A+B+D')
+- VideoMAE-ours ep50 (patch_mean)
+- VC-1-Base (CLS or patch_mean native)
+- DINOv2-Base (frame-wise patch_mean)
+- SigLIP-Base (frame-wise patch_mean)
+
+**데이터**: LIBERO demos 50 × 10 task × 3 suite (spatial/object/goal) = 1500 trajectory. 50-200 frames per trajectory. 이미 다운로드 완료.
+
+**구현 plan**:
+1. 기존 frozen encoder loader (probing 코드) 재활용
+2. LIBERO HDF5 frame access (이미 BC-T용 access 완성)
+3. Per-frame embedding extraction → trajectory별 V(t) 계산
+4. scipy.stats.spearmanr aggregate
+5. 결과 → `paper_artifacts/value_alignment/` (신규 sub-folder)
+
+**예상 비용**: 1-2일 작업, ~2-5 GPU·h (probing 정도, batch inference). 학습 없음.
+
+**Paper 위치**: §4.5 Trajectory-Level Value Alignment + Tab 6 (5 encoder × 3 suite Spearman ρ) + Fig 5b (optional, value curve overlay)
+
+**가설**: v11 ≥ VideoMAE-ours ≈ VC-1 > DINOv2 ≈ SigLIP — robot-pretrained encoders가 task progress를 internet-scale보다 잘 capture
+
+**Go/No-Go**:
+- Go: v11 우위 → paper §4.5 main result + Phase 3-1 박빙 시 strong supplementary evidence
+- No-Go: v11 ≈ baselines → Limitations에 "trajectory-level metric에서는 격차 미관찰" 명시, Phase 3-1 결과로만 의존
+
 ### Phase 3: LIBERO BC (메인 downstream 실험) 🔄 진행 중 (2026-04-28~)
 
 **목표**: "표현에 인코딩된 action 정보가 **실제 제어**에 유용한가"를 검증

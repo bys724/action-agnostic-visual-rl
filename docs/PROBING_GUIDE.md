@@ -64,6 +64,29 @@ python scripts/eval/probe_action_droid.py \
 sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 ```
 
+### Trajectory-Level Value Alignment (VIP-inspired, Phase 2.5, 2026-04-30 신규)
+
+**목적**: DROID single-step action delta probing R² (~0.005)을 보완하는 trajectory-level multi-step evaluation. Frozen encoder의 robot-relevance를 task progress correlation으로 측정.
+
+**Inspiration**: VIP (Ma et al., 2022, Value-Implicit Pretraining)
+
+**Metric**:
+```python
+for trajectory in libero_demos:
+    embeddings = [encoder(frame) for frame in trajectory.frames]
+    e_goal = embeddings[-1]
+    V = [-cosine_distance(e_t, e_goal) for e_t in embeddings]
+    T = list(range(len(V)))
+    rho = scipy.stats.spearmanr(T, V).correlation
+```
+
+**구현 위치 (TODO)**: `scripts/eval/value_alignment.py` (신규)
+- 5 encoder × 3 LIBERO suite (spatial/object/goal) × 1500 trajectory
+- 결과 → `paper_artifacts/value_alignment/v11_libero_summary.csv`
+- 약 2-5 GPU·h batch inference
+
+**관련 paper 측 작업**: Vault `Projects/Action-Agnostic Paper/3. Experiments.md § Phase 2.5` + paper repo Tab 6 / Fig 5b
+
 ### 주요 옵션
 
 | 옵션 | 설명 | 기본값 |
