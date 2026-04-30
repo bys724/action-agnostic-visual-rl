@@ -64,6 +64,17 @@ python scripts/eval/probe_action_droid.py \
 sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 ```
 
+### LIBERO Action Probing (Phase 2 보강, 2026-04-30 신규) — TODO
+
+DROID action probing 절대 R² ~0.005 한계를 LIBERO sim 환경에서 보완. Gap-matched protocol (DROID 4 gaps 와 시간 매칭). 자세한 plan + 주의사항 + pseudocode: [`libero_action_probing_plan.md`](libero_action_probing_plan.md).
+
+**핵심 결정**:
+- Target 은 **actual pose 정보로부터 역산** (cumulative action composition 사용 금지). OSC scaling 영향 무관.
+- LIBERO 20Hz gap {1, 13, 20, 40} = DROID 15Hz {1, 10, 15, 30} 시간 매칭
+- Quaternion convention xyzw (robosuite/scipy 호환)
+
+**상태**: 계획만 확정. Implementation 은 별도 dev session 에서 작성 (`scripts/eval/probe_action_libero.py` 신규 예정).
+
 ### Trajectory-Level Value Alignment (VIP-inspired, Phase 2.5) — ❌ NEGATIVE (2026-04-30 완료)
 
 VIP (Ma et al., 2022, Value-Implicit Pretraining)에서 영감 받은 metric. trajectory별 e_t와 e_T(마지막 frame) 간 cosine을 V(t)로 두고 Spearman ρ(t, V(t)) 측정.
