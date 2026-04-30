@@ -32,7 +32,7 @@ generated artifacts (model output visualizations), not editable sources.
 
 | Source path | Purpose | Paper position |
 |-------------|---------|----------------|
-| `attn_v11_ep44_nomask.png` | Motion-routing attention at the champion epoch (ep44). What M-stream attends to in P-stream on full unmasked input. | Method or qualitative section, main figure candidate. |
+| `attn_v11_ep44_nomask.png` | Motion-routing attention at the champion epoch (ep44). 4 rows × 8 cols (col 0/1 raw frames, col 2-5 attention overlays, col 6/7 reconstructions). **Updated 2026-04-30**: Sobel-edge background with **dual-frame composite** (past frame in light blue ghost + current frame in sharp dark) for direct motion visualization, motion-peak anchor (auto-selects end-effector patch via frame-diff). | Method or qualitative section, main figure candidate. |
 | `attn_v11_ep{4,8,12,16,20,24,48,50}*_nomask.png` | Attention progression across training. | Supplementary, optional. |
 | `attn_v11_ep4.png`, `attn_v11_ep48.png`, `attn_v11_ep50.png` | Variants with masked-input attention (training-distribution view). Less common in paper figures than `_nomask` variants. | Supplementary. |
 | `rotation_v10_ep*`, `rotation_v6_baseline` | Rotation augmentation samples (data viz). | Supplementary, optional. |
