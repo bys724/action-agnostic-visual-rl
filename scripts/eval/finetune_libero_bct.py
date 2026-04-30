@@ -108,7 +108,7 @@ def build_cfg(args, shape_meta) -> OmegaConf:
             },
         },
         "data": {
-            "use_joint": False,
+            "use_joint": True,
             "use_gripper": True,
             "use_ee": False,  # ExtraModalityTokens는 'ee_states' 키 요구 — LIBERO 표준은 ee_pos/ee_ori 분리. ee 비활성화로 단순화.
             "seq_len": args.seq_len,
@@ -116,7 +116,7 @@ def build_cfg(args, shape_meta) -> OmegaConf:
                 "modality": {
                     "rgb": ["agentview_rgb", "eye_in_hand_rgb"],
                     "depth": [],
-                    "low_dim": ["gripper_states"],
+                    "low_dim": ["gripper_states", "joint_states"],
                 },
             },
             "task_group_size": 1,
@@ -318,7 +318,7 @@ def main():
     obs_modality = {
         "rgb": ["agentview_rgb", "eye_in_hand_rgb"],
         "depth": [],
-        "low_dim": ["gripper_states"],
+        "low_dim": ["gripper_states", "joint_states"],
     }
 
     task_indices = args.task_ids if args.task_ids is not None else list(range(n_tasks))

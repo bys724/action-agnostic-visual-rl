@@ -15,7 +15,7 @@
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=08:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --output=/proj/external_group/mrg/logs/ft_libero_bct_%x_%j.out
 #SBATCH --error=/proj/external_group/mrg/logs/ft_libero_bct_%x_%j.err
 
