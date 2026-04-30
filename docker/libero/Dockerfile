@@ -50,6 +50,12 @@ RUN pip install --no-cache-dir \
     timm>=0.9.0 \
     einops
 
+# BC-T policy dependencies (LIBERO 공식 BCTransformerPolicy + AdaptedBCTransformerPolicy)
+# omegaconf: cfg loading, robomimic: TensorUtils + BasePolicy
+RUN pip install --no-cache-dir \
+    omegaconf \
+    'robomimic==0.2.0'
+
 # Clone and install LIBERO with all dependencies
 RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git /opt/libero && \
     cd /opt/libero && \

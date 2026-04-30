@@ -153,6 +153,8 @@ services:
     volumes:
       - .:/workspace
       - ./data:/workspace/data
+      - /mnt/data:/mnt/data           # BC-T ckpt, 추후 LIBERO HDF5 등
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface  # CLIP 캐시 공유
       - ./third_party/openpi/third_party/libero:/workspace/libero:ro
     network_mode: host
     stdin_open: true

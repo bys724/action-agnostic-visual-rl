@@ -1,154 +1,114 @@
-# LIBERO 벤치마크 테스트 가이드
+# LIBERO BC-T Rollout 가이드
+
+학습된 BC-Transformer 정책(`scripts/eval/finetune_libero_bct.py` 산출물)을
+LIBERO 시뮬레이터에서 closed-loop 평가하기 위한 가이드.
+
+> 학습은 **클러스터** (1 GPU H100), rollout은 **로컬 워크스테이션** (mujoco
+> 시뮬레이터). BC-T `best.pt`만 클러스터→로컬로 전송하면 되고, LIBERO
+> demonstration HDF5는 rollout에 불필요.
 
 ## 사전 요구사항
 
-- Docker & NVIDIA Container Toolkit
-- GPU (CUDA 지원)
-- 충분한 디스크 공간 (~50GB, 모델 체크포인트 포함)
+- Docker + NVIDIA Container Toolkit
+- GPU (CUDA 12.1+, H100 OK)
+- 로컬에 BC-T `best.pt` 1개 (340 MB 정도)
+- Docker 이미지 `libero-env:latest` (이미 빌드됨, 31.7 GB)
 
-## 1. Docker 이미지 빌드
-
-```bash
-cd /path/to/action-agnostic-visual-rl
-
-# LIBERO 평가 환경 빌드
-docker compose build libero
-
-# OpenVLA-LIBERO 서버 빌드
-docker compose build openvla-libero
-```
-
-## 2. OpenVLA LIBERO 테스트
-
-### 2.1 서버 실행
-```bash
-# 백그라운드로 서버 시작
-docker compose up -d openvla-libero
-
-# 로그 확인 (모델 로딩 완료까지 대기)
-docker logs -f openvla-libero-server
-
-# 서버 상태 확인
-curl http://localhost:18010/health
-```
-
-### 2.2 평가 실행
-```bash
-# 테스트용 (에피소드 1개)
-docker compose run --rm libero python src/eval_libero.py \
-  --model openvla \
-  --host localhost \
-  --port 18010 \
-  --task-suite libero_spatial \
-  --num-trials 1 \
-  --verbose
-
-# 전체 평가 (50 trials)
-docker compose run --rm libero python src/eval_libero.py \
-  --model openvla \
-  --host localhost \
-  --port 18010 \
-  --task-suite libero_spatial \
-  --num-trials 50
-```
-
-### 2.3 종료
-```bash
-docker compose down openvla-libero
-```
-
-## 3. Pi0 LIBERO 테스트
-
-Pi0는 openpi 인프라를 사용합니다.
+## 1. 컨테이너 기동
 
 ```bash
-cd third_party/openpi
-
-# 서버 + 클라이언트 실행
-docker compose -f examples/libero/compose.yml up --build
-
-# 또는 서버만 백그라운드 실행
-docker compose -f examples/libero/compose.yml up -d openpi_server
-
-# 별도로 클라이언트 실행
-docker compose -f examples/libero/compose.yml run runtime \
-  python examples/libero/main.py \
-  --task_suite_name libero_spatial \
-  --num_trials_per_task 5
+docker compose up -d libero
+docker exec libero-eval python -c "import libero; print('libero ok'); import mujoco; print('mujoco', mujoco.__version__)"
 ```
 
-## 4. 결과 확인
+마운트:
+- 호스트 `.` → 컨테이너 `/workspace`
+- `MUJOCO_GL=egl` (헤드리스 NVIDIA 렌더링)
 
-```
-data/libero/results/     # JSON 결과 파일
-data/libero/videos/      # 에피소드 비디오
-```
-
-## 5. 문제 해결
-
-### 포트 충돌
-```bash
-# 18010 포트 사용 중인 프로세스 확인
-sudo lsof -i :18010
-
-# 기존 컨테이너 정리
-docker compose down
-docker rm -f openvla-libero-server
-```
-
-### LIBERO import 오류
-```bash
-# LIBERO 설치 확인
-docker compose run --rm libero python -c "import libero; print(libero.__file__)"
-```
-
-### 서버 연결 오류
-```bash
-# 서버 로그 확인
-docker logs openvla-libero-server
-
-# health check
-curl http://localhost:18010/health
-```
-
-## 6. Task Suite 옵션
-
-| Suite | Tasks | Max Steps | 설명 |
-|-------|-------|-----------|------|
-| `libero_spatial` | 10 | 220 | 공간 추론 |
-| `libero_object` | 10 | 280 | 물체 조작 |
-| `libero_goal` | 10 | 300 | 목표 달성 |
-| `libero_10` | 10 | 520 | 긴 horizon |
-| `libero_90` | 90 | 400 | 대규모 |
-
-## 7. 비교 평가
-
-### 7.1 통합 평가 스크립트 사용
+## 2. ckpt 전송 (클러스터 → 로컬)
 
 ```bash
-# 서버 실행 (각각 별도 터미널)
-docker compose up -d openvla-libero  # OpenVLA: localhost:18010
-docker compose -f third_party/openpi/serving/compose.yml up  # Pi0: localhost:8000
+# 옵션 1 (rsync, 권장)
+mkdir -p /mnt/data/checkpoints/libero_bct
+rsync -avzP bys724@<cluster>:/proj/external_group/mrg/checkpoints/libero_bct/<run_dir>/best.pt \
+  /mnt/data/checkpoints/libero_bct/bct_<encoder>_<suite>_seed<N>_best.pt
+```
 
-# OpenVLA 평가
+ckpt 안의 `cfg.encoder.checkpoint`는 클러스터 path (`/proj/...`)이지만,
+`policy_state_dict`이 adapter weights 전부를 포함하므로 rollout 시 자동으로
+None override + 덮어쓰기됨 (별도 처리 불필요).
+
+## 3. Sanity rollout (1 task × 1 trial)
+
+```bash
 docker exec libero-eval python src/eval_libero.py \
-  --model openvla --host localhost --port 18010 \
-  --task-suite libero_spatial --num-trials 10
-
-# Pi0 평가
-docker exec libero-eval python src/eval_libero.py \
-  --model pi0 --host localhost --port 8000 \
-  --task-suite libero_spatial --num-trials 10
+    --checkpoint /mnt/data/checkpoints/libero_bct/bct_videomae-ours_libero_spatial_seed0_best.pt \
+    --task-suite libero_spatial \
+    --task-ids 0 \
+    --num-trials 1
 ```
 
-### 7.2 결과 비교
+- 첫 episode가 success이면 본 평가로
+- 실패 시 비디오 (`data/libero/videos/task0_ep0_failure.mp4`)와 stdout으로
+  디버깅 (이미지 회전, gripper sign convention, action scale 등)
 
-결과 JSON 파일은 `data/libero/results/`에 저장됩니다.
-파일명: `{model}_{task_suite}_{timestamp}.json`
+## 4. 본 평가 (50 trial × 10 task)
 
-### 7.3 최신 결과 (libero_spatial, 10 trials/task)
+```bash
+docker exec libero-eval python src/eval_libero.py \
+    --checkpoint /mnt/data/checkpoints/libero_bct/bct_<encoder>_<suite>_seed<N>_best.pt \
+    --task-suite libero_spatial \
+    --num-trials 50 \
+    --seed 7
+```
 
-| 모델 | 성공률 | 성공 | 에피소드 |
-|------|--------|------|----------|
-| Pi0 | 100.0% | 100 | 100 |
-| OpenVLA | 40.0% | 40 | 100 |
+- 약 6-12 시간 (10 task × 50 trial × ~max_steps)
+- 결과 JSON: `data/libero/results/bct_<...>_libero_spatial_seed7_<ts>.json`
+- 비디오: `data/libero/videos/task<i>_ep<j>_{success,failure}.mp4`
+
+## 5. 결과 해석
+
+JSON 구조:
+```
+{
+  "task_suite": "libero_spatial",
+  "overall_success_rate": 0.xx,
+  "total_successes": N,
+  "total_episodes": M,
+  "task_results": [{"task_id": ..., "task_description": ..., "success_rate": ...}, ...],
+  "metadata": {checkpoint, seed, replan_steps, ...}
+}
+```
+
+## Task Suite 옵션
+
+| Suite | Tasks | Max Steps |
+|-------|-------|-----------|
+| `libero_spatial` | 10 | 220 |
+| `libero_object`  | 10 | 280 |
+| `libero_goal`    | 10 | 300 |
+| `libero_10`      | 10 | 520 |
+| `libero_90`      | 90 | 400 |
+
+## 트러블슈팅
+
+### MUJOCO_GL EGL 렌더링 실패
+```bash
+docker exec libero-eval bash -c 'echo $MUJOCO_GL; ls /usr/share/glvnd/egl_vendor.d/'
+# MUJOCO_GL=egl, 10_nvidia.json 존재해야 함
+```
+
+### action scale / sign 이상
+LIBERO env는 7-dim action 기대 (xyz delta 3 + rpy delta 3 + gripper {-1, 1}).
+학습 데이터(robomimic HDF5)와 env가 동일 convention인지 첫 비디오로 확인.
+
+### 이미지 회전 (180도)
+LIBERO env raw image는 사람 시점에서 거꾸로 보일 수 있음. 학습 데이터(HDF5)도
+같은 raw image를 그대로 저장 → 학습/rollout 모두 회전 미적용으로 일관성 유지.
+만약 학습 시 별도 회전 처리가 있었다면 `BCTransformerClient._img_to_tensor`도
+동일하게 회전 추가 필요.
+
+### Encoder ckpt 경로 문제
+ckpt에 박힌 cluster path를 무시하고 `policy_state_dict`로 덮어쓰는 흐름이라
+`build_adapter(checkpoint_path=None)` 시 random init이 한 번 일어남.
+console에 missing/unexpected keys 0이면 정상.

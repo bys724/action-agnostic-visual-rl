@@ -374,6 +374,38 @@ frozen encoder → encoder adapter → BC-Transformer policy head → action dis
 - 33615385 (v11 ep44), 33615386 (videomae), 33615387 (dinov2), 33615391 (siglip), 33615392 (vc1) — RUNNING
 - 1차 결과 (~2일 후) 본 후 `object`/`goal` suite + seed=1, 2 병렬 큐 제출
 
+**🔴 1차 BC-T 학습 중단 결정 (2026-04-30) — 학습 cfg 결함 발견**
+
+VideoMAE-ours BC-T (33615386) 학습 종료 후 로컬 H100에서 LIBERO rollout sanity 평가 → **0/50 = 0% SR** (10 task × 5 trial). 모든 task 0% 일관, max_steps 정확히 소진. 진단:
+
+| 점검 | 상태 | 근거 |
+|------|------|------|
+| ckpt 로드 | ✅ 정상 | 227 key (adapter 160 + BC-T head 67) — encoder weights 전부 포함 |
+| Inference 코드 | ✅ LIBERO 공식 일치 | 회전 미적용, gripper_states↔robot0_gripper_qpos, dist.sample 모두 일치 |
+| 비디오 패턴 | ⚠️ 의도적 움직임이지만 task 영역 이탈 | gripper가 점진적으로 테이블 area 밖으로 누적 이동 |
+| 학습 NLL | ✅ -23.7 (정상 fit) | 학습 자체 수렴 |
+
+**결정적 원인**: `scripts/eval/finetune_libero_bct.py` 학습 cfg가 LIBERO 공식 default와 불일치
+- LIBERO 공식 (`/opt/libero/libero/configs/data/default.yaml`): `use_joint=True`, `low_dim=["gripper_states", "joint_states"]`, `obs_key_mapping.joint_states=robot0_joint_pos`
+- 우리 학습 cfg: `use_joint=False`, `low_dim=["gripper_states"]` (gripper qpos 2-d만)
+- → **`joint_states` (robot0_joint_pos, 7-d) 누락** = robot kinematics state 부재
+- 정책이 robot의 spatial configuration을 모름 → spatial control fail
+- 비디오의 "의도적이지만 잘못된 방향" 패턴과 일치
+
+**필요한 학습 driver 수정** (`scripts/eval/finetune_libero_bct.py`):
+1. `cfg.data.use_joint=True` 활성화
+2. `cfg.data.obs.modality.low_dim`에 `joint_states` 추가
+3. `obs_key_mapping`에 `joint_states: robot0_joint_pos` 추가
+4. `shape_meta`에 `joint_states: [7]` 자동 추출 (dataset에서 자연스럽게 들어감 — get_dataset 호출 시 obs_modality.low_dim에 명시되어 있으면 됨)
+5. (선택) `affine_translate=4` augmentation 활성화 — LIBERO 공식 default. 현재는 IdentityAug
+
+**액션 플랜**:
+- 진행 중 잡 (33615385~33615392) cancel + 5 encoder 모두 새 cfg로 재제출
+- 클러스터 학습 종료된 VideoMAE-ours BC-T ckpt (cluster: `libero_bct/videomae_libero_spatial_*` + 로컬: `bct_videomae-ours_libero_spatial_seed0_best.pt`)도 재학습
+- 추가 비용: ~25h × 5 encoder = ~125 GPU·h (병렬 5 GPU면 실시간 ~25h)
+
+**참고 (sanity rollout 인프라)**: 로컬 H100에서 `src/eval_libero.py` BC-T 전용으로 갈아엎고 `libero-eval` 컨테이너로 closed-loop rollout 동작 확인. 새 ckpt 받으면 동일 명령으로 재평가 가능 — 자세한 rollout 가이드는 `docs/setup/LIBERO_TEST_GUIDE.md`
+
 **최종 main table 목표**: 5 encoder × 3 suite × 3 seed = **45 BC runs + rollout**
 
 #### 3-2차: LeRobot ACT (조건부 진입)
