@@ -100,6 +100,27 @@ sbatch --export=ALL,ENCODER=dinov2,TASK_SUITE=libero_spatial scripts/cluster/pro
 - **OOM**: 초기 구현은 train demos 전체 frames을 메모리에 preprocess → OOM_KILL. **streaming refactor** 필수 (demo 단위 forward + embeddings only 누적). raw frames은 즉시 폐기.
 - `ee_ori`는 axis-angle (plan의 quat 아님) — `R.from_rotvec` 사용.
 
+### LIBERO Single-Frame Task Classification (Phase 2 보강 — P Stream Evaluation Gap) — TODO (2026-04-30 신규)
+
+Phase 2 보강 LIBERO action probing 결과의 한계 (P stream specialization positive evidence 부재) 를 보완하기 위한 추가 evaluation. Single frame → 10-way task classification. **Single frame 이라 motion 정보 부재 → P stream 우위 자연 영역**.
+
+**핵심 결정**:
+- Frame: trajectory mid-point single frame. 2-frame encoder 는 (frame_t, frame_t) self-pair (M stream ΔL ≈ 0 자연 발생)
+- Probe: linear classifier + softmax, 10-way per suite. cross-entropy + Adam + 20 epoch
+- Cells: 5 encoder × 3 suite (= 15) + v11 mode ablation (A / B / D' / A+B+D' × 3 suite = 12) = **27 cells**
+- 가설: **B (P encoder) > A (M encoder)** — single frame 에서 P 우위 → functional differentiation 양방향 입증
+- 비용 ~2 GPU·h, 1-2일
+
+**자세한 plan + 주의사항 + pseudocode + HDF5 sanity (Step 1) + TODO checklist**: [`libero_task_classification_plan.md`](libero_task_classification_plan.md)
+
+**4 시나리오별 후속 계획** (실험 결과 보고 paper 측 framing 결정):
+- B > A: paper §4 새 sub-section "Functional Differentiation Two Directions" 검토
+- B > DINOv2: hero result. paper §4.5 강조
+- B ≈ DINOv2: P 가 image SSL 과 경쟁력 paragraph 추가
+- B 약함: paper main framing 약화 ("P as substrate") + Limitations 명시
+
+**상태**: 계획만 확정. Implementation 은 별도 dev session 에서 작성 (`scripts/eval/task_classification_libero.py` 신규 예정).
+
 ### Trajectory-Level Value Alignment (VIP-inspired, Phase 2.5) — ❌ NEGATIVE (2026-04-30 완료)
 
 VIP (Ma et al., 2022, Value-Implicit Pretraining)에서 영감 받은 metric. trajectory별 e_t와 e_T(마지막 frame) 간 cosine을 V(t)로 두고 Spearman ρ(t, V(t)) 측정.
@@ -123,6 +144,31 @@ CHECKPOINT=/proj/external_group/mrg/checkpoints/two_stream_v11/.../checkpoint_ep
 TASK_SUITE=libero_object,V11_MODE=d_prime_only,\
 "LAST_K_FRACTIONS=1.0 0.5 0.3 0.15" scripts/cluster/value_alignment.sbatch
 ```
+
+#### 📌 TODO: v11 mode ablation 결과 확인 + 본 가이드에 추가 (2026-04-30)
+
+**상태**: `cluster_sessions.md` 의 Phase 2.5 § 끝에 v11 mode ablation 잡 (b_only / d_prime_only) 이 PENDING 으로 기록됨:
+- 33632852~33632857 (b_only × 3 suite + d_prime_only × 3 suite, fractions sweep)
+
+**확인 + 기록 작업**:
+- [ ] sacct 또는 `paper_artifacts/value_alignment/two-stream-v11_*_b_only_*` 출력 디렉토리 확인 → b_only 결과 도착했는지 확인
+- [ ] d_prime_only (이미 일부 도착 — full vs b_only contrast) 결과 종합
+- [ ] **본 § Phase 2.5 섹션에 결과 매트릭스 추가**:
+
+  ```
+  | v11 mode | spatial ρ | object ρ | goal ρ |
+  |----------|----------|---------|--------|
+  | A+B+D' (default)  | +0.531 | +0.379 | +0.513 |
+  | b_only            |   ?    |    ?    |    ?   |
+  | d_prime_only      |   ?    |    ?    |    ?   |
+  ```
+
+- [ ] **결과 해석 paragraph**:
+  - b_only > A+B+D'? → P stream 이 cosine alignment / state-similarity 에 강함 evidence (P specialization positive 한 axis)
+  - b_only ≈ A+B+D'? → mode 무관, P encoder 자체가 cosine alignment 약함
+  - d_prime_only ≈ A+B+D'? → motion encoding (A) 의 기여 무관 (이미 RESEARCH_PLAN.md 에 추정 기록됨)
+
+- [ ] **Cross-link**: 결과는 P stream evaluation 의 한 axis 로 활용. LIBERO Single-Frame Task Classification (위 섹션) 결과와 종합 분석. 자세한 분석은 `RESEARCH_PLAN.md` §Phase 2.5 + Vault `3. Experiments § Phase 2 보강 § P Stream Evaluation Gap`
 
 ### 주요 옵션
 
