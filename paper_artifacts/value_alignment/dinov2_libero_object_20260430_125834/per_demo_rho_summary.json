@@ -1,0 +1,18 @@
+{
+  "encoder": "dinov2",
+  "checkpoint": null,
+  "task_suite": "libero_object",
+  "view": "agentview_rgb",
+  "n_tasks": 10,
+  "n_total_trajectories": 500,
+  "n_kept_after_length_cutoff": 476,
+  "n_valid_rho": 476,
+  "length_cutoff": 179.0,
+  "length_percentile": 95.0,
+  "rho_mean": 0.6263581807574161,
+  "rho_std": 0.149513403148354,
+  "rho_median": 0.6430420534388497,
+  "rho_min": -0.014484126984126986,
+  "rho_max": 0.9377072260025913,
+  "elapsed_seconds": 189.91046285629272
+}

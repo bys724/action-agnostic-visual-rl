@@ -1,0 +1,57 @@
+{
+  "encoder": "two-stream-v11",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/checkpoint_epoch0044.pt",
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "n_tasks": 10,
+  "n_total_trajectories": 500,
+  "n_kept_after_length_cutoff": 475,
+  "length_cutoff": 165.0999999999999,
+  "length_percentile": 95.0,
+  "fractions": [
+    1.0,
+    0.5,
+    0.3,
+    0.15
+  ],
+  "per_fraction": {
+    "1.0": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.5018834263780702,
+      "rho_std": 0.31807634502650645,
+      "rho_median": 0.612030537030537,
+      "rho_min": -0.52488058275615,
+      "rho_max": 0.9106971989430431
+    },
+    "0.5": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.434442242999204,
+      "rho_std": 0.2948548767644222,
+      "rho_median": 0.47066805012371304,
+      "rho_min": -0.4881940385739335,
+      "rho_max": 0.9380280337941629
+    },
+    "0.3": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.4550859353607139,
+      "rho_std": 0.3051103568094646,
+      "rho_median": 0.4896214896214896,
+      "rho_min": -0.46866791744840525,
+      "rho_max": 0.9621848739495799
+    },
+    "0.15": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.4467042743065513,
+      "rho_std": 0.37283224081695626,
+      "rho_median": 0.5,
+      "rho_min": -0.509090909090909,
+      "rho_max": 0.9859649122807018
+    }
+  },
+  "v11_mode": "d_prime_only",
+  "elapsed_seconds": 187.8519585132599
+}

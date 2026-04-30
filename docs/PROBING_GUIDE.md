@@ -64,28 +64,29 @@ python scripts/eval/probe_action_droid.py \
 sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 ```
 
-### Trajectory-Level Value Alignment (VIP-inspired, Phase 2.5, 2026-04-30 신규)
+### Trajectory-Level Value Alignment (VIP-inspired, Phase 2.5) — ❌ NEGATIVE (2026-04-30 완료)
 
-**목적**: DROID single-step action delta probing R² (~0.005)을 보완하는 trajectory-level multi-step evaluation. Frozen encoder의 robot-relevance를 task progress correlation으로 측정.
+VIP (Ma et al., 2022, Value-Implicit Pretraining)에서 영감 받은 metric. trajectory별 e_t와 e_T(마지막 frame) 간 cosine을 V(t)로 두고 Spearman ρ(t, V(t)) 측정.
 
-**Inspiration**: VIP (Ma et al., 2022, Value-Implicit Pretraining)
+**구현**: [`scripts/eval/value_alignment.py`](../scripts/eval/value_alignment.py) (frame-wise encoder forward + trailing window sweep + v11 mode 3종 분기) + [`scripts/cluster/value_alignment.sbatch`](../scripts/cluster/value_alignment.sbatch). 5 encoder × 3 suite × 50 demo × 10 task. 산출물 `paper_artifacts/value_alignment/<encoder>_<suite>_<ts>/{per_demo_rho.csv, per_demo_rho_summary.json}`.
 
-**Metric**:
-```python
-for trajectory in libero_demos:
-    embeddings = [encoder(frame) for frame in trajectory.frames]
-    e_goal = embeddings[-1]
-    V = [-cosine_distance(e_t, e_goal) for e_t in embeddings]
-    T = list(range(len(V)))
-    rho = scipy.stats.spearmanr(T, V).correlation
+**결과 (frac=1.0)**: vc1 +0.800 ≫ siglip/dinov2 +0.71/+0.73 > videomae-ours +0.67 ≫ v11 +0.47. 가설 (v11 ≥ baselines) 전면 기각.
+
+**핵심 분석**: VIP-style state-similarity metric은 VIP-objective로 학습한 encoder가 본질적으로 유리. v11은 frame-pair MAE reconstruction objective라 cosine alignment를 직접 학습한 적 없음 — 약한 결과는 expected. Motion encoding(A) 추가는 무관 (D' only ≈ A+B+D'). Architectural motion routing(D' > B)은 healthy.
+
+자세한 분석·가설·framing은 [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) §Phase 2.5 참조.
+
+**실행 예시**:
+```bash
+# 단일 encoder × suite (full trajectory만)
+sbatch --export=ALL,ENCODER=vc1,TASK_SUITE=libero_spatial scripts/cluster/value_alignment.sbatch
+
+# fractions sweep (trailing window 가설 검증용)
+sbatch --export=ALL,ENCODER=two-stream-v11,\
+CHECKPOINT=/proj/external_group/mrg/checkpoints/two_stream_v11/.../checkpoint_epoch0044.pt,\
+TASK_SUITE=libero_object,V11_MODE=d_prime_only,\
+"LAST_K_FRACTIONS=1.0 0.5 0.3 0.15" scripts/cluster/value_alignment.sbatch
 ```
-
-**구현 위치 (TODO)**: `scripts/eval/value_alignment.py` (신규)
-- 5 encoder × 3 LIBERO suite (spatial/object/goal) × 1500 trajectory
-- 결과 → `paper_artifacts/value_alignment/v11_libero_summary.csv`
-- 약 2-5 GPU·h batch inference
-
-**관련 paper 측 작업**: Vault `Projects/Action-Agnostic Paper/3. Experiments.md § Phase 2.5` + paper repo Tab 6 / Fig 5b
 
 ### 주요 옵션
 

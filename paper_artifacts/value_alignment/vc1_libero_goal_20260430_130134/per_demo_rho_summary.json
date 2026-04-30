@@ -1,0 +1,18 @@
+{
+  "encoder": "vc1",
+  "checkpoint": null,
+  "task_suite": "libero_goal",
+  "view": "agentview_rgb",
+  "n_tasks": 10,
+  "n_total_trajectories": 500,
+  "n_kept_after_length_cutoff": 476,
+  "n_valid_rho": 476,
+  "length_cutoff": 204.0,
+  "length_percentile": 95.0,
+  "rho_mean": 0.7681723197694793,
+  "rho_std": 0.17512302299575166,
+  "rho_median": 0.8045838755242007,
+  "rho_min": 0.08231531982806341,
+  "rho_max": 0.9948088148350075,
+  "elapsed_seconds": 121.8409252166748
+}

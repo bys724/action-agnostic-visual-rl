@@ -283,46 +283,45 @@ L_total = L_t + L_tk
 
 Two-Stream v6/v10, VideoMAE-ours, CLIP, DINOv2, SigLIP, VC-1, V-JEPA 2.1 ViT-B (384px, 2-frame 동작 확인), VideoMAE-official (pos_embed slice로 2-frame) — **모두 완료 (2026-04-17)**
 
-### Phase 2.5: Trajectory-Level Value Alignment (VIP-inspired) 🔜 (2026-04-30 신규)
+### Phase 2.5: Trajectory-Level Value Alignment (VIP-inspired) ❌ NEGATIVE RESULT (2026-04-30)
 
-**동기**: DROID single-step action delta probing R²이 절대값 ~0.005 수준으로 작음. 이는 encoder 부족보다 **single-step action delta가 본질적으로 noisy + DROID task 다양성**으로 인한 average signal 약함이 주요 원인. Trajectory-level multi-step evaluation을 추가해 frozen encoder의 robot-relevant capacity를 더 강하게 측정.
+**동기**: DROID single-step action delta probing R²이 절대값 ~0.005 수준으로 작음. Trajectory-level multi-step evaluation으로 frozen encoder의 robot-relevant capacity를 보완 측정.
 
-**Inspiration**: VIP (Ma et al., 2022) — Value-Implicit Pretraining. 학습된 representation이 task progress를 monotonically reflect하는지 평가.
+**구현**: [`scripts/eval/value_alignment.py`](../scripts/eval/value_alignment.py) + [`scripts/cluster/value_alignment.sbatch`](../scripts/cluster/value_alignment.sbatch). 5 encoder × 3 suite × 50 demos × 10 task = 1500 trajectory. fractions={1.0, 0.5, 0.3, 0.15} sweep (last-K trailing window). 길이 P95 cutoff. v11은 mode 3종 (A+B+D' / B / D').
 
-**Metric**:
-```
-For each LIBERO demonstration trajectory:
-  1. e_t = encoder(frame_t)  # frame-wise embedding
-  2. V(t) = -cosine_distance(e_t, e_T)  # negative distance to goal frame
-  3. Spearman rank correlation: ρ = spearmanr(t, V(t)).correlation
-Aggregate: mean ± std ρ across trajectories per (encoder × suite)
-```
+**비용**: 21잡 × ~3min ≈ **1.0 GPU·h** 총.
 
-**비교 대상 (5 encoder main + V-JEPA 2.1/VideoMAE-official optional)**:
-- Two-Stream v11 ep44 (mode A+B+D')
-- VideoMAE-ours ep50 (patch_mean)
-- VC-1-Base (CLS or patch_mean native)
-- DINOv2-Base (frame-wise patch_mean)
-- SigLIP-Base (frame-wise patch_mean)
+**결과 (frac=1.0, full trajectory ρ mean)**:
 
-**데이터**: LIBERO demos 50 × 10 task × 3 suite (spatial/object/goal) = 1500 trajectory. 50-200 frames per trajectory. 이미 다운로드 완료.
+| Encoder | spatial | object | goal | 평균 |
+|---------|--------:|-------:|-----:|-----:|
+| **vc1** | **+0.905** | **+0.727** | **+0.768** | **+0.800** |
+| siglip | +0.833 | +0.567 | +0.725 | +0.708 |
+| dinov2 | +0.805 | +0.626 | +0.748 | +0.726 |
+| videomae-ours | +0.795 | +0.559 | +0.654 | +0.669 |
+| v11 (A+B+D') | +0.531 | +0.379 | +0.513 | +0.474 |
+| v11 (B only, P enc) | +0.524 | +0.166 | +0.256 | +0.315 |
+| v11 (D' only, motion-routed P) | +0.502 | +0.352 | +0.496 | +0.450 |
 
-**구현 plan**:
-1. 기존 frozen encoder loader (probing 코드) 재활용
-2. LIBERO HDF5 frame access (이미 BC-T용 access 완성)
-3. Per-frame embedding extraction → trajectory별 V(t) 계산
-4. scipy.stats.spearmanr aggregate
-5. 결과 → `paper_artifacts/value_alignment/` (신규 sub-folder)
+→ **plan 가설 (v11 ≥ VideoMAE ≈ VC-1) 전면 기각**. 모든 suite/mode/fraction에서 v11이 baseline 대비 −0.25~−0.56 격차. **Hard No-Go (v11 < baselines)**.
 
-**예상 비용**: 1-2일 작업, ~2-5 GPU·h (probing 정도, batch inference). 학습 없음.
+**4가지 핵심 발견**:
 
-**Paper 위치**: §4.5 Trajectory-Level Value Alignment + Tab 6 (5 encoder × 3 suite Spearman ρ) + Fig 5b (optional, value curve overlay)
+1. **Trailing window 가설 (사용자 제안)**: "v11이 motion-specific이라면 골 근접 frame에서는 격차 좁아져야". → frac=1.0 → 0.15 sweep 결과 **격차는 그대로 유지** (gap@0.15 ≈ gap@1.0). 가설 기각.
+2. **Motion encoder(A) 무관 (사용자 직감 정량 확인)**: D' only ≈ A+B+D' (격차 ±0.03). M encoder의 motion 신호는 본 metric에 거의 기여 안 함.
+3. **Motion routing은 healthy**: D' > B (모든 suite에서 +0.05~+0.25 향상). v11의 architectural innovation은 작동 중. 단지 LIBERO state encoding에서 internet-scale 추월 못 함.
+4. **Baselines의 frac↓ 향상 패턴**: 모든 baseline이 trailing window 줄이면 ρ 상승 (object: +0.149~+0.288). trajectory 끝부분이 더 monotonic. v11만 이 패턴 미관찰.
 
-**가설**: v11 ≥ VideoMAE-ours ≈ VC-1 > DINOv2 ≈ SigLIP — robot-pretrained encoders가 task progress를 internet-scale보다 잘 capture
+**원인 분석 (VIP-objective와의 미스매치)**:
+- VIP (Ma et al., 2022)는 학습 시 *명시적으로* `cos(e_t, e_T) ↑ as t→T`를 objective로 사용. 그런 encoder는 trajectory monotonicity ρ가 자연스럽게 높음.
+- 우리 5 encoder 중 **VIP-objective로 학습된 건 없음**. VC-1/DINOv2/SigLIP은 manipulation/scene state encoding이 강해 *부산물*로 monotonicity capture. v11은 frame-pair MAE reconstruction → motion delta encoding 중심 → trajectory 전역 state similarity와 직교에 가까움.
+- VIP-style metric은 사실 **VIP-objective encoder만 fair하게 평가**. v11의 약점은 motion encoding 의존이 아니라, two-stream + EgoDex pre-training의 결합이 internet-scale encoder만큼 풍부한 frame-level scene state representation을 못 만드는 데 있음 (B only 측정으로 입증).
 
-**Go/No-Go**:
-- Go: v11 우위 → paper §4.5 main result + Phase 3-1 박빙 시 strong supplementary evidence
-- No-Go: v11 ≈ baselines → Limitations에 "trajectory-level metric에서는 격차 미관찰" 명시, Phase 3-1 결과로만 의존
+**Paper framing (Negative result를 강점으로 전환)**:
+- §4.5 Trajectory-Level Value Alignment를 그대로 게재 + 명시적 framing: "**Action-relevance와 state-similarity는 직교에 가까운 두 능력**. Encoder 선택은 downstream task 특성에 맞춰야 한다." 분석 기여.
+- §4.4 Action Probing R² (v11 +0.288 champion) + §5 LIBERO BC main + §4.5 (v11 ρ underperform) → 두 metric, 두 story.
+- 흥미로운 supplementary: D' > B (motion routing 작동), baselines의 frac↓ 향상 패턴 (trajectory 끝부분 monotonic).
+- 데이터: [`paper_artifacts/value_alignment/`](../paper_artifacts/value_alignment/)
 
 ### Phase 3: LIBERO BC (메인 downstream 실험) 🔄 진행 중 (2026-04-28~)
 

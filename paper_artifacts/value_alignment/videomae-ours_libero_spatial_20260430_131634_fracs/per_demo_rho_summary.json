@@ -1,0 +1,56 @@
+{
+  "encoder": "videomae-ours",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt",
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "n_tasks": 10,
+  "n_total_trajectories": 500,
+  "n_kept_after_length_cutoff": 475,
+  "length_cutoff": 165.0999999999999,
+  "length_percentile": 95.0,
+  "fractions": [
+    1.0,
+    0.5,
+    0.3,
+    0.15
+  ],
+  "per_fraction": {
+    "1.0": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.7946062649873201,
+      "rho_std": 0.13898974011672383,
+      "rho_median": 0.8307382457115077,
+      "rho_min": 0.24897569126533597,
+      "rho_max": 0.9902232439571191
+    },
+    "0.5": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.7620584252199656,
+      "rho_std": 0.23056514541913506,
+      "rho_median": 0.8397507043455988,
+      "rho_min": -0.19200887902330743,
+      "rho_max": 0.9978623506508378
+    },
+    "0.3": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.8741028031976736,
+      "rho_std": 0.1489483697579815,
+      "rho_median": 0.9289795918367346,
+      "rho_min": 0.0955246744720429,
+      "rho_max": 0.9986062717770037
+    },
+    "0.15": {
+      "n_valid": 475,
+      "skipped_short": 0,
+      "rho_mean": 0.8542583491145912,
+      "rho_std": 0.19678935791060306,
+      "rho_median": 0.9496047430830039,
+      "rho_min": 0.09803921568627451,
+      "rho_max": 1.0
+    }
+  },
+  "elapsed_seconds": 92.60067009925842
+}

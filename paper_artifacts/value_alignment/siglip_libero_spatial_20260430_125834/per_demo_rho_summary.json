@@ -1,0 +1,18 @@
+{
+  "encoder": "siglip",
+  "checkpoint": null,
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "n_tasks": 10,
+  "n_total_trajectories": 500,
+  "n_kept_after_length_cutoff": 475,
+  "n_valid_rho": 475,
+  "length_cutoff": 165.0999999999999,
+  "length_percentile": 95.0,
+  "rho_mean": 0.8331649822592443,
+  "rho_std": 0.13205892261645175,
+  "rho_median": 0.87659160411454,
+  "rho_min": 0.2664227880206809,
+  "rho_max": 0.9810273877595056,
+  "elapsed_seconds": 137.0144486427307
+}

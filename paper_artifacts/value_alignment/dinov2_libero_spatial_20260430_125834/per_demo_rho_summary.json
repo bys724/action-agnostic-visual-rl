@@ -1,0 +1,18 @@
+{
+  "encoder": "dinov2",
+  "checkpoint": null,
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "n_tasks": 10,
+  "n_total_trajectories": 500,
+  "n_kept_after_length_cutoff": 475,
+  "n_valid_rho": 475,
+  "length_cutoff": 165.0999999999999,
+  "length_percentile": 95.0,
+  "rho_mean": 0.8052376648790349,
+  "rho_std": 0.14171064584871682,
+  "rho_median": 0.8446823446823446,
+  "rho_min": 0.28054696287964004,
+  "rho_max": 0.9789467194796788,
+  "elapsed_seconds": 175.9935700893402
+}
