@@ -27,6 +27,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from PIL import Image
+from scipy.ndimage import sobel
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -168,6 +169,55 @@ def anchor_attn_to_heatmap(attn_weights: torch.Tensor, anchor_idx: int,
     return hm
 
 
+def motion_peak_anchor(img_t: np.ndarray, img_tk: np.ndarray,
+                       patch_grid: int = 14) -> int:
+    """가장 큰 frame-diff magnitude를 가진 patch의 flat index 반환.
+
+    EgoDex (1st-person hand) / DROID (robot arm) 둘 다 motion peak ≈ end-effector
+    영역. center patch 대비 trajectory-relevant 위치 자동 선택.
+    """
+    diff = np.abs(img_tk.astype(np.float32) - img_t.astype(np.float32)).mean(axis=-1)
+    H, W = diff.shape
+    P = H // patch_grid
+    patches = diff.reshape(patch_grid, P, patch_grid, P).mean(axis=(1, 3))
+    return int(np.argmax(patches))
+
+
+def sobel_edge(img_np: np.ndarray) -> np.ndarray:
+    """RGB float [0,1] (H, W, 3) → edge magnitude (H, W) in [0, 1]."""
+    gray = img_np.mean(axis=-1)
+    gx = sobel(gray, axis=0)
+    gy = sobel(gray, axis=1)
+    mag = np.sqrt(gx ** 2 + gy ** 2)
+    m = mag.max()
+    return mag / m if m > 1e-8 else mag
+
+
+def motion_edge_bg(img_t: np.ndarray, img_tk: np.ndarray,
+                   t_strength: float = 0.4, tk_strength: float = 0.9) -> np.ndarray:
+    """두 프레임의 Sobel edge를 색·강도 구분해 합성한 배경.
+
+    - frame t (past) → light blue ghost (흐릿, 약한 강도)
+    - frame t+k (current) → near-black sharp (선명, 강한 강도)
+    - 정렬되는 edge는 검게, 차이 나는 영역은 파란 잔상 → motion 직관 시각화.
+
+    Returns: (H, W, 3) RGB in [0, 1], 흰 배경 + 색 구분된 edge.
+    """
+    e_t = sobel_edge(img_t)
+    e_tk = sobel_edge(img_tk)
+    H, W = e_t.shape
+    bg = np.ones((H, W, 3), dtype=np.float32)
+    # Past (t): R/G 많이 감소 + B 약간 감소 → 파란 tint
+    a_t = e_t * t_strength
+    bg[..., 0] -= a_t * 0.75
+    bg[..., 1] -= a_t * 0.55
+    bg[..., 2] -= a_t * 0.20
+    # Current (tk): 모든 채널 동시 감소 → near-black sharp
+    a_tk = e_tk * tk_strength
+    bg -= a_tk[..., None]
+    return np.clip(bg, 0.0, 1.0)
+
+
 def pred_to_image(pred_tensor: torch.Tensor) -> np.ndarray:
     """[1, 3, H, W] → [H, W, 3] numpy in [0,1]."""
     return pred_tensor.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
@@ -237,6 +287,10 @@ def main():
     parser.add_argument("--p-depth", type=int, default=12)
     parser.add_argument("--m-depth", type=int, default=6)
     parser.add_argument("--num-motion-iters", type=int, default=2)
+    parser.add_argument("--anchor-mode", default="motion-peak",
+                        choices=["center", "motion-peak"],
+                        help="motion-routing query anchor: center (14x14 grid 중앙 고정) | "
+                             "motion-peak (frame diff 최대 patch, end-effector 자동 추적)")
     # Viz는 mask=0으로 (downstream inference와 일치, deterministic)
     parser.add_argument("--mask-ratio-m", type=float, default=0.0)
     parser.add_argument("--mask-ratio-p", type=float, default=0.0)
@@ -284,9 +338,8 @@ def main():
     all_pairs = egodex_pairs + droid_pairs
     labels = ["EgoDex"] * 2 + ["DROID"] * 2
 
-    # Motion-routing anchor patch: 이미지 중심 (14×14 grid의 (7, 7) → idx=7*14+7=105)
+    # Motion-routing anchor: center (고정) | motion-peak (frame diff 최대 patch, 자동 추적)
     patch_grid = 14
-    anchor_idx = (patch_grid // 2) * patch_grid + (patch_grid // 2)
 
     # Figure: 4 rows × 8 cols
     fig, axes = plt.subplots(4, 8, figsize=(40, 20))
@@ -313,27 +366,36 @@ def main():
         img_t_tensor = img_t_c.permute(2, 0, 1)
         img_tk_tensor = img_tk_c.permute(2, 0, 1)
 
+        img_t_np = img_t_c.numpy()
+        img_tk_np = img_tk_c.numpy()
+
+        # Per-sample anchor 결정
+        if args.anchor_mode == "motion-peak":
+            anchor_idx = motion_peak_anchor(img_t_np, img_tk_np, patch_grid)
+        else:
+            anchor_idx = (patch_grid // 2) * patch_grid + (patch_grid // 2)
+
         result = extract_v11_attention_and_predict(
             model, img_t_tensor, img_tk_tensor, anchor_idx, patch_grid=patch_grid,
         )
 
-        img_t_np = img_t_c.numpy()
-        img_tk_np = img_tk_c.numpy()
+        # Dual-frame edge composite (past=blue ghost, current=black sharp)
+        edge_bg = motion_edge_bg(img_t_np, img_tk_np)
 
         # Col 0: Frame t
         axes[row][0].imshow(img_t_np)
         # Col 1: Frame t+k
         axes[row][1].imshow(img_tk_np)
-        # Col 2: M encoder attn overlay on frame t
-        axes[row][2].imshow(img_t_np)
+        # Col 2: M encoder attn overlay on dual-frame edge bg
+        axes[row][2].imshow(edge_bg)
         axes[row][2].imshow(result["m_attn"], cmap="viridis", alpha=0.55)
-        # Col 3: P encoder attn overlay on frame t+k
-        axes[row][3].imshow(img_tk_np)
+        # Col 3: P encoder attn overlay on dual-frame edge bg
+        axes[row][3].imshow(edge_bg)
         axes[row][3].imshow(result["p_attn"], cmap="viridis", alpha=0.55)
-        # Col 4-5: Motion-routing attention overlays (on frame t+k, anchor marker)
+        # Col 4-5: Motion-routing attention overlays (on dual-frame edge bg, anchor marker)
         for mi, mr_hm in enumerate(result["mr_attns"][:2]):
             ax = axes[row][4 + mi]
-            ax.imshow(img_tk_np)
+            ax.imshow(edge_bg)
             ax.imshow(mr_hm, cmap="viridis", alpha=0.55)
             # Mark anchor patch center
             ar, ac = anchor_idx // patch_grid, anchor_idx % patch_grid
