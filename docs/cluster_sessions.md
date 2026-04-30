@@ -87,14 +87,62 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-04-30 Phase 2.5 Trajectory-Level Value Alignment (VIP-inspired)
+
+신규 [`scripts/eval/value_alignment.py`](../scripts/eval/value_alignment.py) + [`scripts/cluster/value_alignment.sbatch`](../scripts/cluster/value_alignment.sbatch) — frozen encoder × LIBERO trajectory frame-wise embedding → Spearman ρ(t, V(t)). 학습 없음, inference만.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33632473 | AIP 1×1 H100 | 01:30:00 | sanity videomae-ours × spatial × task 0 × 5 demos | ✅ COMPLETED 18s. ρ mean=+0.799 (5/5 valid, len cutoff P95=143) |
+| 33632521 | AIP 1×1 H100 | 01:30:00 | sanity v11 ep44 (A+B+D' 경로) × spatial × task 0 × 5 demos | ✅ COMPLETED 22s. ρ mean=+0.527 |
+
+**Full run** (5 encoder × 3 suite = 15 잡, AIP 1×1 H100 each, --time=01:30:00) — ✅ 모두 COMPLETED 13:04 (총 elapsed 2535s = **0.70 GPU·h**, 약 0.03 GPU·일):
+
+| Encoder | spatial | object | goal | spatial ρ | object ρ | goal ρ |
+|---------|---------|--------|------|----------:|---------:|-------:|
+| two-stream-v11 ep44 (A+B+D') | 33632528 | 33632533 | 33632538 | +0.531 | +0.379 | +0.513 |
+| videomae-ours best | 33632529 | 33632534 | 33632539 | +0.795 | +0.559 | +0.654 |
+| dinov2 | 33632530 | 33632535 | 33632540 | +0.805 | +0.626 | +0.748 |
+| siglip | 33632531 | 33632536 | 33632541 | +0.833 | +0.567 | +0.725 |
+| vc1 | 33632532 | 33632537 | 33632542 | **+0.905** | **+0.727** | **+0.768** |
+
+길이 cutoff(P95): spatial 165, object 179, goal 204. N=475-476/500 trajectories valid per cell. 산출물 → `paper_artifacts/value_alignment/<encoder>_<suite>_<ts>/{per_demo_rho.csv, per_demo_rho_summary.json}`.
+
+⚠️ **결과 ≠ plan 가설 (Phase 2.5 No-Go 시나리오)**: plan은 "v11 ≥ VideoMAE ≈ VC-1 > DINOv2 ≈ SigLIP" 예상했으나 실측은 **VC-1 > SigLIP ≈ DINOv2 > VideoMAE > v11** (모든 suite 일관). v11이 baselines 대비 -0.27~-0.35.
+
+**가설 확장 — Trailing fraction sweep** (사용자 제안): v11이 motion-specific representation이라면 e_T와 장면 격차가 작은 *골 근접* 구간에선 baselines 대비 격차가 좁아져야 함. 같은 사용자 제안에 따라 fractions={1.0, 0.5, 0.3, 0.15}로 sweep.
+
+| 33632705 | AIP 1×1 H100 | 01:30:00 | sanity sweep videomae × spatial × task 0 × 5 demos × 4 fractions | ✅ COMPLETED 14s. frac=1.0 ρ=+0.799 (이전과 일치 — 코드 검증 OK) |
+
+Full sweep (15 잡, AIP 1×1 H100 each, fractions={1.0,0.5,0.3,0.15}):
+
+| Encoder | spatial | object | goal |
+|---------|---------|--------|------|
+| two-stream-v11 ep44 (A+B+D') | 33632714 | 33632719 | 33632724 |
+| videomae-ours best | 33632715 | 33632720 | 33632725 |
+| dinov2 | 33632716 | 33632721 | 33632726 |
+| siglip | 33632717 | 33632722 | 33632727 |
+| vc1 | 33632718 | 33632723 | 33632728 |
+
+상태: ✅ COMPLETED 13:21 (~2535s = 0.70 GPU·h). 결과는 RESEARCH_PLAN.md §Phase 2.5 참조 — 모든 fraction에서 v11 꼴찌, 가설(short window에서 격차 좁아짐) 기각.
+
+**v11 mode ablation** (사용자 의문 1 — motion 신호가 value alignment에 무관하다는 직감 검증, scripts에 `--v11-mode {abd_prime|b_only|d_prime_only}` 추가):
+
+| Mode | spatial | object | goal |
+|------|---------|--------|------|
+| b_only (P encoder patch_mean) | 33632852 | 33632854 | 33632856 |
+| d_prime_only (motion-routed P state) | 33632853 | 33632855 | 33632857 |
+
+각 잡: AIP 1×1 H100, --time=01:30:00, fractions={1.0, 0.5, 0.3, 0.15}. baselines (videomae/dinov2/siglip/vc1)은 위 sweep 결과 재활용. 추정 ~0.3 GPU·h.
+
 ### 2026-04-29 LIBERO BC-T 6 encoder 본격 학습 (Phase 3-1)
 
 **1차 제출** (05:36, 모두 AIP 1×1 H100):
 
 | JobID | Encoder | --time | 결과 / 비고 |
 |-------|---------|--------|------------|
-| 33615385 | two-stream-v11 ep44 | 2-00:00:00 | RUNNING. 11/50 ep, 2477s/ep → ETA **04-30 16:00** |
-| 33615386 | videomae-ours best | 1-00:00:00 | RUNNING. 26/50 ep, 1082s/ep → ETA **04-29 20:30** (가장 일찍) |
+| 33615385 | two-stream-v11 ep44 | 2-00:00:00 | **CANCELLED** 04-30 14:xx — broken cfg(`use_joint=False`)로 학습된 ep42/50 ckpt rollout 0%. ~33.5 GPU·h 손실. 33633419로 재제출 |
+| 33615386 | videomae-ours best | 1-00:00:00 | **COMPLETED** ep50/50, 04-29 20:39 — 그러나 **broken cfg ckpt** 로컬 H100 rollout sanity = **0/50 SR** (libero_spatial 10×5). 진단 → cfg fix. 33633420으로 재학습 |
 | 33615387 | dinov2 | 1-00:00:00 | **CANCELLED** 04-29 13:14 — ETA 30.3h, --time=24h로 timeout 위험. 2-00:00:00로 재제출 (33616659) |
 | 33615388 | siglip | 1-00:00:00 | **FAILED** 40s — `SiglipModel(pixel_values=...)` text input 요구 (VisionModel 사용해야) |
 | 33615389 | vc1 | 1-00:00:00 | **FAILED** 1m23s — CLIPModel HF download race (`HF_HUB_OFFLINE` 미설정), VC-1 loader도 잘못 (vc_models 사용해야) |
@@ -118,11 +166,36 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | Encoder | --time | 결과 |
 |-------|---------|--------|------|
-| 33616659 | dinov2 | 2-00:00:00 | RUNNING (~13:30 시작). 50 ep × 2731s ≈ **38h** → ETA **05-01 03:30** |
-| 33616660 | siglip | 2-00:00:00 | RUNNING (~13:30 시작). 50 ep × 2180s ≈ **30h** → ETA **04-30 19:30** |
-| 33616669 | vc1 | 2-00:00:00 | PENDING. 50 ep × 2023s ≈ **28h**, 큐 가용 시 즉시 시작 → ETA **04-30 ~18:00** |
+| 33616659 | dinov2 | 2-00:00:00 | **CANCELLED** 04-30 14:xx — ep27/50 broken cfg. ~25 GPU·h 손실. 33633421로 재제출 |
+| 33616660 | siglip | 2-00:00:00 | **CANCELLED** 04-30 14:xx — ep34/50 broken cfg. ~25 GPU·h 손실. 33633422로 재제출 |
+| 33616669 | vc1 | 2-00:00:00 | **CANCELLED** 04-30 14:xx — ep37/50 broken cfg. ~25 GPU·h 손실. 33633423로 재제출 |
 
 **3차 재제출 사유**: 1/2차의 `--time=1-00:00:00`로는 dinov2/siglip/vc1 모두 50 ep 학습 불가능 (epoch당 시간 측정 후 적자 -4.5h ~ -6.3h 확인). dinov2/siglip은 8h 진행 후 cancel 손실, vc1은 7h45m 진행 후 cancel 손실 — 누적 ~24 GPU·h ≈ 0.99 GPU·일 (~6.1k원). main BC table 5 encoder 동일 epoch 비교 우선.
+
+### 2026-04-30 BC-T 4차 제출 (cfg 결함 수정 후) — `use_joint=True` + `joint_states`
+
+**원인 진단** (commit f6a3b5c): VideoMAE-ours BC-T 33615386 ep50 ckpt 로컬 rollout sanity 0/50 SR. 학습 cfg (`scripts/eval/finetune_libero_bct.py`)가 LIBERO 공식 default와 불일치 — `use_joint=False`로 `robot0_joint_pos` (7-d) 누락 = robot kinematics state 부재로 spatial control 실패. ckpt/inference 코드는 정상.
+
+**수정**:
+- `scripts/eval/finetune_libero_bct.py:111` `use_joint: False → True`
+- `scripts/eval/finetune_libero_bct.py:119,321` `low_dim: ["gripper_states"] → ["gripper_states", "joint_states"]`
+- `scripts/cluster/finetune_libero_bct.sbatch:18` `--time=08:00:00 → 2-00:00:00` (영구. 트러블슈팅 "반복 사고" 재발 방지)
+
+**Cancel + 재제출 결정 비용**:
+- Cancel 4잡 손실: ~108 GPU·h (≈ 4.5 GPU·일, ~275k원). 완료해도 broken cfg ckpt는 0% SR 보장 → cancel이 정답.
+- 추가 PENDING cancel (33633414~18): `--time=8h` 기본값 누락 발견 — PENDING 상태 cancel, 0 비용.
+
+**4차 제출** (AIP 1×1 H100, --time=2-00:00:00):
+
+| JobID | Encoder | 결과 |
+|-------|---------|------|
+| 33633419 | two-stream-v11 ep44 | PENDING |
+| 33633420 | videomae-ours best | PENDING |
+| 33633421 | dinov2 | PENDING |
+| 33633422 | siglip | PENDING |
+| 33633423 | vc1 | PENDING |
+
+`SUFFIX=usejoint` 적용 → 출력 dir `<encoder>_libero_spatial_seed0_<ts>_usejoint/`로 broken ckpt와 구분.
 
 **검증 결과** (2026-04-29):
 - LIBERO obs RGB: float32 [0, 1] (robomimic 정규화 완료) → 어댑터 가정 일치 ✓
