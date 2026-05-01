@@ -139,7 +139,8 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
 
 
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
-                scaler=None, use_ssim=False, use_bf16=True):
+                scaler=None, use_ssim=False, use_bf16=True,
+                v12_momentum=None):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -191,8 +192,9 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
-            elif model_name == 'TwoStreamV11Model':
+            elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
                 # v11: dual-target reconstruction (L_t + L_tk, masked positions only)
+                # v12: v11 + semantic residual + VICReg + EMA teacher
                 # rotation_aug는 model.forward() 내부에서 처리
                 out = model(img_t, img_tk)
                 loss = out['loss']
@@ -232,6 +234,55 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
                 buf['cos_intra_p'] = buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
                 buf['_count'] = buf.get('_count', 0) + 1
+
+                # v12 추가 진단 metrics
+                if model_name == 'TwoStreamV12Model':
+                    with torch.no_grad():
+                        sem_m = out['semantic_m'].float()
+                        sem_pt = out['semantic_p_t'].float()
+                        pred_ptk = out['predicted_p_tk'].float()
+                        teacher_ptk = out['teacher_p_tk'].float()
+
+                        # Norms
+                        norm_sem_m = sem_m.norm(dim=-1).mean()
+                        norm_pred = pred_ptk.norm(dim=-1).mean()
+                        norm_teacher = teacher_ptk.norm(dim=-1).mean()
+
+                        # Per-dim std (collapse signal)
+                        std_sem_m = sem_m.std(dim=0).mean()
+                        std_sem_pt = sem_pt.std(dim=0).mean()
+                        std_pred = pred_ptk.std(dim=0).mean()
+
+                        # Time-invariance collapse: cos(sem_p_t, predicted_p_tk)
+                        # 1.0 근처면 P가 시간-불변으로 collapse
+                        sem_pt_n = F.normalize(sem_pt, dim=-1)
+                        pred_n = F.normalize(pred_ptk, dim=-1)
+                        cos_pt_pred = (sem_pt_n * pred_n).sum(dim=-1).mean()
+
+                        # Residual equation 만족도: cos(sem_m, teacher_p_tk - sem_p_t)
+                        # positive면 학습 진행 (M이 P 변화 방향을 예측)
+                        # NOTE: teacher_p_tk와 sem_p_t는 다른 stream/space라서 absolute
+                        # cosine이 아니라 trend로 해석
+                        delta_p = teacher_ptk - sem_pt
+                        delta_p_n = F.normalize(delta_p, dim=-1)
+                        sem_m_n = F.normalize(sem_m, dim=-1)
+                        cos_m_delta = (sem_m_n * delta_p_n).sum(dim=-1).mean()
+                    if not hasattr(train_epoch, '_v12_metrics_buf'):
+                        train_epoch._v12_metrics_buf = {}
+                    v12buf = train_epoch._v12_metrics_buf
+                    v12buf['loss_recon'] = v12buf.get('loss_recon', 0.0) + out['loss_recon'].item()
+                    v12buf['loss_residual'] = v12buf.get('loss_residual', 0.0) + out['loss_residual'].item()
+                    v12buf['loss_var'] = v12buf.get('loss_var', 0.0) + out['loss_var'].item()
+                    v12buf['loss_cov'] = v12buf.get('loss_cov', 0.0) + out['loss_cov'].item()
+                    v12buf['norm_sem_m'] = v12buf.get('norm_sem_m', 0.0) + norm_sem_m.item()
+                    v12buf['norm_pred'] = v12buf.get('norm_pred', 0.0) + norm_pred.item()
+                    v12buf['norm_teacher'] = v12buf.get('norm_teacher', 0.0) + norm_teacher.item()
+                    v12buf['std_sem_m'] = v12buf.get('std_sem_m', 0.0) + std_sem_m.item()
+                    v12buf['std_sem_pt'] = v12buf.get('std_sem_pt', 0.0) + std_sem_pt.item()
+                    v12buf['std_pred'] = v12buf.get('std_pred', 0.0) + std_pred.item()
+                    v12buf['cos_pt_pred'] = v12buf.get('cos_pt_pred', 0.0) + cos_pt_pred.item()
+                    v12buf['cos_m_delta'] = v12buf.get('cos_m_delta', 0.0) + cos_m_delta.item()
+                    v12buf['_count'] = v12buf.get('_count', 0) + 1
             elif model_name == 'TwoStreamModel':
                 # rotation_aug: training loop가 compute_loss를 우회하므로 여기서 명시 적용
                 if actual_model.rotation_aug and actual_model.training:
@@ -334,6 +385,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
+        # v12: EMA teacher update (each optimizer step)
+        if model_name == 'TwoStreamV12Model' and v12_momentum is not None:
+            actual_model.update_teacher(v12_momentum)
+
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
         num_batches += 1
@@ -413,7 +468,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
-            elif model_name == 'TwoStreamV11Model':
+            elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
                 out = model(img_t, img_tk)
                 loss = out['loss']
                 img_pred = out['pred_tk']
@@ -546,7 +601,7 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, out1_np, out2_np]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
-                elif model_name == 'TwoStreamV11Model':
+                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
                     out = actual_model(x, y)
                     pred_t_np = out['pred_t'].squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     pred_tk_np = out['pred_tk'].squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
@@ -614,6 +669,8 @@ def train(
     multi_gpu=True,
     use_ssim=False,
     num_workers=16,
+    v12_ema_momentum_init=0.996,
+    v12_ema_momentum_final=0.9999,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -747,7 +804,9 @@ def train(
             {'params': no_decay_params, 'weight_decay': 0.0},
         ], lr=lr, fused=True)
     else:
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01, fused=True)
+        # requires_grad=True 파라미터만 옵티마이저에 등록 (v12 teacher params 제외)
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=0.01, fused=True)
 
     # LR schedule: linear warmup (10% of epochs) + cosine decay
     # Warmup은 EMA 기반 모델(V-JEPA)의 초기 안정성에 필수.
@@ -853,10 +912,19 @@ def train(
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
+        # v12: EMA momentum schedule (linear warmup over training)
+        # current epoch progress ratio in [0, 1]
+        if num_epochs > 1:
+            progress = (epoch - 1) / (num_epochs - 1)
+        else:
+            progress = 0.0
+        v12_momentum = v12_ema_momentum_init + (v12_ema_momentum_final - v12_ema_momentum_init) * progress
+
         # Train
         train_result = train_epoch(
             model, dataloader, optimizer, device, epoch,
             dataset=train_dataset, use_ssim=use_ssim, use_bf16=use_bf16,
+            v12_momentum=v12_momentum,
         )
         avg_loss = train_result['loss']
         scheduler.step()
@@ -956,6 +1024,39 @@ def train(
                         f"cos_intra_m={buf['cos_intra_m']/n:.3f} cos_intra_p={buf['cos_intra_p']/n:.3f}"
                     )
                 train_epoch._v11_metrics_buf = {}
+
+            # v12 metrics (semantic residual + EMA teacher diagnostics)
+            if hasattr(train_epoch, '_v12_metrics_buf'):
+                v12buf = train_epoch._v12_metrics_buf
+                n = v12buf.get('_count', 0)
+                if n > 0:
+                    l_recon = v12buf['loss_recon'] / n
+                    l_res = v12buf['loss_residual'] / n
+                    l_var = v12buf['loss_var'] / n
+                    l_cov = v12buf['loss_cov'] / n
+                    writer.add_scalar('v12/loss_recon', l_recon, epoch)
+                    writer.add_scalar('v12/loss_residual', l_res, epoch)
+                    writer.add_scalar('v12/loss_var', l_var, epoch)
+                    writer.add_scalar('v12/loss_cov', l_cov, epoch)
+                    writer.add_scalar('v12/ema_momentum', v12_momentum, epoch)
+                    writer.add_scalar('v12/norm_sem_m', v12buf['norm_sem_m'] / n, epoch)
+                    writer.add_scalar('v12/norm_pred', v12buf['norm_pred'] / n, epoch)
+                    writer.add_scalar('v12/norm_teacher', v12buf['norm_teacher'] / n, epoch)
+                    writer.add_scalar('v12/std_sem_m', v12buf['std_sem_m'] / n, epoch)
+                    writer.add_scalar('v12/std_sem_pt', v12buf['std_sem_pt'] / n, epoch)
+                    writer.add_scalar('v12/std_pred', v12buf['std_pred'] / n, epoch)
+                    writer.add_scalar('v12/cos_pt_pred', v12buf['cos_pt_pred'] / n, epoch)
+                    writer.add_scalar('v12/cos_m_delta', v12buf['cos_m_delta'] / n, epoch)
+                    log(
+                        f"  [v12] L_res={l_res:.5f} L_var={l_var:.4f} L_cov={l_cov:.4f} | "
+                        f"ema_m={v12_momentum:.4f} | "
+                        f"||sem_m||={v12buf['norm_sem_m']/n:.2f} ||pred||={v12buf['norm_pred']/n:.2f} "
+                        f"||teacher||={v12buf['norm_teacher']/n:.2f} | "
+                        f"std_pred={v12buf['std_pred']/n:.3f} | "
+                        f"cos(p_t,pred)={v12buf['cos_pt_pred']/n:.3f} "
+                        f"cos(m,Δp)={v12buf['cos_m_delta']/n:.3f}"
+                    )
+                train_epoch._v12_metrics_buf = {}
             writer.flush()
 
         # Save prediction samples every epoch (rank 0)

@@ -253,6 +253,34 @@ elif [ "$MODEL" = "two-stream-v11" ]; then
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v11${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v12" ]; then
+    # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
+    # 설계 근거:
+    # - v11 모든 reconstruction path 유지 (L_t + L_tk)
+    # - CLS-level semantic residual: predicted_p_tk = CrossAttn(sem_p_t, sem_m)
+    #   target = stop-grad(Teacher_P(unmasked frame_{t+k}))
+    # - L_total = L_recon + λ·SmoothL1(pred, teacher) + α·VICReg-var + β·VICReg-cov
+    # - Teacher: encoder + head 모두 EMA copy (V-JEPA 2 / BYOL 표준, moving target 방지)
+    # - 보수적 λ_residual 0.05 (v8 1차 0.2 scale failure 교훈)
+    # - 비용: v11 대비 +30~40% (teacher P forward, full token), 50ep ~4-5일 예상
+    # 환경변수:
+    #   V11_M_DEPTH (default 6), V11_ROUTING_MODE (default v_from_p) — v11과 공유
+    #   V12_RESIDUAL_WEIGHT (default 0.05), V12_VAR_WEIGHT (default 1.0), V12_COV_WEIGHT (default 1.0)
+    #   V12_EMA_INIT (default 0.996), V12_EMA_FINAL (default 0.9999)
+    MODEL_ARGS=(
+        --depth 12
+        --v11-m-depth "${V11_M_DEPTH:-6}"
+        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
+        --rotation-aug
+        --mask-ratio 0.3 --mask-ratio-p 0.75
+        --max-gap 60 --sample-dist triangular --sample-center 30
+        --v12-residual-weight "${V12_RESIDUAL_WEIGHT:-0.05}"
+        --v12-vicreg-var-weight "${V12_VAR_WEIGHT:-1.0}"
+        --v12-vicreg-cov-weight "${V12_COV_WEIGHT:-1.0}"
+        --v12-ema-momentum-init "${V12_EMA_INIT:-0.996}"
+        --v12-ema-momentum-final "${V12_EMA_FINAL:-0.9999}"
+    )
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v12${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12

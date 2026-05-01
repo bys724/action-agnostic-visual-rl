@@ -20,7 +20,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, TwoStreamV11Model, VideoMAEModel
+from src.models import TwoStreamModel, TwoStreamV11Model, TwoStreamV12Model, VideoMAEModel
 from src.datasets import EgoDexDataset
 from src.training.pretrain import train
 
@@ -30,9 +30,10 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'videomae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'videomae'],
                         help='Model type (default: two-stream). '
-                             'two-stream-v11 = motion-guided routing + dual-target.')
+                             'two-stream-v11 = motion-guided routing + dual-target. '
+                             'two-stream-v12 = v11 + CLS semantic residual + EMA teacher.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -121,6 +122,21 @@ def main():
                         help='[v11] Phase 2 routing 방식. '
                              'v_from_p (기본, paper novelty): Q,K←M, V←P. '
                              'v_from_m (ablation): 표준 cross-attn (Q←P, K,V←M).')
+
+    # v12: Semantic Residual + EMA Teacher (post-CoRL follow-up)
+    parser.add_argument('--v12-residual-weight', type=float, default=0.05,
+                        help='[v12] λ_residual (default 0.05, v8 1차 0.2 scale 실패 교훈). '
+                             'ep4 sanity 후 조정.')
+    parser.add_argument('--v12-vicreg-var-weight', type=float, default=1.0,
+                        help='[v12] α (variance hinge weight, V-JEPA 1 standard).')
+    parser.add_argument('--v12-vicreg-cov-weight', type=float, default=1.0,
+                        help='[v12] β (off-diagonal covariance weight).')
+    parser.add_argument('--v12-ema-momentum-init', type=float, default=0.996,
+                        help='[v12] EMA momentum start (V-JEPA 2 schedule).')
+    parser.add_argument('--v12-ema-momentum-final', type=float, default=0.9999,
+                        help='[v12] EMA momentum final (linear warmup).')
+    parser.add_argument('--v12-predictor-heads', type=int, default=12,
+                        help='[v12] Cross-attention predictor heads.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -220,6 +236,26 @@ def main():
             rotation_aug=args.rotation_aug,
             routing_mode=args.v11_routing_mode,
         )
+    elif args.model == 'two-stream-v12':
+        # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
+        # - v11 모든 reconstruction path 유지 (L_t + L_tk)
+        # - 추가: M_head, P_head, CrossAttnPredictor (Q←P, K/V←M), TeacherP (EMA)
+        # - Loss: L_total = L_recon + λ·L_residual + α·L_var + β·L_cov
+        # - EMA momentum은 training loop에서 스케줄링됨 (--v12-ema-momentum-init/-final)
+        v12_mask_m = args.mask_ratio if args.mask_ratio > 0 else 0.3
+        v12_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
+        model = TwoStreamV12Model(
+            p_depth=args.depth,
+            m_depth=args.v11_m_depth,
+            mask_ratio_m=v12_mask_m,
+            mask_ratio_p=v12_mask_p,
+            rotation_aug=args.rotation_aug,
+            routing_mode=args.v11_routing_mode,
+            residual_weight=args.v12_residual_weight,
+            vicreg_var_weight=args.v12_vicreg_var_weight,
+            vicreg_cov_weight=args.v12_vicreg_cov_weight,
+            predictor_num_heads=args.v12_predictor_heads,
+        )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
         # 2-frame에서는 masking 완화 필요.
@@ -305,6 +341,14 @@ def main():
         print("Starting training...")
         print("="*60)
 
+    # v12 EMA momentum schedule (linear warmup over training)
+    v12_kwargs = {}
+    if args.model == 'two-stream-v12':
+        v12_kwargs = {
+            'v12_ema_momentum_init': args.v12_ema_momentum_init,
+            'v12_ema_momentum_final': args.v12_ema_momentum_final,
+        }
+
     model, history = train(
         model=model,
         train_dataset=train_dataset,
@@ -319,6 +363,7 @@ def main():
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
+        **v12_kwargs,
     )
 
     if is_master:
