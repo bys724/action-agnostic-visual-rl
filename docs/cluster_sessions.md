@@ -245,6 +245,18 @@ Full sweep (15 잡, AIP 1×1 H100 each, fractions={1.0,0.5,0.3,0.15}):
   · 옵션: feature pre-extraction (1 pass, ~50 GB cache) → 정책 head만 학습 → 가장 가능성 높음
   · 옵션: skip V-JEPA from main BC table (probing 결과는 paper에 포함). decision 보류.
 
+### 2026-05-03 BC-T 2차 ckpt 로컬 sanity (cluster cost 0)
+
+**활동**: 4차(use_joint fix) 학습 종료된 5 encoder ckpt를 로컬 H100 워크스테이션으로 일괄 전송 (`bct_usejoint_best.tar` 2.2 GB). LIBERO closed-loop rollout sanity (1 task × 5 trial × 5 encoder).
+
+**결과**: vc1 80% / siglip 60% / dinov2 40% / videomae-ours 0% / two-stream-v11 0%
+
+**추가 발견 (rollout 코드)**: 5개 어댑터 모두 `self.prev_obs` cache cross-camera 오염 — `agentview_rgb` + `eye_in_hand_rgb`가 동일 어댑터 인스턴스 공유. fix: `src/eval_libero.py` `BCTransformerClient` 재설계 (latent_queue 폐기 + raw obs history 누적). 추가 fix 4건 (env_resolution 256→128, joint_states shape_meta, v11 adapter checkpoint=None 허용, dummy wait obs 누적).
+
+**ours 0% 진단**: encoder representation 정상 (centered cos / PCA r1 baseline과 동급). BC fit이 가장 정확 (`‖p−r‖` 최소) → overfit 의심. test init state는 학습 demo init과 다름 (검증 완료) → BC generalization 격차.
+
+**클러스터 후속 작업** (V3 본 학습): augmentation + multi-seed 동시 적용. 2-frame pair adapter augmentation 일관성 시각 검증 필수. 자세한 cfg 변경 + 검증 절차: [`docs/refactor_plan_2026-05-03.md`](refactor_plan_2026-05-03.md) §3, [`docs/RESEARCH_PLAN.md`](RESEARCH_PLAN.md) Phase 3-1 V3 § + git commit `4d4f89c` (rollout fix) 참조. 진단 narrative 원본은 [`docs/archive/PHASE3_BCT_DEBUG_2026-05-03.md`](archive/PHASE3_BCT_DEBUG_2026-05-03.md).
+
 ### 2026-04-29 v11 ablation A1: motion-routing source (V from P → V from M)
 
 **Paper claim**: v11의 motion-routing (Q,K←M, V←P)이 표준 cross-attn (Q←P, K,V←M)보다 표현 품질 우월.
