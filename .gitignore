@@ -77,3 +77,10 @@ docs/*.pdf
 
 # Claude Code 로컬 설정 (팀 공유 설정 생기면 개별 force add)
 .claude/
+
+# 로컬 워크스테이션 전송용 ckpt 번들 (transient, 환경 간 옮길 때만 생성)
+*.tar
+*.tar.gz
+
+# 사전학습 진행 중 매 epoch 갱신되는 sample image 디렉토리 (요약 PNG만 추적)
+paper_artifacts/*_main_train_samples/

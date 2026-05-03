@@ -166,8 +166,13 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
     gap_counts = {}
 
     for batch_idx, batch in enumerate(dataloader):
-        # Unpack batch (img_t, img_tk, gap) or (img_t, img_tk)
-        if len(batch) == 3:
+        # Unpack batch — v13은 (img_t, img_tk, img_tk_global, gap) 4-tuple
+        img_tk_global = None
+        if len(batch) == 4:
+            img_t, img_tk, img_tk_global, gaps = batch
+            gaps = gaps.numpy()
+            img_tk_global = img_tk_global.to(device)
+        elif len(batch) == 3:
             img_t, img_tk, gaps = batch
             gaps = gaps.numpy()
         else:
@@ -192,6 +197,67 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
+            elif model_name == 'TwoStreamV13Model':
+                # v13: dual-frame recon + motion-routed latent + DINO global CLS
+                # forward: (image_current, image_future, image_future_global)
+                actual_model = model.module if hasattr(model, 'module') else model
+                out = model(img_t, img_tk, img_tk_global)
+                loss = out['loss']
+                loss_t = out['loss_t']
+                loss_tk = out['loss_tk']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += loss_t.item()
+                total_loss_future += loss_tk.item()
+
+                with torch.no_grad():
+                    cls_m = out['cls_m']
+                    cls_p = out['cls_p']
+                    pred_cls_tk = out['predicted_cls_tk'].float()
+                    target_cls_tk_global = out['target_cls_tk_global'].float()
+                    std_m = cls_m.std(dim=0).mean()
+                    std_p = cls_p.std(dim=0).mean()
+                    std_pred_cls = pred_cls_tk.std(dim=0).mean()
+                    std_target_cls = target_cls_tk_global.std(dim=0).mean()
+                    cm_norm = F.normalize(cls_m.float(), dim=-1)
+                    cp_norm = F.normalize(cls_p.float(), dim=-1)
+                    pcls_norm = F.normalize(pred_cls_tk, dim=-1)
+                    B = cm_norm.shape[0]
+                    if B > 1:
+                        eye_mask = ~torch.eye(B, device=cm_norm.device, dtype=torch.bool)
+                        cos_intra_m = (cm_norm @ cm_norm.T)[eye_mask].mean()
+                        cos_intra_p = (cp_norm @ cp_norm.T)[eye_mask].mean()
+                        cos_intra_pred_cls = (pcls_norm @ pcls_norm.T)[eye_mask].mean()
+                    else:
+                        cos_intra_m = torch.tensor(0.0)
+                        cos_intra_p = torch.tensor(0.0)
+                        cos_intra_pred_cls = torch.tensor(0.0)
+                    norm_pred_cls = pred_cls_tk.norm(dim=-1).mean()
+                    norm_target_cls = target_cls_tk_global.norm(dim=-1).mean()
+                    norm_center = actual_model.dino_center.norm().item()
+
+                if not hasattr(train_epoch, '_v13_metrics_buf'):
+                    train_epoch._v13_metrics_buf = {}
+                v13buf = train_epoch._v13_metrics_buf
+                v13buf['loss_t'] = v13buf.get('loss_t', 0.0) + loss_t.item()
+                v13buf['loss_tk'] = v13buf.get('loss_tk', 0.0) + loss_tk.item()
+                v13buf['loss_pred_patch'] = v13buf.get('loss_pred_patch', 0.0) + out['loss_pred_patch'].item()
+                v13buf['loss_pred_cls'] = v13buf.get('loss_pred_cls', 0.0) + out['loss_pred_cls'].item()
+                v13buf['feat_std_m'] = v13buf.get('feat_std_m', 0.0) + std_m.item()
+                v13buf['feat_std_p'] = v13buf.get('feat_std_p', 0.0) + std_p.item()
+                v13buf['cos_intra_m'] = v13buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
+                v13buf['cos_intra_p'] = v13buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
+                v13buf['cos_intra_pred_cls'] = v13buf.get('cos_intra_pred_cls', 0.0) + cos_intra_pred_cls.item()
+                v13buf['std_pred_cls'] = v13buf.get('std_pred_cls', 0.0) + std_pred_cls.item()
+                v13buf['std_target_cls'] = v13buf.get('std_target_cls', 0.0) + std_target_cls.item()
+                v13buf['norm_pred_cls'] = v13buf.get('norm_pred_cls', 0.0) + norm_pred_cls.item()
+                v13buf['norm_target_cls'] = v13buf.get('norm_target_cls', 0.0) + norm_target_cls.item()
+                v13buf['norm_center'] = v13buf.get('norm_center', 0.0) + norm_center
+                v13buf['_count'] = v13buf.get('_count', 0) + 1
+
+                # NOTE: DINO center / EMA teacher update는 backward + optimizer.step 후
+                # (아래 backward 블록 참조)
             elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
                 # v11: dual-target reconstruction (L_t + L_tk, masked positions only)
                 # v12: v11 + semantic residual + VICReg + EMA teacher
@@ -385,9 +451,16 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
-        # v12: EMA teacher update (each optimizer step)
+        # v12 / v13: EMA teacher update (each optimizer step)
         if model_name == 'TwoStreamV12Model' and v12_momentum is not None:
             actual_model.update_teacher(v12_momentum)
+        elif model_name == 'TwoStreamV13Model' and v12_momentum is not None:
+            actual_model.update_teacher(v12_momentum)
+            # DINO center: teacher prototype logits의 running mean (uniform collapse 방어).
+            with torch.no_grad():
+                teacher_proto = out['teacher_proto_logits']
+                if teacher_proto.abs().sum() > 0:  # global view가 실제 사용된 경우만
+                    actual_model.update_dino_center(teacher_proto)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -468,6 +541,15 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
+            elif model_name == 'TwoStreamV13Model':
+                # eval에서는 image_future_global=None (DINO loss 0). reconstruction + patch latent만 평가.
+                out = model(img_t, img_tk, None)
+                loss = out['loss']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += out['loss_t'].item()
+                total_loss_future += out['loss_tk'].item()
             elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
                 out = model(img_t, img_tk)
                 loss = out['loss']
@@ -601,12 +683,49 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, out1_np, out2_np]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
-                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
-                    out = actual_model(x, y)
+                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model', 'TwoStreamV13Model'):
+                    # 시각화는 mask 없이 (full reconstruction inference). 학습 forward는
+                    # MAE-style random mask 적용 → 시각화엔 부적절. mask_ratio=0이면
+                    # encoder가 모든 patch 처리 + mask_token inject 없이 통과 → 학습 분포
+                    # 밖이지만 model의 reconstruction 능력을 직관적으로 보여줌.
+                    saved_mask_p = actual_model.mask_ratio_p
+                    saved_mask_m = actual_model.mask_ratio_m
+                    actual_model.mask_ratio_p = 0.0
+                    actual_model.mask_ratio_m = 0.0
+                    try:
+                        out = (actual_model(x, y) if model_name != 'TwoStreamV13Model'
+                               else actual_model(x, y, None))
+                    finally:
+                        actual_model.mask_ratio_p = saved_mask_p
+                        actual_model.mask_ratio_m = saved_mask_m
                     pred_t_np = out['pred_t'].squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     pred_tk_np = out['pred_tk'].squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
-                    imgs = [img_t, img_tk, pred_t_np, pred_tk_np]
-                    col_titles = ['Frame t', 'Frame t+k', 'Pred t (Ph1)', 'Pred t+k (Ph3)']
+                    if model_name == 'TwoStreamV13Model':
+                        # v13 encoder-level routing: motion-routed encoder-level latent을
+                        # interpreter_1 + recon_head (학습된 decoder path) 통과 → pixel.
+                        # In-distribution decoder라 의미 있는 motion-routed reconstruction 예상.
+                        predicted_full = torch.cat(
+                            [out['predicted_cls_tk'].unsqueeze(1), out['predicted_patches_tk']],
+                            dim=1,
+                        )  # [B, 1+N, D]
+                        predicted_decoded = actual_model._run_interpreter(
+                            predicted_full, actual_model.interpreter_1,
+                            actual_model.interpreter_1_norm,
+                        )
+                        patch_pred_motion = actual_model.recon_head(predicted_decoded[:, 1:])
+                        pred_tk_motion = (
+                            actual_model._unpatchify(patch_pred_motion)
+                            .squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
+                        )
+                        imgs = [img_t, img_tk, pred_t_np, pred_tk_np, pred_tk_motion]
+                        col_titles = [
+                            'Frame t', 'Frame t+k',
+                            'Pred t (single)', 'Pred t+k (single)',
+                            'Pred t+k (motion-routed → decoder)',
+                        ]
+                    else:
+                        imgs = [img_t, img_tk, pred_t_np, pred_tk_np]
+                        col_titles = ['Frame t', 'Frame t+k', 'Pred t (Ph1)', 'Pred t+k (Ph3)']
                 elif model_name == 'VideoMAEModel':
                     # 픽셀 복원이 아닌 feature/masked 예측 → 이미지 시각화 생략
                     continue
@@ -1057,6 +1176,42 @@ def train(
                         f"cos(m,Δp)={v12buf['cos_m_delta']/n:.3f}"
                     )
                 train_epoch._v12_metrics_buf = {}
+
+            # v13 metrics (dual-frame recon + motion-routed latent + DINO CLS)
+            if hasattr(train_epoch, '_v13_metrics_buf'):
+                v13buf = train_epoch._v13_metrics_buf
+                n = v13buf.get('_count', 0)
+                if n > 0:
+                    lt = v13buf['loss_t'] / n
+                    ltk = v13buf['loss_tk'] / n
+                    lpp = v13buf['loss_pred_patch'] / n
+                    lpc = v13buf['loss_pred_cls'] / n
+                    writer.add_scalar('v13/loss_t', lt, epoch)
+                    writer.add_scalar('v13/loss_tk', ltk, epoch)
+                    writer.add_scalar('v13/loss_pred_patch', lpp, epoch)
+                    writer.add_scalar('v13/loss_pred_cls', lpc, epoch)
+                    writer.add_scalar('v13/feat_std_m', v13buf['feat_std_m'] / n, epoch)
+                    writer.add_scalar('v13/feat_std_p', v13buf['feat_std_p'] / n, epoch)
+                    writer.add_scalar('v13/cos_intra_m', v13buf['cos_intra_m'] / n, epoch)
+                    writer.add_scalar('v13/cos_intra_p', v13buf['cos_intra_p'] / n, epoch)
+                    writer.add_scalar('v13/cos_intra_pred_cls', v13buf['cos_intra_pred_cls'] / n, epoch)
+                    writer.add_scalar('v13/std_pred_cls', v13buf['std_pred_cls'] / n, epoch)
+                    writer.add_scalar('v13/std_target_cls', v13buf['std_target_cls'] / n, epoch)
+                    writer.add_scalar('v13/norm_pred_cls', v13buf['norm_pred_cls'] / n, epoch)
+                    writer.add_scalar('v13/norm_target_cls', v13buf['norm_target_cls'] / n, epoch)
+                    writer.add_scalar('v13/norm_dino_center', v13buf['norm_center'] / n, epoch)
+                    writer.add_scalar('v13/ema_momentum', v12_momentum, epoch)
+                    log(
+                        f"  [v13] L_t={lt:.5f} L_tk={ltk:.5f} L_pp={lpp:.5f} L_pc={lpc:.5f} | "
+                        f"ema_m={v12_momentum:.4f} | "
+                        f"std_m={v13buf['feat_std_m']/n:.3f} std_p={v13buf['feat_std_p']/n:.3f} "
+                        f"std_pred_cls={v13buf['std_pred_cls']/n:.3f} | "
+                        f"cos_intra_p={v13buf['cos_intra_p']/n:.3f} "
+                        f"cos_intra_pred_cls={v13buf['cos_intra_pred_cls']/n:.3f} | "
+                        f"||pred||={v13buf['norm_pred_cls']/n:.2f} ||tgt||={v13buf['norm_target_cls']/n:.2f} "
+                        f"||center||={v13buf['norm_center']/n:.2f}"
+                    )
+                train_epoch._v13_metrics_buf = {}
             writer.flush()
 
         # Save prediction samples every epoch (rank 0)

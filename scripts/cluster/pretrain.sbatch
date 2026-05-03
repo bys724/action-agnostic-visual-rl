@@ -281,6 +281,38 @@ elif [ "$MODEL" = "two-stream-v12" ]; then
         --v12-ema-momentum-final "${V12_EMA_FINAL:-0.9999}"
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v12${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v13" ]; then
+    # v13: dual-frame recon + motion-routed latent + DINO global CLS (post-CoRL conversation)
+    # 설계 근거 (post-v12 sanity 진단 → cls_p collapse 본질 해결):
+    # - frame_t / frame_{t+k} 모두 student P encoder 통과 → 각자 reconstruction (L_t, L_tk)
+    # - motion-routing은 frame_t에서 시작 → predicted_p_tk (latent prediction)
+    # - teacher (EMA) 두 input:
+    #     · cropped frame_{t+k} (224)  → per-patch target  (V-JEPA-style)
+    #     · raw     frame_{t+k} (256)  → CLS target        (DINO-style global)
+    # - L_total = L_t + L_tk + λ_patch · L_pred_patch + λ_cls · L_pred_cls
+    # - λ_patch=1.0, λ_cls=0.1 (DINO scale 큼, 보수적)
+    # 환경변수:
+    #   V11_M_DEPTH (default 6), V11_ROUTING_MODE (default v_from_p) — v11과 공유
+    #   V13_PATCH_W (default 1.0), V13_CLS_W (default 0.1)
+    #   V13_DINO_CENTER_M (default 0.9)
+    #   V13_EMA_INIT (default 0.996), V13_EMA_FINAL (default 0.9999)
+    MODEL_ARGS=(
+        --depth 12
+        --v11-m-depth "${V11_M_DEPTH:-6}"
+        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
+        --rotation-aug
+        --mask-ratio 0.3 --mask-ratio-p 0.75
+        --max-gap 60 --sample-dist triangular --sample-center 30
+        --v13-patch-pred-weight "${V13_PATCH_W:-1.5}"
+        --v13-cls-pred-weight "${V13_CLS_W:-0.01}"
+        --v13-dino-center-momentum "${V13_DINO_CENTER_M:-0.95}"
+        --v13-num-prototypes "${V13_NUM_PROTOS:-1024}"
+        --v13-dino-teacher-temp "${V13_T_TEMP:-0.04}"
+        --v13-dino-student-temp "${V13_S_TEMP:-0.1}"
+        --v13-ema-momentum-init "${V13_EMA_INIT:-0.996}"
+        --v13-ema-momentum-final "${V13_EMA_FINAL:-0.9999}"
+    )
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v13${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12

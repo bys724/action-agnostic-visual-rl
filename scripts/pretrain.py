@@ -20,7 +20,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, TwoStreamV11Model, TwoStreamV12Model, VideoMAEModel
+from src.models import TwoStreamModel, TwoStreamV11Model, TwoStreamV12Model, TwoStreamV13Model, VideoMAEModel
 from src.datasets import EgoDexDataset
 from src.training.pretrain import train
 
@@ -30,10 +30,11 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'videomae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'videomae'],
                         help='Model type (default: two-stream). '
                              'two-stream-v11 = motion-guided routing + dual-target. '
-                             'two-stream-v12 = v11 + CLS semantic residual + EMA teacher.')
+                             'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
+                             'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -138,6 +139,26 @@ def main():
     parser.add_argument('--v12-predictor-heads', type=int, default=12,
                         help='[v12] Cross-attention predictor heads.')
 
+    # v13: Dual-Frame Reconstruction + Motion-Routed Latent + Full DINO Global CLS
+    parser.add_argument('--v13-patch-pred-weight', type=float, default=1.5,
+                        help='[v13] λ_patch — per-patch SmoothL1 weight (V-JEPA-style).')
+    parser.add_argument('--v13-cls-pred-weight', type=float, default=0.01,
+                        help='[v13] λ_cls — DINO distillation weight. raw CE scale ~log(K). '
+                             'K=1024 default → contribution ~0.07 (L_recon ~0.04 대비 1.7x).')
+    parser.add_argument('--v13-dino-center-momentum', type=float, default=0.95,
+                        help='[v13] EMA momentum for DINO center buffer.')
+    parser.add_argument('--v13-num-prototypes', type=int, default=1024,
+                        help='[v13] DINO prototype count K (cluster diversity). '
+                             'EgoDex 다양성 수준에 K=1024 적정 (DINO ImageNet 표준 65536 대비 작게).')
+    parser.add_argument('--v13-dino-teacher-temp', type=float, default=0.04,
+                        help='[v13] Teacher temperature τ_t (low → sharp distribution).')
+    parser.add_argument('--v13-dino-student-temp', type=float, default=0.1,
+                        help='[v13] Student temperature τ_s (higher than τ_t).')
+    parser.add_argument('--v13-ema-momentum-init', type=float, default=0.996,
+                        help='[v13] EMA momentum start for teacher.')
+    parser.add_argument('--v13-ema-momentum-final', type=float, default=0.9999,
+                        help='[v13] EMA momentum final (linear warmup).')
+
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -236,6 +257,29 @@ def main():
             rotation_aug=args.rotation_aug,
             routing_mode=args.v11_routing_mode,
         )
+    elif args.model == 'two-stream-v13':
+        # v13: dual-frame reconstruction + motion-routed latent + DINO global CLS
+        # - frame_t / frame_{t+k} 모두 student P encoder 통과 (각자 mask 독립)
+        # - motion-routing은 frame_t의 p_state에서 시작 → predicted_p_tk
+        # - teacher (EMA) 두 input: cropped frame_{t+k} (per-patch target) +
+        #   raw 256x256 frame_{t+k} (DINO-style global CLS target)
+        # - L_total = L_t + L_tk + λ_patch · L_pred_patch + λ_cls · L_pred_cls
+        v13_mask_m = args.mask_ratio if args.mask_ratio > 0 else 0.3
+        v13_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
+        model = TwoStreamV13Model(
+            p_depth=args.depth,
+            m_depth=args.v11_m_depth,
+            mask_ratio_m=v13_mask_m,
+            mask_ratio_p=v13_mask_p,
+            rotation_aug=args.rotation_aug,
+            routing_mode=args.v11_routing_mode,
+            patch_pred_weight=args.v13_patch_pred_weight,
+            cls_pred_weight=args.v13_cls_pred_weight,
+            dino_center_momentum=args.v13_dino_center_momentum,
+            num_prototypes=args.v13_num_prototypes,
+            dino_teacher_temp=args.v13_dino_teacher_temp,
+            dino_student_temp=args.v13_dino_student_temp,
+        )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
         # - v11 모든 reconstruction path 유지 (L_t + L_tk)
@@ -282,6 +326,9 @@ def main():
         print(f"Loading training dataset: {args.train_data}")
         print("="*60)
 
+    # v13: train dataset이 frame_{t+k}의 raw 256 view도 함께 반환해야 함
+    needs_global = (args.model == 'two-stream-v13')
+
     splits = [s.strip() for s in args.egodex_splits.split(',')]
     split_datasets = []
     for split in splits:
@@ -294,6 +341,7 @@ def main():
             max_videos=args.max_videos,
             sample_dist=args.sample_dist,
             sample_center=args.sample_center,
+            return_global=needs_global,
         )
         split_datasets.append(ds)
     if len(split_datasets) == 1:
@@ -341,12 +389,17 @@ def main():
         print("Starting training...")
         print("="*60)
 
-    # v12 EMA momentum schedule (linear warmup over training)
+    # v12/v13 EMA momentum schedule (linear warmup over training)
     v12_kwargs = {}
     if args.model == 'two-stream-v12':
         v12_kwargs = {
             'v12_ema_momentum_init': args.v12_ema_momentum_init,
             'v12_ema_momentum_final': args.v12_ema_momentum_final,
+        }
+    elif args.model == 'two-stream-v13':
+        v12_kwargs = {
+            'v12_ema_momentum_init': args.v13_ema_momentum_init,
+            'v12_ema_momentum_final': args.v13_ema_momentum_final,
         }
 
     model, history = train(

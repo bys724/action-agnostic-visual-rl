@@ -90,6 +90,12 @@ CLS_MODES_PAIRED = {
     # B+D', A+B+D' (representation 조합 ablation)
     "patch_mean_concat_p_enc_d_prime",
     "patch_mean_concat_all",
+    # D' 위치 CLS (motion-routing 후 CLS) — v13 분석용
+    "cls_p_state_after_routing",
+    # D 위치 CLS (interpreter_2 후 CLS = predicted_cls_tk) — v13 디자인 핵심 위치
+    "cls_p_features_tk",
+    # B+D (P enc + interpreter_2 후) — v13 디자인 충실 concat
+    "patch_mean_concat_p_enc_phase3",
 }
 CLS_MODES_ALL = CLS_MODES_SINGLE | CLS_MODES_PAIRED
 
@@ -99,6 +105,7 @@ _CONCAT_2_MODES = {
     "patch_mean_concat_enc_d_prime",
     "patch_mean_concat_enc_phase3",
     "patch_mean_concat_p_enc_d_prime",
+    "patch_mean_concat_p_enc_phase3",
 }
 _CONCAT_3_MODES = {
     "patch_mean_concat_all",  # M_enc + P_enc + D'
@@ -328,8 +335,13 @@ def extract_repr(model, pixel_values: torch.Tensor, mode: str) -> torch.Tensor:
     out = _full_forward_with_d_prime(model, img_t, img_tk)
     if mode == "patch_mean_p_state_after_routing":
         return out["p_state_routing"][:, 1:].mean(dim=1)
+    if mode == "cls_p_state_after_routing":
+        return out["p_state_routing"][:, 0]
     if mode == "patch_mean_p_features_tk":
         return out["p_semantic_tk"][:, 1:].mean(dim=1)
+    if mode == "cls_p_features_tk":
+        # D 위치 CLS = interpreter_2 후 CLS (= v13 predicted_cls_tk, DINO target과 align)
+        return out["p_semantic_tk"][:, 0]
     if mode == "patch_mean_concat_enc_d_prime":
         return torch.cat(
             [out["m_encoded"][:, 1:].mean(dim=1),
@@ -347,6 +359,13 @@ def extract_repr(model, pixel_values: torch.Tensor, mode: str) -> torch.Tensor:
         return torch.cat(
             [out["p_encoded"][:, 1:].mean(dim=1),
              out["p_state_routing"][:, 1:].mean(dim=1)],
+            dim=-1,
+        )
+    if mode == "patch_mean_concat_p_enc_phase3":
+        # B + D (P encoder + interpreter_2 후) — v13 디자인 충실 concat
+        return torch.cat(
+            [out["p_encoded"][:, 1:].mean(dim=1),
+             out["p_semantic_tk"][:, 1:].mean(dim=1)],
             dim=-1,
         )
     if mode == "patch_mean_concat_all":

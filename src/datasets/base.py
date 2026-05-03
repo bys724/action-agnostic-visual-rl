@@ -37,12 +37,15 @@ class VideoFrameDataset(ABC, Dataset):
         cache_frames: bool = False,
         sample_dist: str = "auto",
         sample_center: int = None,
+        return_global: bool = False,
     ):
         self.data_root = Path(data_root)
         self.max_gap = max_gap
         self.img_size = img_size
         self.samples_per_video = samples_per_video
         self.cache_frames = cache_frames
+        # v13: True면 frame_{t+k}의 raw 256x256 view도 함께 반환 (DINO-style global)
+        self.return_global = return_global
 
         # Spatial transform: 256x256 → 224x224
         if train:
@@ -113,39 +116,37 @@ class VideoFrameDataset(ABC, Dataset):
 
     def _load_frame_pair(
         self, frame_dir: Path, idx1: int, idx2: int
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """두 프레임을 로드하고 동일한 spatial crop 적용."""
+    ):
+        """두 프레임을 로드하고 spatial crop 적용.
+
+        return_global=False: (img1_cropped, img2_cropped) 반환 (기존 동작)
+        return_global=True:  (img1_cropped, img2_cropped, img2_raw_256) 반환
+                              (v13 DINO-style global view용 — img2의 256x256 원본도 같이)
+        """
         path1 = frame_dir / f"frame_{idx1:06d}.jpg"
         path2 = frame_dir / f"frame_{idx2:06d}.jpg"
 
-        # 캐시 확인
-        if self.cache_frames:
-            key1, key2 = (frame_dir, idx1), (frame_dir, idx2)
-            if key1 in self._frame_cache and key2 in self._frame_cache:
-                return self._frame_cache[key1], self._frame_cache[key2]
-
-        img1 = self._load_image(path1)
-        img2 = self._load_image(path2)
+        img1_raw = self._load_image(path1)  # [3, 256, 256]
+        img2_raw = self._load_image(path2)  # [3, 256, 256]
 
         # 프레임 쌍에 독립적인 random crop 적용
         # → pixel-level 정렬을 깨서 더 높은 수준의 표현 학습 유도
         if isinstance(self.spatial_transform, transforms.RandomCrop):
             params1 = transforms.RandomCrop.get_params(
-                img1, (self.img_size, self.img_size)
+                img1_raw, (self.img_size, self.img_size)
             )
             params2 = transforms.RandomCrop.get_params(
-                img2, (self.img_size, self.img_size)
+                img2_raw, (self.img_size, self.img_size)
             )
-            img1 = transforms.functional.crop(img1, *params1)
-            img2 = transforms.functional.crop(img2, *params2)
+            img1 = transforms.functional.crop(img1_raw, *params1)
+            img2 = transforms.functional.crop(img2_raw, *params2)
         else:
-            img1 = self.spatial_transform(img1)
-            img2 = self.spatial_transform(img2)
+            img1 = self.spatial_transform(img1_raw)
+            img2 = self.spatial_transform(img2_raw)
 
-        if self.cache_frames:
-            self._frame_cache[(frame_dir, idx1)] = img1
-            self._frame_cache[(frame_dir, idx2)] = img2
-
+        if self.return_global:
+            # v13: img2의 raw 256x256도 함께 반환. teacher가 DINO-style global view로 사용.
+            return img1, img2, img2_raw
         return img1, img2
 
     def get_loss_weight(self, gap: int) -> float:
@@ -157,7 +158,7 @@ class VideoFrameDataset(ABC, Dataset):
     def __len__(self) -> int:
         return len(self.frame_dirs) * self.samples_per_video
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]:
+    def __getitem__(self, idx: int):
         # 손상된 프레임 파일 대비: 실패 시 랜덤 다른 샘플로 fallback
         for _retry in range(5):
             try:
@@ -177,11 +178,18 @@ class VideoFrameDataset(ABC, Dataset):
                 frame_t = np.random.randint(0, max_start + 1)
                 frame_tk = frame_t + gap
 
-                img_t, img_tk = self._load_frame_pair(frame_dir, frame_t, frame_tk)
+                loaded = self._load_frame_pair(frame_dir, frame_t, frame_tk)
+                if self.return_global:
+                    img_t, img_tk, img_tk_global = loaded
+                    return img_t, img_tk, img_tk_global, gap
+                img_t, img_tk = loaded
                 return img_t, img_tk, gap
             except Exception:
                 # 손상 파일 → 다른 비디오에서 재시도
                 idx = np.random.randint(0, len(self))
         # 5회 연속 실패 시 (극히 드묾) 검은 이미지 반환
         fallback = torch.zeros(3, self.img_size, self.img_size)
+        if self.return_global:
+            fallback_global = torch.zeros(3, 256, 256)
+            return fallback, fallback, fallback_global, 1
         return fallback, fallback, 1
