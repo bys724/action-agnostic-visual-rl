@@ -89,6 +89,21 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-05-03 Ego4D frame extraction (학습 데이터 추가)
+
+신규 [`scripts/data/extract_ego4d_frames.py`](../scripts/data/extract_ego4d_frames.py) + [`scripts/cluster/extract_ego4d.sbatch`](../scripts/cluster/extract_ego4d.sbatch) — `/proj/external_group/mrg/datasets/ego4d/v2/full_scale/` (9,823 mp4 / 7.2 TB) → 256² JPEG frames 30 fps 그대로(subsample 없음). EgoDex와 동일 spec (센터 크롭 + 256² + JPEG q=95).
+
+**login 노드 사전 검증** (5 영상 metadata + 1 영상 전체 추출):
+- 5 영상 모두 30 fps 디코드 OK (1920×1440 / 2560×1920, 영상별 dur 21~958s)
+- 1 영상 (12,466 frame) single-thread 119.8s = 104 fps decode → 144 worker 병렬 시 영상당 ~120s, 약 1.2 영상/s throughput → **9,823 영상 / 1.2 / 3600 ≈ 2.3시간** 추정
+- 출력 31 KB/frame × 78.6 M frames ≈ **2.4 TB 디스크**
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33834238 | normal_cpu 1×144 CPU | 00:30:00 | sanity (10 영상, multi-process 검증) | PENDING |
+
+**Full submit 조건**: sanity ✅ → 9,823 영상 normal_cpu 1×144 --time=12h 1잡 제출 예정.
+
 ### 2026-05-01 ~ 05-03 v13 Sanity + 본 학습 (Dual-Frame Recon + Motion-Routed Latent + DINO Global CLS)
 
 신규 [`src/models/two_stream_v13.py`](../src/models/two_stream_v13.py) — post-v12 sanity 진단 (cls_p collapse 본질) 후 architectural redesign:

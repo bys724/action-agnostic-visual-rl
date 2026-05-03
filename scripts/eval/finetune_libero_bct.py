@@ -60,19 +60,32 @@ def build_cfg(args, shape_meta) -> OmegaConf:
             "checkpoint": args.checkpoint,
             "adapter_kwargs": {},
         },
-        "train": {"use_augmentation": False},
+        "train": {"use_augmentation": args.use_augmentation},
         "policy": {
             "policy_type": "AdaptedBCTransformerPolicy",
             "embed_size": embed_size,
             "extra_num_layers": 0,
             "extra_hidden_size": 128,
+            # V3: ColorJitter + Translation 활성. LIBERO 표준 (DataAugGroup이 dim=1
+            # 시점 concat 후 단일 random 적용 → 시점/카메라 일관성 자동 보장).
             "color_aug": {
-                "network": "IdentityAug",
-                "network_kwargs": {},
+                "network": "ImgColorJitterAug" if args.use_augmentation else "IdentityAug",
+                "network_kwargs": {
+                    "input_shape": [3, args.img_size, args.img_size],
+                    "brightness": 0.3,
+                    "contrast": 0.3,
+                    "saturation": 0.3,
+                    "hue": 0.3,
+                    "epsilon": 0.05,
+                } if args.use_augmentation else {},
             },
             "translation_aug": {
-                "network": "IdentityAug",
-                "network_kwargs": {},
+                "network": "TranslationAug" if args.use_augmentation else "IdentityAug",
+                "network_kwargs": {
+                    # input_shape는 BasePolicy.__init__이 shape_meta에서 자동 주입.
+                    # translation=4 (LIBERO 공식 default)
+                    "translation": 4,
+                } if args.use_augmentation else {},
             },
             "transformer_input_size": None,
             "transformer_num_layers": 4,
@@ -169,6 +182,54 @@ def _align_actions(dist, actions):
     if T_out > T_act:
         raise ValueError(f"dist T_out={T_out} > actions T_act={T_act} (causal trim 불가)")
     return actions[:, -T_out:]
+
+
+def save_aug_check_png(policy, batch, image_keys, output_path, n_samples=2, n_steps=4):
+    """첫 batch에서 augmentation 적용 전/후를 한 PNG에 저장.
+
+    검증 포인트 (refactor_plan_2026-05-03 §3, V3 학습 시작 전 1회 시각 확인):
+      - 한 row 내 인접 시점 (t-3..t)이 동일 augmentation 받는가 (TranslationAug crop offset)
+      - 같은 sample의 다른 카메라가 함께 augmented되는가 (DataAugGroup dim=1 concat)
+
+    Layout (sample s × camera c 별 2 row = raw / aug):
+        s=0  cam=agent    [raw]   t-3  t-2  t-1  t
+                          [aug]   t-3  t-2  t-1  t
+        s=0  cam=wrist    [raw]   ...
+                          [aug]   ...
+        s=1  ...
+    """
+    import torch
+    from torchvision.utils import make_grid
+    from torchvision.transforms.functional import to_pil_image
+
+    if not policy.cfg.train.use_augmentation:
+        print("[aug-check] use_augmentation=False, skipping viz")
+        return
+
+    raws = {k: batch["obs"][k][:n_samples, -n_steps:].detach().cpu() for k in image_keys}
+
+    was_training = policy.img_aug.training
+    policy.img_aug.train()
+    with torch.no_grad():
+        img_tuple = tuple(batch["obs"][k][:n_samples, -n_steps:] for k in image_keys)
+        aug_out = policy.img_aug(img_tuple)
+    policy.img_aug.train(was_training)
+
+    augs = {k: aug_out[i].detach().cpu() for i, k in enumerate(image_keys)}
+
+    rows = []
+    for s in range(n_samples):
+        for k in image_keys:
+            rows.append(raws[k][s])
+            rows.append(augs[k][s])
+    all_imgs = torch.cat(rows, dim=0).clamp(0, 1)
+    grid = make_grid(all_imgs, nrow=n_steps, padding=4, pad_value=1.0)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    to_pil_image(grid).save(str(out))
+    print(f"[aug-check] saved {out}")
+    print(f"[aug-check] layout: {n_samples} samples × {len(image_keys)} cams × (raw, aug) × {n_steps} steps")
 
 
 def _log_first_batch_stats(batch, image_keys):
@@ -290,11 +351,21 @@ def main():
     parser.add_argument("--embed-size", type=int, default=64,
                         help="BC-T embed_size (LIBERO default 64)")
 
+    # V3 augmentation
+    parser.add_argument("--img-size", type=int, default=224,
+                        help="Encoder native input size for ColorJitter input_shape (V-JEPA은 384)")
+    parser.add_argument("--no-augmentation", action="store_true",
+                        help="V2 호환: augmentation 끄기 (default: V3 aug 켜짐)")
+    parser.add_argument("--aug-check-png", type=str, default=None,
+                        help="첫 batch에서 augmentation 적용 전/후 PNG 저장 (시점 일관성 시각 검증). "
+                             "None이면 저장 안 함. sanity 1잡에서 활성화 권장.")
+
     # Output
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--save-interval", type=int, default=10)
 
     args = parser.parse_args()
+    args.use_augmentation = not args.no_augmentation
 
     control_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -410,6 +481,14 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     print(f"Output: {args.output_dir}")
     OmegaConf.save(cfg, os.path.join(args.output_dir, "config.yaml"))
+
+    # ── 6.5. (선택) augmentation 일관성 시각 검증 ─────────────────────────
+    if args.aug_check_png:
+        first_batch = next(iter(train_loader))
+        for k in first_batch["obs"]:
+            first_batch["obs"][k] = first_batch["obs"][k].to(device, non_blocking=True)
+        resize_obs_inplace(first_batch, image_keys, img_size)
+        save_aug_check_png(policy, first_batch, image_keys, args.aug_check_png)
 
     # ── 7. Training loop ─────────────────────────────────────────────────
     best_eval_loss = float("inf")
