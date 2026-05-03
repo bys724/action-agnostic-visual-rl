@@ -39,17 +39,28 @@ class TwoStreamV11Adapter(EncoderAdapter):
         device: str = "cpu",
     ):
         super().__init__(freeze=freeze)
-        from scripts.eval.probe_action_v11 import (
-            _full_forward_with_d_prime,
-            load_v11_model,
-        )
+        from scripts.eval.probe_action_v11 import _full_forward_with_d_prime
 
         if checkpoint_path is None:
-            raise ValueError("Two-Stream v11 어댑터는 checkpoint 필수")
-
-        self.model = load_v11_model(
-            checkpoint_path, p_depth=p_depth, m_depth=m_depth, device=device,
-        )
+            # rollout: BC-T policy_state_dict이 어댑터 weights 전부 포함 →
+            # random init 후 외부에서 load_state_dict로 덮어씀.
+            from src.models import TwoStreamV11Model
+            self.model = TwoStreamV11Model(
+                embed_dim=768, p_depth=p_depth, m_depth=m_depth,
+                num_heads=12, mlp_ratio=4.0,
+                image_size=224, patch_size=16,
+                mask_ratio_m=0.0, mask_ratio_p=0.0,
+                decoder_depth_m=3, interpreter_depth=3,
+                num_motion_iters=2, rotation_aug=False,
+            ).to(device)
+            self.model.eval()
+            for p in self.model.parameters():
+                p.requires_grad = False
+        else:
+            from scripts.eval.probe_action_v11 import load_v11_model
+            self.model = load_v11_model(
+                checkpoint_path, p_depth=p_depth, m_depth=m_depth, device=device,
+            )
         self._step_forward = _full_forward_with_d_prime
 
         if freeze:

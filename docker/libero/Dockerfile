@@ -52,9 +52,9 @@ RUN pip install --no-cache-dir \
 
 # BC-T policy dependencies (LIBERO 공식 BCTransformerPolicy + AdaptedBCTransformerPolicy)
 # omegaconf: cfg loading, robomimic: TensorUtils + BasePolicy
-RUN pip install --no-cache-dir \
-    omegaconf \
-    'robomimic==0.2.0'
+# robomimic --no-deps: 의존성 egl_probe가 cmake 부재로 build fail. tensor/obs utils만 쓰므로 deps 불필요
+RUN pip install --no-cache-dir omegaconf && \
+    pip install --no-cache-dir --no-deps 'robomimic==0.2.0'
 
 # Clone and install LIBERO with all dependencies
 RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git /opt/libero && \

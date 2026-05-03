@@ -99,10 +99,10 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 
 | 모델 | 로컬 경로 | 전송일 | 비고 |
 |------|----------|--------|------|
-| BC-T VideoMAE-ours × spatial seed=0 | `/mnt/data/checkpoints/libero_bct/bct_videomae-ours_libero_spatial_seed0_best.pt` | 2026-04-30 | 340 MB 단일 파일. `policy_state_dict` + `config` 포함 (encoder weights 모두 포함). LIBERO rollout 평가용 |
+| BC-T VideoMAE-ours × spatial seed=0 (1차, 폐기) | `/mnt/data/checkpoints/libero_bct/_archive_pre_usejoint/bct_videomae-ours_libero_spatial_seed0_best.pt` | 2026-04-30 | use_joint=False로 학습된 broken 1차. 별도 archive로 격리 |
+| BC-T 5 encoder × spatial seed=0 (2차, use_joint fix) | `/mnt/data/checkpoints/libero_bct/<encoder>_libero_spatial_seed0_20260430_150733_usejoint/{best.pt, config.yaml}` | 2026-05-03 | tar 일괄 전송. 5 dir: `two-stream-v11`, `videomae-ours`, `dinov2`, `siglip`, `vc1`. 각 best.pt 340 MB ~ 807 MB (v11이 큼). config.yaml에 `use_joint: true` 확인 |
 | (예정) v11 ep44/ep50 | `/mnt/data/checkpoints/two_stream_v11/20260426_014333/` | — | 미전송. 전송 시 `checkpoint_epoch0044.pt`, `latest.pt`, `config.json`, `history.json` 약 7 GB |
 | (예정) VideoMAE-ours 50ep | `/mnt/data/checkpoints/videomae_full/20260407_104721/` | — | 디렉토리 골격(config.json + tb)만 있음. ckpt 본체 미전송 |
-| (예정) BC-T 나머지 4 encoder × spatial | `/mnt/data/checkpoints/libero_bct/` | — | 클러스터 학습 종료 시 동일 패턴으로 전송 (340 MB 단일 .pt × 4) |
 
 **로컬에서 학습한 모델 (legacy / sanity)**
 

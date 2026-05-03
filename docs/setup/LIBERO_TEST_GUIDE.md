@@ -112,3 +112,18 @@ LIBERO env raw image는 사람 시점에서 거꾸로 보일 수 있음. 학습 
 ckpt에 박힌 cluster path를 무시하고 `policy_state_dict`로 덮어쓰는 흐름이라
 `build_adapter(checkpoint_path=None)` 시 random init이 한 번 일어남.
 console에 missing/unexpected keys 0이면 정상.
+
+### 🔴 Adapter prev_obs cache 카메라 간 오염 (해결됨, 2026-05-03)
+**증상**: 모든 5 encoder가 SR 0%. 정책이 일관되게 한 방향으로만 움직여 task 영역 이탈.
+
+**원인**: pair-based adapter (`videomae`, `two_stream_v11`, `single_frame`) 모두 `self.prev_obs` 단일 슬롯 캐시 사용. BC-T policy는 동일 어댑터 인스턴스를 `agentview_rgb` + `eye_in_hand_rgb` 2개 카메라가 **공유**. T=1 rollout 시 카메라 호출이 교차되며 (agent_t, wrist_{t-1}) 같은 cross-camera pair가 형성됨 → policy가 OOD 입력을 봄. 학습 시(T=10 sequence) 어댑터 `if T>1` branch가 시퀀스 내부에서 pair를 만들어서 정상.
+
+**해결**: [`src/eval_libero.py`](../../src/eval_libero.py) `BCTransformerClient` 재설계 — `latent_queue` 폐기, raw obs history (max_seq_len=10) 누적 후 매 step `(B=1, T_acc, ...)` 시퀀스 전체로 `spatial_encode` 호출. 어댑터의 `T>1` branch가 시퀀스 내부 pair 형성 → 학습 분포와 정합.
+
+**보조 수정**:
+- `LIBERO_ENV_RESOLUTION` 256 → 128 (HDF5 demos `agentview_rgb` 동일 해상도)
+- `joint_states` shape_meta + infer obs (use_joint=True 학습 호환)
+- `two_stream_v11` adapter checkpoint=None 허용 (rollout init 시 random → policy_state_dict로 덮어씀)
+
+### use_joint cfg mismatch (해결됨, 2026-04-30 → 재학습 2026-05-02)
+1차 학습은 `use_joint=False`로 진행되어 `joint_states` modality 누락 → policy가 robot kinematics state 부재로 spatial control fail (0/50 SR). 2차에서 `cfg.data.use_joint=True` + `low_dim=[gripper_states, joint_states]` + `obs_key_mapping[joint_states]=robot0_joint_pos` 활성화. shape_meta가 `joint_states: (7,)` 포함하도록 [`src/eval_libero.py:libero_shape_meta`](../../src/eval_libero.py) 동기화 필요.

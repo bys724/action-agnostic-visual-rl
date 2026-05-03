@@ -455,6 +455,70 @@ VideoMAE-ours BC-T (33615386) 학습 종료 후 로컬 H100에서 LIBERO rollout
 
 **참고 (sanity rollout 인프라)**: 로컬 H100에서 `src/eval_libero.py` BC-T 전용으로 갈아엎고 `libero-eval` 컨테이너로 closed-loop rollout 동작 확인. 새 ckpt 받으면 동일 명령으로 재평가 가능 — 자세한 rollout 가이드는 `docs/setup/LIBERO_TEST_GUIDE.md`
 
+**🔴 2차 BC-T (use_joint fix) 로컬 sanity 결과 — 추가 fix + ours 0% 판명 (2026-05-03)**
+
+2차 학습 ckpt (`<encoder>_libero_spatial_seed0_20260430_150733_usejoint/best.pt` × 5) 로컬 전송 + sanity rollout 진행 중 추가 결함 발견 + sanity SR 측정.
+
+**Rollout 코드 추가 fix** (`src/eval_libero.py`, 클러스터 학습 driver와 무관, 로컬 평가 측 수정):
+1. **Adapter prev_obs cache cross-camera 오염**: pair-based 어댑터(`videomae`, `two_stream_v11`, `single_frame`) 모두 `self.prev_obs` **단일 슬롯** 캐시 사용. BC-T policy가 동일 어댑터 인스턴스를 `agentview_rgb` + `eye_in_hand_rgb` 카메라가 **공유** → T=1 rollout 시 카메라 호출이 교차되며 (agent_t, wrist_{t-1}) cross-camera pair 형성 → policy OOD 입력. 학습 시(T=10 시퀀스)는 어댑터 `if T>1` branch가 시퀀스 내부 pair 만들어 정상.
+   - **해결**: `BCTransformerClient` 재설계 — `latent_queue` 폐기, raw obs history 누적 후 매 step `(B=1, T_acc, ...)` 시퀀스 전체로 `spatial_encode` 호출. 어댑터 `T>1` branch 활성 → 시퀀스 내부 pair 형성 → 학습 분포 정합
+2. **`LIBERO_ENV_RESOLUTION` 256 → 128**: HDF5 demos `agentview_rgb`가 128×128 저장 → env render도 동일 해상도로 통일
+3. **`joint_states` shape_meta + infer obs 추가**: use_joint=True 학습 호환
+4. **`two_stream_v11` adapter `checkpoint=None` 허용**: rollout init 시 random → policy_state_dict로 덮어씀
+
+**Sanity SR (1 task × 5 trial, libero_spatial task 0, post-fix)**:
+
+| Encoder | SR | BC fit (HDF5 ‖p−r‖ mean t≥1) | 해석 |
+|---------|----|------------------------------|------|
+| **vc1** | **80%** (4/5) | 0.295 (worst fit) | 가장 robust generalize |
+| **siglip** | **60%** (3/5) | (≈ dinov2) | balanced |
+| **dinov2** | **40%** (2/5) | 0.167 | balanced |
+| **videomae-ours** | **0%** (0/5) | 0.116 (best fit) | overfit, brittle |
+| **two-stream-v11** | **0%** (0/5) | 0.139 | overfit, brittle |
+
+→ **ours encoders가 demo trajectory를 가장 정확히 fit하지만 rollout 0%**. baseline (vc1/siglip/dinov2)은 fit이 덜 정확하지만 rollout에서 잘 generalize. **classic BC overfitting / encoder representation 일반화 격차** 시사.
+
+**클러스터에서 이어서 할 일** (로컬 baseline 본 평가는 일시 중지하고 ours 분석에 집중):
+
+**3-1차 V3 본 main table 학습 — augmentation + multi-seed 동시 적용** (가장 우선):
+- 5 encoder × 3 suite × 3 seed = 45 runs (원래 main table 계획 그대로). augmentation flag만 추가 — 추가 비용 0 (학습 시간 동일, GPU bound 아님)
+- `scripts/eval/finetune_libero_bct.py` 수정:
+  - `cfg.train.use_augmentation = True` (현재 `False`)
+  - `policy.color_aug.network = 'ColorJitterAug'` (현재 `IdentityAug`)
+  - `policy.translation_aug.network = 'TranslationAug'`, `affine_translate = 4` — LIBERO 공식 default
+- **🔴 2-frame pair 어댑터 (videomae / v11) augmentation 일관성 필수 확인**:
+  - LIBERO 공식 `BasePolicy.preprocess_input`은 image_tuple에 동일 augmentation 적용 → temporal coherence 보존되는 설계로 보이지만, 우리 어댑터가 직접 받는 (prev, curr) pair에 augmentation이 **카메라/시점별로 일관되게** 적용되는지 첫 학습 1 epoch 후 batch sample 시각화로 검증
+  - **prev/curr에 독립 augmentation이면 가짜 motion 생성** → motion-aware encoder 학습이 망가짐
+  - 카메라간 (agentview/wrist)는 독립 augmentation OK, **시점간 (prev/curr)은 동일 augmentation 필수**
+  - 검증 코드: `scripts/eval/finetune_libero_bct.py`의 `_log_first_batch_stats` 확장하여 augmented pair 저장 후 육안 확인
+- 비용: 45 runs × ~25h × 1 GPU = ~1125 GPU·h. 5 GPU 병렬이면 ~9일 wall-time
+- 결과 보고 ours가 baseline 대비 격차 좁혀지는지 평가:
+  · ours가 30%+ 회복 → "augmentation으로 격차 좁혀진다, paper에 둘 다 보고"
+  · ours가 한자리 SR 유지 → "ours encoder가 EgoDex 도메인 한계로 LIBERO transfer 어려움" — 정당한 negative finding
+
+**부가 사항** (main table V3 진행과 병행):
+- [ ] **다른 epoch ckpt 보존**: 현재 학습 driver는 best.pt만 저장. eval_loss 기준 best는 over-fit ckpt 가능성 高 → ep 5/10/20/best 4개 보존하여 mid-epoch ckpt rollout SR 비교. 비용 0 (재학습 불필요, V3부터 적용)
+- [ ] **ours encoder partial unfreeze 후보** (V3 결과 보고 결정): V3로도 ours가 약하면 마지막 4 transformer block만 unfreeze BC fine-tune → EgoDex→LIBERO 도메인 적응. ours만 적용 (baseline은 frozen 유지하여 fair 비교)
+- [ ] **v11-VfromM (33615395)**: 진행 중. 학습 종료 시 동일 V3 cfg로 BC-T 학습 → main table A1 ablation
+- [ ] **V-JEPA**: main table 제외 결정 유지
+
+**Ablation은 paper section 5용으로 별도** (main table 확보 후):
+- with/without augmentation (1 encoder × 1 suite × 1 seed = 6 runs)
+- with/without joint_states (1차/2차 결과로 이미 가지고 있음)
+- with/without partial unfreeze (조건부)
+
+**로컬 작업물 (클러스터 git pull로 동기화 가능)**:
+- [`src/eval_libero.py`](../src/eval_libero.py) — 위 4가지 rollout fix
+- [`src/encoders/adapters/two_stream_v11.py`](../src/encoders/adapters/two_stream_v11.py) — checkpoint=None 허용
+- [`docker/libero/Dockerfile`](../docker/libero/Dockerfile) — robomimic `--no-deps` (egl_probe build fail 회피)
+- 본 문서 + [`docs/setup/LIBERO_TEST_GUIDE.md`](setup/LIBERO_TEST_GUIDE.md) — 디버그 결과 반영
+
+**보존된 sanity 산출물 (로컬, 참고용)**:
+- `data/libero/results/_sanity_2026-05-03_pre_baseline/*.json` — sanity rollout 8개 (encoder별 0~80% 기록)
+- `data/libero/results/_archive_pre_usejoint/*.json` — 1차 broken ckpt 0/50 결과 3개
+- `data/libero/videos/_orphan_pre_2026-05-03/` — 사전 생성된 비디오 일괄 stash
+- `/mnt/data/checkpoints/libero_bct/_archive_pre_usejoint/bct_videomae-ours_libero_spatial_seed0_best.pt` — 1차 broken ckpt 격리
+
 **최종 main table 목표**: 5 encoder × 3 suite × 3 seed = **45 BC runs + rollout**
 
 #### 3-2차: LeRobot ACT (조건부 진입)

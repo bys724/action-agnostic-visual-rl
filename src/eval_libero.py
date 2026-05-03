@@ -64,12 +64,17 @@ TASK_SUITE_CONFIG = {
 }
 
 LIBERO_DUMMY_ACTION = [0.0] * 6 + [-1.0]
-LIBERO_ENV_RESOLUTION = 256
+# HDF5 demos (`agentview_rgb`)와 동일 해상도. 학습 시 robomimic이 HDF5에서
+# 128×128 그대로 어댑터에 전달 → 어댑터 내부 resize. rollout도 동일 해상도로
+# 환경을 렌더해야 학습 분포와 일치.
+LIBERO_ENV_RESOLUTION = 128
 
 
 def libero_shape_meta() -> Dict[str, Any]:
     """LIBERO 표준 shape_meta — task suite 무관, BC-T 학습 시 robomimic이
     HDF5에서 추출하던 값을 hardcode (rollout 시 dataset 불필요).
+
+    `use_joint=True` 학습 (LIBERO 공식 default)에 맞춰 `joint_states` 포함.
     """
     return {
         "ac_dim": 7,
@@ -77,8 +82,12 @@ def libero_shape_meta() -> Dict[str, Any]:
             ("agentview_rgb", [3, 128, 128]),
             ("eye_in_hand_rgb", [3, 128, 128]),
             ("gripper_states", [2]),
+            ("joint_states", [7]),
         ]),
-        "all_obs_keys": ["agentview_rgb", "eye_in_hand_rgb", "gripper_states"],
+        "all_obs_keys": [
+            "agentview_rgb", "eye_in_hand_rgb",
+            "gripper_states", "joint_states",
+        ],
     }
 
 
@@ -163,7 +172,7 @@ class BCTransformerClient:
         return self._task_emb_cache[prompt]
 
     def _img_to_tensor(self, img: np.ndarray) -> torch.Tensor:
-        """LIBERO env image (H, W, 3) uint8 → (1, 1, 3, img_size, img_size) [0,1]."""
+        """LIBERO env image (H, W, 3) uint8 → (1, 3, img_size, img_size) [0,1]."""
         if img.dtype != np.uint8:
             img = (img * 255).astype(np.uint8)
         x = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0  # (3, H, W)
@@ -172,41 +181,75 @@ class BCTransformerClient:
                 x.unsqueeze(0), size=(self.img_size, self.img_size),
                 mode="bilinear", align_corners=False,
             ).squeeze(0)
-        return x.unsqueeze(0).unsqueeze(0).to(self.device)
+        return x.unsqueeze(0).to(self.device)  # (1, 3, H, W)
 
     def reset(self):
+        # 학습은 (B, T=seq_len, ...) 시퀀스로 진행. 어댑터 (videomae / v11 /
+        # single_frame) 모두 T>1에서만 시퀀스 내부 pair 형성을 사용. T=1 rollout
+        # 시 어댑터 내부 prev_obs 캐시는 동일 어댑터 인스턴스를 카메라 2개
+        # (agentview, wrist)가 공유하기 때문에 cross-camera로 오염됨.
+        # → rollout에서도 raw obs history를 유지하고 매 step (B=1, T=T_acc)
+        # 시퀀스 전체로 spatial_encode를 호출 (T>1 branch 활성). latent_queue는
+        # 사용하지 않음.
         self.policy.reset()
+        self.obs_history: list = []  # list of dict per timestep
+        self.max_seq_len = self.policy.max_seq_len  # 학습 seq_len과 동일
+
+    def observe(self, obs: Dict[str, Any]) -> None:
+        """Inference 없이 obs만 history에 누적. dummy wait 기간 동안 호출하여
+        첫 inference 시점에 어댑터가 (prev=t-1, curr=t) 진짜 motion pair를
+        보도록 함. videomae / v11 같은 motion-aware 어댑터는 (im, im) pair에
+        대해 motion feature가 collapse하므로 첫 step부터 real motion이 필수.
+        """
+        agent = self._img_to_tensor(obs["observation/image"])
+        wrist = self._img_to_tensor(obs["observation/wrist_image"])
+        state = obs["observation/state"]
+        gripper = torch.from_numpy(state[-2:]).float().view(1, 2).to(self.device)
+        joint = torch.from_numpy(np.asarray(obs["observation/joint_pos"])
+                                 ).float().view(1, 7).to(self.device)
+        self.obs_history.append({
+            "agentview_rgb": agent, "eye_in_hand_rgb": wrist,
+            "gripper_states": gripper, "joint_states": joint,
+        })
+        if len(self.obs_history) > self.max_seq_len:
+            self.obs_history.pop(0)
 
     @torch.no_grad()
     def infer(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         """Single-step inference. Returns {"actions": np.ndarray (1, 7)}.
 
-        학습 시 raw HDF5 (env-coord 그대로) 그대로 사용 → rollout도 회전 미적용.
+        학습 forward와 동일한 시퀀스 분포로 spatial_encode 호출.
         """
-        agent = self._img_to_tensor(obs["observation/image"])
+        agent = self._img_to_tensor(obs["observation/image"])      # (1, 3, H, W)
         wrist = self._img_to_tensor(obs["observation/wrist_image"])
-        # gripper_states: state = [eef_pos(3), axisangle(3), gripper_qpos(2)]
         state = obs["observation/state"]
-        gripper = torch.from_numpy(state[-2:]).float().view(1, 1, 2).to(self.device)
-        task_emb = self._task_emb(str(obs["prompt"])).unsqueeze(0)  # (1, 512)
+        gripper = torch.from_numpy(state[-2:]).float().view(1, 2).to(self.device)
+        joint = torch.from_numpy(np.asarray(obs["observation/joint_pos"])
+                                 ).float().view(1, 7).to(self.device)
 
+        self.obs_history.append({
+            "agentview_rgb": agent,
+            "eye_in_hand_rgb": wrist,
+            "gripper_states": gripper,
+            "joint_states": joint,
+        })
+        if len(self.obs_history) > self.max_seq_len:
+            self.obs_history.pop(0)
+
+        # 학습과 동일한 (B=1, T_acc, ...) 시퀀스 구성
+        T_acc = len(self.obs_history)
         data = {
             "obs": {
-                "agentview_rgb": agent,
-                "eye_in_hand_rgb": wrist,
-                "gripper_states": gripper,
+                k: torch.stack([h[k] for h in self.obs_history], dim=1)
+                # (1, T_acc, ...) — stack along time dim
+                for k in self.obs_history[0]
             },
-            "task_emb": task_emb,
+            "task_emb": self._task_emb(str(obs["prompt"])).unsqueeze(0),  # (1, 512)
         }
 
-        # 학습 forward 흐름 그대로 (preprocess_input 우회)
-        x = self.policy.spatial_encode(data)  # (1, 1, num_mod, E)
-        self.policy.latent_queue.append(x)
-        if len(self.policy.latent_queue) > self.policy.max_seq_len:
-            self.policy.latent_queue.pop(0)
-        x_seq = torch.cat(self.policy.latent_queue, dim=1)  # (1, T_acc, num_mod, E)
-        x_seq = self.policy.temporal_encode(x_seq)  # (1, T_acc, E)
-        dist = self.policy.policy_head(x_seq[:, -1])  # GMM at last step
+        x = self.policy.spatial_encode(data)   # (1, T_acc, num_mod, E)
+        x = self.policy.temporal_encode(x)     # (1, T_acc, E)
+        dist = self.policy.policy_head(x[:, -1])  # GMM at last step
 
         action = dist.sample().squeeze(0).cpu().numpy()  # (7,)
         return {"actions": action[np.newaxis, :]}  # (1, 7)
@@ -261,6 +304,22 @@ def evaluate_libero(
                 try:
                     if t < num_steps_wait:
                         obs, _, done, _ = env.step(LIBERO_DUMMY_ACTION)
+                        # dummy 기간 마지막 max_seq_len step의 obs를 history에
+                        # 누적해 두면, 첫 inference 시 T_acc=max_seq_len의
+                        # 진짜 motion pair 시퀀스로 spatial_encode가 호출됨
+                        # (motion-aware 어댑터의 step-0 collapse 회피).
+                        if t >= num_steps_wait - client.max_seq_len:
+                            state = np.concatenate([
+                                obs["robot0_eef_pos"],
+                                quat2axisangle(obs["robot0_eef_quat"]),
+                                obs["robot0_gripper_qpos"],
+                            ])
+                            client.observe({
+                                "observation/image": obs["agentview_image"],
+                                "observation/wrist_image": obs["robot0_eye_in_hand_image"],
+                                "observation/state": state,
+                                "observation/joint_pos": obs["robot0_joint_pos"],
+                            })
                         t += 1
                         continue
 
@@ -278,6 +337,7 @@ def evaluate_libero(
                             "observation/image": img,
                             "observation/wrist_image": wrist_img,
                             "observation/state": state,
+                            "observation/joint_pos": obs["robot0_joint_pos"],
                             "prompt": str(desc),
                         })
                         chunk = result["actions"]
