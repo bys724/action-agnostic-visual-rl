@@ -184,12 +184,32 @@ def _align_actions(dist, actions):
     return actions[:, -T_out:]
 
 
+def apply_augmentation(policy, batch, image_keys):
+    """학습 시 LIBERO `DataAugGroup` 호출 (시점/카메라 일관 augmentation).
+
+    AdaptedBCTransformerPolicy는 `image_encoders` 속성 부재로 LIBERO `BasePolicy.
+    preprocess_input` 자동 흐름을 못 탄다 → train_one_epoch에서 명시 호출 필요.
+
+    중요: TranslationAug crop_randomizer는 LIBERO native shape_meta (3, 128, 128)
+    기준으로 BasePolicy.__init__이 자동 주입한다. 따라서 augmentation은 반드시
+    `resize_obs_inplace` 호출 *전*에 적용해야 한다 (raw 128×128).
+    """
+    if not policy.cfg.train.use_augmentation:
+        return
+    img_tuple = tuple(batch["obs"][k] for k in image_keys)
+    aug_out = policy.img_aug(img_tuple)
+    for i, k in enumerate(image_keys):
+        batch["obs"][k] = aug_out[i]
+
+
 def save_aug_check_png(policy, batch, image_keys, output_path, n_samples=2, n_steps=4):
     """첫 batch에서 augmentation 적용 전/후를 한 PNG에 저장.
 
     검증 포인트 (refactor_plan_2026-05-03 §3, V3 학습 시작 전 1회 시각 확인):
       - 한 row 내 인접 시점 (t-3..t)이 동일 augmentation 받는가 (TranslationAug crop offset)
       - 같은 sample의 다른 카메라가 함께 augmented되는가 (DataAugGroup dim=1 concat)
+
+    중요: caller는 resize *전* (LIBERO native 128×128)의 batch를 넘겨야 한다.
 
     Layout (sample s × camera c 별 2 row = raw / aug):
         s=0  cam=agent    [raw]   t-3  t-2  t-1  t
@@ -263,6 +283,9 @@ def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
         batch["actions"] = batch["actions"].to(device, non_blocking=True)
         if "task_emb" in batch:
             batch["task_emb"] = batch["task_emb"].to(device, non_blocking=True)
+
+        # Augmentation은 LIBERO native (128) 기준 → resize 전에 적용
+        apply_augmentation(policy, batch, image_keys)
 
         # Resize obs to encoder native size
         resize_obs_inplace(batch, image_keys, img_size)
@@ -483,11 +506,12 @@ def main():
     OmegaConf.save(cfg, os.path.join(args.output_dir, "config.yaml"))
 
     # ── 6.5. (선택) augmentation 일관성 시각 검증 ─────────────────────────
+    # NOTE: augmentation은 LIBERO native (128) 기준 (TranslationAug crop_randomizer가
+    # shape_meta input_shape로 자동 설정됨) → resize 전에 호출.
     if args.aug_check_png:
         first_batch = next(iter(train_loader))
         for k in first_batch["obs"]:
             first_batch["obs"][k] = first_batch["obs"][k].to(device, non_blocking=True)
-        resize_obs_inplace(first_batch, image_keys, img_size)
         save_aug_check_png(policy, first_batch, image_keys, args.aug_check_png)
 
     # ── 7. Training loop ─────────────────────────────────────────────────

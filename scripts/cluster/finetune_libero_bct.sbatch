@@ -38,6 +38,10 @@ SEED="${SEED:-0}"
 SUFFIX="${SUFFIX:-}"
 TASK_IDS="${TASK_IDS:-}"               # sanity용 (e.g., "0")
 MAX_TRAIN_BATCHES="${MAX_TRAIN_BATCHES:-}"  # sanity용
+# V3 augmentation
+IMG_SIZE="${IMG_SIZE:-224}"            # V-JEPA은 384
+NO_AUGMENTATION="${NO_AUGMENTATION:-}" # V2 호환 (값 있으면 aug 끔). default V3 켜짐
+AUG_CHECK_PNG="${AUG_CHECK_PNG:-}"     # sanity에서 첫 batch 시점 일관성 PNG 경로
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="$CKPT_BASE/${ENCODER}_${TASK_SUITE}_seed${SEED}_${TIMESTAMP}${SUFFIX:+_$SUFFIX}"
@@ -71,6 +75,7 @@ ARGS=(
     --seq-len "$SEQ_LEN"
     --seed "$SEED"
     --output-dir "$OUTPUT_DIR"
+    --img-size "$IMG_SIZE"
 )
 if [[ -n "$CHECKPOINT" ]]; then
     ARGS+=(--checkpoint "$CHECKPOINT")
@@ -81,6 +86,12 @@ if [[ -n "$TASK_IDS" ]]; then
 fi
 if [[ -n "$MAX_TRAIN_BATCHES" ]]; then
     ARGS+=(--max-train-batches "$MAX_TRAIN_BATCHES")
+fi
+if [[ -n "$NO_AUGMENTATION" ]]; then
+    ARGS+=(--no-augmentation)
+fi
+if [[ -n "$AUG_CHECK_PNG" ]]; then
+    ARGS+=(--aug-check-png "$AUG_CHECK_PNG")
 fi
 
 "$CONDA_PREFIX/bin/python" scripts/eval/finetune_libero_bct.py "${ARGS[@]}"
