@@ -89,6 +89,91 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-05-04 v13 DINO redesign (1차 학습 33833830 ep10+ uniform collapse 후속)
+
+1차 학습 33833830 (ep1~12, ckpt 4/8/12) ep10부터 student CLS uniform collapse (cos_intra_pred_cls 0.99, std_pred_cls 0.016, L_pc=log(K)=6.93에 갇힘) → 구조 변경 후 재학습.
+
+**변경 요지** (사용자 토론 후):
+- DINO source: `predicted_cls_tk` (motion-routed) → **student P encoder CLS 직접** (P encoder가 학습 신호 직접 받음)
+- DINO target: `image_future_global` 단일 → **frame_t/tk 둘 다 256² global** (multi-crop teacher, 표준 DINOv2)
+- DINO mask: recon mask 0.75와 분리해 **mask_p_dino=0.4** (DINOv2 30~50% 표준)
+- DINOHead: 단순 normalize+Linear → **MLP 보강** (D→2048→256→K, 표준 DINO/DINOv2)
+- λ_cls: 0.01 → **0.3** (P encoder direct distill로 신호 강화 가능)
+- center momentum: 0.95 → **0.9** (DINOv2 default)
+- forward 4 → 7개 → ep당 ~4.5~5h 추정 (1차 2.78h 대비 1.6~1.8배)
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33988629 | AIP 1×1 H100 | 02:00:00 | sanity v13 redesign (200 vid × 5 ep, suffix=dinov2redesign) | PENDING |
+| 33988630 | AIP_long 2×4 H100 | 10-00:00:00 | v13 본 학습 (50 ep, suffix=dinov2redesign, **dependency=afterok:33988629**) | PENDING (Dependency) |
+
+### 2026-05-04 V3 BC-T full 매트릭스 1차 (4 enc × 3 suite × 3 seed = 36 잡)
+
+V3 BC-T sanity (33834914) 통과 + aug-check.png 저장 → full 매트릭스 제출. **v11 제외** (사용자 결정: baseline + MAE 우선, v11은 후순위 비교군).
+
+| Encoder | Checkpoint | JobID 범위 |
+|---------|-----------|------------|
+| videomae-ours | `videomae/20260415_012017/best_model.pt` | 33866041~33866049 |
+| dinov2 (HF) | — | 33866050~33866058 |
+| siglip (HF) | — | 33866059~33866067 |
+| vc1 (HF) | — | 33866068~33866076 |
+
+각 9 잡 (3 suite × 3 seed). AIP 1×1 H100, --time=2-00:00:00 (4월 BC-T elapsed 24~25h 기준 안전 마진 ×2). 36 잡 PENDING/RUNNING.
+
+### 2026-05-04 Ego4D extract resume (33834913 TIMEOUT 후속)
+
+원인 분석: sanity 첫 10 vid 평균 353 MB, 전체 9821 vid 평균 765 MB (2.17배). vid 평균 길이 ~31 min × 30 fps = 93k frame → 144 worker × ~18 min/vid 디코드 한계 = 0.0753 vid/s. Sanity 1.2 vid/s 추정은 단일 sample (12k frame짜리 짧은 영상) 기반 빗나간 추정. **수정 없이 단순 resume**으로 충분 (skip 로직 검증).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33866094 | normal_cpu 1×144 CPU | 2-00:00:00 | Ego4D resume (남은 ~6566 vid, 추정 24h) | PENDING |
+
+### 2026-05-04 v13 ep8 ckpt viz + action probing (33833830 학습 중간 진단 #2)
+
+ep4 (sanity ep4 R²-0.004 → 본 학습 ep4 R²-0.363, 악화) 후속. ep5-9 진단에서 ep7-8 anti-collapse 강력 작동 (cos_intra_p 0.28/0.31, L_pc 0.35) 직후 ckpt → representation 회복 측정.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33865946 | AIP 1×1 H100 | 00:20:00 | v13 ep8 nomask viz | RUNNING |
+| 33865947 | AIP 1×1 H100 | 03:00:00 | EgoDex action probing (`patch_mean_concat_all`, gap=10) | PENDING |
+| 33865948 | AIP 1×1 H100 | 03:00:00 | DROID cross-domain probing (`patch_mean_concat_enc_only`, gap=15) | PENDING |
+
+### 2026-05-03 v13 ep4 ckpt viz + action probing (33833830 학습 중간 진단)
+
+v13 본 학습 33833830 ep4 완료 → ckpt `two_stream_v13_encroute/20260503_072606/checkpoint_epoch0004.pt`. 이전 v13 sanity ep4 probing baseline (R² ≈ -0.004 EgoDex / -0.001 DROID gap=15) 대비 본 학습 (Option β, K=1024, λ_cls=0.01, λ_patch=1.5)에서 회복 여부 측정.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33834909 | AIP 1×1 H100 | 00:20:00 | v13 ep4 nomask reconstruction viz | ✅ 21s, `paper_artifacts/v13_encroute_train_samples/epoch_004_nomask.png` |
+| 33834911 | AIP 1×1 H100 | 03:00:00 | EgoDex action probing (`patch_mean_concat_all`, gap=10, test split) | RUNNING |
+| 33834912 | AIP 1×1 H100 | 03:00:00 | DROID cross-domain probing (`patch_mean_concat_enc_only`, gap=15) | ✅ 56s, **R²=+0.0089** (sanity ep4 -0.0006 → 본 학습으로 +0.0095 개선, 미약하지만 회복 신호) |
+
+### 2026-05-03 Ego4D full frame extraction
+
+Sanity (33834238, 10 vid 6.5 min, 11 GB) 통과 → 전체 9,823 영상 sbatch.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33834913 | normal_cpu 1×144 CPU | 12:00:00 | Ego4D 9,823 mp4 → `frames/<uuid>/frame_*.jpg` 256² 30 fps (subsample 없음) | PENDING |
+
+### 2026-05-03 V3 BC-T 본 학습 (cfg fix + augmentation, refactor_plan §3)
+
+신규 cfg: `use_augmentation=True`, `ImgColorJitterAug` (brightness/contrast/saturation/hue=0.3, ε=0.05) + `TranslationAug` (translation=4, LIBERO 공식 default). LIBERO `DataAugGroup`이 dim=1 시점 concat 후 단일 random 적용 → **시점/카메라 일관성 자동 보장** (코드 분석 결과). 그래도 PNG 시각 검증 추가 안전장치.
+
+신규 코드: [`scripts/eval/finetune_libero_bct.py`](../scripts/eval/finetune_libero_bct.py) — `save_aug_check_png()` + `--aug-check-png`/`--no-augmentation`/`--img-size` CLI. [`scripts/cluster/finetune_libero_bct.sbatch`](../scripts/cluster/finetune_libero_bct.sbatch) — `IMG_SIZE`/`NO_AUGMENTATION`/`AUG_CHECK_PNG` env vars.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 33834242 | AIP 1×1 H100 | 00:30:00 | sanity V3 (videomae-ours × spatial × seed=0 × task=0 × bs 32 × 2ep × 20batch + aug-check-png) | ❌ FAILED 56s. `policy.img_aug` reshape mismatch (224 input vs 128 native). 학습 루프가 augmentation 호출조차 안 하던 추가 결함도 발견 (BasePolicy.preprocess_input은 `image_encoders` 참조, 우리는 `image_projections`라 자동 흐름 작동 X). 근본 fix: `apply_augmentation` 헬퍼 + train_one_epoch에 명시 호출 + aug-check-png는 resize 전에 호출 (LIBERO native 128 기준) |
+| 33834914 | AIP 1×1 H100 | 00:30:00 | sanity V3 재제출 (코드 fix 후) | PENDING |
+
+**검증 포인트 (sanity)**:
+1. `v3_sanity_aug_check.png` 시각 확인: 같은 row(시점 4개) 동일 augmentation, 같은 sample의 두 카메라(agent/wrist) 함께 augmented
+2. 학습 normal 진행 (loss decrease + ckpt 저장)
+3. Epoch당 시간 측정 → V3 full 매트릭스 시간 추정
+
+**Full 매트릭스 (sanity 통과 시)**: 5 encoder × 3 suite × 3 seed = **45 잡** AIP 1×1 H100 --time=2-00:00:00. 추정 ~45 GPU·일 ≈ 2.75M원 (월누적 ceil).
+
 ### 2026-05-03 Ego4D frame extraction (학습 데이터 추가)
 
 신규 [`scripts/data/extract_ego4d_frames.py`](../scripts/data/extract_ego4d_frames.py) + [`scripts/cluster/extract_ego4d.sbatch`](../scripts/cluster/extract_ego4d.sbatch) — `/proj/external_group/mrg/datasets/ego4d/v2/full_scale/` (9,823 mp4 / 7.2 TB) → 256² JPEG frames 30 fps 그대로(subsample 없음). EgoDex와 동일 spec (센터 크롭 + 256² + JPEG q=95).
