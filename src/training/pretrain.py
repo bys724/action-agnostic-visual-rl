@@ -166,9 +166,16 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
     gap_counts = {}
 
     for batch_idx, batch in enumerate(dataloader):
-        # Unpack batch — v13은 (img_t, img_tk, img_tk_global, gap) 4-tuple
+        # Unpack batch — v13은 (img_t, img_tk, img_t_global, img_tk_global, gap) 5-tuple
+        img_t_global = None
         img_tk_global = None
-        if len(batch) == 4:
+        if len(batch) == 5:
+            img_t, img_tk, img_t_global, img_tk_global, gaps = batch
+            gaps = gaps.numpy()
+            img_t_global = img_t_global.to(device)
+            img_tk_global = img_tk_global.to(device)
+        elif len(batch) == 4:
+            # backward compat (이전 v13: img_tk_global만)
             img_t, img_tk, img_tk_global, gaps = batch
             gaps = gaps.numpy()
             img_tk_global = img_tk_global.to(device)
@@ -198,10 +205,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 weighted_loss = loss
                 unweighted_loss = loss
             elif model_name == 'TwoStreamV13Model':
-                # v13: dual-frame recon + motion-routed latent + DINO global CLS
-                # forward: (image_current, image_future, image_future_global)
+                # v13: dual-frame recon + motion-routed patches + DINO multi-crop CLS
+                # forward: (image_current, image_future, image_current_global, image_future_global)
                 actual_model = model.module if hasattr(model, 'module') else model
-                out = model(img_t, img_tk, img_tk_global)
+                out = model(img_t, img_tk, img_t_global, img_tk_global)
                 loss = out['loss']
                 loss_t = out['loss_t']
                 loss_tk = out['loss_tk']
@@ -214,8 +221,11 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 with torch.no_grad():
                     cls_m = out['cls_m']
                     cls_p = out['cls_p']
-                    pred_cls_tk = out['predicted_cls_tk'].float()
+                    # DINO student CLS (multi-crop, mask 0.4) — collapse 모니터링 대상
+                    student_dino_cls_t = out['student_dino_cls_t'].float()
+                    student_dino_cls_tk = out['student_dino_cls_tk'].float()
                     target_cls_tk_global = out['target_cls_tk_global'].float()
+                    pred_cls_tk = student_dino_cls_t  # 진단 alias (예전 metric 호환)
                     std_m = cls_m.std(dim=0).mean()
                     std_p = cls_p.std(dim=0).mean()
                     std_pred_cls = pred_cls_tk.std(dim=0).mean()

@@ -142,11 +142,13 @@ def main():
     # v13: Dual-Frame Reconstruction + Motion-Routed Latent + Full DINO Global CLS
     parser.add_argument('--v13-patch-pred-weight', type=float, default=1.5,
                         help='[v13] λ_patch — per-patch SmoothL1 weight (V-JEPA-style).')
-    parser.add_argument('--v13-cls-pred-weight', type=float, default=0.01,
-                        help='[v13] λ_cls — DINO distillation weight. raw CE scale ~log(K). '
-                             'K=1024 default → contribution ~0.07 (L_recon ~0.04 대비 1.7x).')
-    parser.add_argument('--v13-dino-center-momentum', type=float, default=0.95,
-                        help='[v13] EMA momentum for DINO center buffer.')
+    parser.add_argument('--v13-cls-pred-weight', type=float, default=0.3,
+                        help='[v13] λ_cls — DINO distillation weight. P encoder direct distill 후 '
+                             '신호 강화 가능 (이전 motion-routed CLS 0.01 → DINOv2 표준 0.3).')
+    parser.add_argument('--v13-dino-center-momentum', type=float, default=0.9,
+                        help='[v13] EMA momentum for DINO center buffer (DINOv2 default 0.9).')
+    parser.add_argument('--v13-mask-ratio-p-dino', type=float, default=0.4,
+                        help='[v13] DINO path mask ratio (recon mask 0.75와 분리, DINOv2 30~50% 표준).')
     parser.add_argument('--v13-num-prototypes', type=int, default=1024,
                         help='[v13] DINO prototype count K (cluster diversity). '
                              'EgoDex 다양성 수준에 K=1024 적정 (DINO ImageNet 표준 65536 대비 작게).')
@@ -279,6 +281,7 @@ def main():
             num_prototypes=args.v13_num_prototypes,
             dino_teacher_temp=args.v13_dino_teacher_temp,
             dino_student_temp=args.v13_dino_student_temp,
+            mask_ratio_p_dino=args.v13_mask_ratio_p_dino,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)

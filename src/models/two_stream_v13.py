@@ -84,42 +84,44 @@ def interpolate_pos_embed_2d(
 
 
 class DINOHead(nn.Module):
-    """단순화된 DINO prototype head — backbone CLS → weight-normalized prototypes.
+    """DINO prototype head — 표준 DINO/DINOv2 구조.
 
-    표준 DINO는 backbone → MLP(D→2048→256) → weight_norm prototype layer를 사용하지만,
-    v13에서는 motion-routing/interpreter_2가 이미 충분한 representation 변환을 수행 →
-    추가 MLP 없이 weight-normalized prototype layer만 직접 적용 (단순화).
+    Pipeline: x [B, D] → MLP(D→hidden→bottleneck) → L2 normalize → weight_norm Linear(bottleneck, K)
+      - MLP 내부: GELU 활성, last linear는 L2 norm projection (DINO 안전장치)
+      - weight_norm linear: scale=1 고정, direction만 학습 (DINO 표준)
 
-    Forward:
-        x [B, D] → L2 normalize → prototype scores [B, K]
-    weight_norm: weight를 norm × direction로 분해, weight_g(scale)는 1로 고정 →
-                 학습은 direction(prototype 위치)만, magnitude는 fixed → 안정성 ↑.
-
-    K=num_prototypes는 self-distillation의 cluster 다양성. EgoDex 규모에서 4096 적당.
+    이전 버전은 MLP 생략 (단순 normalize+Linear) — ep10+에서 uniform collapse 관찰됨 →
+    표준 DINO MLP head 복원하여 collapse 방어 강화.
     """
 
-    def __init__(self, embed_dim: int, num_prototypes: int = 4096):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_prototypes: int = 4096,
+        hidden_dim: int = 2048,
+        bottleneck_dim: int = 256,
+    ):
         super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, bottleneck_dim),
+        )
         # 새 API parametrizations.weight_norm 사용 (deepcopy 호환, legacy weight_norm은
         # deepcopy 시 RuntimeError — teacher EMA copy에 필요).
         self.last_layer = nn.utils.parametrizations.weight_norm(
-            nn.Linear(embed_dim, num_prototypes, bias=False),
+            nn.Linear(bottleneck_dim, num_prototypes, bias=False),
             name="weight",
         )
         # DINO 표준: weight의 norm(scale)을 1로 고정, direction만 학습.
-        # parametrizations 형태에서는 original0 = scale (g), original1 = direction (v)
-        # 단, parametrizations.weight_norm는 dim=0 norm 자동 계산. scale 고정 위해
-        # weight를 unit norm으로 init한 뒤 freeze는 hook으로. 가장 안전한 방식 —
-        # last_layer.parametrizations.weight.original0 (scale tensor) 1로 fill + frozen.
-        # API 형태가 PyTorch 버전에 따라 약간 다를 수 있어서 try/except로 안전 처리.
         try:
             self.last_layer.parametrizations.weight.original0.data.fill_(1.0)
             self.last_layer.parametrizations.weight.original0.requires_grad = False
         except AttributeError:
-            # fallback: scale freeze 못 함. 학습 영향 작음 (DINO 효과는 direction이 핵심).
             pass
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.mlp(x)
         x = F.normalize(x, dim=-1)
         return self.last_layer(x)  # [B, K]
 
@@ -265,12 +267,13 @@ class TwoStreamV13Model(TwoStreamV11Model):
         routing_mode: str = "v_from_p",
         # v13 args
         patch_pred_weight: float = 1.5,
-        cls_pred_weight: float = 0.005,
-        dino_center_momentum: float = 0.95,
+        cls_pred_weight: float = 0.3,
+        dino_center_momentum: float = 0.9,
         # v13 DINO full
         num_prototypes: int = 4096,
         dino_teacher_temp: float = 0.04,
         dino_student_temp: float = 0.1,
+        mask_ratio_p_dino: float = 0.4,  # DINO path 전용 mask (recon mask와 분리)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -296,6 +299,7 @@ class TwoStreamV13Model(TwoStreamV11Model):
         self.dino_teacher_temp = dino_teacher_temp
         self.dino_student_temp = dino_student_temp
         self.num_prototypes = num_prototypes
+        self.mask_ratio_p_dino = mask_ratio_p_dino
 
         # DINO prototype head (student) — student CLS → K-prototype logits
         self.dino_head = DINOHead(embed_dim, num_prototypes=num_prototypes)
@@ -366,24 +370,26 @@ class TwoStreamV13Model(TwoStreamV11Model):
         self,
         image_current: torch.Tensor,
         image_future: torch.Tensor,
+        image_current_global: torch.Tensor = None,
         image_future_global: torch.Tensor = None,
     ) -> dict:
         """
         Args:
-            image_current:        [B, 3, 224, 224]   frame_t (cropped)
-            image_future:         [B, 3, 224, 224]   frame_{t+k} (cropped)
-            image_future_global:  [B, 3, 256, 256]   frame_{t+k} (raw 256)
-                                                     None이면 L_pred_cls 비활성
+            image_current:         [B, 3, 224, 224]  frame_t  (cropped, recon+motion path)
+            image_future:          [B, 3, 224, 224]  frame_tk (cropped, recon+motion path)
+            image_current_global:  [B, 3, 256, 256]  frame_t  (raw 256, DINO teacher view)
+            image_future_global:   [B, 3, 256, 256]  frame_tk (raw 256, DINO teacher view)
+                                                     둘 중 하나라도 None이면 L_pred_cls 비활성
 
         Returns dict 주요 키:
             loss, loss_t, loss_tk, loss_pred_patch, loss_pred_cls
             pred_t, pred_tk     ([B, 3, H, W] visualization용)
-            predicted_patches_tk, predicted_cls_tk   ([B, N, D], [B, D])
-            target_patches_tk, target_cls_tk_global  (teacher outputs, EMA frozen)
+            predicted_patches_tk, predicted_cls_tk   ([B, N, D], [B, D]) — motion path
+            student_dino_cls_t, student_dino_cls_tk  (DINO student CLS, mask_ratio_p_dino)
+            target_cls_t_global, target_cls_tk_global  (teacher CLS, EMA frozen)
             cls_m, cls_p (v11 호환 — frame_t 기준)
         """
-        # ── Rotation aug — v11 _apply_rotation_aug는 2-image 인터페이스라
-        # global view까지 함께 회전시키기 위해 v13에서 직접 처리. 90도 단위(rot90).
+        # ── Rotation aug — global view들도 함께 동일 회전 적용. 90도 단위(rot90).
         if self.rotation_aug and self.training:
             if torch.rand(1).item() < self.independent_rotation_prob:
                 k_t = torch.randint(0, 4, (1,)).item()
@@ -393,6 +399,8 @@ class TwoStreamV13Model(TwoStreamV11Model):
                 k_tk = k_t
             if k_t != 0:
                 image_current = torch.rot90(image_current, k_t, dims=(2, 3))
+                if image_current_global is not None:
+                    image_current_global = torch.rot90(image_current_global, k_t, dims=(2, 3))
             if k_tk != 0:
                 image_future = torch.rot90(image_future, k_tk, dims=(2, 3))
                 if image_future_global is not None:
@@ -468,24 +476,28 @@ class TwoStreamV13Model(TwoStreamV11Model):
         loss_t = (err_t * mask_p_t.float()).sum() / denom_t
         loss_tk_recon = (err_tk_recon * mask_p_tk.float()).sum() / denom_tk
 
-        # ── Teacher target — cropped frame_{t+k} (per-patch + CLS) ──────
+        # ── Teacher target — patch-level (motion target) + DINO multi-crop CLS ──
+        # Patch target: cropped frame_{t+k} (motion path align용 — 위치 매칭 필요).
+        # DINO target: 256² global view CLS, frame_t/tk 각자 (multi-crop teacher).
         with torch.no_grad():
             teacher_cropped_full = self.teacher_p.forward_cropped(image_future)
             target_patches_tk = teacher_cropped_full[:, 1:].detach()   # [B, N, D]
 
-            # global view (선택적) — DINO distillation target
-            if image_future_global is not None:
-                teacher_global_full = self.teacher_p.forward_global(image_future_global)
-                teacher_global_cls = teacher_global_full[:, 0]              # [B, D]
-                # Teacher prototype logits (K차원 분포의 source)
-                teacher_proto_logits = self.teacher_p.dino_head(teacher_global_cls).detach()  # [B, K]
+            # DINO multi-crop targets — frame_t, frame_tk 둘 다 256² global
+            if image_current_global is not None and image_future_global is not None:
+                teacher_global_t_full = self.teacher_p.forward_global(image_current_global)
+                teacher_global_tk_full = self.teacher_p.forward_global(image_future_global)
+                target_cls_t_global = teacher_global_t_full[:, 0]            # [B, D]
+                target_cls_tk_global = teacher_global_tk_full[:, 0]
+                teacher_proto_logits_t = self.teacher_p.dino_head(target_cls_t_global).detach()
+                teacher_proto_logits_tk = self.teacher_p.dino_head(target_cls_tk_global).detach()
             else:
-                teacher_global_cls = None
-                teacher_proto_logits = None
+                target_cls_t_global = None
+                target_cls_tk_global = None
+                teacher_proto_logits_t = None
+                teacher_proto_logits_tk = None
 
         # ── Patch-level latent prediction loss (V-JEPA-style, masked-only) ─
-        # Visible positions은 student가 input으로 본 곳 → trivial pass-through.
-        # Masked positions of mask_p_t에서만 motion prediction의 진짜 quality 측정.
         err_pred = F.smooth_l1_loss(
             predicted_patches_tk.float(), target_patches_tk.float(),
             reduction='none',
@@ -494,16 +506,34 @@ class TwoStreamV13Model(TwoStreamV11Model):
         denom_pred = mask_p_t_f.sum().clamp(min=1.0)
         loss_pred_patch = (err_pred * mask_p_t_f).sum() / denom_pred
 
-        # ── DINO-style CLS distillation (prototype + sharpening + centering) ──
-        if teacher_proto_logits is not None:
-            student_proto_logits = self.dino_head(predicted_cls_tk)      # [B, K]
-            loss_pred_cls = dino_distillation_loss(
-                student_proto_logits, teacher_proto_logits, self.dino_center,
+        # ── DINO-style CLS distillation (DINOv2 multi-crop pattern) ──────
+        # Student: P encoder CLS at mask_ratio_p_dino (= 0.4, recon mask 0.75와 분리).
+        # Teacher: 256² global view CLS, frame_t/tk 각자 align (A1 self-distill).
+        # P encoder가 직접 학습 신호를 받아 CLS collapse 방어 (이전 motion-routed CLS는
+        # ep10+ uniform collapse 관찰됨 → root cause 해결).
+        if teacher_proto_logits_t is not None:
+            mask_p_t_dino = self._random_mask(B, device, self.mask_ratio_p_dino)
+            mask_p_tk_dino = self._random_mask(B, device, self.mask_ratio_p_dino)
+            student_dino_t = self._student_p_encode(p_channel_t, mask_p_t_dino)[:, 0]
+            student_dino_tk = self._student_p_encode(p_channel_tk, mask_p_tk_dino)[:, 0]
+            student_proto_logits_t = self.dino_head(student_dino_t)
+            student_proto_logits_tk = self.dino_head(student_dino_tk)
+            loss_pred_cls_t = dino_distillation_loss(
+                student_proto_logits_t, teacher_proto_logits_t, self.dino_center,
                 student_temp=self.dino_student_temp,
                 teacher_temp=self.dino_teacher_temp,
             )
+            loss_pred_cls_tk = dino_distillation_loss(
+                student_proto_logits_tk, teacher_proto_logits_tk, self.dino_center,
+                student_temp=self.dino_student_temp,
+                teacher_temp=self.dino_teacher_temp,
+            )
+            loss_pred_cls = 0.5 * (loss_pred_cls_t + loss_pred_cls_tk)
         else:
-            student_proto_logits = None
+            student_dino_t = None
+            student_dino_tk = None
+            student_proto_logits_t = None
+            student_proto_logits_tk = None
             loss_pred_cls = torch.zeros((), device=device, dtype=loss_pred_patch.dtype)
 
         # ── Total ───────────────────────────────────────────────────────
@@ -538,20 +568,30 @@ class TwoStreamV13Model(TwoStreamV11Model):
             "cls_m": cls_m_repr,
             "cls_p": cls_p_repr,
             # v13 추가
-            "predicted_cls_tk": predicted_cls_tk,
-            "predicted_patches_tk": predicted_patches_tk,
+            "predicted_cls_tk": predicted_cls_tk,         # motion-routed (DINO에 사용 안 함, 진단용)
+            "predicted_patches_tk": predicted_patches_tk,  # motion path output (loss_pred_patch)
             "target_patches_tk": target_patches_tk,
-            "target_cls_tk_global": (
-                teacher_global_cls if teacher_global_cls is not None
+            # DINO multi-crop CLS (frame_t/tk 각자 align)
+            "student_dino_cls_t": (
+                student_dino_t if student_dino_t is not None
                 else torch.zeros(B, self.embed_dim, device=device)
             ),
-            # DINO prototype logits (None if no global view)
-            "student_proto_logits": (
-                student_proto_logits if student_proto_logits is not None
-                else torch.zeros(B, self.num_prototypes, device=device)
+            "student_dino_cls_tk": (
+                student_dino_tk if student_dino_tk is not None
+                else torch.zeros(B, self.embed_dim, device=device)
             ),
+            "target_cls_t_global": (
+                target_cls_t_global if target_cls_t_global is not None
+                else torch.zeros(B, self.embed_dim, device=device)
+            ),
+            "target_cls_tk_global": (
+                target_cls_tk_global if target_cls_tk_global is not None
+                else torch.zeros(B, self.embed_dim, device=device)
+            ),
+            # Teacher prototype logits (DINO center update에 사용 — frame_t/tk 합산)
             "teacher_proto_logits": (
-                teacher_proto_logits if teacher_proto_logits is not None
+                torch.cat([teacher_proto_logits_t, teacher_proto_logits_tk], dim=0)
+                if teacher_proto_logits_t is not None
                 else torch.zeros(B, self.num_prototypes, device=device)
             ),
         }

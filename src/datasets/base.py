@@ -120,8 +120,8 @@ class VideoFrameDataset(ABC, Dataset):
         """두 프레임을 로드하고 spatial crop 적용.
 
         return_global=False: (img1_cropped, img2_cropped) 반환 (기존 동작)
-        return_global=True:  (img1_cropped, img2_cropped, img2_raw_256) 반환
-                              (v13 DINO-style global view용 — img2의 256x256 원본도 같이)
+        return_global=True:  (img1_cropped, img2_cropped, img1_raw_256, img2_raw_256) 반환
+                              (v13 DINO multi-crop teacher용 — 두 frame 모두 256x256 원본 같이)
         """
         path1 = frame_dir / f"frame_{idx1:06d}.jpg"
         path2 = frame_dir / f"frame_{idx2:06d}.jpg"
@@ -145,8 +145,8 @@ class VideoFrameDataset(ABC, Dataset):
             img2 = self.spatial_transform(img2_raw)
 
         if self.return_global:
-            # v13: img2의 raw 256x256도 함께 반환. teacher가 DINO-style global view로 사용.
-            return img1, img2, img2_raw
+            # v13: 두 frame 모두 raw 256x256 함께 반환. teacher가 DINO multi-crop view로 사용.
+            return img1, img2, img1_raw, img2_raw
         return img1, img2
 
     def get_loss_weight(self, gap: int) -> float:
@@ -180,8 +180,8 @@ class VideoFrameDataset(ABC, Dataset):
 
                 loaded = self._load_frame_pair(frame_dir, frame_t, frame_tk)
                 if self.return_global:
-                    img_t, img_tk, img_tk_global = loaded
-                    return img_t, img_tk, img_tk_global, gap
+                    img_t, img_tk, img_t_global, img_tk_global = loaded
+                    return img_t, img_tk, img_t_global, img_tk_global, gap
                 img_t, img_tk = loaded
                 return img_t, img_tk, gap
             except Exception:
@@ -191,5 +191,5 @@ class VideoFrameDataset(ABC, Dataset):
         fallback = torch.zeros(3, self.img_size, self.img_size)
         if self.return_global:
             fallback_global = torch.zeros(3, 256, 256)
-            return fallback, fallback, fallback_global, 1
+            return fallback, fallback, fallback_global, fallback_global, 1
         return fallback, fallback, 1

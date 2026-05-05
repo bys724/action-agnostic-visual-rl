@@ -1,14 +1,17 @@
 #!/bin/bash
-# Two-Stream v13 sanity: dual-frame reconstruction + motion-routed latent prediction + DINO global CLS
-# 확인 포인트 (post-v12 sanity 진단 결과 → cls_p collapse 본질 해결 검증):
-#   · forward/backward OK (frame_t / frame_{t+k} 모두 student P encoder 통과)
+# Two-Stream v13 sanity (2026-05-04 redesign): DINOv2 multi-crop CLS distillation
+# 1차 학습 ep10+ uniform collapse 진단 후 DINO path 재구성:
+#   - student P encoder 직접 forward (mask 0.4) ↔ teacher P encoder global (256², no mask)
+#   - frame_t / frame_tk 각자 self-distill (DINOv2 multi-crop 표준)
+#   - DINOHead MLP 보강 (D→2048→256→K)
+# 확인 포인트:
+#   · forward/backward OK (5-tuple batch unpack 포함)
 #   · L_t, L_tk, L_pred_patch, L_pred_cls 모두 단조 감소
-#   · cos_intra_p < 0.95  (P encoder CLS collapse 차단 — v11/v12에서 이 metric=1.000으로 dead 였음)
-#   · cos_intra_pred_cls < 0.95  (motion-routed predicted CLS collapse 방어)
-#   · std_pred_cls > 0.1  (DINO centering 작동 확인)
-#   · ||pred_cls|| ~ ||target_cls||  (학생/teacher magnitude 정합)
+#   · cos_intra_p (student DINO CLS_t) < 0.95  — collapse 차단
+#   · L_pc 6.93(=log K=1024)에서 멀어짐 (prototype 학습 신호 발현)
+#   · std_pred_cls > 0.1  (DINO centering 작동 + variance 유지)
 #   · ||dino_center|| 안정 (running mean update)
-#   · ema_momentum 0.996 → 0.9999 schedule
+#   · ep당 시간 측정 → 본 학습 --time 결정 (forward 7개로 늘어남, 4.5~5h/ep 예상)
 #SBATCH --job-name=aavrl_v13_sanity
 #SBATCH --partition=AIP
 #SBATCH --nodes=1
@@ -52,9 +55,10 @@ echo ""
     --rotation-aug \
     --mask-ratio 0.3 --mask-ratio-p 0.75 \
     --v13-patch-pred-weight 1.5 \
-    --v13-cls-pred-weight 0.005 \
-    --v13-dino-center-momentum 0.95 \
-    --v13-num-prototypes 4096 \
+    --v13-cls-pred-weight 0.3 \
+    --v13-dino-center-momentum 0.9 \
+    --v13-mask-ratio-p-dino 0.4 \
+    --v13-num-prototypes 1024 \
     --v13-dino-teacher-temp 0.04 \
     --v13-dino-student-temp 0.1 \
     --v13-ema-momentum-init 0.996 \
