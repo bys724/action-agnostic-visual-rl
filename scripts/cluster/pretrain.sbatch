@@ -312,6 +312,43 @@ elif [ "$MODEL" = "two-stream-v13" ]; then
         --v13-ema-momentum-final "${V13_EMA_FINAL:-0.9999}"
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v13${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v14" ]; then
+    # v14: Stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO)
+    # 설계 근거 (v13 paradigm conflict 진단 후 redesign):
+    # - P stream: MAE (L_t + L_tk_recon) + V-JEPA (L_pred), 둘 다 reconstruction-anchored
+    # - M stream: DINO (L_dino) only, distillation-only — reconstruction 압력 없음
+    # - 3 EMA teachers: TeacherP (V-JEPA target) + TeacherM + TeacherDINOHead
+    # - V-JEPA path: encoder unmasked output 직접 (정통 V-JEPA pattern, encoder space 자동 정합)
+    # - DINO path: M stream CLS, raw teacher (정렬된 motion) vs cropped student (camera shift 혼합)
+    # - Multi-crop N=2 본 학습 default (DINO student에만 추가 forward, M_encoder만 추가)
+    # - 비용: v11 대비 +60~80% (forward 5~6개), 50ep 5~7일 예상 (sanity로 확정)
+    # 환경변수:
+    #   V11_M_DEPTH (default 6 — v11과 공유, M depth 변경 시 사용)
+    #   V11_ROUTING_MODE (default v_from_p — v11 novelty 유지)
+    #   MASK_P (default 0.75)
+    #   V14_LAMBDA_PRED (default 1.0), V14_LAMBDA_DINO (default 1.0)
+    #   V14_N_CROP (default 2 — 본 학습), V14_NUM_PROTOS (default 1024)
+    #   V14_T_TEMP (default 0.04), V14_S_TEMP (default 0.1)
+    #   V14_DINO_CENTER_M (default 0.9)
+    #   V14_EMA_INIT (default 0.996), V14_EMA_FINAL (default 0.9999)
+    MODEL_ARGS=(
+        --depth 12
+        --v11-m-depth "${V11_M_DEPTH:-6}"
+        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
+        --rotation-aug
+        --mask-ratio-p "${MASK_P:-0.75}"
+        --max-gap 60 --sample-dist triangular --sample-center 30
+        --v14-lambda-pred "${V14_LAMBDA_PRED:-1.0}"
+        --v14-lambda-dino "${V14_LAMBDA_DINO:-1.0}"
+        --v14-dino-n-crop "${V14_N_CROP:-2}"
+        --v14-num-prototypes "${V14_NUM_PROTOS:-1024}"
+        --v14-dino-teacher-temp "${V14_T_TEMP:-0.04}"
+        --v14-dino-student-temp "${V14_S_TEMP:-0.1}"
+        --v14-dino-center-momentum "${V14_DINO_CENTER_M:-0.9}"
+        --v14-ema-momentum-init "${V14_EMA_INIT:-0.996}"
+        --v14-ema-momentum-final "${V14_EMA_FINAL:-0.9999}"
+    )
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v14${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12

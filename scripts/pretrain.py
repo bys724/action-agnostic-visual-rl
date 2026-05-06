@@ -20,7 +20,14 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
-from src.models import TwoStreamModel, TwoStreamV11Model, TwoStreamV12Model, TwoStreamV13Model, VideoMAEModel
+from src.models import (
+    TwoStreamModel,
+    TwoStreamV11Model,
+    TwoStreamV12Model,
+    TwoStreamV13Model,
+    TwoStreamV14Model,
+    VideoMAEModel,
+)
 from src.datasets import EgoDexDataset
 from src.training.pretrain import train
 
@@ -30,11 +37,12 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'videomae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'videomae'],
                         help='Model type (default: two-stream). '
                              'two-stream-v11 = motion-guided routing + dual-target. '
                              'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
-                             'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS.')
+                             'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS. '
+                             'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO).')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -161,6 +169,28 @@ def main():
     parser.add_argument('--v13-ema-momentum-final', type=float, default=0.9999,
                         help='[v13] EMA momentum final (linear warmup).')
 
+    # v14: Stream-wise Paradigm Specialization (P=MAE+V-JEPA, M=DINO)
+    parser.add_argument('--v14-lambda-pred', type=float, default=1.0,
+                        help='[v14] λ_pred — V-JEPA loss weight (P stream).')
+    parser.add_argument('--v14-lambda-dino', type=float, default=1.0,
+                        help='[v14] λ_dino — DINO loss weight (M stream).')
+    parser.add_argument('--v14-dino-n-crop', type=int, default=1,
+                        help='[v14] DINO student multi-crop count. '
+                             'sanity=1 (baseline), 본 학습=2 (Option B). '
+                             '추가 crop은 raw pair에서 GPU random crop으로 생성, M_encoder만 추가 forward.')
+    parser.add_argument('--v14-num-prototypes', type=int, default=1024,
+                        help='[v14] DINO prototype K (default 1024, 데이터셋 보수적).')
+    parser.add_argument('--v14-dino-teacher-temp', type=float, default=0.04,
+                        help='[v14] Teacher temperature τ_T.')
+    parser.add_argument('--v14-dino-student-temp', type=float, default=0.1,
+                        help='[v14] Student temperature τ_S.')
+    parser.add_argument('--v14-dino-center-momentum', type=float, default=0.9,
+                        help='[v14] EMA momentum for DINO center (DINOv2 default 0.9).')
+    parser.add_argument('--v14-ema-momentum-init', type=float, default=0.996,
+                        help='[v14] EMA momentum start for teachers (P + M + DINOHead).')
+    parser.add_argument('--v14-ema-momentum-final', type=float, default=0.9999,
+                        help='[v14] EMA momentum final (linear warmup).')
+
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
@@ -283,6 +313,28 @@ def main():
             dino_student_temp=args.v13_dino_student_temp,
             mask_ratio_p_dino=args.v13_mask_ratio_p_dino,
         )
+    elif args.model == 'two-stream-v14':
+        # v14: Stream-wise paradigm specialization
+        # - P stream: MAE (L_t + L_tk_recon) + V-JEPA (L_pred), reconstruction-anchored
+        # - M stream: DINO (L_dino) only, distillation-only
+        # - 3 EMA teachers: TeacherP (V-JEPA target) + TeacherM + TeacherDINOHead
+        # - Multi-crop N: sanity=1, 본=2 (DINO student에만, M_encoder 추가 forward)
+        # - mask_ratio_m은 v14에서 무시 (M unmasked hardcoded)
+        v14_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
+        model = TwoStreamV14Model(
+            p_depth=args.depth,
+            m_depth=args.v11_m_depth,
+            mask_ratio_p=v14_mask_p,
+            rotation_aug=args.rotation_aug,
+            routing_mode=args.v11_routing_mode,
+            lambda_pred=args.v14_lambda_pred,
+            lambda_dino=args.v14_lambda_dino,
+            dino_n_crop=args.v14_dino_n_crop,
+            num_prototypes=args.v14_num_prototypes,
+            dino_teacher_temp=args.v14_dino_teacher_temp,
+            dino_student_temp=args.v14_dino_student_temp,
+            dino_center_momentum=args.v14_dino_center_momentum,
+        )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
         # - v11 모든 reconstruction path 유지 (L_t + L_tk)
@@ -329,8 +381,8 @@ def main():
         print(f"Loading training dataset: {args.train_data}")
         print("="*60)
 
-    # v13: train dataset이 frame_{t+k}의 raw 256 view도 함께 반환해야 함
-    needs_global = (args.model == 'two-stream-v13')
+    # v13/v14: train dataset이 raw 256 view도 함께 반환해야 함 (DINO teacher용)
+    needs_global = args.model in ('two-stream-v13', 'two-stream-v14')
 
     splits = [s.strip() for s in args.egodex_splits.split(',')]
     split_datasets = []
@@ -403,6 +455,11 @@ def main():
         v12_kwargs = {
             'v12_ema_momentum_init': args.v13_ema_momentum_init,
             'v12_ema_momentum_final': args.v13_ema_momentum_final,
+        }
+    elif args.model == 'two-stream-v14':
+        v12_kwargs = {
+            'v12_ema_momentum_init': args.v14_ema_momentum_init,
+            'v12_ema_momentum_final': args.v14_ema_momentum_final,
         }
 
     model, history = train(

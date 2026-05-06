@@ -268,6 +268,83 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
                 # NOTE: DINO center / EMA teacher update는 backward + optimizer.step 후
                 # (아래 backward 블록 참조)
+            elif model_name == 'TwoStreamV14Model':
+                # v14: Stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO)
+                # forward: (image_current, image_future, image_current_global, image_future_global)
+                actual_model = model.module if hasattr(model, 'module') else model
+                out = model(img_t, img_tk, img_t_global, img_tk_global)
+                loss = out['loss']
+                loss_t = out['loss_t']
+                loss_tk = out['loss_tk']
+                loss_pred = out['loss_pred']
+                loss_dino = out['loss_dino']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += loss_t.item()
+                total_loss_future += loss_tk.item()
+
+                with torch.no_grad():
+                    cls_m = out['cls_m']
+                    cls_p = out['cls_p']
+                    student_dino_cls = out['student_dino_cls'].float()
+                    teacher_dino_cls = out['teacher_dino_cls'].float()
+                    predicted_tk_repr = out['predicted_tk_repr'].float()
+                    target_tk_repr = out['target_tk_repr'].float()
+
+                    std_m = cls_m.std(dim=0).mean()
+                    std_p = cls_p.std(dim=0).mean()
+                    std_student_dino = student_dino_cls.std(dim=0).mean()
+                    std_teacher_dino = teacher_dino_cls.std(dim=0).mean()
+
+                    cm_norm = F.normalize(cls_m.float(), dim=-1)
+                    cp_norm = F.normalize(cls_p.float(), dim=-1)
+                    sdino_norm = F.normalize(student_dino_cls, dim=-1)
+                    B = cm_norm.shape[0]
+                    if B > 1:
+                        eye_mask = ~torch.eye(B, device=cm_norm.device, dtype=torch.bool)
+                        cos_intra_m = (cm_norm @ cm_norm.T)[eye_mask].mean()
+                        cos_intra_p = (cp_norm @ cp_norm.T)[eye_mask].mean()
+                        cos_intra_dino = (sdino_norm @ sdino_norm.T)[eye_mask].mean()
+                    else:
+                        cos_intra_m = torch.tensor(0.0)
+                        cos_intra_p = torch.tensor(0.0)
+                        cos_intra_dino = torch.tensor(0.0)
+
+                    # V-JEPA predictor identity 진단:
+                    #   predicted_tk_repr와 target_tk_repr가 cos≈1이면 trivial 통과 의심
+                    #   (둘 다 P encoder space의 [B, 1+N, D] → patch mean으로 줄여 비교)
+                    pred_pool = predicted_tk_repr[:, 1:].mean(dim=1)
+                    tgt_pool = target_tk_repr[:, 1:].mean(dim=1)
+                    pred_n = F.normalize(pred_pool, dim=-1)
+                    tgt_n = F.normalize(tgt_pool, dim=-1)
+                    cos_pred_target = (pred_n * tgt_n).sum(dim=-1).mean()
+
+                    norm_pred = predicted_tk_repr.norm(dim=-1).mean()
+                    norm_target = target_tk_repr.norm(dim=-1).mean()
+                    norm_center = actual_model.dino_center.norm().item()
+
+                if not hasattr(train_epoch, '_v14_metrics_buf'):
+                    train_epoch._v14_metrics_buf = {}
+                buf = train_epoch._v14_metrics_buf
+                buf['loss_t'] = buf.get('loss_t', 0.0) + loss_t.item()
+                buf['loss_tk'] = buf.get('loss_tk', 0.0) + loss_tk.item()
+                buf['loss_pred'] = buf.get('loss_pred', 0.0) + loss_pred.item()
+                buf['loss_dino'] = buf.get('loss_dino', 0.0) + loss_dino.item()
+                buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
+                buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
+                buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
+                buf['cos_intra_p'] = buf.get('cos_intra_p', 0.0) + cos_intra_p.item()
+                buf['cos_intra_dino'] = buf.get('cos_intra_dino', 0.0) + cos_intra_dino.item()
+                buf['std_student_dino'] = buf.get('std_student_dino', 0.0) + std_student_dino.item()
+                buf['std_teacher_dino'] = buf.get('std_teacher_dino', 0.0) + std_teacher_dino.item()
+                buf['cos_pred_target'] = buf.get('cos_pred_target', 0.0) + cos_pred_target.item()
+                buf['norm_pred'] = buf.get('norm_pred', 0.0) + norm_pred.item()
+                buf['norm_target'] = buf.get('norm_target', 0.0) + norm_target.item()
+                buf['norm_center'] = buf.get('norm_center', 0.0) + norm_center
+                buf['_count'] = buf.get('_count', 0) + 1
+
+                # NOTE: EMA teacher (P+M+head) + DINO center update는 backward + optimizer.step 후.
             elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model'):
                 # v11: dual-target reconstruction (L_t + L_tk, masked positions only)
                 # v12: v11 + semantic residual + VICReg + EMA teacher
@@ -471,6 +548,14 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 teacher_proto = out['teacher_proto_logits']
                 if teacher_proto.abs().sum() > 0:  # global view가 실제 사용된 경우만
                     actual_model.update_dino_center(teacher_proto)
+        elif model_name == 'TwoStreamV14Model' and v12_momentum is not None:
+            # v14: 3 teachers EMA update (TeacherP + TeacherM + TeacherDINOHead)
+            actual_model.update_teacher(v12_momentum)
+            # DINO center: M stream teacher prototype logits running mean.
+            with torch.no_grad():
+                teacher_proto = out['teacher_proto_logits']
+                if teacher_proto.abs().sum() > 0:
+                    actual_model.update_dino_center(teacher_proto)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -554,6 +639,15 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
             elif model_name == 'TwoStreamV13Model':
                 # eval에서는 image_future_global=None (DINO loss 0). reconstruction + patch latent만 평가.
                 out = model(img_t, img_tk, None)
+                loss = out['loss']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += out['loss_t'].item()
+                total_loss_future += out['loss_tk'].item()
+            elif model_name == 'TwoStreamV14Model':
+                # eval에서는 global=None → V-JEPA / DINO loss 모두 0. MAE reconstruction만 평가.
+                out = model(img_t, img_tk, None, None)
                 loss = out['loss']
                 img_pred = out['pred_tk']
                 weighted_loss = loss
@@ -693,7 +787,7 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, out1_np, out2_np]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
-                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model', 'TwoStreamV13Model'):
+                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model', 'TwoStreamV13Model', 'TwoStreamV14Model'):
                     # 시각화는 mask 없이 (full reconstruction inference). 학습 forward는
                     # MAE-style random mask 적용 → 시각화엔 부적절. mask_ratio=0이면
                     # encoder가 모든 patch 처리 + mask_token inject 없이 통과 → 학습 분포
@@ -703,8 +797,12 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     actual_model.mask_ratio_p = 0.0
                     actual_model.mask_ratio_m = 0.0
                     try:
-                        out = (actual_model(x, y) if model_name != 'TwoStreamV13Model'
-                               else actual_model(x, y, None))
+                        if model_name == 'TwoStreamV14Model':
+                            out = actual_model(x, y, None, None)
+                        elif model_name == 'TwoStreamV13Model':
+                            out = actual_model(x, y, None)
+                        else:
+                            out = actual_model(x, y)
                     finally:
                         actual_model.mask_ratio_p = saved_mask_p
                         actual_model.mask_ratio_m = saved_mask_m
@@ -1222,6 +1320,43 @@ def train(
                         f"||center||={v13buf['norm_center']/n:.2f}"
                     )
                 train_epoch._v13_metrics_buf = {}
+
+            # v14 metrics (stream-wise paradigm specialization)
+            if hasattr(train_epoch, '_v14_metrics_buf'):
+                v14buf = train_epoch._v14_metrics_buf
+                n = v14buf.get('_count', 0)
+                if n > 0:
+                    lt = v14buf['loss_t'] / n
+                    ltk = v14buf['loss_tk'] / n
+                    lpr = v14buf['loss_pred'] / n
+                    ldn = v14buf['loss_dino'] / n
+                    writer.add_scalar('v14/loss_t', lt, epoch)
+                    writer.add_scalar('v14/loss_tk', ltk, epoch)
+                    writer.add_scalar('v14/loss_pred', lpr, epoch)
+                    writer.add_scalar('v14/loss_dino', ldn, epoch)
+                    writer.add_scalar('v14/feat_std_m', v14buf['feat_std_m'] / n, epoch)
+                    writer.add_scalar('v14/feat_std_p', v14buf['feat_std_p'] / n, epoch)
+                    writer.add_scalar('v14/cos_intra_m', v14buf['cos_intra_m'] / n, epoch)
+                    writer.add_scalar('v14/cos_intra_p', v14buf['cos_intra_p'] / n, epoch)
+                    writer.add_scalar('v14/cos_intra_dino', v14buf['cos_intra_dino'] / n, epoch)
+                    writer.add_scalar('v14/std_student_dino', v14buf['std_student_dino'] / n, epoch)
+                    writer.add_scalar('v14/std_teacher_dino', v14buf['std_teacher_dino'] / n, epoch)
+                    writer.add_scalar('v14/cos_pred_target', v14buf['cos_pred_target'] / n, epoch)
+                    writer.add_scalar('v14/norm_pred', v14buf['norm_pred'] / n, epoch)
+                    writer.add_scalar('v14/norm_target', v14buf['norm_target'] / n, epoch)
+                    writer.add_scalar('v14/norm_dino_center', v14buf['norm_center'] / n, epoch)
+                    writer.add_scalar('v14/ema_momentum', v12_momentum, epoch)
+                    log(
+                        f"  [v14] L_t={lt:.5f} L_tk={ltk:.5f} L_pred={lpr:.5f} L_dino={ldn:.5f} | "
+                        f"ema_m={v12_momentum:.4f} | "
+                        f"std_m={v14buf['feat_std_m']/n:.3f} std_p={v14buf['feat_std_p']/n:.3f} "
+                        f"std_sdino={v14buf['std_student_dino']/n:.3f} | "
+                        f"cos_intra_p={v14buf['cos_intra_p']/n:.3f} "
+                        f"cos_intra_dino={v14buf['cos_intra_dino']/n:.3f} | "
+                        f"cos(pred,tgt)={v14buf['cos_pred_target']/n:.3f} | "
+                        f"||center||={v14buf['norm_center']/n:.2f}"
+                    )
+                train_epoch._v14_metrics_buf = {}
             writer.flush()
 
         # Save prediction samples every epoch (rank 0)
