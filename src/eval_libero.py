@@ -148,6 +148,9 @@ class BCTransformerClient:
             logging.warning(f"Unexpected keys ({len(unexpected)}): {unexpected[:3]}...")
         self.policy.eval()
         self.img_size = self.policy.adapter.img_size
+        self.encoder_type = str(cfg.encoder.type)
+        self.train_epoch = ckpt.get("epoch")
+        self.train_eval_loss = ckpt.get("eval_loss")
 
         # CLIP for task_emb (학습 시와 동일 setup: pooler_output 사용)
         from transformers import CLIPTokenizer, CLIPModel
@@ -288,6 +291,7 @@ def evaluate_libero(
         env, desc = get_libero_env(task, LIBERO_ENV_RESOLUTION, seed)
 
         task_eps, task_succ = 0, 0
+        episode_records = []
         for ep in range(num_trials_per_task):
             if verbose:
                 logging.info(f"[{task_id+1}/{n_tasks}] ep {ep+1}/{num_trials_per_task}: {desc}")
@@ -300,6 +304,7 @@ def evaluate_libero(
             t = 0
             replay = []
             done = False
+            errored = False
             while t < max_steps + num_steps_wait:
                 try:
                     if t < num_steps_wait:
@@ -355,6 +360,7 @@ def evaluate_libero(
                     t += 1
                 except Exception as e:
                     logging.error(f"Episode error: {e}")
+                    errored = True
                     break
 
             task_eps += 1
@@ -365,6 +371,12 @@ def evaluate_libero(
                 imageio.mimwrite(str(video_p), replay, fps=10)
             except Exception as e:
                 logging.warning(f"Video save failed: {e}")
+            episode_records.append({
+                "ep_id": ep,
+                "success": bool(done),
+                "steps_to_done": int(t),
+                "errored": bool(errored),
+            })
             if verbose:
                 logging.info(f"  → {'SUCCESS' if done else 'FAILURE'}")
 
@@ -376,6 +388,7 @@ def evaluate_libero(
             "success_rate": sr,
             "successes": task_succ,
             "episodes": task_eps,
+            "episode_records": episode_records,
         })
         logging.info(f"Task {task_id} ({desc[:40]}...): {sr:.1%}")
 
@@ -428,12 +441,18 @@ def main():
     ckpt_stem = pathlib.Path(args.checkpoint).stem
     results["metadata"] = {
         "checkpoint": args.checkpoint,
+        "encoder_type": client.encoder_type,
         "task_suite": args.task_suite,
         "num_trials_per_task": args.num_trials,
         "replan_steps": args.replan_steps,
         "seed": args.seed,
         "env_resolution": LIBERO_ENV_RESOLUTION,
         "max_steps": TASK_SUITE_CONFIG[args.task_suite]["max_steps"],
+        "train_epoch": client.train_epoch,
+        "train_eval_loss": (
+            float(client.train_eval_loss)
+            if client.train_eval_loss is not None else None
+        ),
         "timestamp": ts,
     }
 

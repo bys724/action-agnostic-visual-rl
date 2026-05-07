@@ -1,15 +1,50 @@
 # LIBERO Rollout — Closed-loop Evaluation
 
-**Status: pending**. Rollout will be performed on the local workstation
-(mujoco GPU rendering) after BC ckpts complete on the cluster and are
-transferred. This directory will be populated once rollouts run.
+Rollout runs on the local workstation (mujoco GPU rendering, `libero-eval`
+container) using BC-T ckpts trained on the cluster.
 
-## Planned files
+## Files
 
-| File | Description |
-|------|-------------|
-| `success_rate.csv` | Per-(encoder × suite × seed × task) episode-level success / failure. |
-| `summary.csv` | Aggregated success rate per (encoder × suite), averaged over seeds and tasks. |
+| File | Granularity | Use |
+|------|-------------|-----|
+| `episodes.csv` | One row per episode | Most flexible. Re-aggregate any way for paper figures. |
+| `per_task.csv` | One row per (encoder, suite, seed, task) | Per-task SR breakdown — failure analysis figures. |
+| `summary.csv` | One row per (encoder, suite) | Paper main table — mean ± std across seeds. |
+
+## How to (re)generate
+
+After running rollouts via `src/eval_libero.py` (JSONs land in
+`data/libero/results/`):
+
+```bash
+python scripts/eval/aggregate_libero_rollouts.py \
+    --input-dir data/libero/results \
+    --output-dir paper_artifacts/libero_rollout
+```
+
+This rebuilds all 3 CSVs from scratch by scanning the JSON results dir.
+`_timing`/`_sanity` paths are excluded by default.
+
+## Schemas
+
+### `episodes.csv`
+`encoder, suite, seed, task_id, ep_id, success, steps_to_done, errored,
+task_description, ckpt, result_json, timestamp`
+
+`success` ∈ {0, 1}, `steps_to_done` is the t at which `done=True` (success)
+or `max_steps + num_steps_wait` (failure to converge).
+
+### `per_task.csv`
+`encoder, suite, seed, task_id, task_description, n_episodes, n_success,
+success_rate`
+
+### `summary.csv`
+`encoder, suite, n_seeds, seeds, mean_success_rate, std_success_rate,
+se_success_rate, n_episodes_per_seed, n_episodes_total`
+
+`std`/`se` are computed across **seeds** (suite-level SR, averaged over
+10 tasks per seed). For per-task uncertainty, derive from `episodes.csv`
+directly (binomial CI on the binary `success` column).
 
 ## Why this is the headline metric
 
