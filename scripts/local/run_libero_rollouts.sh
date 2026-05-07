@@ -81,8 +81,9 @@ P1=$!
 wait $P0 $P1
 echo "[$(date '+%F %T')] All rollouts complete → $RESULTS_DIR"
 
-# 자동 집계
+# 자동 집계 — 부모 dir 전체 스캔. 이전 인코더 결과를 보존하고 합쳐 CSV 갱신.
+# encoder_type 메타 없는 옛 JSON은 aggregator 기본 동작으로 제외됨.
 echo "Aggregating to paper_artifacts/libero_rollout/ ..."
 python3 scripts/eval/aggregate_libero_rollouts.py \
-    --input-dir "$RESULTS_DIR" \
+    --input-dir data/libero/results \
     --output-dir paper_artifacts/libero_rollout
