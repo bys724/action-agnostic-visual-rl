@@ -89,6 +89,21 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-05-06 v14 sanity (Phase A — stream-wise paradigm specialization)
+
+v13 paradigm conflict (P encoder가 reconstruction + DINO 동시 만족 못 해 ep10+ uniform collapse) 진단 → paradigm을 stream-wise로 분리. P=MAE+V-JEPA, M=DINO. commit `35cad9e`.
+
+**Phase A 검증 포인트** (sbatch §체크): L_t/L_tk_recon/L_pred 단조 감소, L_dino < log(K)≈6.93, cos_intra_p<0.95, cos_intra_dino<0.95, std_student_dino>0.1, cos(pred,target)<0.99 (V-JEPA predictor identity 아님), ‖dino_center‖ 안정.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34011203 | AIP 1×1 H100 | 02:00:00 | v14 Phase A sanity (200vid × 5ep × N=1, default hyperparam, ep당 시간 측정 → 본 학습 --time 결정) | ❌ FAILED 05-06 20:32 (2분 44초). 첫 batch loss 7.29 후 두번째 batch에서 DDP `Parameter indices which did not receive grad for rank 0: 4` (= `mask_token_m`). v14는 M stream 항상 unmasked라 v11 base의 `mask_token_m`이 forward에 안 쓰임. **Fix**: `__init__` 끝에 `self.mask_token_m.requires_grad_(False)` 추가 (login 노드 forward+backward로 unused=0 검증). |
+| 34014747 | AIP 1×1 H100 | 02:00:00 | v14 sanity 재제출 (mask_token_m fix 후) | ✅ COMPLETED 05-07 09:54 (17m21s, 5ep × 200vid). L_t/L_tk=0.0187, L_pred=0.0388, L_dino=6.44(<log K=6.93 평형 아래로 내려옴), cos_intra_p=0.589 ✅, std_sdino=0.210 ✅, cos(pred,tgt)=0.978 ✅, ‖dino_center‖=0.38. ⚠️ **cos_intra_dino=0.909** — sanity 한계 근처(dino_n_crop=1 영향), 본 학습 ep1-3 추이 관찰 필요. **🔴 Loss imbalance 발견**: 합산 시 DINO가 total의 98.7% 차지 (λ_dino=1.0 × 6.44 vs L_t+L_tk=0.037) → 본 학습은 v13 1차 선례 따라 **`V14_LAMBDA_DINO=0.01`** 로 축소 결정. |
+| 34015672 | AIP_long 2×4 H100 | 4-00:00:00 | **v14 본 학습** (50ep, EgoDex part1-5, λ_dino=0.01, λ_pred=1.0, dino_n_crop=2, K=1024, T_temp=0.04, EMA 0.996→0.9999). Time 추정: v11 base ep당 ~3870s × 1.3-1.5x (V-JEPA+multi-crop 추가) ≈ epoch당 5000-5800s, 50ep 70-80h. 안전마진 1.3x → 96h | RUNNING (05-08 17:14 시점 ep5 완료 + ep6 ~78%, **실측 3.59h/epoch** → 50ep ≈ 179h, --time=96h 부족. ep24~27 timeout 위험) |
+| 34118629 | AIP 1×1 H100 | 00:20:00 | v14 ep4 nomask reconstruction viz (5 cols: frame_t/frame_tk/pred_t MAE/pred_tk MAE/pred_tk V-JEPA motion-routed) | ❌ FAILED 20s `ModuleNotFoundError: No module named 'src'`. sys.path.insert 추가 후 재제출 |
+| 34120195 | AIP 1×1 H100 | 00:20:00 | v14 ep4 nomask viz 재제출 (sys.path fix) | ✅ COMPLETED 37s. `paper_artifacts/v14_main_train_samples/epoch_004_nomask.png` 산출 (4 sample × 5 col). pred_t/pred_tk/pred_tk_motion 3개 모두 patch grid 패턴만 보일 뿐 frame 구조 없음 — ep4 단계에서 recon decoder 학습 매우 미숙 (train loss 0.0156이지만 픽셀 시각화는 unrecognizable) |
+| 34171143 | AIP 1×1 H100 | 00:20:00 | v14 ep4 attention viz (nomask recon + motion-routing 2 iter attention map, 4 sample × 9 col) | PENDING |
+
 ### 2026-05-04 v13 DINO redesign (1차 학습 33833830 ep10+ uniform collapse 후속)
 
 1차 학습 33833830 (ep1~12, ckpt 4/8/12) ep10부터 student CLS uniform collapse (cos_intra_pred_cls 0.99, std_pred_cls 0.016, L_pc=log(K)=6.93에 갇힘) → 구조 변경 후 재학습.
@@ -104,8 +119,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 33988629 | AIP 1×1 H100 | 02:00:00 | sanity v13 redesign (200 vid × 5 ep, suffix=dinov2redesign) | PENDING |
-| 33988630 | AIP_long 2×4 H100 | 10-00:00:00 | v13 본 학습 (50 ep, suffix=dinov2redesign, **dependency=afterok:33988629**) | PENDING (Dependency) |
+| 33988629 | AIP 1×1 H100 | 02:00:00 | sanity v13 redesign (200 vid × 5 ep, suffix=dinov2redesign) | ✅ COMPLETED 05-06 08:08 (21분, ExitCode 0) |
+| 33988630 | AIP_long 2×4 H100 | 10-00:00:00 | v13 본 학습 (50 ep, suffix=dinov2redesign, **dependency=afterok:33988629**) | ❌ CANCELLED 05-06 20:24 (사용자 결정, 미시작 — Reason=Resources 12h 대기) |
 
 ### 2026-05-04 V3 BC-T full 매트릭스 1차 (4 enc × 3 suite × 3 seed = 36 잡)
 
