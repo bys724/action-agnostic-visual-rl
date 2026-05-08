@@ -253,6 +253,10 @@ class TwoStreamV14Model(TwoStreamV11Model):
         self.teacher_p = TeacherPv14(self)
         self.teacher_m = TeacherMv14(self, patch_size=patch_size)
 
+        # v14는 M stream을 항상 unmasked로 사용 → mask_token_m forward에서 안 쓰임.
+        # 그대로 두면 DDP가 두번째 step에서 unused-param 에러 발생.
+        self.mask_token_m.requires_grad_(False)
+
     # ----------------------------------------------------------------------
     # EMA / center update
     # ----------------------------------------------------------------------
