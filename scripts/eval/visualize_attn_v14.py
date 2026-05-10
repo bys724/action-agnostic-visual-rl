@@ -45,6 +45,7 @@ from scripts.eval.visualize_attn_v11 import (
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+@torch.no_grad()
 def extract_v14_attention_and_predict(
     model: TwoStreamV14Model,
     img_t_tensor: torch.Tensor,
@@ -63,9 +64,8 @@ def extract_v14_attention_and_predict(
 
     try:
         torch.manual_seed(0)
-        with torch.no_grad():
-            # global views None → V-JEPA/DINO loss 0, predicted_tk_repr는 계산됨
-            out = model(x, y, None, None)
+        # global views None → V-JEPA/DINO loss 0, predicted_tk_repr는 계산됨
+        out = model(x, y, None, None)
     finally:
         capture.remove()
 
