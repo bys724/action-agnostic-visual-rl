@@ -102,7 +102,18 @@ v13 paradigm conflict (P encoder가 reconstruction + DINO 동시 만족 못 해 
 | 34015672 | AIP_long 2×4 H100 | 4-00:00:00 | **v14 본 학습** (50ep, EgoDex part1-5, λ_dino=0.01, λ_pred=1.0, dino_n_crop=2, K=1024, T_temp=0.04, EMA 0.996→0.9999). Time 추정: v11 base ep당 ~3870s × 1.3-1.5x (V-JEPA+multi-crop 추가) ≈ epoch당 5000-5800s, 50ep 70-80h. 안전마진 1.3x → 96h | RUNNING (05-08 17:14 시점 ep5 완료 + ep6 ~78%, **실측 3.59h/epoch** → 50ep ≈ 179h, --time=96h 부족. ep24~27 timeout 위험) |
 | 34118629 | AIP 1×1 H100 | 00:20:00 | v14 ep4 nomask reconstruction viz (5 cols: frame_t/frame_tk/pred_t MAE/pred_tk MAE/pred_tk V-JEPA motion-routed) | ❌ FAILED 20s `ModuleNotFoundError: No module named 'src'`. sys.path.insert 추가 후 재제출 |
 | 34120195 | AIP 1×1 H100 | 00:20:00 | v14 ep4 nomask viz 재제출 (sys.path fix) | ✅ COMPLETED 37s. `paper_artifacts/v14_main_train_samples/epoch_004_nomask.png` 산출 (4 sample × 5 col). pred_t/pred_tk/pred_tk_motion 3개 모두 patch grid 패턴만 보일 뿐 frame 구조 없음 — ep4 단계에서 recon decoder 학습 매우 미숙 (train loss 0.0156이지만 픽셀 시각화는 unrecognizable) |
-| 34171143 | AIP 1×1 H100 | 00:20:00 | v14 ep4 attention viz (nomask recon + motion-routing 2 iter attention map, 4 sample × 9 col) | PENDING |
+| 34171143 | AIP 1×1 H100 | 00:20:00 | v14 ep4 attention viz (nomask recon + motion-routing 2 iter attention map, 4 sample × 9 col) | ❌ FAILED 1m19s — nomask viz는 ✅ 산출, attention viz 단계에서 `RuntimeError: Can't call numpy() on Tensor that requires grad`. V-JEPA path 디코드가 try 블록 밖에서 실행돼 no_grad context 벗어남. fix: `@torch.no_grad()` 데코레이터 추가 |
+| 34177451 | AIP 1×1 H100 | 00:20:00 | v14 ep4 attention viz 재제출 (no_grad fix) | ❌ CANCELLED (사용자 결정 — ep8로 재타게팅) |
+| 34177493 | AIP 1×1 H100 | 00:20:00 | v14 ep8 viz (nomask + attention) | ✅ COMPLETED 1m51s. `epoch_008_nomask.png` + `attn_v14_ep8.png` 산출 |
+| 34177494 | AIP 1×1 H100 | 03:00:00 | v14 ep8 EgoDex action probing (`patch_mean_concat_all`, gap=10, test) | ✅ COMPLETED 14m41s. **R²=-0.203** (FAIL). v11 ep8 baseline +0.094 대비 -0.297 악화. 모든 train epoch에서 R² 음수, per-joint R² 모두 -0.15~-0.43 |
+| 34203856 | AIP 1×1 H100 | 00:20:00 | v14 ep12 viz (nomask + attention) | PENDING |
+| 34203857 | AIP 1×1 H100 | 03:00:00 | v14 ep12 EgoDex action probing (`patch_mean_concat_all`, gap=10, test) | ✅ COMPLETED 15m6s. **R²=-0.071** (ep8 -0.203 → +0.132 향상). per-joint R² 모두 ep8 대비 향상 (-0.005~-0.15) |
+| 34211118 | AIP 1×1 H100 | 00:20:00 | v14 ep16 viz (nomask + attention) | PENDING |
+| 34211119 | AIP 1×1 H100 | 03:00:00 | v14 ep16 EgoDex action probing (`patch_mean_concat_all`, gap=10, test) | ✅ COMPLETED. **R²=-0.065** (ep12 -0.071과 거의 동일). collapse 진행에도 representation 변화 없음 — stream 분리 측정 필요 |
+| 34211412 | AIP 1×1 H100 | 03:00:00 | v14 ep16 probing — M encoder only (`patch_mean_m_enc`, A) | PENDING |
+| 34211413 | AIP 1×1 H100 | 03:00:00 | v14 ep16 probing — motion-routing 후 P state (`patch_mean_p_state_after_routing`, D') | PENDING |
+| 34211414 | AIP 1×1 H100 | 03:00:00 | v14 ep16 probing — P encoder only (`patch_mean_p_enc`, B), collapse 검증 | ✅ COMPLETED. **R²(A)=+0.100, R²(D')=-0.229, R²(B)=-0.032**. M stream 살아있음 ★, motion-routing이 destructive 학습 (V-JEPA target 따라잡기 시도). 사용자 통찰: v14 D' = V-JEPA predictor 중간 단계, v11과 다른 의미 — D' 측정 자체가 잘못된 질문 |
+| 34211491 | AIP 1×1 H100 | 01:30:00 | v14 ep16 LIBERO action probing (`abd_prime`, libero_spatial, gaps 1/13/20/40) — v11 baseline +0.47 비교 | RUNNING |
 
 ### 2026-05-04 v13 DINO redesign (1차 학습 33833830 ep10+ uniform collapse 후속)
 
