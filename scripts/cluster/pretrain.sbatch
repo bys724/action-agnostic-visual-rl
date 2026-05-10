@@ -331,6 +331,8 @@ elif [ "$MODEL" = "two-stream-v14" ]; then
     #   V14_T_TEMP (default 0.04), V14_S_TEMP (default 0.1)
     #   V14_DINO_CENTER_M (default 0.9)
     #   V14_EMA_INIT (default 0.996), V14_EMA_FINAL (default 0.9999)
+    #   V14_LAMBDA_PRED_WARMUP_START (default 비활성 — 미설정 시 정적 λ_pred)
+    #   V14_LAMBDA_PRED_WARMUP_EPOCHS (default 10 — 50ep의 첫 20%)
     MODEL_ARGS=(
         --depth 12
         --v11-m-depth "${V11_M_DEPTH:-6}"
@@ -348,7 +350,60 @@ elif [ "$MODEL" = "two-stream-v14" ]; then
         --v14-ema-momentum-init "${V14_EMA_INIT:-0.996}"
         --v14-ema-momentum-final "${V14_EMA_FINAL:-0.9999}"
     )
+    # Optional λ_pred warmup (V14_LAMBDA_PRED_WARMUP_START 설정 시 활성화)
+    if [ -n "${V14_LAMBDA_PRED_WARMUP_START:-}" ]; then
+        MODEL_ARGS+=(
+            --v14-lambda-pred-warmup-start "${V14_LAMBDA_PRED_WARMUP_START}"
+            --v14-lambda-pred-warmup-epochs "${V14_LAMBDA_PRED_WARMUP_EPOCHS:-10}"
+        )
+    fi
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v14${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+elif [ "$MODEL" = "two-stream-v15" ]; then
+    # v15: Layered specialization with predictor-only V-JEPA + V-JEPA-M (masked) + DINO at M_decoder CLS
+    # 환경변수:
+    #   V11_M_DEPTH (default 6 — v11과 공유)
+    #   V11_ROUTING_MODE (default v_from_p)
+    #   MASK_P (default 0.75)
+    #   V15_LAMBDA_PRED (default 1.0), V15_LAMBDA_M_JEPA (default 1.0), V15_LAMBDA_DINO (default 1.0)
+    #   V15_MASK_M_JEPA (default 0.5)
+    #   V15_N_CROP (default 1 sanity / 본 학습 3~4)
+    #   V15_NUM_PROTOS (default 1024), V15_T_TEMP (default 0.04), V15_S_TEMP (default 0.1)
+    #   V15_DINO_CENTER_M (default 0.9)
+    #   V15_EMA_INIT (default 0.996), V15_EMA_FINAL (default 0.9999)
+    #   V15_LAMBDA_PRED_WARMUP_START / V15_LAMBDA_PRED_WARMUP_EPOCHS (default 비활성 / 10)
+    #   V15_LAMBDA_M_JEPA_WARMUP_START / V15_LAMBDA_M_JEPA_WARMUP_EPOCHS (default 비활성 / 10)
+    MODEL_ARGS=(
+        --depth 12
+        --v11-m-depth "${V11_M_DEPTH:-6}"
+        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
+        --rotation-aug
+        --mask-ratio-p "${MASK_P:-0.75}"
+        --max-gap 60 --sample-dist triangular --sample-center 30
+        --v15-lambda-pred "${V15_LAMBDA_PRED:-1.0}"
+        --v15-lambda-m-jepa "${V15_LAMBDA_M_JEPA:-1.0}"
+        --v15-lambda-dino "${V15_LAMBDA_DINO:-1.0}"
+        --v15-mask-ratio-m-jepa "${V15_MASK_M_JEPA:-0.5}"
+        --v15-dino-n-crop "${V15_N_CROP:-1}"
+        --v15-num-prototypes "${V15_NUM_PROTOS:-1024}"
+        --v15-dino-teacher-temp "${V15_T_TEMP:-0.04}"
+        --v15-dino-student-temp "${V15_S_TEMP:-0.1}"
+        --v15-dino-center-momentum "${V15_DINO_CENTER_M:-0.9}"
+        --v15-ema-momentum-init "${V15_EMA_INIT:-0.996}"
+        --v15-ema-momentum-final "${V15_EMA_FINAL:-0.9999}"
+    )
+    if [ -n "${V15_LAMBDA_PRED_WARMUP_START:-}" ]; then
+        MODEL_ARGS+=(
+            --v15-lambda-pred-warmup-start "${V15_LAMBDA_PRED_WARMUP_START}"
+            --v15-lambda-pred-warmup-epochs "${V15_LAMBDA_PRED_WARMUP_EPOCHS:-10}"
+        )
+    fi
+    if [ -n "${V15_LAMBDA_M_JEPA_WARMUP_START:-}" ]; then
+        MODEL_ARGS+=(
+            --v15-lambda-m-jepa-warmup-start "${V15_LAMBDA_M_JEPA_WARMUP_START}"
+            --v15-lambda-m-jepa-warmup-epochs "${V15_LAMBDA_M_JEPA_WARMUP_EPOCHS:-10}"
+        )
+    fi
+    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v15${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12

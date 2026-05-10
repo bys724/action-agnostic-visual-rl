@@ -2,6 +2,7 @@
 
 | Model | Status | 비고 |
 |-------|--------|------|
+| TwoStreamV15Model | **active follow-up** | v14 학습 진단 후 redesign: predictor-only V-JEPA P + V-JEPA-M (masked) + DINO at M_decoder CLS + interleaved p_motion_decoder |
 | TwoStreamV14Model | **post-CoRL follow-up** | Stream-wise paradigm specialization. P=MAE+V-JEPA, M=DINO. v13 paradigm conflict 진단 후 redesign |
 | TwoStreamV13Model | **active V3 main** | Dual-frame recon + motion-routed latent + DINO global CLS. v12 cls_p collapse 본질 해결 시도 (학습 33833830 진행 중) |
 | TwoStreamV11Model | **active baseline** | Motion-guided attention routing + dual-target. ep44 final champion (R²=0.288) |
@@ -17,6 +18,7 @@ from .two_stream_v11 import TwoStreamV11Model, TwoStreamV11Encoder
 from .two_stream_v12 import TwoStreamV12Model
 from .two_stream_v13 import TwoStreamV13Model
 from .two_stream_v14 import TwoStreamV14Model
+from .two_stream_v15 import TwoStreamV15Model
 from .videomae import VideoMAEModel, VideoMAEEncoderForVLA as VideoMAEEncoder
 from .common import TwoStreamPreprocessing
 
@@ -26,6 +28,7 @@ __all__ = [
     "TwoStreamV12Model",
     "TwoStreamV13Model",
     "TwoStreamV14Model",
+    "TwoStreamV15Model",
     "VideoMAEModel",
     "TwoStreamEncoder",
     "TwoStreamV11Encoder",

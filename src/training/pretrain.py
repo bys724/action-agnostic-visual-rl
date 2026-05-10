@@ -268,9 +268,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
                 # NOTE: DINO center / EMA teacher update는 backward + optimizer.step 후
                 # (아래 backward 블록 참조)
-            elif model_name == 'TwoStreamV14Model':
+            elif model_name in ('TwoStreamV14Model', 'TwoStreamV15Model'):
                 # v14: Stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO)
-                # forward: (image_current, image_future, image_current_global, image_future_global)
+                # v15: v14 redesign — predictor-only V-JEPA P + V-JEPA-M (masked) + DINO at M_decoder CLS
+                # forward signature 동일: (image_current, image_future, image_current_global, image_future_global)
                 actual_model = model.module if hasattr(model, 'module') else model
                 out = model(img_t, img_tk, img_t_global, img_tk_global)
                 loss = out['loss']
@@ -278,6 +279,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 loss_tk = out['loss_tk']
                 loss_pred = out['loss_pred']
                 loss_dino = out['loss_dino']
+                # v15에서만 추가 (v14는 0)
+                loss_m_jepa = out.get('loss_m_jepa', torch.tensor(0.0, device=loss.device))
                 img_pred = out['pred_tk']
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -331,6 +334,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 buf['loss_tk'] = buf.get('loss_tk', 0.0) + loss_tk.item()
                 buf['loss_pred'] = buf.get('loss_pred', 0.0) + loss_pred.item()
                 buf['loss_dino'] = buf.get('loss_dino', 0.0) + loss_dino.item()
+                # v15: V-JEPA-M loss (v14에서는 0)
+                buf['loss_m_jepa'] = buf.get('loss_m_jepa', 0.0) + loss_m_jepa.item()
                 buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
                 buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
                 buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
@@ -556,6 +561,13 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 teacher_proto = out['teacher_proto_logits']
                 if teacher_proto.abs().sum() > 0:
                     actual_model.update_dino_center(teacher_proto)
+        elif model_name == 'TwoStreamV15Model' and v12_momentum is not None:
+            # v15: TeacherP + TeacherM (encoder + decoder + dino_head) EMA update
+            actual_model.update_teacher(v12_momentum)
+            with torch.no_grad():
+                teacher_proto = out['teacher_proto_logits']
+                if teacher_proto.abs().sum() > 0:
+                    actual_model.update_dino_center(teacher_proto)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -645,8 +657,8 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 unweighted_loss = loss
                 total_loss_current += out['loss_t'].item()
                 total_loss_future += out['loss_tk'].item()
-            elif model_name == 'TwoStreamV14Model':
-                # eval에서는 global=None → V-JEPA / DINO loss 모두 0. MAE reconstruction만 평가.
+            elif model_name in ('TwoStreamV14Model', 'TwoStreamV15Model'):
+                # eval에서는 global=None → V-JEPA / DINO / V-JEPA-M 0. MAE reconstruction만 평가.
                 out = model(img_t, img_tk, None, None)
                 loss = out['loss']
                 img_pred = out['pred_tk']
@@ -787,7 +799,7 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     out2_np = out2.squeeze(0).cpu().permute(1, 2, 0).numpy().clip(0, 1)
                     imgs = [img_t, img_tk, out1_np, out2_np]
                     col_titles = ['Frame t', 'Frame t+k (target)', 'Pred M', 'Pred P']
-                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model', 'TwoStreamV13Model', 'TwoStreamV14Model'):
+                elif model_name in ('TwoStreamV11Model', 'TwoStreamV12Model', 'TwoStreamV13Model', 'TwoStreamV14Model', 'TwoStreamV15Model'):
                     # 시각화는 mask 없이 (full reconstruction inference). 학습 forward는
                     # MAE-style random mask 적용 → 시각화엔 부적절. mask_ratio=0이면
                     # encoder가 모든 patch 처리 + mask_token inject 없이 통과 → 학습 분포
@@ -797,7 +809,7 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     actual_model.mask_ratio_p = 0.0
                     actual_model.mask_ratio_m = 0.0
                     try:
-                        if model_name == 'TwoStreamV14Model':
+                        if model_name in ('TwoStreamV14Model', 'TwoStreamV15Model'):
                             out = actual_model(x, y, None, None)
                         elif model_name == 'TwoStreamV13Model':
                             out = actual_model(x, y, None)
@@ -898,6 +910,12 @@ def train(
     num_workers=16,
     v12_ema_momentum_init=0.996,
     v12_ema_momentum_final=0.9999,
+    v14_lambda_pred_warmup_start=None,
+    v14_lambda_pred_warmup_epochs=10,
+    v14_lambda_pred_target=None,
+    v15_lambda_m_jepa_warmup_start=None,
+    v15_lambda_m_jepa_warmup_epochs=10,
+    v15_lambda_m_jepa_target=None,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -1147,6 +1165,44 @@ def train(
             progress = 0.0
         v12_momentum = v12_ema_momentum_init + (v12_ema_momentum_final - v12_ema_momentum_init) * progress
 
+        # v14: λ_pred warmup. V-JEPA target은 EMA teacher = student의 deepcopy →
+        # 학습 초기 student P encoder가 reconstruction 미숙이면 teacher target도 noise.
+        # 그 noise를 motion-routing이 흉내내도록 강제하면 motion-routing 학습 방향이
+        # 망가짐. 처방: λ_pred를 작게 시작해 reconstruction 안정 후 점진 증가.
+        if v14_lambda_pred_target is not None and v14_lambda_pred_warmup_start is not None:
+            if v14_lambda_pred_warmup_epochs <= 1 or epoch >= v14_lambda_pred_warmup_epochs:
+                v14_lambda_pred = v14_lambda_pred_target
+            else:
+                warmup_progress = (epoch - 1) / max(v14_lambda_pred_warmup_epochs - 1, 1)
+                v14_lambda_pred = (
+                    v14_lambda_pred_warmup_start
+                    + (v14_lambda_pred_target - v14_lambda_pred_warmup_start) * warmup_progress
+                )
+            target_model = model.module if hasattr(model, 'module') else model
+            if hasattr(target_model, 'lambda_pred'):
+                target_model.lambda_pred = v14_lambda_pred
+            if is_master:
+                log(f"  [schedule] λ_pred = {v14_lambda_pred:.4f} "
+                    f"(warmup {epoch}/{v14_lambda_pred_warmup_epochs}, target {v14_lambda_pred_target})")
+
+        # v15: λ_m_jepa warmup. V-JEPA-M target도 학습 초기 미숙 (TeacherM = student EMA copy).
+        # M_decoder가 reconstruction 학습 안정 후 V-JEPA-M 활성화 → 같은 schedule 패턴.
+        if v15_lambda_m_jepa_target is not None and v15_lambda_m_jepa_warmup_start is not None:
+            if v15_lambda_m_jepa_warmup_epochs <= 1 or epoch >= v15_lambda_m_jepa_warmup_epochs:
+                v15_lambda_m_jepa = v15_lambda_m_jepa_target
+            else:
+                warmup_progress = (epoch - 1) / max(v15_lambda_m_jepa_warmup_epochs - 1, 1)
+                v15_lambda_m_jepa = (
+                    v15_lambda_m_jepa_warmup_start
+                    + (v15_lambda_m_jepa_target - v15_lambda_m_jepa_warmup_start) * warmup_progress
+                )
+            target_model = model.module if hasattr(model, 'module') else model
+            if hasattr(target_model, 'lambda_m_jepa'):
+                target_model.lambda_m_jepa = v15_lambda_m_jepa
+            if is_master:
+                log(f"  [schedule] λ_m_jepa = {v15_lambda_m_jepa:.4f} "
+                    f"(warmup {epoch}/{v15_lambda_m_jepa_warmup_epochs}, target {v15_lambda_m_jepa_target})")
+
         # Train
         train_result = train_epoch(
             model, dataloader, optimizer, device, epoch,
@@ -1346,8 +1402,19 @@ def train(
                     writer.add_scalar('v14/norm_target', v14buf['norm_target'] / n, epoch)
                     writer.add_scalar('v14/norm_dino_center', v14buf['norm_center'] / n, epoch)
                     writer.add_scalar('v14/ema_momentum', v12_momentum, epoch)
+                    if v14_lambda_pred_target is not None and v14_lambda_pred_warmup_start is not None:
+                        writer.add_scalar('v14/lambda_pred_schedule',
+                                          getattr(actual_model, 'lambda_pred', v14_lambda_pred_target),
+                                          epoch)
+                    # v15: V-JEPA-M loss + lambda_m_jepa schedule (v14에서는 0)
+                    lmj = v14buf.get('loss_m_jepa', 0.0) / n
+                    writer.add_scalar('v14/loss_m_jepa', lmj, epoch)
+                    if v15_lambda_m_jepa_target is not None and v15_lambda_m_jepa_warmup_start is not None:
+                        writer.add_scalar('v14/lambda_m_jepa_schedule',
+                                          getattr(actual_model, 'lambda_m_jepa', v15_lambda_m_jepa_target),
+                                          epoch)
                     log(
-                        f"  [v14] L_t={lt:.5f} L_tk={ltk:.5f} L_pred={lpr:.5f} L_dino={ldn:.5f} | "
+                        f"  [v14] L_t={lt:.5f} L_tk={ltk:.5f} L_pred={lpr:.5f} L_mj={lmj:.5f} L_dino={ldn:.5f} | "
                         f"ema_m={v12_momentum:.4f} | "
                         f"std_m={v14buf['feat_std_m']/n:.3f} std_p={v14buf['feat_std_p']/n:.3f} "
                         f"std_sdino={v14buf['std_student_dino']/n:.3f} | "

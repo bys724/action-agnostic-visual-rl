@@ -26,6 +26,7 @@ from src.models import (
     TwoStreamV12Model,
     TwoStreamV13Model,
     TwoStreamV14Model,
+    TwoStreamV15Model,
     VideoMAEModel,
 )
 from src.datasets import EgoDexDataset
@@ -37,12 +38,13 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'videomae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'two-stream-v15', 'videomae'],
                         help='Model type (default: two-stream). '
                              'two-stream-v11 = motion-guided routing + dual-target. '
                              'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
                              'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS. '
-                             'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO).')
+                             'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO). '
+                             'two-stream-v15 = predictor-only V-JEPA + V-JEPA-M + DINO at M_decoder CLS + interleaved p_motion_decoder.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -171,7 +173,14 @@ def main():
 
     # v14: Stream-wise Paradigm Specialization (P=MAE+V-JEPA, M=DINO)
     parser.add_argument('--v14-lambda-pred', type=float, default=1.0,
-                        help='[v14] λ_pred — V-JEPA loss weight (P stream).')
+                        help='[v14] λ_pred — V-JEPA loss weight (P stream). '
+                             'Warmup이 활성화되면 이 값이 schedule target.')
+    parser.add_argument('--v14-lambda-pred-warmup-start', type=float, default=None,
+                        help='[v14] λ_pred 시작 값. None이면 warmup 비활성 (정적 λ_pred). '
+                             '권장: 0.01 — V-JEPA target이 미숙한 학습 초기에는 미세하게만 반영.')
+    parser.add_argument('--v14-lambda-pred-warmup-epochs', type=int, default=10,
+                        help='[v14] λ_pred linear warmup 길이 (epoch). 이 값 도달 시 target. '
+                             '50ep 학습 기준 default 10 (V-JEPA 2/DINOv2 표준 첫 1/5 구간).')
     parser.add_argument('--v14-lambda-dino', type=float, default=1.0,
                         help='[v14] λ_dino — DINO loss weight (M stream).')
     parser.add_argument('--v14-dino-n-crop', type=int, default=1,
@@ -190,6 +199,38 @@ def main():
                         help='[v14] EMA momentum start for teachers (P + M + DINOHead).')
     parser.add_argument('--v14-ema-momentum-final', type=float, default=0.9999,
                         help='[v14] EMA momentum final (linear warmup).')
+
+    # v15: Layered specialization with predictor-only V-JEPA + V-JEPA-M
+    parser.add_argument('--v15-lambda-pred', type=float, default=1.0,
+                        help='[v15] λ_pred — V-JEPA P loss weight. Warmup target.')
+    parser.add_argument('--v15-lambda-pred-warmup-start', type=float, default=None,
+                        help='[v15] λ_pred warmup 시작 값. None이면 정적 λ_pred. 권장 0.01.')
+    parser.add_argument('--v15-lambda-pred-warmup-epochs', type=int, default=10,
+                        help='[v15] λ_pred linear warmup 길이 (epoch). 기본 10.')
+    parser.add_argument('--v15-lambda-m-jepa', type=float, default=1.0,
+                        help='[v15] λ_m_jepa — V-JEPA M loss weight (masked patches). Warmup target.')
+    parser.add_argument('--v15-lambda-m-jepa-warmup-start', type=float, default=None,
+                        help='[v15] λ_m_jepa warmup 시작 값. None이면 정적. 권장 0.01.')
+    parser.add_argument('--v15-lambda-m-jepa-warmup-epochs', type=int, default=10,
+                        help='[v15] λ_m_jepa linear warmup 길이 (epoch). 기본 10.')
+    parser.add_argument('--v15-lambda-dino', type=float, default=1.0,
+                        help='[v15] λ_dino — DINO M loss weight.')
+    parser.add_argument('--v15-mask-ratio-m-jepa', type=float, default=0.5,
+                        help='[v15] V-JEPA-M에서 M stream mask ratio (default 0.5).')
+    parser.add_argument('--v15-dino-n-crop', type=int, default=1,
+                        help='[v15] DINO student multi-crop count (224 페어 N개; sanity=1, 본 학습=3~4).')
+    parser.add_argument('--v15-num-prototypes', type=int, default=1024,
+                        help='[v15] DINO prototype K (default 1024).')
+    parser.add_argument('--v15-dino-teacher-temp', type=float, default=0.04,
+                        help='[v15] Teacher temperature τ_T.')
+    parser.add_argument('--v15-dino-student-temp', type=float, default=0.1,
+                        help='[v15] Student temperature τ_S.')
+    parser.add_argument('--v15-dino-center-momentum', type=float, default=0.9,
+                        help='[v15] EMA momentum for DINO center.')
+    parser.add_argument('--v15-ema-momentum-init', type=float, default=0.996,
+                        help='[v15] EMA momentum start for teachers (P + M + decoder + DINOHead).')
+    parser.add_argument('--v15-ema-momentum-final', type=float, default=0.9999,
+                        help='[v15] EMA momentum final (linear warmup).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -335,6 +376,30 @@ def main():
             dino_student_temp=args.v14_dino_student_temp,
             dino_center_momentum=args.v14_dino_center_momentum,
         )
+    elif args.model == 'two-stream-v15':
+        # v15: Layered paradigm specialization (v14 학습 진단 후 redesign)
+        # - V-JEPA P: V source + target both from TeacherP (predictor only learning)
+        # - V-JEPA M: M_encoder masked + M_decoder + mask_token → SmoothL1 vs TeacherM unmasked (CLS 제외)
+        # - DINO: M_decoder 후 CLS (motion semantic level, encoder-level과 분리)
+        # - p_motion_decoder = (routing + interpreter) × N (interleaved)
+        # - mask_token_m 활성화 (V-JEPA-M)
+        v15_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
+        model = TwoStreamV15Model(
+            p_depth=args.depth,
+            m_depth=args.v11_m_depth,
+            mask_ratio_p=v15_mask_p,
+            rotation_aug=args.rotation_aug,
+            routing_mode=args.v11_routing_mode,
+            lambda_pred=args.v15_lambda_pred,
+            lambda_m_jepa=args.v15_lambda_m_jepa,
+            lambda_dino=args.v15_lambda_dino,
+            mask_ratio_m_jepa=args.v15_mask_ratio_m_jepa,
+            dino_n_crop=args.v15_dino_n_crop,
+            num_prototypes=args.v15_num_prototypes,
+            dino_teacher_temp=args.v15_dino_teacher_temp,
+            dino_student_temp=args.v15_dino_student_temp,
+            dino_center_momentum=args.v15_dino_center_momentum,
+        )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
         # - v11 모든 reconstruction path 유지 (L_t + L_tk)
@@ -382,7 +447,7 @@ def main():
         print("="*60)
 
     # v13/v14: train dataset이 raw 256 view도 함께 반환해야 함 (DINO teacher용)
-    needs_global = args.model in ('two-stream-v13', 'two-stream-v14')
+    needs_global = args.model in ('two-stream-v13', 'two-stream-v14', 'two-stream-v15')
 
     splits = [s.strip() for s in args.egodex_splits.split(',')]
     split_datasets = []
@@ -460,6 +525,22 @@ def main():
         v12_kwargs = {
             'v12_ema_momentum_init': args.v14_ema_momentum_init,
             'v12_ema_momentum_final': args.v14_ema_momentum_final,
+            'v14_lambda_pred_warmup_start': args.v14_lambda_pred_warmup_start,
+            'v14_lambda_pred_warmup_epochs': args.v14_lambda_pred_warmup_epochs,
+            'v14_lambda_pred_target': args.v14_lambda_pred,
+        }
+    elif args.model == 'two-stream-v15':
+        v12_kwargs = {
+            'v12_ema_momentum_init': args.v15_ema_momentum_init,
+            'v12_ema_momentum_final': args.v15_ema_momentum_final,
+            # λ_pred warmup (v14에서 사용한 인터페이스 재사용 — v15도 동일 path)
+            'v14_lambda_pred_warmup_start': args.v15_lambda_pred_warmup_start,
+            'v14_lambda_pred_warmup_epochs': args.v15_lambda_pred_warmup_epochs,
+            'v14_lambda_pred_target': args.v15_lambda_pred,
+            # λ_m_jepa warmup (v15 신규)
+            'v15_lambda_m_jepa_warmup_start': args.v15_lambda_m_jepa_warmup_start,
+            'v15_lambda_m_jepa_warmup_epochs': args.v15_lambda_m_jepa_warmup_epochs,
+            'v15_lambda_m_jepa_target': args.v15_lambda_m_jepa,
         }
 
     model, history = train(
