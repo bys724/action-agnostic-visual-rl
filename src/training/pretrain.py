@@ -165,29 +165,51 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
     num_batches = 0
     gap_counts = {}
 
+    # v15: triple unpacking 위해 model_name 미리 계산
+    _actual_model_for_unpack = model.module if hasattr(model, 'module') else model
+    _is_v15_triple = (type(_actual_model_for_unpack).__name__ == 'TwoStreamV15Model')
+
     for batch_idx, batch in enumerate(dataloader):
-        # Unpack batch — v13은 (img_t, img_tk, img_t_global, img_tk_global, gap) 5-tuple
+        # Unpack batch
+        # v13/v14:  (img_t, img_tk, img_t_global, img_tk_global, gap) 5-tuple
+        # v15:      (img_t, img_t_n, img_t_m, gap_n, gap_m_offset) 5-tuple
+        # v6/v11:   (img_t, img_tk, gap) 3-tuple
         img_t_global = None
         img_tk_global = None
-        if len(batch) == 5:
+        img_t_n = None  # v15 only
+        img_t_m = None  # v15 only
+        if _is_v15_triple:
+            img_t, img_t_n, img_t_m, gap_n_t, gap_m_t = batch
+            gap_n_np = gap_n_t.numpy() if hasattr(gap_n_t, 'numpy') else np.asarray(gap_n_t)
+            gap_m_np = gap_m_t.numpy() if hasattr(gap_m_t, 'numpy') else np.asarray(gap_m_t)
+            gaps = gap_n_np + gap_m_np  # total gap = n + m_offset
+            img_t = img_t.to(device)
+            img_t_n = img_t_n.to(device)
+            img_t_m = img_t_m.to(device)
+            img_tk = img_t_m  # v14 호환 키 (eval 등에서 사용)
+        elif len(batch) == 5:
             img_t, img_tk, img_t_global, img_tk_global, gaps = batch
             gaps = gaps.numpy()
             img_t_global = img_t_global.to(device)
             img_tk_global = img_tk_global.to(device)
+            img_t = img_t.to(device)
+            img_tk = img_tk.to(device)
         elif len(batch) == 4:
-            # backward compat (이전 v13: img_tk_global만)
             img_t, img_tk, img_tk_global, gaps = batch
             gaps = gaps.numpy()
             img_tk_global = img_tk_global.to(device)
+            img_t = img_t.to(device)
+            img_tk = img_tk.to(device)
         elif len(batch) == 3:
             img_t, img_tk, gaps = batch
             gaps = gaps.numpy()
+            img_t = img_t.to(device)
+            img_tk = img_tk.to(device)
         else:
             img_t, img_tk = batch
             gaps = np.ones(img_t.shape[0])
-
-        img_t = img_t.to(device)
-        img_tk = img_tk.to(device)
+            img_t = img_t.to(device)
+            img_tk = img_tk.to(device)
 
         optimizer.zero_grad()
 
@@ -269,18 +291,20 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 # NOTE: DINO center / EMA teacher update는 backward + optimizer.step 후
                 # (아래 backward 블록 참조)
             elif model_name in ('TwoStreamV14Model', 'TwoStreamV15Model'):
-                # v14: Stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO)
-                # v15: v14 redesign — predictor-only V-JEPA P + V-JEPA-M (masked) + DINO at M_decoder CLS
-                # forward signature 동일: (image_current, image_future, image_current_global, image_future_global)
+                # v14: (img_t, img_tk, img_t_global, img_tk_global) — DINO + V-JEPA
+                # v15 final: (img_t, img_t_n, img_t_m) — triple, L_compose
                 actual_model = model.module if hasattr(model, 'module') else model
-                out = model(img_t, img_tk, img_t_global, img_tk_global)
+                if model_name == 'TwoStreamV15Model':
+                    out = model(img_t, img_t_n, img_t_m)
+                else:
+                    out = model(img_t, img_tk, img_t_global, img_tk_global)
                 loss = out['loss']
                 loss_t = out['loss_t']
                 loss_tk = out['loss_tk']
                 loss_pred = out['loss_pred']
                 loss_dino = out['loss_dino']
-                # v15에서만 추가 (v14는 0)
                 loss_m_jepa = out.get('loss_m_jepa', torch.tensor(0.0, device=loss.device))
+                loss_compose = out.get('loss_compose', torch.tensor(0.0, device=loss.device))
                 img_pred = out['pred_tk']
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -325,7 +349,11 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
                     norm_pred = predicted_tk_repr.norm(dim=-1).mean()
                     norm_target = target_tk_repr.norm(dim=-1).mean()
-                    norm_center = actual_model.dino_center.norm().item()
+                    # v15 final: dino_center 제거됨. v14만 dino_center buffer 보유.
+                    if hasattr(actual_model, 'dino_center'):
+                        norm_center = actual_model.dino_center.norm().item()
+                    else:
+                        norm_center = 0.0
 
                 if not hasattr(train_epoch, '_v14_metrics_buf'):
                     train_epoch._v14_metrics_buf = {}
@@ -336,6 +364,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 buf['loss_dino'] = buf.get('loss_dino', 0.0) + loss_dino.item()
                 # v15: V-JEPA-M loss (v14에서는 0)
                 buf['loss_m_jepa'] = buf.get('loss_m_jepa', 0.0) + loss_m_jepa.item()
+                # v15 final: L_compose (v14에서는 0)
+                buf['loss_compose'] = buf.get('loss_compose', 0.0) + loss_compose.item()
                 buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
                 buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
                 buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
@@ -562,12 +592,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 if teacher_proto.abs().sum() > 0:
                     actual_model.update_dino_center(teacher_proto)
         elif model_name == 'TwoStreamV15Model' and v12_momentum is not None:
-            # v15: TeacherP + TeacherM (encoder + decoder + dino_head) EMA update
+            # v15 final: TeacherP + TeacherM_encoder EMA update only (DINO 제거 → no dino_center)
             actual_model.update_teacher(v12_momentum)
-            with torch.no_grad():
-                teacher_proto = out['teacher_proto_logits']
-                if teacher_proto.abs().sum() > 0:
-                    actual_model.update_dino_center(teacher_proto)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -630,14 +656,27 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
     num_batches = 0
     gap_counts = {}
 
+    # v15 triple unpack 위해 model_name 미리 계산
+    _eval_actual_model = model.module if hasattr(model, 'module') else model
+    _eval_is_v15 = (type(_eval_actual_model).__name__ == 'TwoStreamV15Model')
+
     # Manual batch processing (for fast evaluation)
     for i in range(0, eval_size, batch_size):
         batch_indices = indices[i:i+batch_size]
         batch_data = [eval_dataset[idx] for idx in batch_indices]
 
         img_t = torch.stack([d[0] for d in batch_data]).to(device)
-        img_tk = torch.stack([d[1] for d in batch_data]).to(device)
-        gaps = np.array([d[2] for d in batch_data])
+        if _eval_is_v15:
+            # (img_t, img_t_n, img_t_m, gap_n, gap_m_offset)
+            img_t_n = torch.stack([d[1] for d in batch_data]).to(device)
+            img_t_m = torch.stack([d[2] for d in batch_data]).to(device)
+            img_tk = img_t_m  # v14 호환 키
+            gaps = np.array([d[3] + d[4] for d in batch_data])
+        else:
+            img_tk = torch.stack([d[1] for d in batch_data]).to(device)
+            gaps = np.array([d[2] for d in batch_data])
+            img_t_n = None
+            img_t_m = None
 
         # Forward (handle VideoMAE vs prediction models)
         actual_model = model.module if hasattr(model, 'module') else model
@@ -657,9 +696,18 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 unweighted_loss = loss
                 total_loss_current += out['loss_t'].item()
                 total_loss_future += out['loss_tk'].item()
-            elif model_name in ('TwoStreamV14Model', 'TwoStreamV15Model'):
-                # eval에서는 global=None → V-JEPA / DINO / V-JEPA-M 0. MAE reconstruction만 평가.
+            elif model_name == 'TwoStreamV14Model':
+                # v14 eval: global=None → V-JEPA / DINO 0. MAE reconstruction만 평가.
                 out = model(img_t, img_tk, None, None)
+                loss = out['loss']
+                img_pred = out['pred_tk']
+                weighted_loss = loss
+                unweighted_loss = loss
+                total_loss_current += out['loss_t'].item()
+                total_loss_future += out['loss_tk'].item()
+            elif model_name == 'TwoStreamV15Model':
+                # v15 eval: triple input 그대로 사용. 모든 5 loss 활성 (eval mode라 학습엔 영향 X).
+                out = model(img_t, img_t_n, img_t_m)
                 loss = out['loss']
                 img_pred = out['pred_tk']
                 weighted_loss = loss
@@ -784,10 +832,18 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
 
         col_titles = ['Frame t', 'Frame t+k (target)', 'Predicted']
         rows = []
+        is_v15 = (model_name == 'TwoStreamV15Model')
         with torch.no_grad():
             for idx in indices:
                 try:
-                    img_t, img_tk, gap = eval_dataset[idx]
+                    item = eval_dataset[idx]
+                    if is_v15:
+                        img_t, img_t_n, img_t_m, _gap_n, _gap_m = item
+                        img_tk = img_t_m  # frame_t+m
+                        x_short = img_t_n.unsqueeze(0).to(device)
+                    else:
+                        img_t, img_tk, gap = item
+                        x_short = None
                 except Exception:
                     continue
                 x = img_t.unsqueeze(0).to(device)
@@ -809,7 +865,10 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     actual_model.mask_ratio_p = 0.0
                     actual_model.mask_ratio_m = 0.0
                     try:
-                        if model_name in ('TwoStreamV14Model', 'TwoStreamV15Model'):
+                        if model_name == 'TwoStreamV15Model':
+                            # v15 forward: (img_t, img_t_n, img_t_m)
+                            out = actual_model(x, x_short, y)
+                        elif model_name == 'TwoStreamV14Model':
                             out = actual_model(x, y, None, None)
                         elif model_name == 'TwoStreamV13Model':
                             out = actual_model(x, y, None)
@@ -916,6 +975,9 @@ def train(
     v15_lambda_m_jepa_warmup_start=None,
     v15_lambda_m_jepa_warmup_epochs=10,
     v15_lambda_m_jepa_target=None,
+    v15_lambda_compose_warmup_start=None,
+    v15_lambda_compose_warmup_epochs=10,
+    v15_lambda_compose_target=None,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -1203,6 +1265,25 @@ def train(
                 log(f"  [schedule] λ_m_jepa = {v15_lambda_m_jepa:.4f} "
                     f"(warmup {epoch}/{v15_lambda_m_jepa_warmup_epochs}, target {v15_lambda_m_jepa_target})")
 
+        # v15 final: λ_compose warmup (replaces λ_dino warmup).
+        # Reconstruction 우선 → composition_head + L_compose는 점진 활성화.
+        # M_encoder가 안정 후 algebraic structure 학습 신호 들어가도록.
+        if v15_lambda_compose_target is not None and v15_lambda_compose_warmup_start is not None:
+            if v15_lambda_compose_warmup_epochs <= 1 or epoch >= v15_lambda_compose_warmup_epochs:
+                v15_lambda_compose = v15_lambda_compose_target
+            else:
+                warmup_progress = (epoch - 1) / max(v15_lambda_compose_warmup_epochs - 1, 1)
+                v15_lambda_compose = (
+                    v15_lambda_compose_warmup_start
+                    + (v15_lambda_compose_target - v15_lambda_compose_warmup_start) * warmup_progress
+                )
+            target_model = model.module if hasattr(model, 'module') else model
+            if hasattr(target_model, 'lambda_compose'):
+                target_model.lambda_compose = v15_lambda_compose
+            if is_master:
+                log(f"  [schedule] λ_compose = {v15_lambda_compose:.4f} "
+                    f"(warmup {epoch}/{v15_lambda_compose_warmup_epochs}, target {v15_lambda_compose_target})")
+
         # Train
         train_result = train_epoch(
             model, dataloader, optimizer, device, epoch,
@@ -1402,19 +1483,29 @@ def train(
                     writer.add_scalar('v14/norm_target', v14buf['norm_target'] / n, epoch)
                     writer.add_scalar('v14/norm_dino_center', v14buf['norm_center'] / n, epoch)
                     writer.add_scalar('v14/ema_momentum', v12_momentum, epoch)
+                    # v15 schedule scalars: train() body scope에서 model.module 직접 unwrap
+                    _sched_model = model.module if hasattr(model, 'module') else model
                     if v14_lambda_pred_target is not None and v14_lambda_pred_warmup_start is not None:
                         writer.add_scalar('v14/lambda_pred_schedule',
-                                          getattr(actual_model, 'lambda_pred', v14_lambda_pred_target),
+                                          getattr(_sched_model, 'lambda_pred', v14_lambda_pred_target),
                                           epoch)
                     # v15: V-JEPA-M loss + lambda_m_jepa schedule (v14에서는 0)
                     lmj = v14buf.get('loss_m_jepa', 0.0) / n
                     writer.add_scalar('v14/loss_m_jepa', lmj, epoch)
                     if v15_lambda_m_jepa_target is not None and v15_lambda_m_jepa_warmup_start is not None:
                         writer.add_scalar('v14/lambda_m_jepa_schedule',
-                                          getattr(actual_model, 'lambda_m_jepa', v15_lambda_m_jepa_target),
+                                          getattr(_sched_model, 'lambda_m_jepa', v15_lambda_m_jepa_target),
+                                          epoch)
+                    # v15 final: L_compose loss + lambda_compose schedule
+                    lcp = v14buf.get('loss_compose', 0.0) / n
+                    writer.add_scalar('v14/loss_compose', lcp, epoch)
+                    if v15_lambda_compose_target is not None and v15_lambda_compose_warmup_start is not None:
+                        writer.add_scalar('v14/lambda_compose_schedule',
+                                          getattr(_sched_model, 'lambda_compose', v15_lambda_compose_target),
                                           epoch)
                     log(
-                        f"  [v14] L_t={lt:.5f} L_tk={ltk:.5f} L_pred={lpr:.5f} L_mj={lmj:.5f} L_dino={ldn:.5f} | "
+                        f"  [v14] L_t={lt:.5f} L_tk={ltk:.5f} L_pred={lpr:.5f} L_mj={lmj:.5f} "
+                        f"L_cp={lcp:.5f} L_dino={ldn:.5f} | "
                         f"ema_m={v12_momentum:.4f} | "
                         f"std_m={v14buf['feat_std_m']/n:.3f} std_p={v14buf['feat_std_p']/n:.3f} "
                         f"std_sdino={v14buf['std_student_dino']/n:.3f} | "

@@ -44,7 +44,7 @@ def main():
                              'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
                              'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS. '
                              'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO). '
-                             'two-stream-v15 = predictor-only V-JEPA + V-JEPA-M + DINO at M_decoder CLS + interleaved p_motion_decoder.')
+                             'two-stream-v15 = v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -213,28 +213,29 @@ def main():
                         help='[v15] λ_m_jepa warmup 시작 값. None이면 정적. 권장 0.01.')
     parser.add_argument('--v15-lambda-m-jepa-warmup-epochs', type=int, default=10,
                         help='[v15] λ_m_jepa linear warmup 길이 (epoch). 기본 10.')
-    parser.add_argument('--v15-lambda-dino', type=float, default=1.0,
-                        help='[v15] λ_dino — DINO M loss weight.')
+    parser.add_argument('--v15-lambda-compose', type=float, default=1.0,
+                        help='[v15 final] λ_compose — Compositional auxiliary loss weight (replaces DINO).')
+    parser.add_argument('--v15-lambda-compose-warmup-start', type=float, default=None,
+                        help='[v15 final] λ_compose warmup 시작 값. None이면 정적. 권장 0.01.')
+    parser.add_argument('--v15-lambda-compose-warmup-epochs', type=int, default=10,
+                        help='[v15 final] λ_compose linear warmup 길이 (epoch). 기본 10.')
+    parser.add_argument('--v15-composition-mode', type=str, default='linear_residual',
+                        choices=['linear_residual', 'linear', 'mlp'],
+                        help='[v15 final] composition_head 모드. sanity=linear_residual (param 0), 본=mlp.')
+    parser.add_argument('--v15-composition-hidden-dim', type=int, default=None,
+                        help='[v15 final] composition_head mlp mode hidden dim (None=embed_dim).')
     parser.add_argument('--v15-mask-ratio-m-jepa', type=float, default=0.5,
-                        help='[v15] V-JEPA-M에서 M stream mask ratio (default 0.5).')
-    parser.add_argument('--v15-dino-n-crop', type=int, default=1,
-                        help='[v15] DINO student multi-crop count (224 페어 N개; sanity=1, 본 학습=3~4).')
-    parser.add_argument('--v15-num-prototypes', type=int, default=1024,
-                        help='[v15] DINO prototype K (default 1024).')
-    parser.add_argument('--v15-dino-teacher-temp', type=float, default=0.04,
-                        help='[v15] Teacher temperature τ_T.')
-    parser.add_argument('--v15-dino-student-temp', type=float, default=0.1,
-                        help='[v15] Student temperature τ_S.')
-    parser.add_argument('--v15-dino-center-momentum', type=float, default=0.9,
-                        help='[v15] EMA momentum for DINO center.')
-    parser.add_argument('--v15-ema-momentum-init', type=float, default=0.996,
-                        help='[v15] EMA momentum start for teachers (P + M + decoder + DINOHead).')
+                        help='[v15 final] V-JEPA-M에서 M stream mask ratio (default 0.5).')
+    parser.add_argument('--v15-ema-momentum-init', type=float, default=0.999,
+                        help='[v15 final] EMA momentum start (TeacherP + TeacherM_encoder).')
     parser.add_argument('--v15-ema-momentum-final', type=float, default=0.9999,
-                        help='[v15] EMA momentum final (linear warmup).')
+                        help='[v15 final] EMA momentum final (linear warmup).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
                         help='Disable multi-GPU training (use single GPU)')
+    parser.add_argument('--num-workers', type=int, default=16,
+                        help='DataLoader num_workers (default 16). 디버깅 시 0으로.')
 
     # Acceleration
     parser.add_argument('--compile', action='store_true',
@@ -377,10 +378,11 @@ def main():
             dino_center_momentum=args.v14_dino_center_momentum,
         )
     elif args.model == 'two-stream-v15':
-        # v15: Layered paradigm specialization (v14 학습 진단 후 redesign)
-        # - V-JEPA P: V source + target both from TeacherP (predictor only learning)
-        # - V-JEPA M: M_encoder masked + M_decoder + mask_token → SmoothL1 vs TeacherM unmasked (CLS 제외)
-        # - DINO: M_decoder 후 CLS (motion semantic level, encoder-level과 분리)
+        # v15 final: docs/v15_compositional_aux_design.md 기준
+        # - DINO 제거 → L_compose 추가 (compositional structure on M_encoder)
+        # - V-JEPA P: V source + target 모두 TeacherP (predictor only)
+        # - V-JEPA M (Option B): M_encoder masked + M_decoder vs TeacherM_encoder unmasked
+        # - 3-frame triple (옵션 B): P MAE × 3 frame + V-JEPA P × 3 segment + V-JEPA M × 1 (long) + L_compose
         # - p_motion_decoder = (routing + interpreter) × N (interleaved)
         # - mask_token_m 활성화 (V-JEPA-M)
         v15_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
@@ -392,13 +394,10 @@ def main():
             routing_mode=args.v11_routing_mode,
             lambda_pred=args.v15_lambda_pred,
             lambda_m_jepa=args.v15_lambda_m_jepa,
-            lambda_dino=args.v15_lambda_dino,
+            lambda_compose=args.v15_lambda_compose,
             mask_ratio_m_jepa=args.v15_mask_ratio_m_jepa,
-            dino_n_crop=args.v15_dino_n_crop,
-            num_prototypes=args.v15_num_prototypes,
-            dino_teacher_temp=args.v15_dino_teacher_temp,
-            dino_student_temp=args.v15_dino_student_temp,
-            dino_center_momentum=args.v15_dino_center_momentum,
+            composition_mode=args.v15_composition_mode,
+            composition_hidden_dim=args.v15_composition_hidden_dim,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
@@ -447,7 +446,8 @@ def main():
         print("="*60)
 
     # v13/v14: train dataset이 raw 256 view도 함께 반환해야 함 (DINO teacher용)
-    needs_global = args.model in ('two-stream-v13', 'two-stream-v14', 'two-stream-v15')
+    needs_global = args.model in ('two-stream-v13', 'two-stream-v14')
+    needs_triple = args.model == 'two-stream-v15'
 
     splits = [s.strip() for s in args.egodex_splits.split(',')]
     split_datasets = []
@@ -462,6 +462,7 @@ def main():
             sample_dist=args.sample_dist,
             sample_center=args.sample_center,
             return_global=needs_global,
+            return_triple=needs_triple,
         )
         split_datasets.append(ds)
     if len(split_datasets) == 1:
@@ -484,6 +485,7 @@ def main():
         max_gap=args.max_gap,
         sample_decay=args.sample_decay,
         loss_decay=args.loss_decay,
+        return_triple=needs_triple,
     )
 
     # Training configuration summary (rank 0)
@@ -533,14 +535,17 @@ def main():
         v12_kwargs = {
             'v12_ema_momentum_init': args.v15_ema_momentum_init,
             'v12_ema_momentum_final': args.v15_ema_momentum_final,
-            # λ_pred warmup (v14에서 사용한 인터페이스 재사용 — v15도 동일 path)
+            # v15 final: λ_pred + λ_m_jepa + λ_compose warmup (DINO 제거)
             'v14_lambda_pred_warmup_start': args.v15_lambda_pred_warmup_start,
             'v14_lambda_pred_warmup_epochs': args.v15_lambda_pred_warmup_epochs,
             'v14_lambda_pred_target': args.v15_lambda_pred,
-            # λ_m_jepa warmup (v15 신규)
             'v15_lambda_m_jepa_warmup_start': args.v15_lambda_m_jepa_warmup_start,
             'v15_lambda_m_jepa_warmup_epochs': args.v15_lambda_m_jepa_warmup_epochs,
             'v15_lambda_m_jepa_target': args.v15_lambda_m_jepa,
+            # v15 final: λ_compose 신규 (replaces λ_dino)
+            'v15_lambda_compose_warmup_start': args.v15_lambda_compose_warmup_start,
+            'v15_lambda_compose_warmup_epochs': args.v15_lambda_compose_warmup_epochs,
+            'v15_lambda_compose_target': args.v15_lambda_compose,
         }
 
     model, history = train(
@@ -557,6 +562,7 @@ def main():
         resume_from=args.resume,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
+        num_workers=args.num_workers,
         **v12_kwargs,
     )
 

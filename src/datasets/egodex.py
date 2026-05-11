@@ -33,6 +33,7 @@ class EgoDexDataset(VideoFrameDataset):
         sample_dist: str = "auto",
         sample_center: int = None,
         return_global: bool = False,
+        return_triple: bool = False,
     ):
         self.split = split
         super().__init__(
@@ -48,6 +49,7 @@ class EgoDexDataset(VideoFrameDataset):
             sample_dist=sample_dist,
             sample_center=sample_center,
             return_global=return_global,
+            return_triple=return_triple,
         )
 
         print(f"EgoDexDataset: {len(self.frame_dirs)} videos, split={split}")

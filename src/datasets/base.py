@@ -38,6 +38,7 @@ class VideoFrameDataset(ABC, Dataset):
         sample_dist: str = "auto",
         sample_center: int = None,
         return_global: bool = False,
+        return_triple: bool = False,
     ):
         self.data_root = Path(data_root)
         self.max_gap = max_gap
@@ -46,6 +47,10 @@ class VideoFrameDataset(ABC, Dataset):
         self.cache_frames = cache_frames
         # v13: True면 frame_{t+k}의 raw 256x256 view도 함께 반환 (DINO-style global)
         self.return_global = return_global
+        # v15: True면 (frame_t, frame_t+n, frame_t+m) triple 반환 (L_compose / 옵션 B 확장).
+        # 두 구간 (n, m-n) 각각 self.sample_probs (= triangular [1, max_gap], center sample_center)에서 독립 추출.
+        # 권장: max_gap=30, sample_center=15 (각 구간 ≈0.5초 중심).
+        self.return_triple = return_triple
 
         # Spatial transform: 256x256 → 224x224
         if train:
@@ -114,6 +119,36 @@ class VideoFrameDataset(ABC, Dataset):
         img = torch.from_numpy(np.array(img)).float() / 255.0
         return img.permute(2, 0, 1)
 
+    def _load_frame_triple(
+        self, frame_dir: Path, idx_t: int, idx_n: int, idx_m: int
+    ):
+        """세 프레임 로드 + 각 독립 random crop.
+
+        v15: 각 frame 독립 random crop (pair과 동일 정책 — pixel-level 정렬 회피).
+        Returns (img_t, img_t_n, img_t_m), 각 [3, H, W].
+        """
+        path_t = frame_dir / f"frame_{idx_t:06d}.jpg"
+        path_n = frame_dir / f"frame_{idx_n:06d}.jpg"
+        path_m = frame_dir / f"frame_{idx_m:06d}.jpg"
+
+        img_t_raw = self._load_image(path_t)
+        img_n_raw = self._load_image(path_n)
+        img_m_raw = self._load_image(path_m)
+
+        if isinstance(self.spatial_transform, transforms.RandomCrop):
+            params_t = transforms.RandomCrop.get_params(img_t_raw, (self.img_size, self.img_size))
+            params_n = transforms.RandomCrop.get_params(img_n_raw, (self.img_size, self.img_size))
+            params_m = transforms.RandomCrop.get_params(img_m_raw, (self.img_size, self.img_size))
+            img_t = transforms.functional.crop(img_t_raw, *params_t)
+            img_n = transforms.functional.crop(img_n_raw, *params_n)
+            img_m = transforms.functional.crop(img_m_raw, *params_m)
+        else:
+            img_t = self.spatial_transform(img_t_raw)
+            img_n = self.spatial_transform(img_n_raw)
+            img_m = self.spatial_transform(img_m_raw)
+
+        return img_t, img_n, img_m
+
     def _load_frame_pair(
         self, frame_dir: Path, idx1: int, idx2: int
     ):
@@ -166,6 +201,28 @@ class VideoFrameDataset(ABC, Dataset):
                 frame_dir = self.frame_dirs[video_idx]
                 num_frames = self._get_num_frames(frame_dir)
 
+                if self.return_triple:
+                    # v15: 두 구간(n, m-n) 각각 self.sample_probs에서 독립 추출
+                    gap_n = int(np.random.choice(np.arange(1, self.max_gap + 1), p=self.sample_probs))
+                    gap_m_offset = int(np.random.choice(np.arange(1, self.max_gap + 1), p=self.sample_probs))
+                    total_gap = gap_n + gap_m_offset
+
+                    max_start = max(0, num_frames - total_gap - 1)
+                    if max_start <= 0:
+                        gap_n = 1
+                        gap_m_offset = 1
+                        total_gap = 2
+                        max_start = max(0, num_frames - total_gap - 1)
+
+                    frame_t = np.random.randint(0, max_start + 1)
+                    frame_t_n = frame_t + gap_n
+                    frame_t_m = frame_t_n + gap_m_offset
+
+                    img_t, img_t_n, img_t_m = self._load_frame_triple(
+                        frame_dir, frame_t, frame_t_n, frame_t_m,
+                    )
+                    return img_t, img_t_n, img_t_m, gap_n, gap_m_offset
+
                 gap = np.random.choice(
                     np.arange(1, self.max_gap + 1), p=self.sample_probs
                 )
@@ -189,6 +246,8 @@ class VideoFrameDataset(ABC, Dataset):
                 idx = np.random.randint(0, len(self))
         # 5회 연속 실패 시 (극히 드묾) 검은 이미지 반환
         fallback = torch.zeros(3, self.img_size, self.img_size)
+        if self.return_triple:
+            return fallback, fallback, fallback, 1, 1
         if self.return_global:
             fallback_global = torch.zeros(3, 256, 256)
             return fallback, fallback, fallback_global, fallback_global, 1

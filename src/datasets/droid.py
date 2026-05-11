@@ -37,6 +37,9 @@ class DROIDDataset(VideoFrameDataset):
         max_videos: Optional[int] = None,
         cache_frames: bool = False,
         train: bool = True,
+        sample_dist: str = "auto",
+        sample_center: Optional[int] = None,
+        return_triple: bool = False,
     ):
         self.cameras = cameras or ["ext1", "ext2"]
         super().__init__(
@@ -49,6 +52,9 @@ class DROIDDataset(VideoFrameDataset):
             train=train,
             max_videos=max_videos,
             cache_frames=cache_frames,
+            sample_dist=sample_dist,
+            sample_center=sample_center,
+            return_triple=return_triple,
         )
 
         print(f"DROIDDataset: {len(self.frame_dirs)} episodes, cameras={self.cameras}")

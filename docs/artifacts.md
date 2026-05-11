@@ -22,6 +22,22 @@
 
 ### 학습된 모델 ckpt
 
+#### 🚚 로컬 워크스테이션 전송 대기 (repo root tar)
+이 저장소 최상위 폴더에 tar 형식으로 배치됨. 로컬에서 `scp` 한 번 + `tar -xf`로 전개.
+
+| Tar 파일 (repo root) | 크기 | 용도 | 내용 |
+|---|---|---|---|
+| `v11_bct_v3_rollout.tar` | 7.1 GB | v11 BC-T rollout 평가 (학습 불필요, 9 ckpt) | `two-stream-v11_libero_{spatial,object,goal}_seed{0,1,2}_<TS>_v3/{best.pt, config.yaml}` × 9 |
+| `two_stream_v14_ep20.tar` | 2.9 GB | v14 pre-trained encoder (로컬 LIBERO BC 학습 + rollout) | `20260507_202712/{checkpoint_epoch0020.pt, config.json}` |
+
+전송 후 로컬:
+- `v11_bct_v3_rollout.tar` → `/mnt/data/checkpoints/libero_bct/` 하위에 풀기 → `src/eval_libero.py BCTransformerClient`로 rollout
+- `two_stream_v14_ep20.tar` → `/mnt/data/checkpoints/two_stream_v14/` 하위에 풀기 → `scripts/local/finetune_libero_bct.sh`로 BC-T 학습
+
+비교 목적:
+- v11 BC-T 9 ckpt는 baseline 36잡 (videomae/dinov2/siglip/vc1, 33866041~76)과 **단일 변인(ENCODER)** 차이로 학습된 V3 cfg → 동일 조건 main table rollout 비교 가능
+- v14는 EgoDex within-domain probing collapse (-0.065) 후 LIBERO probing은 +0.5 영역. 학습 미완 (ep20에서 stop)이지만 로컬에서 BC fine-tune 후 v11과 직접 비교 → cross-domain 적합도 검증
+
 #### 🏆 Two-Stream v11 — final champion (ep44 A+B+D' = +0.288)
 - 경로: `/proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333/`
 - 파일: `latest.pt` (= ep50), `best_model.pt`, `checkpoint_epoch00{16,20,24,28,32,36,40,44,48}.pt`, `config.json`, `history.json`, `tb/`
