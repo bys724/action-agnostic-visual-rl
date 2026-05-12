@@ -593,6 +593,38 @@ encoder (frozen) → projection (학습) → Llama 7B + LoRA (학습) → action
 | 2 | 인코딩된 정보가 **실제 제어에 유용하다** | Phase 3 (LIBERO BC rollout) | success rate (closed-loop) |
 | 3 | action-agnostic 사전학습이 **범용 비전 feature보다 낫다** | Phase 3 (7종 비교) + Phase 3B (SOTA 통합) | 순위 + success rate 차이 |
 
+### Paper 구성 전략 (2026-05-12 결정)
+
+**채택**: Option B — **v15 only main + 5 baseline 비교**.
+
+**핵심 결정**:
+- Main table: **v15** + VideoMAE-ours + DINOv2 + SigLIP + VC-1 (5 encoder × 3 LIBERO suite × 3 seed)
+- **v11은 paper main에서 제외** — method introduction에 개발 history로 1-2 문장만 언급 (또는 supplementary)
+- ~~V-JEPA 2.1~~ — 16-frame × 384² 입력 비용으로 BC 비현실적 (probing only, main table 제외)
+
+**v11 제외 이유**:
+- v11 → v15는 4개 차원 동시 변경 (2-frame→3-frame triple, composition 추가, V-JEPA-M 추가, motion-routing 활용 방식 변화). **ablation으로 fair 비교 불가**
+- "최종 결과를 main으로 push" 원칙 — 시행착오는 method 개발 narrative로만 처리
+- NeurIPS 5월 마감 ~3주, 추가 50ep ablation 학습 시간 불가능
+
+**v15 ep32 핵심 발견** (P_t + P_tk concat probing, 2026-05-12):
+- **EgoDex within-domain**: v15 P_t+P_tk = **+0.390** (v11 ep44 champion A+B+D' +0.288 추월, VideoMAE +0.326 추월)
+- **LIBERO spatial gap=20**: v15 P_t+P_tk = **+0.584** (v11 ep44 champion abd_prime +0.555 추월) ★
+- **DROID gap=15**: v15/v11 모두 ≈0 (DROID 자체 한계, [[feedback-droid-image-only-limitation]])
+- v11 ep44 P_t+P_tk = +0.010 (거의 0) → motion 정보가 D'에 인코딩
+- v15 ep32 P_t+P_tk = +0.390 → **P encoder 자체가 frame-discriminative motion 정보 인코딩**
+
+**M stream catalyst 가설** (post-hoc finding):
+- v15 학습 중 M encoder가 P encoder에 motion-friendly 학습 압력 transfer → 학습 후 M 자체 망가져도 P_t+P_tk가 강력
+- **paper main claim에서 빼고 Section "Architecture Analysis" sub-claim으로 처리** (post-hoc finding, design motivation 아니므로)
+- 통상 Two-Stream 해석 ("M=motion at inference") 뒤집는 narrative 가치 있음. 단 v15-internal ablation (V-JEPA-M 제거 등) 없이는 인과 단정 어려움 → future work로 정직하게 처리
+
+**시간 부족 대응**:
+- v15-internal ablation 50ep 추가 학습 포기. Mode 비교 ablation (no extra training: P_t+P_tk vs A+B+D' vs A/B/D' single) 으로 대체 — paper Section "Architecture Analysis" Table로 정리
+- Main effort: v15 ep50 완주 → BC-T adapter 작업 + 5 encoder × 3 suite × 3 seed BC-T 학습 → 로컬 LIBERO rollout
+
+자세한 probing 결과·잡 로그: [`cluster_sessions.md`](cluster_sessions.md) §2026-05-06 v14 sanity 표 하단
+
 ---
 
 ## 모델 설계

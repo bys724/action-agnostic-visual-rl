@@ -148,6 +148,17 @@ def encode_pairs_v11(
             tok = o["p_encoded"][:, 1:].mean(dim=1)
         elif mode == "d_prime_only":
             tok = o["p_state_routing"][:, 1:].mean(dim=1)
+        elif mode == "p_t_p_tk":
+            # P encoder를 prev/curr frame에 각각 single-image path로 통과
+            from scripts.eval.probe_action_v11 import _p_encoder_forward
+            _, p_channel_t = model.preprocessing(p, p)
+            _, p_channel_tk = model.preprocessing(c, c)
+            p_enc_t = _p_encoder_forward(model, p_channel_t)
+            p_enc_tk = _p_encoder_forward(model, p_channel_tk)
+            tok = torch.cat(
+                [p_enc_t[:, 1:].mean(dim=1), p_enc_tk[:, 1:].mean(dim=1)],
+                dim=-1,
+            )
         else:
             raise ValueError(f"Unknown v11 mode: {mode}")
         out.append(tok.cpu())
@@ -255,7 +266,7 @@ def main():
     parser.add_argument("--v11-p-depth", type=int, default=12)
     parser.add_argument("--v11-m-depth", type=int, default=6)
     parser.add_argument("--v11-mode", default="abd_prime",
-                        choices=["abd_prime", "b_only", "d_prime_only"])
+                        choices=["abd_prime", "b_only", "d_prime_only", "p_t_p_tk"])
     args = parser.parse_args()
 
     np.random.seed(args.seed)

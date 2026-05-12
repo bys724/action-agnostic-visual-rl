@@ -75,6 +75,7 @@ CLS_MODES_SINGLE = {
     # single-image (encode_single 또는 P encoder만) 가능 모드
     "cls_p_enc",
     "patch_mean_p_enc",
+    "patch_mean_p_enc_tk",  # P encoder를 img_tk(next)에 통과
 }
 CLS_MODES_PAIRED = {
     # M encoder는 ΔL = pixel diff(img_t, img_tk)이 필요 → paired
@@ -96,6 +97,10 @@ CLS_MODES_PAIRED = {
     "cls_p_features_tk",
     # B+D (P enc + interpreter_2 후) — v13 디자인 충실 concat
     "patch_mean_concat_p_enc_phase3",
+    # P_t + P_tk concat (P encoder 두 frame 비교용)
+    "patch_mean_concat_p_t_p_tk",
+    # P_tk + M concat (next-frame P + motion)
+    "patch_mean_concat_p_tk_m",
 }
 CLS_MODES_ALL = CLS_MODES_SINGLE | CLS_MODES_PAIRED
 
@@ -106,6 +111,8 @@ _CONCAT_2_MODES = {
     "patch_mean_concat_enc_phase3",
     "patch_mean_concat_p_enc_d_prime",
     "patch_mean_concat_p_enc_phase3",
+    "patch_mean_concat_p_t_p_tk",
+    "patch_mean_concat_p_tk_m",
 }
 _CONCAT_3_MODES = {
     "patch_mean_concat_all",  # M_enc + P_enc + D'
@@ -301,14 +308,37 @@ def extract_repr(model, pixel_values: torch.Tensor, mode: str) -> torch.Tensor:
     # ── Single-image path (M 정보 불필요) ─────────────────────────────────
     if mode in CLS_MODES_SINGLE:
         # P channel만 필요. preprocessing(img, img) → ΔL=0이지만 P channel은
-        # Sobel(L) + RGB이므로 정상.
-        _, p_channel = model.preprocessing(img_t, img_t)
+        # Sobel(L) + RGB이므로 정상. img_tk variant는 next frame을 P encoder에 통과.
+        src_img = img_tk if mode == "patch_mean_p_enc_tk" else img_t
+        _, p_channel = model.preprocessing(src_img, src_img)
         p_encoded = _p_encoder_forward(model, p_channel)  # [B, 1+N, D]
         if mode == "cls_p_enc":
             return p_encoded[:, 0]
-        if mode == "patch_mean_p_enc":
+        if mode in {"patch_mean_p_enc", "patch_mean_p_enc_tk"}:
             return p_encoded[:, 1:].mean(dim=1)
         raise ValueError(f"Unhandled single mode: {mode}")
+
+    # ── P_t + P_tk concat (P encoder 두 frame 모두 통과) ──────────────────
+    if mode == "patch_mean_concat_p_t_p_tk":
+        _, p_channel_t = model.preprocessing(img_t, img_t)
+        _, p_channel_tk = model.preprocessing(img_tk, img_tk)
+        p_enc_t = _p_encoder_forward(model, p_channel_t)
+        p_enc_tk = _p_encoder_forward(model, p_channel_tk)
+        return torch.cat(
+            [p_enc_t[:, 1:].mean(dim=1), p_enc_tk[:, 1:].mean(dim=1)],
+            dim=-1,
+        )
+
+    # ── P_tk + M concat ───────────────────────────────────────────────────
+    if mode == "patch_mean_concat_p_tk_m":
+        m_channel, _ = model.preprocessing(img_t, img_tk)
+        _, p_channel_tk = model.preprocessing(img_tk, img_tk)
+        m_encoded = _m_encoder_forward(model, m_channel)
+        p_enc_tk = _p_encoder_forward(model, p_channel_tk)
+        return torch.cat(
+            [p_enc_tk[:, 1:].mean(dim=1), m_encoded[:, 1:].mean(dim=1)],
+            dim=-1,
+        )
 
     # ── M encoder만 필요한 paired modes ───────────────────────────────────
     if mode in {"cls_m_enc", "patch_mean_m_enc"}:

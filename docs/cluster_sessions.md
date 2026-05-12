@@ -126,6 +126,46 @@ v13 paradigm conflict (P encoder가 reconstruction + DINO 동시 만족 못 해 
 | 34343947 | AIP 1×1 H100 | 00:20:00 | v15 ep4 viz (nomask P MAE × 3 frame + motion routing × 3 segment + L_compose path, 10-column 4-sample figure) | ✅ COMPLETED 58s. `paper_artifacts/v15_main_train_samples/epoch_004_nomask.png`. GT(1-3) + P MAE recon(4-6) + motion routing short/step/long(7-9) + composition(10). ep4 단계라 col 4-10 모두 patch grid speckle만 보임 — v14 ep4와 동일 (recon decoder 미숙). ep8+ 재실행 권장 |
 | 34344317/319/326 | AIP 1×1 H100 | 00:20:00 ×3 | v15 ep4 viz EgoDex+DROID 확장 디버그 (3 회) | ❌ 1차 sbatch `--num-samples` 폐기 인자, 2차 `DROIDDataset.__init__` sample_dist 미지원, 3차는 잡 30s 완료지만 DROID row 검정 fallback (ext1 95658 ep 중 단 10개만 frame 추출됨, 빈 ep retry 5회 fallback) |
 | 34344358 | AIP 1×1 H100 | 00:20:00 | v15 ep4 viz EgoDex+DROID 확장 4차 (max_videos=10) | ✅ COMPLETED 41s. `paper_artifacts/v15_main_train_samples/epoch_004_nomask.png` 4 row (EgoDex 2 + DROID 2) × 10 col. ep4 단계라 col 4-10 모두 patch grid speckle, v14 ep4 viz와 동일 양상. ep8+ 재실행 권장 |
+| 34349393 | AIP 1×1 H100 | 00:20:00 | v15 ep8 viz (동일 EgoDex+DROID 4 sample) | ✅ COMPLETED. `paper_artifacts/v15_main_train_samples/epoch_008_nomask.png` ep4와 거의 동일한 양상 — col 4-10 모두 patch grid speckle. TB 진단으로 P encoder collapse (feat_std_p=0.09, cos_intra_p=0.987 @ ep8) 확인 → recon_head가 sample-independent 평균 패턴만 출력. ep10 warmup 완료 후 회복 신호 있으므로 ep12+ 재시도 권장 |
+| 34357733 | AIP 1×1 H100 | 00:20:00 | v15 ep28 viz (동일 EgoDex+DROID 4 sample) | ✅ COMPLETED. `paper_artifacts/v15_main_train_samples/epoch_028_nomask.png` 산출. TB 분석: ep10 warmup 종료 후에도 **P encoder 회복 실패** (cos_intra_p 0.997, feat_std_p 0.020 @ ep28). **M encoder healthy** (cos_intra_m 0.27, feat_std_m 1.23). L_t/L_tk 0.0151→0.00105 수렴, L_pred 0.025→0.0072 수렴, L_compose 0.286→0.036. 🔴 **L_m_jepa ep7 0.0009 → ep28 0.086 폭증 후 plateau**. Eval loss ep5 0.050 → ep25 0.154 단조 증가 |
+| 34357799 | AIP 1×1 H100 | 00:15:00 | v15 ep28 collapse 진단 (CLS / patch token / recon image pairwise MSE, EgoDex+DROID 각 16 sample) | ✅ COMPLETED. **시나리오 (A) 확정 — CLS만 collapse, patch는 healthy**: EgoDex `cls_p_cos=0.998 / patch_cos=0.414`, DROID `0.999 / 0.413` (patch token cross-domain 거의 동일). Recon image pairwise MSE ratio (pred/GT) EgoDex 0.428 / DROID 0.416 — **GT 다양성의 43%만 recon이 표현** (mean pattern으로 부분 수렴, 완전 collapse 아님). M encoder 양쪽 모두 healthy (cls_m_cos 0.15~0.19). 사용자 가설 부분 검증: CLS loss 추가는 CLS 살리지만 downstream cosmetic 가능성. **다음: ep28 patch_mean probing 측정 → CLS loss 추가 여부 결정** |
+| 34358483 | AIP 1×1 H100 | 00:20:00 | v15 ep32 viz (동일 EgoDex+DROID 4 sample, 10-col nomask reconstruction + motion routing) | ✅ COMPLETED 1m48s |
+| 34363191 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex action probing (`patch_mean_concat_all`, gap=10, test) — v11 호환 mode | ✅ COMPLETED 16m6s. **R²=-0.1293 / Cos 0.129** (FAIL). v11 ep44 +0.288 / v14 ep16 -0.065 / VideoMAE +0.326 대비 전면 후퇴. Train MSE 0.0019 정상 감소 but Eval R² -1.47~-0.13 oscillation — P encoder collapse + L_m_jepa 폭증 영향 확정 |
+| 34363192 | AIP 1×1 H100 | 03:00:00 | v15 ep32 DROID cross-domain probing (`patch_mean_concat_enc_only` A+B, gap=15) | ✅ COMPLETED 1m26s. **R²=-0.0485** (gap=15, A+B). v11 ep12 +0.005 / VideoMAE -0.035 대비 후퇴. P encoder collapse가 cross-domain에서도 나타남 |
+| 34363193 | AIP 1×1 H100 | 01:30:00 | v15 ep32 LIBERO action probing × spatial (`abd_prime`, gaps 1/13/20/40) | RUNNING |
+| 34363194 | AIP 1×1 H100 | 01:30:00 | v15 ep32 LIBERO action probing × object (`abd_prime`, gaps 1/13/20/40) | ❌ CANCELLED (사용자 결정 — 중간 결과만 보기에 1 suite 충분) |
+| 34363195 | AIP 1×1 H100 | 01:30:00 | v15 ep32 LIBERO action probing × goal (`abd_prime`, gaps 1/13/20/40) | ❌ CANCELLED (동일) |
+| 34367235 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex probing — P_t only (`patch_mean_p_enc`, gap=10) | ✅ COMPLETED 13m44s. **R²=−0.0532** |
+| 34367236 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex probing — P_tk only (`patch_mean_p_enc_tk`, gap=10) — **신규 mode** | ✅ COMPLETED 13m37s. **R²=−0.0135** |
+| 34367237 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex probing — M only (`patch_mean_m_enc`, gap=10) | ✅ COMPLETED 13m37s. **R²=−0.0831** (M encoder 가장 망가짐, L_m_jepa 폭증과 일치) |
+| 34367238 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex probing — P_t + P_tk (`patch_mean_concat_p_t_p_tk`, gap=10) — **신규 mode** | ✅ COMPLETED 13m37s. **🔥 R²=+0.3898 / Cos 0.306** — v11 ep44 champion(+0.288) 및 VideoMAE(+0.326) 추월. 단독 음수인데 concat이 큰 양수 → 두 frame feature가 서로 다른 정보 인코딩, linear probe가 implicit difference 학습 |
+| 34367239 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex probing — M + P_t (`patch_mean_concat_enc_only`, gap=10) | ✅ COMPLETED 13m37s. **R²=−0.0807** (M 포함 시 음수, M 망가진 영향) |
+| 34367240 | AIP 1×1 H100 | 03:00:00 | v15 ep32 EgoDex probing — P_tk + M (`patch_mean_concat_p_tk_m`, gap=10) — **신규 mode** | ✅ COMPLETED 13m40s. **R²=−0.1033** (M 포함 시 음수) |
+
+**v15 ep32 종합 — 핵심 결론**:
+- P encoder가 살아있음 (patch-level instance discrimination 유지, CLS만 collapse)
+- M encoder가 가장 망가짐 (L_m_jepa 폭증이 representation 파괴 확정)
+- **P_t + P_tk concat이 v11 champion + VideoMAE 모두 추월 ★** — v15 가치 재평가 필요
+- A+B+D' 측정값 −0.129는 M+P_t+D' = M 망가짐이 끌어내린 결과 (D'은 motion-routing 거치며 M dependency)
+
+### P_t + P_tk fair 비교 — v15 vs v11 cross-domain
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34367515 | AIP 1×1 H100 | 03:00:00 | v11 ep44 EgoDex `patch_mean_concat_p_t_p_tk` gap=10 | ✅ COMPLETED 11m18s. **R²=+0.0097** (거의 0). v11 champion mode A+B+D' +0.288 대비 큰 차이 — v11에서는 P_t+P_tk가 motion 정보 캐리어 아님 |
+| 34367577 | AIP 1×1 H100 | 03:00:00 | v15 ep32 DROID `patch_mean_concat_p_t_p_tk` gap=15 | ✅ COMPLETED 52s. R²=−0.006 (cross-domain 약함) |
+| 34367579 | AIP 1×1 H100 | 03:00:00 | v11 ep44 DROID `patch_mean_concat_p_t_p_tk` gap=15 | ✅ COMPLETED 52s. R²=−0.001 (cross-domain 약함, DROID 한계 일관) |
+| 34367612 | AIP 1×1 H100 | 01:30:00 | v15 ep32 LIBERO spatial `p_t_p_tk` (4 gaps) — **probe_action_libero.py 신규 mode 추가** | ✅ COMPLETED 16m47s. gap=1 **+0.401**, gap=13 **+0.576**, gap=20 **+0.584** ★, gap=40 **+0.379**. **v11 champion abd_prime gap=20 (+0.555) 추월** ★★★ |
+| 34367614 | AIP 1×1 H100 | 01:30:00 | v11 ep44 LIBERO spatial `p_t_p_tk` (4 gaps) | ✅ COMPLETED 16m40s. gap=1 +0.058, gap=13 +0.038, gap=20 **+0.041**, gap=40 +0.061. **v15 ep32 동일 mode 대비 −0.54 격차** — P_t+P_tk가 v15-specific 우위 확정 |
+| 34370933 | AIP 1×1 H100 | 03:00:00 | DINOv2 EgoDex `patch_mean` (P_t+P_tk equivalent, single-frame SSL baseline) — 가설 인과 검증 마지막 증거 | PENDING |
+
+**🏆 P_t + P_tk fair 비교 핵심 결론** (사용자 가설 검증 완료):
+- **v15 ep32 P_t+P_tk가 v11 ep44 champion mode (abd_prime) 추월** (LIBERO spatial gap=20 +0.584 vs +0.555)
+- v11에서는 P_t+P_tk가 +0.010 (거의 0) → motion 정보가 D' (motion-routing 후 P state)에 인코딩
+- v15에서는 P_t+P_tk가 +0.390 (EgoDex) / +0.584 (LIBERO) → **P encoder 자체가 motion-friendly representation 학습**
+- 사용자 가설 정확히 성립: "motion routing이 가능한 이미지 복구 형태" → P encoder에 motion-friendly 압력 transfer
+- v15 구조 (3-frame triple + composition + V-JEPA-M)가 P encoder 학습 압력을 v11 대비 더 강하게 전달
+- **v15 BC-T 가치 매우 높음 (이전 결론 전면 재검토)** — 50ep 완주 후 BC-T adapter 작업 가치 매우 큰 후보
+- Cross-domain DROID는 두 모델 모두 약함 (DROID 자체 한계, [[feedback-droid-image-only-limitation]] 참고)
 
 ### 2026-05-04 v13 DINO redesign (1차 학습 33833830 ep10+ uniform collapse 후속)
 
