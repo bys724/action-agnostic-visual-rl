@@ -28,6 +28,7 @@
 | Tar 파일 (repo root) | 크기 | 용도 | 내용 |
 |---|---|---|---|
 | `v11_bct_v3_rollout.tar` | 7.1 GB | v11 BC-T rollout 평가 (학습 불필요, 9 ckpt) | `two-stream-v11_libero_{spatial,object,goal}_seed{0,1,2}_<TS>_v3/{best.pt, config.yaml}` × 9 |
+| `dinov2_bct_v3.tar` | 3.1 GB | DINOv2 BC-T rollout 평가 (9 ckpt, base 86M라 사이즈 작음) | `dinov2_libero_{spatial,object,goal}_seed{0,1,2}_<TS>_v3/{best.pt, config.yaml}` × 9 |
 | `two_stream_v14_ep20.tar` | 2.9 GB | v14 pre-trained encoder (로컬 LIBERO BC 학습 + rollout) | `20260507_202712/{checkpoint_epoch0020.pt, config.json}` |
 
 전송 후 로컬:

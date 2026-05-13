@@ -122,7 +122,7 @@ v13 paradigm conflict (P encoder가 reconstruction + DINO 동시 만족 못 해 
 | 34279264 | AIP 1×1 H100 | 02:00:00 | v15 final sanity v1 (DINO 제거 + L_compose + 3-frame triple + V-JEPA-M Option B) | ❌ FAILED 1m51s (`dino_center` AttributeError, train_epoch에 hasattr 분기 fix됨) |
 | 34279476 | AIP 1×1 H100 | 02:00:00 | v15 final sanity v2 (10ep, num_workers=16) | 🔴 47분 hang → CANCELLED. Dataset triple 단독 정상, num_workers=16 multiprocessing issue 추정 |
 | 34285612 | AIP 1×1 H100 | 02:00:00 | v15 final mini sanity (3ep × 50vid, num_workers=4) | ✅ COMPLETED 4m28s. ep당 77s. L_t/L_tk 정상 감소, L_pred → identity collapse(cos=1.0), std_m collapse, L_compose plateau (3ep만이라 trajectory 부족). Hang 원인 확정 — num_workers=16 → 4-8로 회피. v15 forward 정상 |
-| **34288968** | AIP_long 2×4 H100 | 10-00:00:00 | **v15 본 학습** (50ep, EgoDex part1-5, batch 32/GPU = global 256, num_workers=8, λ all 1.0 with warmup 10ep 0.01→1.0, composition_mode=linear_residual, EMA 0.999→0.9999, mask_p=0.75, mask_m_jepa=0.5, max_gap=30 sample_center=15) | **RUNNING** 2026-05-11 04:52 시작. 6h25m 시점에 ep4 ckpt 저장 (~85min/ep, 50ep 추정 ~71h 안전) |
+| 34288968 | AIP_long 2×4 H100 | 10-00:00:00 | **v15 본 학습** (50ep, EgoDex part1-5, batch 32/GPU = global 256, num_workers=8, λ all 1.0 with warmup 10ep 0.01→1.0, composition_mode=linear_residual, EMA 0.999→0.9999, mask_p=0.75, mask_m_jepa=0.5, max_gap=30 sample_center=15) | ✅ COMPLETED 2026-05-12 23:46 (Elapsed 1d 18h 54m24s, **8 GPU × 42.91h = 343.3 GPU·h**, ExitCode 0:0). 50ep 완주 — ckpt ep4/8/12/16/20/24/28/32/36/40/44/48 + latest.pt(=ep50) + best_model.pt(=ep1, eval_loss min). eval_loss는 ep1 0.050 → ep10 0.20 단조 증가 (P encoder collapse 진행), 그러나 downstream representation은 ep32 P_t+P_tk concat이 v11 champion 추월 — best_model.pt는 paper용 ckpt 아님 |
 | 34343947 | AIP 1×1 H100 | 00:20:00 | v15 ep4 viz (nomask P MAE × 3 frame + motion routing × 3 segment + L_compose path, 10-column 4-sample figure) | ✅ COMPLETED 58s. `paper_artifacts/v15_main_train_samples/epoch_004_nomask.png`. GT(1-3) + P MAE recon(4-6) + motion routing short/step/long(7-9) + composition(10). ep4 단계라 col 4-10 모두 patch grid speckle만 보임 — v14 ep4와 동일 (recon decoder 미숙). ep8+ 재실행 권장 |
 | 34344317/319/326 | AIP 1×1 H100 | 00:20:00 ×3 | v15 ep4 viz EgoDex+DROID 확장 디버그 (3 회) | ❌ 1차 sbatch `--num-samples` 폐기 인자, 2차 `DROIDDataset.__init__` sample_dist 미지원, 3차는 잡 30s 완료지만 DROID row 검정 fallback (ext1 95658 ep 중 단 10개만 frame 추출됨, 빈 ep retry 5회 fallback) |
 | 34344358 | AIP 1×1 H100 | 00:20:00 | v15 ep4 viz EgoDex+DROID 확장 4차 (max_videos=10) | ✅ COMPLETED 41s. `paper_artifacts/v15_main_train_samples/epoch_004_nomask.png` 4 row (EgoDex 2 + DROID 2) × 10 col. ep4 단계라 col 4-10 모두 patch grid speckle, v14 ep4 viz와 동일 양상. ep8+ 재실행 권장 |
@@ -156,7 +156,70 @@ v13 paradigm conflict (P encoder가 reconstruction + DINO 동시 만족 못 해 
 | 34367579 | AIP 1×1 H100 | 03:00:00 | v11 ep44 DROID `patch_mean_concat_p_t_p_tk` gap=15 | ✅ COMPLETED 52s. R²=−0.001 (cross-domain 약함, DROID 한계 일관) |
 | 34367612 | AIP 1×1 H100 | 01:30:00 | v15 ep32 LIBERO spatial `p_t_p_tk` (4 gaps) — **probe_action_libero.py 신규 mode 추가** | ✅ COMPLETED 16m47s. gap=1 **+0.401**, gap=13 **+0.576**, gap=20 **+0.584** ★, gap=40 **+0.379**. **v11 champion abd_prime gap=20 (+0.555) 추월** ★★★ |
 | 34367614 | AIP 1×1 H100 | 01:30:00 | v11 ep44 LIBERO spatial `p_t_p_tk` (4 gaps) | ✅ COMPLETED 16m40s. gap=1 +0.058, gap=13 +0.038, gap=20 **+0.041**, gap=40 +0.061. **v15 ep32 동일 mode 대비 −0.54 격차** — P_t+P_tk가 v15-specific 우위 확정 |
-| 34370933 | AIP 1×1 H100 | 03:00:00 | DINOv2 EgoDex `patch_mean` (P_t+P_tk equivalent, single-frame SSL baseline) — 가설 인과 검증 마지막 증거 | PENDING |
+| 34370933 | AIP 1×1 H100 | 03:00:00 | DINOv2 EgoDex `patch_mean` (P_t+P_tk equivalent, single-frame SSL baseline) — 가설 인과 검증 마지막 증거 | ✅ COMPLETED 16m13s. **R²=+0.0062 / Cos 0.211**. v15 ep32 +0.390 대비 격차 +0.384 — 단순 frame-discriminative SSL은 P_t+P_tk pattern 생성 X. **motion routing이 P encoder에 motion-friendly 압력 transfer 인과 확정** |
+| 34373722 | AIP 1×1 H100 | 00:20:00 | v15 ep40 viz (동일 EgoDex+DROID 4 sample, 10-col nomask reconstruction + motion routing) | ✅ COMPLETED |
+
+### 2026-05-13 v15 ep50 (latest.pt) paper main 분석 + V3 BC-T 9잡
+
+v15 본 학습 (34288968) 종료 → ep50 = `latest.pt` 사용. paper main result로 ep32 mode sweep 동일 cfg fair 비교 + V3 BC-T full 매트릭스 (3 suite × 3 seed) 시작.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34375951 | AIP 1×1 H100 | 00:20:00 | v15 ep50 viz (EgoDex+DROID 4 sample, 10-col nomask + motion routing) | ✅ COMPLETED 1m17s |
+| 34375952 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_concat_p_t_p_tk` (ep32 champion, gap=10) | RUNNING |
+| 34375953 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_p_enc` (P_t) | RUNNING |
+| 34375954 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_p_enc_tk` (P_tk) | RUNNING |
+| 34375955 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_m_enc` (M alone) | RUNNING |
+| 34375956 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_concat_enc_only` (M+P_t) | RUNNING |
+| 34375957 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_concat_p_tk_m` (P_tk+M) | RUNNING |
+| 34375958 | AIP 1×1 H100 | 03:00:00 | v15 ep50 EgoDex probing — `patch_mean_concat_all` (A+B+D') | RUNNING |
+| 34375959 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID cross-domain probing — `patch_mean_concat_p_t_p_tk` (gap=15) | ✅ COMPLETED 50s |
+| 34375960 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID cross-domain probing — `patch_mean_concat_enc_only` (A+B, gap=15) | ✅ COMPLETED 41s |
+| 34375961 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial probing — `p_t_p_tk` (4 gaps 1/13/20/40) | ❌ CANCELLED 1m29s (사용자 결정 — BC-T adapter mismatch 재검토 필요) |
+| 34375964~34375972 | AIP 1×1 H100 ×9 | 2-00:00:00 | v15 ep50 V3 BC-T (3 suite × 3 seed, A+D' adapter) | ❌ CANCELLED 미시작 (사용자 결정 — v15 학습 분포(3-frame)와 v11 adapter(2-frame pair) mismatch 검토 후 재제출 결정) |
+
+**Cancel 이유**: v15는 학습 시 **3-frame triple** (frame_t, frame_t+n, frame_t+m), LIBERO probing champion mode가 `patch_mean_concat_p_t_p_tk` (P_t + P_tk encoder concat). 그러나 BC-T 어댑터 `TwoStreamV11Adapter`는 **2-frame pair (prev, curr) + A+D' (M encoder + motion-routing 후 P state)** 고정. 학습/inference 분포 mismatch + champion mode 미사용 → 재설계 필요.
+
+### 2026-05-13 v15 ep50 V3 BC-T 재제출 — 신규 2 어댑터 × 9잡 = 18잡
+
+기존 v11 어댑터(A+D') 대신 v15-적합 2 어댑터로 다시 매트릭스:
+- **`two-stream-v15-ptptk`** (옵션 B): (prev, curr) 2-frame pair → P encoder 각자 forward → P_t patches mean ⊕ P_tk patches mean = 1536-d. LIBERO probing champion mode (`patch_mean_concat_p_t_p_tk`)와 동일 출력 형태
+- **`two-stream-v15-mp`** (C-variant): (prev, curr) → M encoder × 1 (m_channel=Δ) + P encoder × 1 (curr만, p_channel) → M patches mean ⊕ P_curr patches mean = 1536-d. Motion-routing 단계 제거, v11 A+D'에서 D' → D으로 단순화
+
+신규 어댑터 파일: [src/encoders/adapters/two_stream_v15_pt_ptk.py](../src/encoders/adapters/two_stream_v15_pt_ptk.py), [two_stream_v15_mp.py](../src/encoders/adapters/two_stream_v15_mp.py). [base.py](../src/encoders/adapters/base.py) + [finetune_libero_bct.py](../scripts/eval/finetune_libero_bct.py) choices 등록. login 노드 forward sanity 통과 (out shape (2,3,1536)).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34376001~34376009 | AIP 1×1 H100 ×9 | 2-00:00:00 | v15 ep50 V3 BC-T **ptptk** × 3 suite × 3 seed | PENDING |
+| 34376010~34376018 | AIP 1×1 H100 ×9 | 2-00:00:00 | v15 ep50 V3 BC-T **mp** × 3 suite × 3 seed | PENDING |
+
+### Causal Future Prediction probing (TARGET_MODE=future, target = pose[t+2gap]−pose[t+gap])
+
+probe_action.py에 `target_mode` 옵션 추가 — 기존 "same" (변화 인지) 외 "future" (미래 prediction, features 본 frame 너머 변화) mode. v15 ep32 + v11 ep44 × 7 mode = 14잡 fair pair 비교.
+
+| JobID | ckpt | mode | R² | Cos |
+|-------|------|------|------|------|
+| 34374136 | v15 ep32 | patch_mean_p_enc | −0.020 | 0.111 |
+| 34374137 | v15 ep32 | patch_mean_p_enc_tk | −0.077 | 0.062 |
+| 34374138 | v15 ep32 | patch_mean_m_enc | **−0.083** | 0.055 |
+| 34374139 | v15 ep32 | patch_mean_concat_p_t_p_tk | −0.020 | 0.136 |
+| 34374140 | v15 ep32 | patch_mean_concat_enc_only (P_t+M) | −0.142 | 0.115 |
+| 34374141 | v15 ep32 | patch_mean_concat_p_tk_m | −0.155 | 0.085 |
+| 34374149 | v15 ep32 | patch_mean_concat_p_t_p_tk_m (3-concat) ★ | −0.145 | 0.106 |
+| 34374142 | v11 ep44 | patch_mean_p_enc | −0.002 | -0.000 |
+| 34374143 | v11 ep44 | patch_mean_p_enc_tk | −0.002 | 0.058 |
+| 34374144 | v11 ep44 | patch_mean_m_enc | **+0.092** ★★ | 0.158 |
+| 34374145 | v11 ep44 | patch_mean_concat_p_t_p_tk | +0.002 | 0.049 |
+| 34374146 | v11 ep44 | patch_mean_concat_enc_only (P_t+M) | **+0.092** | 0.148 |
+| 34374147 | v11 ep44 | patch_mean_concat_p_tk_m | **+0.094** | 0.151 |
+| 34374150 | v11 ep44 | patch_mean_concat_p_t_p_tk_m | **+0.093** | 0.153 |
+
+**🔥 핵심 발견 — 사용자 가설 검증 완료**:
+- **v11 ep44 M alone = +0.092** (유일 양수 mode 그룹 캐리어). M 포함 mode 모두 +0.092~0.094로 유사 → **M이 미래 action 정보의 캐리어**
+- **v15 ep32 M alone = −0.083** (망가진 상태) → 미래 prediction 자체 무너짐. M 포함하면 noise로 R² 더 악화
+- **v11 ep44 P_t+P_tk = +0.002** vs **v15 ep32 P_t+P_tk = −0.020** — 변화 인지에서 압도적이던 P_t+P_tk가 미래 prediction에는 무력
+- **두 task는 완전히 다른 신호 측정**: P_t+P_tk = post-hoc reconstruction (frame 차이 inverse), M alone = 진짜 causal future inference
+- ⚠️ **paper 전략 재검토 시사**: BC-T = robot deployment ≈ future inference 가까움. v15 only main 결정의 validity는 BC-T 결과로 최종 검증 필요
 
 **🏆 P_t + P_tk fair 비교 핵심 결론** (사용자 가설 검증 완료):
 - **v15 ep32 P_t+P_tk가 v11 ep44 champion mode (abd_prime) 추월** (LIBERO spatial gap=20 +0.584 vs +0.555)
