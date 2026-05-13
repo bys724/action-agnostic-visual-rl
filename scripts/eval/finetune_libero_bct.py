@@ -343,7 +343,9 @@ def main():
 
     # Encoder
     parser.add_argument("--encoder", type=str, required=True,
-                        choices=["two-stream-v11", "videomae-ours",
+                        choices=["two-stream-v11",
+                                 "two-stream-v15-ptptk", "two-stream-v15-mp",
+                                 "videomae-ours",
                                  "dinov2", "siglip", "vc1", "vjepa2-1"])
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Encoder ckpt (V-JEPA/SigLIP/DINOv2은 None 가능)")

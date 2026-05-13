@@ -64,6 +64,14 @@ def build_adapter(
         from .two_stream_v11 import TwoStreamV11Adapter
         return TwoStreamV11Adapter(checkpoint_path=checkpoint_path, **kwargs)
 
+    if encoder_type == "two-stream-v15-ptptk":
+        from .two_stream_v15_pt_ptk import TwoStreamV15PtPtkAdapter
+        return TwoStreamV15PtPtkAdapter(checkpoint_path=checkpoint_path, **kwargs)
+
+    if encoder_type == "two-stream-v15-mp":
+        from .two_stream_v15_mp import TwoStreamV15MPAdapter
+        return TwoStreamV15MPAdapter(checkpoint_path=checkpoint_path, **kwargs)
+
     if encoder_type == "videomae-ours":
         from .videomae import VideoMAEOursAdapter
         return VideoMAEOursAdapter(checkpoint_path=checkpoint_path, **kwargs)
