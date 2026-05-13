@@ -37,6 +37,7 @@ EPOCHS="${EPOCHS:-20}"
 BATCH_SIZE="${BATCH_SIZE:-256}"
 P_DEPTH="${P_DEPTH:-12}"
 M_DEPTH="${M_DEPTH:-6}"
+TARGET_MODE="${TARGET_MODE:-same}"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [probe_v11] $*"; }
 
@@ -65,6 +66,7 @@ cd "$PROJECT_ROOT"
     --epochs "$EPOCHS" \
     --batch-size "$BATCH_SIZE" \
     --p-depth "$P_DEPTH" \
-    --m-depth "$M_DEPTH"
+    --m-depth "$M_DEPTH" \
+    --target-mode "$TARGET_MODE"
 
 log "=== Probing done ==="

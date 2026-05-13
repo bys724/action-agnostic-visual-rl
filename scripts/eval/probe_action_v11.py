@@ -101,6 +101,8 @@ CLS_MODES_PAIRED = {
     "patch_mean_concat_p_t_p_tk",
     # P_tk + M concat (next-frame P + motion)
     "patch_mean_concat_p_tk_m",
+    # P_t + P_tk + M (3-concat all without D')
+    "patch_mean_concat_p_t_p_tk_m",
 }
 CLS_MODES_ALL = CLS_MODES_SINGLE | CLS_MODES_PAIRED
 
@@ -116,6 +118,7 @@ _CONCAT_2_MODES = {
 }
 _CONCAT_3_MODES = {
     "patch_mean_concat_all",  # M_enc + P_enc + D'
+    "patch_mean_concat_p_t_p_tk_m",  # P_t + P_tk + M
 }
 
 
@@ -340,6 +343,21 @@ def extract_repr(model, pixel_values: torch.Tensor, mode: str) -> torch.Tensor:
             dim=-1,
         )
 
+    # ── P_t + P_tk + M (3-concat all without D') ──────────────────────────
+    if mode == "patch_mean_concat_p_t_p_tk_m":
+        m_channel, _ = model.preprocessing(img_t, img_tk)
+        _, p_channel_t = model.preprocessing(img_t, img_t)
+        _, p_channel_tk = model.preprocessing(img_tk, img_tk)
+        m_encoded = _m_encoder_forward(model, m_channel)
+        p_enc_t = _p_encoder_forward(model, p_channel_t)
+        p_enc_tk = _p_encoder_forward(model, p_channel_tk)
+        return torch.cat(
+            [p_enc_t[:, 1:].mean(dim=1),
+             p_enc_tk[:, 1:].mean(dim=1),
+             m_encoded[:, 1:].mean(dim=1)],
+            dim=-1,
+        )
+
     # ── M encoder만 필요한 paired modes ───────────────────────────────────
     if mode in {"cls_m_enc", "patch_mean_m_enc"}:
         m_channel, _ = model.preprocessing(img_t, img_tk)
@@ -450,6 +468,10 @@ def main():
     parser.add_argument("--m-depth", type=int, default=6)
     parser.add_argument("--max-videos", type=int, default=None,
                         help="(probe_action.py 호환) limit videos for dry-run")
+    parser.add_argument("--target-mode", type=str, default="same",
+                        choices=["same", "future"],
+                        help="same: pose[t+gap]-pose[t] (변화 인지) | "
+                             "future: pose[t+2gap]-pose[t+gap] (causal future prediction)")
     parser.add_argument("--output-dir", type=str, default="data/probing_results")
 
     args = parser.parse_args()
@@ -479,7 +501,7 @@ def main():
     t0 = time.time()
     train_ds, eval_ds = build_datasets(
         args.egodex_root, args.frames_root, args.egodex_split,
-        gap=args.gap, max_videos=args.max_videos,
+        gap=args.gap, max_videos=args.max_videos, target_mode=args.target_mode,
     )
     print(f"Datasets built in {time.time() - t0:.1f}s")
     if len(train_ds) == 0 or len(eval_ds) == 0:
@@ -547,6 +569,7 @@ def main():
         "probe": args.probe,
         "cls_mode": args.cls_mode,
         "gap": args.gap,
+        "target_mode": args.target_mode,
         "checkpoint": args.checkpoint,
         "egodex_split": args.egodex_split,
         "p_depth": args.p_depth,
@@ -564,7 +587,7 @@ def main():
     ckpt_tag = Path(args.checkpoint).stem
     result_path = (output_dir /
                    f"probe_v11_{ckpt_tag}_{args.cls_mode}_gap{args.gap}_"
-                   f"{args.egodex_split}_{timestamp}.json")
+                   f"tm{args.target_mode}_{args.egodex_split}_{timestamp}.json")
     with open(result_path, "w") as f:
         json.dump(result, f, indent=2)
     print(f"\nResults saved: {result_path}")

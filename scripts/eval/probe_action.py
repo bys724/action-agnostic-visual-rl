@@ -102,6 +102,7 @@ class EgoDexProbingDataset(Dataset):
         split: str,
         gap: int = 1,
         img_size: int = 224,
+        target_mode: str = "same",
     ):
         """
         Args:
@@ -111,11 +112,18 @@ class EgoDexProbingDataset(Dataset):
             split: e.g. "part1", "part4"
             gap: 프레임 간격 (1=연속, 5=5프레임 간격, ...)
             img_size: 출력 이미지 크기
+            target_mode:
+                "same" (default): target = pose[t+gap] - pose[t]
+                  (변화 인지 — features의 frame pair가 이미 정보 보유)
+                "future": target = pose[t+2*gap] - pose[t+gap]
+                  (causal future prediction — features가 본 frame 너머의 변화)
         """
+        assert target_mode in {"same", "future"}, f"Invalid target_mode: {target_mode}"
         self.frames_root = Path(frames_root)
         self.split = split
         self.gap = gap
         self.img_size = img_size
+        self.target_mode = target_mode
 
         # Build (frame_dir, frame_idx, action) tuples
         self.samples = []
@@ -145,11 +153,20 @@ class EgoDexProbingDataset(Dataset):
                         num_extracted = len(list(frame_dir.glob("frame_*.jpg")))
                         num_frames = min(num_frames, num_extracted)
 
-                        for t in range(num_frames - gap):
+                        # future mode는 t+2*gap까지 필요
+                        max_t = num_frames - (2 * gap if target_mode == "future" else gap)
+
+                        for t in range(max_t):
+                            # confidence check: same은 t, t+gap / future는 t+gap, t+2*gap
+                            if target_mode == "future":
+                                check_indices = (t + gap, t + 2 * gap)
+                            else:
+                                check_indices = (t, t + gap)
+
                             valid = True
                             for joint in TARGET_JOINTS:
-                                if (confidences[joint][t] < CONFIDENCE_THRESHOLD or
-                                        confidences[joint][t + gap] < CONFIDENCE_THRESHOLD):
+                                if any(confidences[joint][idx] < CONFIDENCE_THRESHOLD
+                                       for idx in check_indices):
                                     valid = False
                                     break
 
@@ -159,9 +176,13 @@ class EgoDexProbingDataset(Dataset):
 
                             action = np.zeros(ACTION_DIM, dtype=np.float32)
                             for i, joint in enumerate(TARGET_JOINTS):
-                                pos_t = transforms[joint][t, :3, 3]
-                                pos_tk = transforms[joint][t + gap, :3, 3]
-                                action[i * 3 : (i + 1) * 3] = pos_tk - pos_t
+                                if target_mode == "future":
+                                    pos_a = transforms[joint][t + gap, :3, 3]
+                                    pos_b = transforms[joint][t + 2 * gap, :3, 3]
+                                else:
+                                    pos_a = transforms[joint][t, :3, 3]
+                                    pos_b = transforms[joint][t + gap, :3, 3]
+                                action[i * 3 : (i + 1) * 3] = pos_b - pos_a
 
                             self.samples.append({
                                 "frame_dir": str(frame_dir),
@@ -221,6 +242,7 @@ def build_datasets(
     gap: int = 1,
     max_videos: int = None,
     train_ratio: float = 0.8,
+    target_mode: str = "same",
 ):
     """Build train/eval datasets with video-level split.
 
@@ -256,8 +278,10 @@ def build_datasets(
 
     print(f"Dataset split: {len(train_ids)} train / {len(eval_ids)} eval videos")
 
-    train_ds = EgoDexProbingDataset(egodex_root, frames_root, train_ids, egodex_split, gap=gap)
-    eval_ds = EgoDexProbingDataset(egodex_root, frames_root, eval_ids, egodex_split, gap=gap)
+    train_ds = EgoDexProbingDataset(egodex_root, frames_root, train_ids, egodex_split,
+                                    gap=gap, target_mode=target_mode)
+    eval_ds = EgoDexProbingDataset(egodex_root, frames_root, eval_ids, egodex_split,
+                                   gap=gap, target_mode=target_mode)
 
     return train_ds, eval_ds
 
