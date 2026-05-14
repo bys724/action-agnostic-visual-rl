@@ -2,23 +2,25 @@
 # LIBERO BC-T rollouts: 모든 (suite × seed) ckpt을 2 GPU 병렬 실행.
 #
 # Usage:
-#   bash scripts/local/run_libero_rollouts.sh <encoder_prefix> [num_trials]
+#   bash scripts/local/run_libero_rollouts.sh <encoder_prefix> [num_trials] [ckpt_suffix]
 #
 # Example:
-#   bash scripts/local/run_libero_rollouts.sh vc1 50
+#   bash scripts/local/run_libero_rollouts.sh vc1 50                       # _v3 (default)
+#   bash scripts/local/run_libero_rollouts.sh two-stream-v15-ptptk 50 v15ep50
 #
-# 검색 패턴: /mnt/data/checkpoints/libero_bct/<encoder_prefix>_libero_*_v3/best.pt
+# 검색 패턴: /mnt/data/checkpoints/libero_bct/<encoder_prefix>_libero_*_<suffix>/best.pt
 # GPU 분배: round-robin (i%2). 9 ckpt 기준 ~12-17h wall time.
 
 set -u
 
-ENCODER_PREFIX=${1:?"usage: $0 <encoder_prefix> [num_trials]"}
+ENCODER_PREFIX=${1:?"usage: $0 <encoder_prefix> [num_trials] [ckpt_suffix]"}
 NUM_TRIALS=${2:-50}
+CKPT_SUFFIX=${3:-v3}
 
 cd "$(dirname "$0")/../.."
 
 CKPT_BASE=/mnt/data/checkpoints/libero_bct
-TAG="${ENCODER_PREFIX}_v3_t${NUM_TRIALS}"
+TAG="${ENCODER_PREFIX}_${CKPT_SUFFIX}_t${NUM_TRIALS}"
 RESULTS_DIR="data/libero/results/${TAG}"
 VIDEO_DIR="data/libero/videos/${TAG}"
 LOG_DIR="${RESULTS_DIR}/_logs"
@@ -47,7 +49,7 @@ run_one() {
 
 # 모든 ckpt 수집
 ALL_CKPTS=()
-for d in "$CKPT_BASE/${ENCODER_PREFIX}"_libero_*_v3/; do
+for d in "$CKPT_BASE/${ENCODER_PREFIX}"_libero_*_"${CKPT_SUFFIX}"/; do
     [ -f "${d}best.pt" ] && ALL_CKPTS+=("${d}best.pt")
 done
 echo "Found ${#ALL_CKPTS[@]} ckpts for encoder=${ENCODER_PREFIX}"
