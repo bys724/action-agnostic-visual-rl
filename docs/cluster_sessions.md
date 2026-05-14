@@ -89,6 +89,21 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-05-12 dinov2 + v11 BC-T LIBERO rollout (로컬 H100, cluster cost 0)
+
+V3 BC-T main table 마지막 두 행. siglip/vc1는 commit `1d572b` 시점에 paper_artifacts/libero_rollout/summary.csv 등록 완료. 남은 dinov2 + v11 9 ckpt × 2 enc를 로컬 워크스테이션 H100 × 2 GPU 병렬로 진행.
+
+| 활동 | 시작 | 진행 | 비고 |
+|------|------|------|------|
+| `dinov2` rollout (`scripts/local/run_libero_rollouts.sh dinov2 50`, master pid 2583933) | 2026-05-12 11:38 | RUNNING. ckpt: `/mnt/data/checkpoints/libero_bct/dinov2_libero_{spatial,object,goal}_seed{0,1,2}_*_v3/` 9개. 1차 batch `goal seed0/1` 진행 중 (seed0 5/10 task 완료, task당 ~16분) | 종료 예상 22:00~23:00 KST. 끝나면 자동 `aggregate_libero_rollouts.py` 호출 → summary.csv 등록 |
+| `two-stream-v11` rollout (큐, chain pid 2663465) | DINO 종료 직후 | QUEUED. `kill -0 2583933` polling. 종료 즉시 `bash scripts/local/run_libero_rollouts.sh two-stream-v11 50` 실행 | ckpt 9개 (`/mnt/data/checkpoints/libero_bct/two-stream-v11_libero_*_v3/`). 로그: `logs/v11_bct_v3_rollout.log` |
+
+**ckpt 출처**: v11 9 ckpt는 cluster 33866077~33866085 (또는 34004021~34004029) 학습 산출물. 2026-05-12에 `v11_bct_v3_rollout.tar` (7.1 GB)로 로컬 전송 → `/mnt/data/checkpoints/libero_bct/` 추출 (tar 삭제).
+
+**결과 기록 흐름**:
+- 각 rollout 종료 시 `aggregate_libero_rollouts.py`가 `data/libero/results/{dinov2_v3_t50,two-stream-v11_v3_t50}/*.json` 스캔 → `paper_artifacts/libero_rollout/{summary,per_task,episodes}.csv` 갱신
+- v11 rollout 종료 후 본 entry 하단에 dinov2/v11 SR (3 suite × 3 seed 평균) 표 추가 예정
+
 ### 2026-05-06 v14 sanity (Phase A — stream-wise paradigm specialization)
 
 v13 paradigm conflict (P encoder가 reconstruction + DINO 동시 만족 못 해 ep10+ uniform collapse) 진단 → paradigm을 stream-wise로 분리. P=MAE+V-JEPA, M=DINO. commit `35cad9e`.

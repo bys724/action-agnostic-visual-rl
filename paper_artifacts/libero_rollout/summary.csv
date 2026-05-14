@@ -1,7 +1,13 @@
 encoder,suite,n_seeds,seeds,mean_success_rate,std_success_rate,se_success_rate,n_episodes_per_seed,n_episodes_total
+dinov2,libero_goal,3,"0,1,2",0.838,0.0106,0.0061,500,1500
+dinov2,libero_object,3,"0,1,2",0.88,0.0209,0.0121,500,1500
+dinov2,libero_spatial,3,"0,1,2",0.7153,0.0326,0.0188,500,1500
 siglip,libero_goal,3,"0,1,2",0.8553,0.0127,0.0073,500,1500
 siglip,libero_object,3,"0,1,2",0.9073,0.0202,0.0117,500,1500
 siglip,libero_spatial,3,"0,1,2",0.802,0.0164,0.0095,500,1500
+two-stream-v11,libero_goal,3,"0,1,2",0.264,0.0302,0.0174,500,1500
+two-stream-v11,libero_object,3,"0,1,2",0.03,0.0125,0.0072,500,1500
+two-stream-v11,libero_spatial,3,"0,1,2",0.0607,0.0253,0.0146,500,1500
 vc1,libero_goal,3,"0,1,2",0.8573,0.0103,0.0059,500,1500
 vc1,libero_object,3,"0,1,2",0.8747,0.0423,0.0244,500,1500
 vc1,libero_spatial,3,"0,1,2",0.732,0.0156,0.009,500,1500
