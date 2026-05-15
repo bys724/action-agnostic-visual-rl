@@ -1,4 +1,5 @@
 #!/bin/bash
+# [DEPRECATED] v12는 폐기 lineup (sanity 단계 cls_p collapse). 학습 안 함, 코드만 reference 보존.
 # Two-Stream v12 sanity: v11 + Semantic Residual + EMA Teacher
 # 확인 포인트 (vault v12 메모 Phase A diagnostic monitoring 기반):
 #   · forward/backward OK (v11 path + residual path + teacher forward)

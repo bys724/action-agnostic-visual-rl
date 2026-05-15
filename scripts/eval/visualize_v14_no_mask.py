@@ -1,4 +1,6 @@
-"""v14 ckpt → mask 없이 reconstruction 시각화.
+"""[DEPRECATED] v14 폐기 lineup viz. 코드만 reference 보존.
+
+v14 ckpt → mask 없이 reconstruction 시각화.
 
 학습 중 자동 저장 sample은 학습 forward (mask 0.75 random) 적용 상태라 직관적이지 않음.
 no-mask inference로 model이 "본 그대로" 어떻게 복원하는지 확인.

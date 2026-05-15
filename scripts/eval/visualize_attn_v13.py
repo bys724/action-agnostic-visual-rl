@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Two-Stream v13 attention + reconstruction visualization.
+"""[DEPRECATED] v13 폐기 lineup viz. 코드만 reference 보존.
+
+Two-Stream v13 attention + reconstruction visualization.
 
 v13Model은 v11Model을 상속하므로 attention hook (M/P encoder + motion-routing)
 구조가 동일. visualize_attn_v11.py의 AttentionCapture / extract 로직 그대로 재사용.

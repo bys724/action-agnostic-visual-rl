@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Two-Stream v14 attention + reconstruction visualization (motion-routing focus).
+"""[DEPRECATED] v14 폐기 lineup viz. 코드만 reference 보존.
+
+Two-Stream v14 attention + reconstruction visualization (motion-routing focus).
 
 v14는 v11 base + V-JEPA + DINO. motion-routing block은 v11과 동일 구조 (self.motion_routing).
 visualize_attn_v11과 같은 grid + V-JEPA motion-routed prediction 컬럼 추가.

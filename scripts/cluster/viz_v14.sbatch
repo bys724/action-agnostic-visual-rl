@@ -1,4 +1,5 @@
 #!/bin/bash
+# [DEPRECATED] v14 폐기 lineup viz. 코드만 reference 보존.
 # Two-Stream v14 visualization: nomask reconstruction + attention map (motion-routing focus)
 # 사용:
 #   sbatch --export=ALL,CKPT=...,TAG=v14_ep4 scripts/cluster/viz_v14.sbatch

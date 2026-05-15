@@ -1,4 +1,5 @@
 #!/bin/bash
+# [DEPRECATED] v13는 폐기 lineup (본 학습 33833830 ep10+ uniform collapse). 학습 안 함, 코드만 reference 보존.
 # Two-Stream v13 sanity (2026-05-04 redesign): DINOv2 multi-crop CLS distillation
 # 1차 학습 ep10+ uniform collapse 진단 후 DINO path 재구성:
 #   - student P encoder 직접 forward (mask 0.4) ↔ teacher P encoder global (256², no mask)

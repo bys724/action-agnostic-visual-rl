@@ -1,16 +1,23 @@
 """Models for action-agnostic visual representation learning.
 
+Active (paper main + active baseline):
 | Model | Status | 비고 |
 |-------|--------|------|
-| TwoStreamV15Model | **active follow-up** | v14 학습 진단 후 redesign: predictor-only V-JEPA P + V-JEPA-M (masked) + DINO at M_decoder CLS + interleaved p_motion_decoder |
-| TwoStreamV14Model | **post-CoRL follow-up** | Stream-wise paradigm specialization. P=MAE+V-JEPA, M=DINO. v13 paradigm conflict 진단 후 redesign |
-| TwoStreamV13Model | **active V3 main** | Dual-frame recon + motion-routed latent + DINO global CLS. v12 cls_p collapse 본질 해결 시도 (학습 33833830 진행 중) |
-| TwoStreamV11Model | **active baseline** | Motion-guided attention routing + dual-target. ep44 final champion (R²=0.288) |
+| TwoStreamV15Model | **🏆 paper main** | Layered specialization: predictor-only V-JEPA P + V-JEPA-M (Option B) + L_compose + 3-frame triple. ep32 P_t+P_tk = +0.390 ★ |
 | VideoMAEModel | **active baseline** | Masked autoencoding controlled comparison. ep50 R²=0.326 |
-| TwoStreamModel | **legacy reference** | M/P channel separation with CLS exchange (v4~v10). 폐기 lineup이지만 v6 챔피언 (R²=0.259) 재현 / probing / 시각화에 keep |
-| TwoStreamV12Model | **post-CoRL follow-up** | v11 + CLS-level semantic residual + EMA teacher. 코드만 있음, sanity 단계에서 cls_p collapse → v13으로 redesign |
 
-Phase 마감 후 legacy / follow-up 정리 검토 — `docs/refactor_plan_2026-05-03.md` 참조.
+Reference (paper §method history 인용용, 학습 ckpt 보존):
+| Model | Status | 비고 |
+|-------|--------|------|
+| TwoStreamV11Model | reference | Motion-guided attention routing + dual-target. ep44 A+B+D' = +0.288 (이전 champion) |
+| TwoStreamModel | reference | M/P channel separation with CLS exchange (v4~v10). v6 ep8 = +0.259 |
+
+Deprecated (paper 미사용, 폐기 lineup, 코드만 보존):
+| Model | Status | 비고 |
+|-------|--------|------|
+| TwoStreamV12Model | deprecated | v11 + CLS semantic residual + EMA teacher. sanity 단계 cls_p collapse |
+| TwoStreamV13Model | deprecated | Dual-frame recon + motion-routed latent + DINO global CLS. ep10+ uniform collapse |
+| TwoStreamV14Model | deprecated | Stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO). ep20 cancel + EgoDex probing R²=-0.065 |
 """
 
 from .two_stream import TwoStreamModel, TwoStreamEncoder

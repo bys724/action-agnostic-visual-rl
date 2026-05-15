@@ -1,4 +1,5 @@
 #!/bin/bash
+# [DEPRECATED] v14는 폐기 lineup (본 학습 34015672 ep20 cancel, EgoDex probing R²=-0.065). 학습 안 함, 코드만 reference 보존.
 # Two-Stream v14 sanity (Phase A — design 노트 §15)
 # Stream-wise paradigm specialization: P=MAE+V-JEPA, M=DINO
 #

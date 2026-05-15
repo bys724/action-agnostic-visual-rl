@@ -1,4 +1,6 @@
-"""v13 ckpt → mask 없이 reconstruction 시각화.
+"""[DEPRECATED] v13 폐기 lineup viz. 코드만 reference 보존.
+
+v13 ckpt → mask 없이 reconstruction 시각화.
 
 학습 중 자동 저장되는 sample은 학습 forward를 그대로 호출 → MAE-style random mask 적용된 상태.
 시각화엔 mask=0 inference가 더 직관적 (model이 "본 그대로" 어떻게 복원하는지).
