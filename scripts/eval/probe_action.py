@@ -367,7 +367,8 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         encoder = VideoMAEEncoderForVLA(checkpoint_path=checkpoint)
         encoder.to(device)
         encoder.eval()
-        embed_dim = encoder.embed_dim
+        # patch_mean_concat_p_t_p_tk → 같은 frame 2회 forward 후 concat → 2× embed_dim
+        embed_dim = encoder.embed_dim * (2 if cls_mode == "patch_mean_concat_p_t_p_tk" else 1)
         return encoder, embed_dim
 
     elif name == "clip":
@@ -510,7 +511,17 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             raise ValueError(f"Unknown cls_mode: {cls_mode}")
 
     elif name == "videomae":
-        # VideoMAE는 CLS 토큰 없음 → patch mean pooling
+        # tubelet_size=2가 (frame_t, frame_tk)를 시공간 patch 1개로 묶음 → 단일 frame
+        # representation을 뽑으려면 같은 frame 2회 복제 forward (paper_experiments_plan §C7).
+        if cls_mode == "patch_mean_concat_p_t_p_tk":
+            img_t = pixel_values[:, :3]
+            img_tk = pixel_values[:, 3:]
+            pv_t_only = torch.cat([img_t, img_t], dim=1)    # [B, 6, H, W] same-frame replica
+            pv_tk_only = torch.cat([img_tk, img_tk], dim=1)
+            patch_t = encoder(pv_t_only).mean(dim=1)        # [B, D]
+            patch_tk = encoder(pv_tk_only).mean(dim=1)
+            return torch.cat([patch_t, patch_tk], dim=-1)   # [B, 2D]
+        # VideoMAE는 CLS 토큰 없음 → patch mean pooling (default: paired forward)
         patch_emb = encoder(pixel_values)  # [B, N, D]
         return patch_emb.mean(dim=1)  # [B, D]
 
@@ -822,8 +833,10 @@ def main():
                         choices=["average", "concat", "m_only", "p_only",
                                  "patch_mean", "patch_mean_m", "patch_mean_p",
                                  "patch_mean_concat",
+                                 "patch_mean_concat_p_t_p_tk",
                                  "cls_p_bg", "cls_p_motion", "all_cls_concat"],
-                        help="Two-Stream embedding 추출 방식 (default: average)")
+                        help="Two-Stream embedding 추출 방식 (default: average). "
+                             "patch_mean_concat_p_t_p_tk: videomae §C7 catalyst evidence")
     parser.add_argument("--depth", type=int, default=12,
                         help="Two-Stream transformer depth (default: 12)")
     parser.add_argument("--num-stages", type=int, default=3,

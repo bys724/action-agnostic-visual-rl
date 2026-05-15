@@ -85,9 +85,10 @@ def libero_action_target(eef_pos, ee_ori, actions, t, k):
 # Encoder build (reuse value_alignment helpers)
 # ─────────────────────────────────────────────────────────────────────────
 
-def build_standard_encoder(encoder_type: str, checkpoint: str | None, device: torch.device):
+def build_standard_encoder(encoder_type: str, checkpoint: str | None, device: torch.device,
+                           **adapter_kwargs):
     from src.encoders.adapters import build_adapter
-    adapter = build_adapter(encoder_type, checkpoint_path=checkpoint).to(device)
+    adapter = build_adapter(encoder_type, checkpoint_path=checkpoint, **adapter_kwargs).to(device)
     adapter.eval()
     return adapter
 
@@ -265,6 +266,9 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--v11-p-depth", type=int, default=12)
     parser.add_argument("--v11-m-depth", type=int, default=6)
+    parser.add_argument("--videomae-mode", default="paired",
+                        choices=["paired", "p_t_p_tk"],
+                        help="paired = BC-T 표준 paired forward, p_t_p_tk = §C7 catalyst evidence")
     parser.add_argument("--v11-mode", default="abd_prime",
                         choices=["abd_prime", "b_only", "d_prime_only", "p_t_p_tk"])
     args = parser.parse_args()
@@ -316,7 +320,10 @@ def main():
                 mode=args.v11_mode, batch=args.encode_batch,
             )
     else:
-        adapter = build_standard_encoder(args.encoder, args.checkpoint, device)
+        adapter_kwargs = {}
+        if args.encoder == "videomae-ours":
+            adapter_kwargs["mode"] = args.videomae_mode
+        adapter = build_standard_encoder(args.encoder, args.checkpoint, device, **adapter_kwargs)
         img_size = adapter.img_size
 
         def encode_fn(prev, curr):

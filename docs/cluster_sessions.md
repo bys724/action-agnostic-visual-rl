@@ -89,6 +89,25 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-05-15 paper_experiments_plan §C6 + §C7 (신규 코드 작성 + 잡 제출)
+
+§C6 (recon quality v11 vs v15) + §C7 (VideoMAE-ours P_t+P_tk catalyst evidence) 는 기존 probing 인터페이스로 안 됐던 작업. 코드 추가 후 잡 제출.
+
+**코드 변경**:
+- `scripts/eval/probe_action.py`: videomae branch에 `patch_mean_concat_p_t_p_tk` mode 추가 (same-frame replica forward로 단일 frame representation 추출). `--cls-mode` choices/load_encoder embed_dim 동기화
+- `src/encoders/adapters/videomae.py`: VideoMAEOursAdapter에 `mode={paired,p_t_p_tk}` 인자 추가
+- `scripts/eval/probe_action_libero.py` + `scripts/cluster/probe_action_libero.sbatch`: `--videomae-mode` / `VIDEOMAE_MODE` env var
+- `scripts/eval/recon_quality_v11_vs_v15.py` + `scripts/cluster/recon_quality.sbatch`: 신규 (§C6 spike). EgoDex test split N samples × {v11 (img_t, img_tk), v15 (img_t, img_n, img_tk)} forward → pred_t/pred_tk per-sample MSE 비교
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34467116 | AIP 1×1 H100 | 03:00:00 | §C7 EgoDex VideoMAE × `patch_mean_concat_p_t_p_tk` × gap=10 | ❌ FAILED 7s (argparse choices 누락, fix됨) |
+| 34467123 | AIP 1×1 H100 | 01:30:00 | §C7 LIBERO spatial × videomae-ours × `p_t_p_tk` × gap=20 | ✅ COMPLETED 4m27s |
+| 34467129 | AIP 1×1 H100 | 03:00:00 | §C7 EgoDex 재제출 (cls-mode choices fix) | RUNNING |
+| 34467135 | AIP 1×1 H100 | 02:00:00 | §C6 recon quality v11 ep44 vs v15 ep50 × 200 sample (EgoDex test, triple) | PENDING |
+
+총 ~4 GPU·h. 결과는 paper_artifacts/{libero_action_probing, probing, recon_quality}/ 각각 등록 예정.
+
 ### 2026-05-15 v15 ep50 paper_experiments_plan §C4 + §C5 (의존성 없는 probing 일괄 제출)
 
 paper_experiments_plan §C4 (v15 ep50 LIBERO object/goal 완료) + §C5 (v15 ep50 DROID gap 1/10/30 × 2 mode 완료). 5/13 cancel/누락된 cell 일괄 채움. v15 ckpt path = `/proj/external_group/mrg/checkpoints/two_stream_v15/20260511_045319/latest.pt` (ep50). encoder는 `two-stream-v11`로 load (`load_v11_model(..., strict=False)`로 v15 base 구조만 load, v15 specific 모듈은 probing forward에 영향 없음 — 5/13 v15 ep32 fair pair 사례 동일).

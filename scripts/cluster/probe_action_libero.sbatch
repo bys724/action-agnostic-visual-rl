@@ -42,6 +42,7 @@ GAPS="${GAPS:-1 13 20 40}"
 TASK_IDS="${TASK_IDS:-}"
 MAX_DEMOS="${MAX_DEMOS:-}"
 V11_MODE="${V11_MODE:-abd_prime}"
+VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -79,6 +80,7 @@ if [[ -n "$CHECKPOINT" ]]; then ARGS+=(--checkpoint "$CHECKPOINT"); fi
 if [[ -n "$TASK_IDS" ]]; then ARGS+=(--task-ids $TASK_IDS); fi
 if [[ -n "$MAX_DEMOS" ]]; then ARGS+=(--max-demos-per-task "$MAX_DEMOS"); fi
 if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
+if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE"); fi
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_libero.py "${ARGS[@]}"
 
