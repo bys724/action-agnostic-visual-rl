@@ -8,6 +8,9 @@ siglip,libero_spatial,3,"0,1,2",0.802,0.0164,0.0095,500,1500
 two-stream-v11,libero_goal,3,"0,1,2",0.264,0.0302,0.0174,500,1500
 two-stream-v11,libero_object,3,"0,1,2",0.03,0.0125,0.0072,500,1500
 two-stream-v11,libero_spatial,3,"0,1,2",0.0607,0.0253,0.0146,500,1500
+two-stream-v15-mp,libero_spatial,3,"0,1,2",0.4327,0.026,0.015,500,1500
+two-stream-v15-ptptk,libero_goal,3,"0,1,2",0.8367,0.0189,0.0109,500,1500
+two-stream-v15-ptptk,libero_spatial,3,"0,1,2",0.63,0.0069,0.004,500,1500
 vc1,libero_goal,3,"0,1,2",0.8573,0.0103,0.0059,500,1500
 vc1,libero_object,3,"0,1,2",0.8747,0.0423,0.0244,500,1500
 vc1,libero_spatial,3,"0,1,2",0.732,0.0156,0.009,500,1500
