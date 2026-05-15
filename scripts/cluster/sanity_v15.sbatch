@@ -58,7 +58,7 @@ echo ""
     --model two-stream-v15 \
     --depth 12 \
     --v11-m-depth 6 \
-    --v11-routing-mode v_from_p \
+    --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}" \
     --rotation-aug \
     --mask-ratio-p 0.75 \
     --v15-lambda-pred "${V15_LAMBDA_PRED:-1.0}" \
