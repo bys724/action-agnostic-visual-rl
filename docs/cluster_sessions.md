@@ -89,6 +89,36 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-05-15 v15 ep50 paper_experiments_plan §C4 + §C5 (의존성 없는 probing 일괄 제출)
+
+paper_experiments_plan §C4 (v15 ep50 LIBERO object/goal 완료) + §C5 (v15 ep50 DROID gap 1/10/30 × 2 mode 완료). 5/13 cancel/누락된 cell 일괄 채움. v15 ckpt path = `/proj/external_group/mrg/checkpoints/two_stream_v15/20260511_045319/latest.pt` (ep50). encoder는 `two-stream-v11`로 load (`load_v11_model(..., strict=False)`로 v15 base 구조만 load, v15 specific 모듈은 probing forward에 영향 없음 — 5/13 v15 ep32 fair pair 사례 동일).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34466999 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO **object** × `p_t_p_tk` × 4 gap (1/13/20/40) | PENDING |
+| 34467000 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO **goal** × `p_t_p_tk` × 4 gap | PENDING |
+| 34467001 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID `patch_mean_concat_p_t_p_tk` × gap=1 | PENDING |
+| 34467002 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID `patch_mean_concat_enc_only` × gap=1 | PENDING |
+| 34467003 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID `patch_mean_concat_p_t_p_tk` × gap=10 | PENDING |
+| 34467004 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID `patch_mean_concat_enc_only` × gap=10 | PENDING |
+| 34467005 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID `patch_mean_concat_p_t_p_tk` × gap=30 | PENDING |
+| 34467006 | AIP 1×1 H100 | 03:00:00 | v15 ep50 DROID `patch_mean_concat_enc_only` × gap=30 | PENDING |
+
+총 ~3.5 GPU·h (LIBERO 2잡 × ~17min + DROID 6잡 × ~1min). DROID gap=15 + LIBERO spatial은 이미 5/13 완료, 본 entry로 §C4/§C5 모든 cell 보충 완료.
+
+§C6 (frame_t vs frame_tk recon quality v11 vs v15) + §C7 (VideoMAE-ours P_t+P_tk catalyst) 는 새 코드 작성 필요 (probe_action.py 단일 frame 인터페이스 부재, recon quality 별도 forward script) → 별도 dev session에서 처리.
+
+### 2026-05-15 v15 V-from-M ablation (paper §5.1 main ablation, paper_experiments_plan §C1)
+
+v15 본 학습(34288968)이 motion-routing `softmax(Q_M K_M^T) @ V_P` = **V from P** (M self-similarity graph로 P value re-route, ours novelty). 본 ablation은 같은 hyperparameter 하에 **V from M** (standard cross-attention, Q from P, K/V from M) 비교. paper §5.1 main ablation. 5/14 paper_experiments_plan §C1 사용자 결정.
+
+**fair pair 조건 (v15 본 학습과 동일)**: 50ep, EgoDex part1-5, batch 32/GPU global 256, num_workers=8, λ_pred=λ_m_jepa=λ_compose=1.0 with warmup 10ep 0.01→1.0, composition_mode=linear_residual, EMA 0.999→0.9999, mask_p=0.75, mask_m_jepa=0.5, max_gap=30, sample_center=15. 단일 변인: `V11_ROUTING_MODE=v_from_m`.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34464714 | AIP 1×1 H100 | 02:00:00 | v15-vfromm sanity (50vid × 3ep × num_workers=4, MAX_VIDEOS/EPOCHS/SUFFIX/V11_ROUTING_MODE override) | ✅ COMPLETED 2026-05-15 15:32:32 (5m02s). 4 loss path 정상 통과 → afterok 트리거 |
+| 34464715 | AIP_long 2×4 H100 | 10-00:00:00 | **v15-vfromm 본 학습** (50ep × part1-5, V11_ROUTING_MODE=v_from_m, CHECKPOINT_SUFFIX=vfromm). dependency=afterok:34464714. 예상 ~43h (v15 본 학습 42.91h 동일 cost). 종료 ckpt → `/proj/external_group/mrg/checkpoints/two_stream_v15_vfromm/<TS>/checkpoint_epoch_*.pt` | RUNNING 시작 2026-05-15 15:32:35 (olaf-g[003-004]) |
+
 ### 2026-05-12 dinov2 + v11 BC-T LIBERO rollout (로컬 H100, cluster cost 0)
 
 V3 BC-T main table 마지막 두 행. siglip/vc1는 commit `1d572b` 시점에 paper_artifacts/libero_rollout/summary.csv 등록 완료. 남은 dinov2 + v11 9 ckpt × 2 enc를 로컬 워크스테이션 H100 × 2 GPU 병렬로 진행.
@@ -394,7 +424,7 @@ Sanity (33834238, 10 vid 6.5 min, 11 GB) 통과 → 전체 9,823 영상 sbatch.
 
 **ours 0% 진단**: encoder representation 정상 (centered cos / PCA r1 baseline과 동급). BC fit이 가장 정확 (`‖p−r‖` 최소) → overfit 의심. test init state는 학습 demo init과 다름 (검증 완료) → BC generalization 격차.
 
-**클러스터 후속 작업** (V3 본 학습): augmentation + multi-seed 동시 적용. 2-frame pair adapter augmentation 일관성 시각 검증 필수. 자세한 cfg 변경 + 검증 절차: [`docs/refactor_plan_2026-05-03.md`](refactor_plan_2026-05-03.md) §3, [`docs/RESEARCH_PLAN.md`](RESEARCH_PLAN.md) Phase 3-1 V3 § + git commit `4d4f89c` (rollout fix) 참조. 진단 narrative 원본은 [`docs/archive/PHASE3_BCT_DEBUG_2026-05-03.md`](archive/PHASE3_BCT_DEBUG_2026-05-03.md).
+**클러스터 후속 작업** (V3 본 학습): augmentation + multi-seed 동시 적용. 2-frame pair adapter augmentation 일관성 시각 검증 필수. 자세한 cfg 변경 + 검증 절차: [`docs/archive/refactor_plan_2026-05-03.md`](archive/refactor_plan_2026-05-03.md) §3, [`docs/RESEARCH_PLAN.md`](RESEARCH_PLAN.md) Phase 3-1 V3 § + git commit `4d4f89c` (rollout fix) 참조. 진단 narrative 원본은 [`docs/archive/PHASE3_BCT_DEBUG_2026-05-03.md`](archive/PHASE3_BCT_DEBUG_2026-05-03.md).
 
 ---
 
