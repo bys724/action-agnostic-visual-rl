@@ -33,7 +33,7 @@ run_one() {
     local gpu=$1; local ckpt_path=$2; local suite=$3
     local stem; stem=$(basename "$(dirname "$ckpt_path")")
     echo "[GPU$gpu $(date '+%F %T')] START: $stem ($suite, $NUM_TRIALS trials)"
-    docker exec -e CUDA_VISIBLE_DEVICES=$gpu libero-eval bash -c "
+    docker exec -e CUDA_VISIBLE_DEVICES=$gpu -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 libero-eval bash -c "
         python src/eval_libero.py \
             --checkpoint '$ckpt_path' \
             --task-suite '$suite' \
