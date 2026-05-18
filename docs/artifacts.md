@@ -79,8 +79,18 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 | Ego4D | `datasets/ego4d/` | 라이선스 + gsutil. 다운로드 진행 중 |
 | Nymeria | `datasets/nymeria/` | (참조만, 사용 안 함) |
 | EpicKitchens-100 | `datasets/epic_kitchens_100/` | (참조만) |
+| **CALVIN** (§C10) | `datasets/calvin/task_ABCD_D.zip` | 🔄 다운로드 진행 중 (2026-05-18, 166 GB 압축, Freiburg CDN, ETA ~27h) |
+| **CortexBench Adroit** (§C11) | `datasets/cortexbench/adroit-expert-v1.0.zip` | 🔄 다운로드 진행 중 (2026-05-18, ~1.6 GB, Meta CDN, 빠름) |
+| **CortexBench Meta-World** (§C11) | `datasets/cortexbench/metaworld-expert-v1.0.zip` | 🔄 Adroit 완료 후 자동 시작 (sequential) |
 
 (루트: `/proj/external_group/mrg/datasets/`)
+
+### External codebases (repo 내 submodule/clone)
+
+| 코드 | 위치 | 용도 |
+|------|------|------|
+| VideoMAE | `external/VideoMAE/` | 우리 VideoMAE-ours 구현 base |
+| eai-vc (§C11) | `external/eai-vc/` | CortexBench (Adroit + Meta-World BC training/eval framework) — 2026-05-18 clone |
 
 ### Probing 결과 (repo 내부, git 동기화)
 - `data/probing_results/probe_v11_*.json` — ep4~ep50 × 12 mode (84개 JSON)
