@@ -136,7 +136,40 @@ v15 본 학습(34288968)이 motion-routing `softmax(Q_M K_M^T) @ V_P` = **V from
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 34464714 | AIP 1×1 H100 | 02:00:00 | v15-vfromm sanity (50vid × 3ep × num_workers=4, MAX_VIDEOS/EPOCHS/SUFFIX/V11_ROUTING_MODE override) | ✅ COMPLETED 2026-05-15 15:32:32 (5m02s). 4 loss path 정상 통과 → afterok 트리거 |
-| 34464715 | AIP_long 2×4 H100 | 10-00:00:00 | **v15-vfromm 본 학습** (50ep × part1-5, V11_ROUTING_MODE=v_from_m, CHECKPOINT_SUFFIX=vfromm). dependency=afterok:34464714. 예상 ~43h (v15 본 학습 42.91h 동일 cost). 종료 ckpt → `/proj/external_group/mrg/checkpoints/two_stream_v15_vfromm/<TS>/checkpoint_epoch_*.pt` | RUNNING 시작 2026-05-15 15:32:35 (olaf-g[003-004]) |
+| 34464715 | AIP_long 2×4 H100 | 10-00:00:00 | **v15-vfromm 본 학습** (50ep × part1-5, V11_ROUTING_MODE=v_from_m, CHECKPOINT_SUFFIX=vfromm). dependency=afterok:34464714. 예상 ~43h. ckpt → `/proj/external_group/mrg/checkpoints/two_stream_v15_vfromm/20260515_153323/checkpoint_epoch00*.pt` (13 epoch + best/latest) | ✅ COMPLETED 2026-05-17 20:05:50, Elapsed **2-04:33:15 = 52.55h × 8 GPU = 420.4 GPU·h**. 학습 자체 NaN/crash 없음. eval_loss history.json NaN은 5ep 간격 측정으로 빈칸이 NaN으로 채워진 거짓 알람. **단, ep45-50 train loss 0.37→0.77 + eval 0.43→0.92 단조 급등 → late-stage divergence**. ep3 best_model.pt는 underfit (target encoder 초기에 너무 쉬움) → 사용 금지. plateau 구간(ep30-44) ckpt 중 fair pair 후보 확정 필요 |
+
+### 2026-05-18 v15-vfromm 진단 — plateau ckpt sweep (paper §5.1 C1 fair pair ep 확정)
+
+v15-vfromm 학습 후 trajectory 분석: ep3 best/latest 미사용 + ep48 이상 발산 영역 → plateau 안정 구간(ep30-44)에서 paper main과 fair pair용 ckpt 확정 필요. v15 main이 ep32 champion이었으므로 동일 ep 기본 후보. `probe_action_v11.py` + `--cls-mode patch_mean_concat_p_t_p_tk` (v15 main과 동일 mode) × 5 ckpt sweep.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34579946 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep28** EgoDex probing (`patch_mean_concat_p_t_p_tk`, gap=10, test split) | ✅ COMPLETED 14m25s. **R²=+0.4131 / Cos 0.309** |
+| 34579948 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep32** EgoDex probing (동일 — v15 main champion ep과 직접 비교) | ✅ COMPLETED 14m25s. **R²=+0.3804 / Cos 0.295** (v15 main +0.3898 대비 −0.010, fair pair 동률) |
+| 34579949 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep36** EgoDex probing (동일) | ✅ COMPLETED 14m25s. **R²=+0.4016 / Cos 0.297** |
+| 34579950 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep40** EgoDex probing (동일 — plateau 최저 loss ep) | ✅ COMPLETED 14m25s. **R²=+0.4047 / Cos 0.301** |
+| 34579951 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep44** EgoDex probing (동일 — plateau 끝, 발산 직전) | ✅ COMPLETED 14m25s. **🏆 R²=+0.4145 / Cos 0.301** (vfromm 자체 champion ep) |
+
+**5 ckpt 종합**: EgoDex within-domain에서 vfromm R²=0.38~0.41 안정, v15 main(+0.390)과 ep32 fair pair 사실상 동률. **paper claim은 cross-embodiment generalizability이므로 within-domain EgoDex는 main evidence 부적합** → cross-domain (LIBERO/DROID) probing이 fair test. EgoDex 5잡 cost: 5 × 14.4분 = **1.2 GPU·h**.
+
+### 2026-05-18 v15-vfromm cross-embodiment probing (LIBERO spatial + DROID, paper main fair test)
+
+EgoDex within-domain 비교는 paper claim(action-agnostic representation 범용성)에 부합 X. **Cross-embodiment (human → robot arm)** 평가가 fair: LIBERO simulation arm + DROID real arm. v15 main ep32 baseline: LIBERO spatial p_t_p_tk gap=20 **+0.584** ★ (34367612), DROID p_t_p_tk gap=15 **−0.006** (34367577).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34592050 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep28** LIBERO spatial probing (`v11-mode=p_t_p_tk`, 4 gaps 1/13/20/40) | RUNNING |
+| 34592051 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep32** LIBERO spatial probing (동일 — v15 main 직접 비교) | RUNNING |
+| 34592052 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep36** LIBERO spatial probing (동일) | RUNNING |
+| 34592053 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep40** LIBERO spatial probing (동일) | RUNNING |
+| 34592054 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep44** LIBERO spatial probing (동일) | RUNNING |
+| 34592055 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep28** DROID probing (`patch_mean_concat_p_t_p_tk`, gap=15, max_episodes=200) | RUNNING |
+| 34592057 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep32** DROID probing (동일 — v15 main 직접 비교) | RUNNING |
+| 34592058 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep36** DROID probing (동일) | RUNNING |
+| 34592059 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep40** DROID probing (동일) | RUNNING |
+| 34592060 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep44** DROID probing (동일) | RUNNING |
+
+10잡 모두 즉시 RUNNING 진입. 예상 cost: LIBERO 5 × ~18분 + DROID 5 × ~2분 = **1.7 GPU·h** 미만. paper §5.1 C1 ablation의 핵심 evidence — vfromm가 cross-embodiment에서 main 대비 후퇴/유지/추월 중 무엇인지로 V-from-P (ours) 우위 정량화.
 
 ### 2026-05-12 dinov2 + v11 BC-T LIBERO rollout (로컬 H100, cluster cost 0)
 
