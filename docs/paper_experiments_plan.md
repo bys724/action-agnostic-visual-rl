@@ -1,8 +1,8 @@
-# Paper Experiments Plan — v15 NeurIPS 2026 main table 완성
+# Paper Experiments Plan — v15 CoRL 2026 main table 완성
 
-> **Status**: 2026-05-14 plan 작성. 5/12 v15 only main 전략 결정 후 필요한 실험 list.
+> **Status**: 2026-05-14 plan 작성, 2026-05-18 갱신 (CALVIN + CortexBench + view-sensitivity 추가).
 > **Scope**: Cluster + 로컬 워크스테이션 (rollout) 실험 전부.
-> **Source decision**: Vault `Projects/Action-Agnostic Paper/Evolution.md` §3 v15 + paper §5 ablation plan.
+> **Source decision**: Vault `Projects/Action-Agnostic Paper/3. Experiments.md` + `7. Outline.md` + paper §5 ablation plan.
 
 ## 0. Critical path 요약
 
@@ -13,9 +13,14 @@ C1 (V from M 학습, 50ep) ────┬── C2 (probing)
 C4, C5, C6 (v15 ep50 추가 + recon quality) — 의존성 X, 즉시 병렬 가능
 C7 (VideoMAE-ours P_t+P_tk) — 의존성 X, sanity 수준 (1 GPU·h)
 C8, C9 — 시간 되면
+
+[★ 신규 2026-05-18 — evaluation 확장]
+C10 (CALVIN action probing, 5 enc × 4 ABCD × static view) — DROID 보강 (대체 X)
+C11 (CortexBench manipulation subset, Adroit + Meta-World) — vision encoder generic capability
+C12 (LIBERO view-sensitivity, eye_in_hand × 5 enc × 3 suite × 4 gap) — §5 ¶6 sub-analysis
 ```
 
-**합계 (필수 C1-C6)**: ~104 GPU·h ≈ 4-5일
+**합계 (필수 C1-C6, C10-C12)**: ~147-149 GPU·h ≈ 6-7일
 **선택 (C7-C9)**: +22 GPU·h ≈ 1일
 
 ---
@@ -321,6 +326,175 @@ cluster_sessions 2026-05-13 entry:
 ### Paper 위치
 
 §4 또는 supplementary — "역량 1 (변화 인지) + 역량 2 (미래 예측)" 두 capability framing.
+
+---
+
+## ★ C10 — CALVIN action probing (DROID 보강, 2026-05-18 신규)
+
+### Motivation
+
+DROID는 image-only feature setting의 본질적 어려움으로 모든 encoder 절대값 R²≈0 (정직 보고함). 격차 패턴 (gap=15 +0.040)은 보이지만 cleaner ground가 필요. **CALVIN**은 tabletop language-conditioned manipulation으로 action signal 정제도 ↑, CoRL reviewer 친숙도 ↑.
+
+**DROID 대체 X, CALVIN은 추가**. 두 dataset 모두 cross-domain probing axis로 paper §4 ¶2에 등장 — 격차 패턴의 dataset cross-validation 효과.
+
+### Dataset prep (구현 TODO)
+
+```python
+# scripts/preprocessing/extract_calvin.py (신규 작성 예정)
+# CALVIN dataset (http://calvin.cs.uni-freiburg.de/)
+# - 4 splits: A, B, C, D (각 ~6h trajectories)
+# - Static RGB-D + gripper RGB-D 둘 다 제공 (paper main은 static만)
+# - Action: 7-DoF EE delta + gripper open/close
+# TODO (dev session):
+# 1. Download CALVIN ABCD splits → /proj/external_group/mrg/datasets/calvin/
+# 2. Frame extraction (static view only, 224×224 unified)
+# 3. Action label dump (pose Δ, gripper binary)
+# 4. Probing dataset loader (src/probing/datasets/calvin_dataset.py)
+```
+
+### 측정 항목
+
+- 5 encoder (v15, VideoMAE-ours, DINOv2, SigLIP, VC-1) × 4 ABCD splits × static view
+- Probing mode: encoder별 best mode (v15는 `patch_mean_concat_p_t_p_tk`)
+- gap: CALVIN trajectories 표준 frame rate에 맞춰 결정 (1, 5, 10 정도)
+- Target: end-effector pose Δ + gripper state
+
+### Critical guards
+
+- **CALVIN gripper view는 본 paper main에서 미사용** — §5 ¶6 view-sensitivity sub-analysis는 LIBERO 한정. CALVIN gripper view는 future work.
+- **Frozen encoder**: 모든 encoder downstream learn X
+- **각 encoder native input distribution**: 1-frame encoder는 `(img_{t-1}, img_t)` 각각 인코딩 후 concat
+- **DROID protocol과 동일 origin**: 5 encoder × probing mode set 일치
+- **A→B→C→D OOD setting 활용 옵션**: CALVIN 본래 ABC→D OOD가 design intent — 단순 within-split 측정 외에 OOD generalization 추가 측정 가능 (선택)
+
+### 비용
+
+- 5 encoder × 4 splits × ~30분 (encoder forward + linear probe) = ~10 GPU·h
+- Frame extraction (CPU 큐) ~1일 별도 (dataset prep)
+
+### 결과 위치
+
+- `paper_artifacts/calvin_action_probing/<encoder>_<split>_<mode>/summary.json`
+- Paper §4 ¶2 (iii) — DROID와 같은 cross-domain table에 통합
+
+### Paper 위치
+
+§4 ¶2 action probing across domains (iii) CALVIN row 추가. 정직 보고: "consistent direction with DROID, with larger absolute R² thanks to cleaner action signal."
+
+### 의존성
+
+- 없음 (data prep 후 즉시 launch 가능)
+
+---
+
+## ★ C11 — CortexBench manipulation subset (vision encoder generic capability, 2026-05-18 신규)
+
+### Motivation
+
+Action probing은 본 paper main axis지만, vision encoder의 generic capability를 별도 ground에서 검증할 필요. **CortexBench** (Majumdar et al. 2024, VC-1 paper standard)는 17 task × 7 domain 표준 — 본 paper에서는 **manipulation subset (Adroit + Meta-World)** 만 측정 (full 17 task는 비용 부담, supplementary 또는 future work).
+
+Frozen encoder + linear policy 평가 — robotics-specific representation 비교의 standard ground.
+
+### Dataset/code prep (구현 TODO)
+
+```python
+# CortexBench codebase: https://github.com/facebookresearch/eai-vc
+# - Adroit (5 dexterous tasks)
+# - Meta-World (5 multi-task manipulation)
+# - Frozen visual encoder → linear policy head → BC training
+# TODO (dev session):
+# 1. Clone eai-vc + 의존성 설치
+# 2. 본 paper의 5 encoder를 CortexBench encoder API에 wrap (v15 forward + adapter)
+# 3. Adroit + Meta-World linear policy training launch
+# 4. Standard CortexBench eval protocol (seed 평균)
+```
+
+### 측정 항목
+
+- 5 encoder × {Adroit 5 task, Meta-World 5 task} × 3 seed
+- Linear policy head, frozen encoder
+- Eval metric: CortexBench 표준 success rate (per task → 평균)
+
+### Critical guards
+
+- **CortexBench 표준 protocol 엄격 준수** — fair comparison 위해 hyperparameter 변경 금지
+- **본 paper의 5 encoder만** — full 17 task baseline은 paper 표 footnote에서 reference만 (VC-1 paper에서 가져옴)
+- **v15 adapter는 main paper와 동일** — separate adapter 학습 X
+- **시간 부족 시 Plan B**: paper supplementary 또는 CoRL rebuttal로 이관 — main claim은 LIBERO BC + CALVIN/DROID probing만으로도 성립
+
+### 비용
+
+- ~30 GPU·h (10 task × 3 seed × ~1 GPU·h per linear policy + eval)
+- 시간 빠듯 — C10/C12 우선, C11은 병행
+
+### 결과 위치
+
+- `paper_artifacts/cortexbench/<encoder>/<task>/seed_<n>/summary.json`
+- Paper §4 ¶4 (신규) — "Vision encoder generic capability" 표
+
+### Paper 위치
+
+§4 ¶4 신규 paragraph + 단독 sub-table. 또는 시간 부족 시 Appendix.
+
+### 의존성
+
+- 없음 (eai-vc 설치 + encoder wrap 후 launch)
+
+---
+
+## ★ C12 — LIBERO view-sensitivity sub-analysis (eye_in_hand vs agentview, 2026-05-18 신규)
+
+### Motivation
+
+Paper §5 ¶6 sub-analysis: "v15 advantage scales with view-induced motion content." Motion-routing의 architectural prediction — ego-motion이 dominant한 wrist view에서 v15 격차 (eye_in_hand − agentview)가 baseline 대비 ↑ 가설.
+
+**Scope**: standard main protocol은 agentview (변경 없음). 본 sub-analysis는 controlled view comparison, **5 encoder (main table 동일 set)**, probing only (BC 제외).
+
+### Dataset prep
+
+LIBERO eye_in_hand 데이터는 이미 LIBERO 표준 구성에 포함 — 추가 데이터 다운로드 불필요. 기존 LIBERO action probing pipeline에 `--view eye_in_hand` flag만 추가하면 됨.
+
+```python
+# 기존 코드: scripts/eval/probe_action_libero.py (또는 동급)
+# TODO (dev session):
+# - CLI flag --view {agentview, eye_in_hand} 추가
+# - dataset loader에서 view 분기 (camera_name)
+# - 나머지 protocol (5 enc × 3 suite × 4 gap × probing mode) 그대로
+```
+
+### 측정 항목
+
+- 5 encoder (v15-ptptk, VideoMAE-ours, DINOv2, SigLIP, VC-1) × 3 suite (spatial/object/goal) × 4 gap (1/13/20/40) × eye_in_hand view
+- 동일 5 encoder × agentview는 이미 measured (`paper_artifacts/libero_action_probing/*`) — 비교 baseline 사용
+- 비교 metric: Δ(eye_in_hand − agentview) per encoder
+
+### Critical guards
+
+- **본 paper main protocol은 agentview 유지** — eye_in_hand 결과는 §5 ¶6 + Tab 7 appendix 한정
+- **5 encoder 동일 set** — main table과 일관성, "view만 다른 controlled comparison" narrative
+- **결과 분기 시나리오 3가지 framing 미리 준비** (Vault `우려사항 및 대응방안.md` §16.6 참조):
+  1. v15 Δ 최대 → architectural prediction 직접 확인 (paper main claim 보강)
+  2. v15 Δ baseline과 비슷 → view-invariant property로 reframe (장점)
+  3. v15 Δ baseline보다 작음 → M-stream ego-motion saturation limitation (§6 future work)
+- **Wrist motion ≠ object motion 구분** — claim overreach 회피, "v15 transfers more effectively to viewpoints with dominant ego-motion" 정직 표현
+
+### 비용
+
+- 5 enc × 3 suite × 4 gap = 60 cells × ~3분 (linear probe) = ~3-5 GPU·h
+- 단일 batch에서 빠르게 sweep 가능
+
+### 결과 위치
+
+- `paper_artifacts/libero_action_probing/<encoder>_libero_<suite>_<ckpt>_eye_in_hand/<gap>/summary.json`
+- Vault `7. Outline.md` Tab 7 (appendix) 채움
+
+### Paper 위치
+
+§5 ¶6 (한 줄 본문 + Tab 7 cite) + Tab 7 (appendix 60-cell table).
+
+### 의존성
+
+- 없음 (코드 1줄 추가 + 기존 5 encoder ckpt 그대로 사용)
 
 ---
 
