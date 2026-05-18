@@ -188,6 +188,34 @@ v15-vfromm ep32 (fair pair ep) × v15 main 동일 매트릭스로 BC-T fine-tuni
 
 종료 후 → 로컬 워크스테이션 전송 + `bash scripts/local/run_libero_rollouts.sh two-stream-v15-{ptptk,mp} 50` rollout → `paper_artifacts/libero_rollout/` SR 등록.
 
+### 2026-05-18 C12 LIBERO view-sensitivity probing (eye_in_hand, 3 enc 축소)
+
+paper §5 ¶6 sub-analysis (Tab 7 appendix). 비교군: **v15-ptptk + LIBERO BC SR 상위 2 baseline** (siglip 0.855, vc1 0.821) — 사용자 결정 5/18. probing only, BC 제외. probe_action_libero.py에 `--view eye_in_hand_rgb` flag 이미 구현되어 있어 코드 변경 불필요.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34599785 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **eye_in_hand** probing (`p_t_p_tk`, 4 gaps) | PENDING |
+| 34599786 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO object eye_in_hand probing (동일) | PENDING |
+| 34599788 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO goal eye_in_hand probing (동일) | PENDING |
+| 34599613 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial eye_in_hand probing | PENDING |
+| 34599617 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object eye_in_hand probing | PENDING |
+| 34599621 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal eye_in_hand probing | PENDING |
+| 34599614 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial eye_in_hand probing | PENDING |
+| 34599618 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object eye_in_hand probing | PENDING |
+| 34599622 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal eye_in_hand probing | PENDING |
+
+비교 baseline (agentview): `paper_artifacts/libero_action_probing/{two-stream-v11_libero_*_v15ep50,siglip_libero_*,vc1_libero_*}/` (기존 measured). 결과 metric: Δ(eye_in_hand − agentview) per (enc, suite, gap). 예상 cost: 9 × 16.9분 = **2.5 GPU·h**.
+
+**최초 제출 시 v15 ckpt 경로 오타 (`checkpoint_epoch0050.pt`)로 34599612/616/619 3잡 제출 즉시 cancel + `latest.pt` 재제출 (34599785~788). 실 비용 무시 가능 (PENDING 단계에서 cancel).**
+
+### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
+
+paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.
+
+- **CALVIN task_ABCD_D** (166GB 압축, Freiburg CDN): `/proj/external_group/mrg/datasets/calvin/` 다운로드 진행. 속도 200-500 KB/s, ETA ~27h. wget pid 2300554, log: `wget.log`
+- **CortexBench Adroit/Meta-World** (각 ~1.6/3.5GB+, Meta CDN): `/proj/external_group/mrg/datasets/cortexbench/`. Adroit 완료, Meta-World 진행 중. sequence wget
+- **eai-vc codebase**: `external/eai-vc/` clone 완료 (CortexBench Adroit/Meta-World BC training framework)
+
 ### 2026-05-12 dinov2 + v11 BC-T LIBERO rollout (로컬 H100, cluster cost 0)
 
 V3 BC-T main table 마지막 두 행. siglip/vc1는 commit `1d572b` 시점에 paper_artifacts/libero_rollout/summary.csv 등록 완료. 남은 dinov2 + v11 9 ckpt × 2 enc를 로컬 워크스테이션 H100 × 2 GPU 병렬로 진행.
