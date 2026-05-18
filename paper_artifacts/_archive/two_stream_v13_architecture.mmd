@@ -1,0 +1,171 @@
+%% Two-Stream v13 — Dual-Frame Recon + Motion-Routed Latent Pred + DINO CLS Distillation
+%% v11 위에 추가:
+%%   • frame_t / frame_t+k 둘 다 student P encoder → 각자 reconstruction (L_t, L_tk)
+%%   • Motion-routing(frame_t)을 V-JEPA-style latent prediction student로 사용
+%%   • Teacher P (EMA copy of student P encoder + DINO head) — cropped + global view
+%%   • L_pred_patch (V-JEPA, per-patch SmoothL1) + L_pred_cls (DINO multi-crop, centering)
+
+flowchart TB
+    %% ── Inputs ───────────────────────────────────────────────
+    Ft["Frame t · 224²"]
+    Ftk["Frame t+k · 224²"]
+    FtG["Frame t · 256² (global)"]
+    FtkG["Frame t+k · 256² (global)"]
+
+    %% ── Preprocessing ────────────────────────────────────────
+    Mch["M channel · 3ch<br/>ΔL ⊕ Sobel(ΔL)<br/><i>모션 신호</i>"]
+    PchT["P channel · 5ch<br/>Sobel(L_t) ⊕ RGB_t"]
+    PchTk["P channel · 5ch<br/>Sobel(L_tk) ⊕ RGB_tk"]
+
+    Ft --> Mch
+    Ftk --> Mch
+    Ft --> PchT
+    Ftk --> PchTk
+
+    %% ── Student M stream (v11 동일) ──────────────────────────
+    subgraph M_SUB ["Student M stream &nbsp;·&nbsp; v11과 동일"]
+      direction TB
+      Menc["<b>M Encoder</b><br/>6 blocks · mask 0.3 · APE"]
+      Mdec["M Decoder<br/>self-attn × 3 + mask-token<br/><i>(loss 없음 — motion field 완성)</i>"]
+      Mc(("<b>m_completed</b><br/><i>motion field<br/>(routing K,V source)</i>"))
+      Menc --> Mdec --> Mc
+    end
+    Mch --> Menc
+
+    %% ── Student P encoder (shared, twin-frame pass) ──────────
+    subgraph P_SUB ["Student P Encoder &nbsp;·&nbsp; shared 12-block ViT-Base"]
+      direction LR
+      PencT["<b>P Encoder · t</b><br/>mask 0.75 · APE"]
+      PencTk["<b>P Encoder · t+k</b><br/>mask 0.75 · APE<br/>(shared weights)"]
+      PtFull(("p_t_full<br/><i>visible + mask-token<br/>+ dec pos-embed</i>"))
+      PtkFull(("p_tk_full"))
+      PencT --> PtFull
+      PencTk --> PtkFull
+    end
+    PchT --> PencT
+    PchTk --> PencTk
+
+    %% ── Recon path · interpreter_1 (shared, 양쪽 frame 동일) ──
+    subgraph REC ["Reconstruction path &nbsp;·&nbsp; interpreter_1 + recon_head (shared)"]
+      direction LR
+      Int1T["interpreter_1<br/>self-attn × 3"]
+      Int1Tk["interpreter_1<br/>(shared)"]
+      RecHT{{"recon_head"}}
+      RecHTk{{"recon_head<br/>(shared)"}}
+      PredT["pred_t"]
+      PredTk["pred_t+k"]
+      Int1T --> RecHT --> PredT
+      Int1Tk --> RecHTk --> PredTk
+    end
+    PtFull --> Int1T
+    PtkFull --> Int1Tk
+
+    Lt(["<b>L_t</b><br/>MSE · masked only"])
+    Ltk(["<b>L_tk</b><br/>MSE · masked only"])
+    PredT --> Lt
+    PredTk --> Ltk
+
+    %% ── Motion-routing path (frame_t only, V-JEPA student) ───
+    subgraph MR_SUB ["Motion-routed Latent Prediction &nbsp;·&nbsp; V-JEPA-style (frame_t → frame_t+k 예측)"]
+      direction TB
+      MR["<b>motion-routing × 2</b><br/>Q,K ← m_completed · V ← p_state<br/>+ FFN per iter"]
+      PstateNode(("p_state<br/><i>motion-routed P</i>"))
+      Int2["interpreter_2<br/>self-attn × 3 (non-shared)"]
+      PpatchTk(("<b>predicted_patches_t+k</b>"))
+      PclsTk(("predicted_cls_t+k<br/><i>(진단용 — loss 사용 X)</i>"))
+      MR --> PstateNode --> Int2
+      Int2 --> PpatchTk
+      Int2 --> PclsTk
+    end
+    PtFull --> MR
+    Mc -. "Q, K" .-> MR
+
+    %% ── Teacher P (EMA copy of student P encoder + DINO head) ─
+    subgraph TEA ["Teacher P &nbsp;·&nbsp; EMA(student P encoder + DINO head) &nbsp;·&nbsp; ∇ stop"]
+      direction TB
+      TencCrop["Teacher P Enc<br/>(224² cropped)"]
+      TencGT["Teacher P Enc<br/>(256² global, t)"]
+      TencGTk["Teacher P Enc<br/>(256² global, t+k)<br/>pos-embed bicubic"]
+      TpatchTk(("<b>target_patches_t+k</b><br/><i>per-patch · all visible</i>"))
+      TclsT(("target_CLS_t global"))
+      TclsTk(("target_CLS_t+k global"))
+      TDH{{"DINO head (EMA)<br/>MLP→bottleneck<br/>+ weight-norm Linear (K=4096)"}}
+      TlogT(("teacher_logits_t"))
+      TlogTk(("teacher_logits_t+k"))
+      TencCrop --> TpatchTk
+      TencGT --> TclsT --> TDH
+      TencGTk --> TclsTk --> TDH
+      TDH --> TlogT
+      TDH --> TlogTk
+    end
+    Ftk --> TencCrop
+    FtG --> TencGT
+    FtkG --> TencGTk
+    PencT -. "EMA momentum" .-> TencCrop
+
+    %% ── Student DINO branch (separate P encoder forward · mask 0.4) ─
+    subgraph DINO_S ["Student DINO branch &nbsp;·&nbsp; P encoder 별도 forward (mask 0.4)"]
+      direction LR
+      SencT["P Encoder · t<br/>mask 0.4"]
+      SencTk["P Encoder · t+k<br/>mask 0.4"]
+      SclsT(("student_CLS_t"))
+      SclsTk(("student_CLS_t+k"))
+      SDH{{"DINO head (student)<br/>(weight 학습)"}}
+      SlogT(("student_logits_t"))
+      SlogTk(("student_logits_t+k"))
+      SencT --> SclsT --> SDH
+      SencTk --> SclsTk --> SDH
+      SDH --> SlogT
+      SDH --> SlogTk
+    end
+    PchT --> SencT
+    PchTk --> SencTk
+
+    %% ── Losses ───────────────────────────────────────────────
+    LpredP(["<b>L_pred_patch</b><br/>SmoothL1 · V-JEPA<br/><i>masked positions only</i>"])
+    LpredCLS(["<b>L_pred_cls</b><br/>DINO cross-entropy<br/>(soft teacher · sharp student)"])
+    Center[("DINO center<br/>running mean<br/>(uniform collapse 방어)")]
+    Total(["<b>L_total = L_t + L_tk<br/>+ λ_patch · L_pred_patch<br/>+ λ_cls · L_pred_cls</b>"])
+
+    PpatchTk --> LpredP
+    TpatchTk --> LpredP
+
+    SlogT --> LpredCLS
+    SlogTk --> LpredCLS
+    TlogT --> LpredCLS
+    TlogTk --> LpredCLS
+    Center -. "center subtract" .-> LpredCLS
+    TlogT -. "EMA update" .-> Center
+    TlogTk -. "EMA update" .-> Center
+
+    Lt --> Total
+    Ltk --> Total
+    LpredP --> Total
+    LpredCLS --> Total
+
+    %% ── Styles ───────────────────────────────────────────────
+    classDef input_style fill:#e3f2fd,stroke:#1565C0,color:#000
+    classDef m_style fill:#bbdefb,stroke:#1565C0,color:#000
+    classDef m_ds fill:#64b5f6,stroke:#0D47A1,color:#000,stroke-width:3px
+    classDef p_style fill:#c8e6c9,stroke:#2E7D32,color:#000
+    classDef p_ds fill:#81c784,stroke:#1B5E20,color:#000,stroke-width:3px
+    classDef route_style fill:#ffcc80,stroke:#E65100,color:#000,stroke-width:2px
+    classDef head_style fill:#ffe0b2,stroke:#E65100,color:#000
+    classDef teacher_style fill:#e1bee7,stroke:#6A1B9A,color:#000
+    classDef dino_style fill:#fff9c4,stroke:#F9A825,color:#000
+    classDef center_style fill:#fff59d,stroke:#F57F17,color:#000,stroke-width:2px
+    classDef loss_style fill:#ef9a9a,stroke:#c62828,color:#000
+    classDef total_style fill:#e57373,stroke:#b71c1c,color:#000,stroke-width:2px
+
+    class Ft,Ftk,FtG,FtkG input_style
+    class Mch,Mdec,Mc m_style
+    class Menc m_ds
+    class PchT,PchTk,Int1T,Int1Tk,PtFull,PtkFull p_style
+    class PencT,PencTk p_ds
+    class MR,PstateNode,Int2,PpatchTk,PclsTk route_style
+    class RecHT,RecHTk,PredT,PredTk head_style
+    class TencCrop,TencGT,TencGTk,TpatchTk,TclsT,TclsTk,TlogT,TlogTk,TDH teacher_style
+    class SencT,SencTk,SclsT,SclsTk,SDH,SlogT,SlogTk dino_style
+    class Center center_style
+    class Lt,Ltk,LpredP,LpredCLS loss_style
+    class Total total_style
