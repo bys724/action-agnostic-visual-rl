@@ -158,18 +158,35 @@ EgoDex within-domain 비교는 paper claim(action-agnostic representation 범용
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 34592050 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep28** LIBERO spatial probing (`v11-mode=p_t_p_tk`, 4 gaps 1/13/20/40) | RUNNING |
-| 34592051 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep32** LIBERO spatial probing (동일 — v15 main 직접 비교) | RUNNING |
-| 34592052 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep36** LIBERO spatial probing (동일) | RUNNING |
-| 34592053 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep40** LIBERO spatial probing (동일) | RUNNING |
-| 34592054 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep44** LIBERO spatial probing (동일) | RUNNING |
-| 34592055 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep28** DROID probing (`patch_mean_concat_p_t_p_tk`, gap=15, max_episodes=200) | RUNNING |
-| 34592057 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep32** DROID probing (동일 — v15 main 직접 비교) | RUNNING |
-| 34592058 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep36** DROID probing (동일) | RUNNING |
-| 34592059 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep40** DROID probing (동일) | RUNNING |
-| 34592060 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep44** DROID probing (동일) | RUNNING |
+| 34592050 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep28** LIBERO spatial probing (`v11-mode=p_t_p_tk`, 4 gaps 1/13/20/40) | ✅ COMPLETED 17m01s. gap1 **+0.437**, gap13 **+0.603**, gap20 **+0.600**, gap40 **+0.364** (vfromm **LIBERO champion** ★) |
+| 34592051 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep32** LIBERO spatial probing (동일 — v15 main 직접 비교) | ✅ COMPLETED 17m01s. gap1 +0.383, gap13 +0.563, gap20 **+0.565** (v15 main +0.584 대비 −0.019, fair pair 동률), gap40 +0.329 |
+| 34592052 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep36** LIBERO spatial probing (동일) | ✅ COMPLETED 16m48s. gap1 +0.378, gap13 +0.564, gap20 +0.569, gap40 +0.337 |
+| 34592053 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep40** LIBERO spatial probing (동일) | ✅ COMPLETED 16m48s. gap1 +0.368, gap13 +0.549, gap20 +0.569, gap40 +0.338 |
+| 34592054 | AIP 1×1 H100 | 01:30:00 | v15-vfromm **ep44** LIBERO spatial probing (동일) | ✅ COMPLETED 16m52s. gap1 +0.387, gap13 +0.564, gap20 +0.576, gap40 +0.331 |
+| 34592055 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep28** DROID probing (`patch_mean_concat_p_t_p_tk`, gap=15, max_episodes=200) | ✅ COMPLETED 1m11s. **R²=−0.014 / Cos 0.020** |
+| 34592057 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep32** DROID probing (동일 — v15 main 직접 비교) | ✅ COMPLETED 1m45s. **R²=−0.016** (v15 main −0.006 대비 −0.010, noise level 동률) |
+| 34592058 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep36** DROID probing (동일) | ✅ COMPLETED 1m45s. **R²=−0.005** |
+| 34592059 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep40** DROID probing (동일) | ✅ COMPLETED 1m45s. **R²=−0.003** (vfromm DROID champion, 그래도 noise) |
+| 34592060 | AIP 1×1 H100 | 03:00:00 | v15-vfromm **ep44** DROID probing (동일) | ✅ COMPLETED 1m45s. **R²=−0.009** |
 
-10잡 모두 즉시 RUNNING 진입. 예상 cost: LIBERO 5 × ~18분 + DROID 5 × ~2분 = **1.7 GPU·h** 미만. paper §5.1 C1 ablation의 핵심 evidence — vfromm가 cross-embodiment에서 main 대비 후퇴/유지/추월 중 무엇인지로 V-from-P (ours) 우위 정량화.
+10잡 cost: LIBERO 5 × 16.9분 + DROID 5 × 1.4분 = **1.6 GPU·h**.
+
+**핵심 결론 (paper §5.1 C1 ablation)**:
+1. **fair pair (ep32 동일): LIBERO gap20 vfromm +0.565 vs main +0.584 = −0.019** (probing 변동성 범위). DROID, EgoDex 모두 동률.
+2. **routing 차이 negligible across 3 domains (EgoDex / LIBERO / DROID)** → V-from-P (ours) "우위" 강한 claim 불가. 사용자 확정 framing (5/18): "**Motion-routing이 핵심, value source(P vs M)는 부차적**" — robustness evidence로 활용.
+3. **부가 관찰**: vfromm는 ep28이 LIBERO champion (+0.600), 학습 진행될수록 cross-embodiment 소폭 하락. main(ep50 사용)과 vs vfromm 비교는 같은 ep32 단위가 fair.
+
+### 2026-05-18 v15-vfromm LIBERO BC-T fine-tuning (paper §5.1 C1 main matrix)
+
+v15-vfromm ep32 (fair pair ep) × v15 main 동일 매트릭스로 BC-T fine-tuning. paper §5.1 C1 ablation의 정량 evidence — closed-loop success rate에서도 routing 차이 negligible 확인 또는 vfromm 약점 발견. v15 main BC-T (ep50 ckpt 사용)와 SR 비교.
+
+**매트릭스 (v15 main 18잡과 동일)**: vfromm ep32 × {`two-stream-v15-ptptk` (Option B P_t+P_tk), `two-stream-v15-mp` (C-variant M+P)} × 3 suite × 3 seed = **18잡**. V3 cfg (use_joint=True + augmentation). epochs=50, batch=32, seq_len=10, lr=1e-4.
+
+| JobID 범위 | 자원 | --time | 목적 | 결과 |
+|-----------|------|--------|------|------|
+| 34595206~227 (18잡) | AIP 1×1 H100 each | 2-00:00:00 | vfromm ep32 LIBERO BC-T (ptptk × 9 + mp × 9). 출력 → `/proj/external_group/mrg/checkpoints/libero_bct/two-stream-v15-{ptptk,mp}_{suite}_seed{0,1,2}_*_vfromm_ep32/` | PENDING (Priority queue). 예상 elapsed 각 22~35h (v15 main 동일). 18잡 총 cost ≈ **500 GPU·h** |
+
+종료 후 → 로컬 워크스테이션 전송 + `bash scripts/local/run_libero_rollouts.sh two-stream-v15-{ptptk,mp} 50` rollout → `paper_artifacts/libero_rollout/` SR 등록.
 
 ### 2026-05-12 dinov2 + v11 BC-T LIBERO rollout (로컬 H100, cluster cost 0)
 
