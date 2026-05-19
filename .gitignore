@@ -87,3 +87,6 @@ external/eai-vc/
 
 # 사전학습 진행 중 매 epoch 갱신되는 sample image 디렉토리 (요약 PNG만 추적)
 paper_artifacts/*_main_train_samples/
+
+# CortexBench 매트릭스 runner의 PID 파일 (잡마다 변경)
+paper_artifacts/cortexbench/_logs/_matrix.pid

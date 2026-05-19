@@ -1,0 +1,7 @@
+[2026-05-19 17:31:29] Total jobs: 105
+[1 GPU1 2026-05-19 17:31:29] START: v15_p_only pen-v0 seed=200 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed200.log
+[0 GPU0 2026-05-19 17:31:29] START: v15_p_only pen-v0 seed=100 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed100.log
+[0 GPU0 2026-05-19 18:52:52] DONE rc=0: v15_p_only pen-v0 seed=100
+[2 GPU0 2026-05-19 18:52:52] START: v15_p_only pen-v0 seed=300 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed300.log
+[1 GPU1 2026-05-19 18:53:02] DONE rc=0: v15_p_only pen-v0 seed=200
+[3 GPU1 2026-05-19 18:53:02] START: v15_p_only relocate-v0 seed=100 → paper_artifacts/cortexbench/_logs/v15_p_only_relocate-v0_seed100.log
