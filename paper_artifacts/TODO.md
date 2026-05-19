@@ -105,6 +105,43 @@ C1 학습 (5/15 시작): cluster_sessions에 기록됨, 5/18 현재 진행 중.
 - [ ] **fig8 viz script `--split-streams` 옵션 추가** — [`scripts/eval/visualize_attn_v11.py`](../scripts/eval/visualize_attn_v11.py), [`visualize_v15_no_mask.py`](../scripts/eval/visualize_v15_no_mask.py)
 - [ ] **LaTeX 표 자동 생성 스크립트** — CSV → booktabs (tab1, tab2, tab3, tab4, tab5, tab6 공통)
 
+### v11 → v15 본문 산출물 rework (2026-05-19 paper repo B-option 정리 결과)
+
+Paper repo (`action-agnostic-paper`)의 `main/sections/experiments.tex`
+§4.2 / §4.5 자리에 wire되어 있던 v11-era 산출물 4개를 본문에서 제거함 —
+v11 architecture 종속 표기 (A/B/C/D = Phase-2/3 position) 와 A+B+C +0.288
+champion claim 이 v15 narrative와 호환되지 않기 때문. 원본 CSV/PNG/TEX 는
+본 저장소 (`paper_artifacts/probing/v11_egodex_summary.csv`,
+`paper_artifacts/_archive/`) 에 그대로 보존.
+
+v15 narrative 로 본문 §4 EgoDex within-domain probing 자리를 다시 채우려면
+다음 산출물이 필요:
+
+- [ ] **v15 epoch × R² evolution figure** (구 `fig_probing_evolution.pdf`)
+  - source: v15 EgoDex 12-mode probing CSV (위 P0 entry "v15 EgoDex 12-mode")
+  - v11 champion A+B+C +0.288 → v15 P_t+P_tk +0.390 catalyst signature
+    중심으로 재작도. mode set 자체가 다르니 단순 swap 불가.
+
+- [ ] **v15 12-mode bar at best epoch** (구 `fig_probing_modes_ep44.pdf`)
+  - source: 동일 v15 12-mode CSV @ ep32 또는 ep50
+  - v11 A/B/C/D position notation 은 v15 에 없음. v15 mode set 정의는
+    `paper_artifacts/tab2_probing/README.md` 정리 후 사용.
+
+- [ ] **v15 main probing table** (구 `tab_probing_main.tex`, 5 mode × 6 epoch)
+  - v15 mode set + epoch sweep 으로 재구성.
+
+- [ ] **v15 functional differentiation table** (구 `tab_probing_functional.tex`)
+  - v11 4-position (A/B/C/D = Phase-2 motion-routing C, Phase-3 final D) 는
+    v15 architecture 에 존재하지 않음.
+  - v15 functional positions 새로 정의 필요 — 후보: M encoder output /
+    P encoder (student) / motion-routed teacher P / p_motion decoder output.
+  - 또는 student/teacher distinction 을 caption 으로 미루고 단일 position
+    표기로 간략화.
+
+진행 순서: 위 P0 entry "v15 EgoDex 12-mode export" 가 완료되면 4개
+figure/table 모두 자동 생성 가능. paper repo `scripts/` 에 v15 용 build
+script 신규 작성 필요 (기존 `build_probing_figures.py` 는 v11 EgoDex 전용).
+
 ---
 
 ## 4. M / P stream 분리 viz — 사용자 명시 요구
