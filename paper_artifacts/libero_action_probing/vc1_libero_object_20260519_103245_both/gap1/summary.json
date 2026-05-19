@@ -1,0 +1,27 @@
+{
+  "encoder": "vc1",
+  "checkpoint": null,
+  "task_suite": "libero_object",
+  "view": "both",
+  "gap": 1,
+  "gap_seconds": 0.05,
+  "v11_mode": null,
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 58203,
+  "n_eval_pairs": 14591,
+  "best_epoch": 20,
+  "r2_aggregate": 0.7658660938354063,
+  "r2_per_dim": [
+    0.13084860233876494,
+    0.5171662343636949,
+    -3.153912683452946,
+    -7.857543990999533,
+    -0.22415867000517187,
+    -2.242335216134523,
+    0.7662096901752377
+  ],
+  "mse": 0.03320809081196785,
+  "cosine_sim": 0.8815885186195374,
+  "elapsed_seconds": 583.460736989975
+}

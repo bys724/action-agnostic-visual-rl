@@ -1,0 +1,27 @@
+{
+  "encoder": "vc1",
+  "checkpoint": null,
+  "task_suite": "libero_spatial",
+  "view": "both",
+  "gap": 40,
+  "gap_seconds": 2.0,
+  "v11_mode": null,
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 33780,
+  "n_eval_pairs": 7710,
+  "best_epoch": 18,
+  "r2_aggregate": 0.6714256452971746,
+  "r2_per_dim": [
+    0.9243828889433323,
+    0.9698789218811377,
+    0.9755924599076217,
+    0.7748539736473623,
+    0.8701731803359565,
+    0.880128180100422,
+    0.6341255256968252
+  ],
+  "mse": 0.03692125529050827,
+  "cosine_sim": 0.875214695930481,
+  "elapsed_seconds": 328.98588013648987
+}
