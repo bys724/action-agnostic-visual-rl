@@ -1,0 +1,5 @@
+# SigLIP base for CortexBench (§C11)
+# Vision-language SSL baseline. HF cache 자동 download (HF_HUB_OFFLINE=0 필요).
+# Single-image patches mean (CLS 없음) → 768-d.
+_target_: src.cortexbench.siglip_loader.load_siglip
+hf_id: google/siglip-base-patch16-224

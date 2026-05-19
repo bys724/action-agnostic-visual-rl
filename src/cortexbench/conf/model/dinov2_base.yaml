@@ -1,0 +1,5 @@
+# DINOv2 base for CortexBench (§C11)
+# Self-distillation vision SSL baseline. HF cache 자동 download.
+# Single-image patches mean (skip CLS) → 768-d.
+_target_: src.cortexbench.dinov2_loader.load_dinov2
+hf_id: facebook/dinov2-base
