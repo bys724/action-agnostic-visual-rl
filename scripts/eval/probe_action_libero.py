@@ -249,7 +249,8 @@ def main():
     parser.add_argument("--task-suite", required=True, choices=LIBERO_SUITES)
     parser.add_argument("--data-root", default="/proj/external_group/mrg/datasets/libero")
     parser.add_argument("--view", default="agentview_rgb",
-                        choices=["agentview_rgb", "eye_in_hand_rgb"])
+                        choices=["agentview_rgb", "eye_in_hand_rgb", "both"],
+                        help="both = av+eih feature-level concat (§C12 paper main framing)")
     parser.add_argument("--gaps", type=int, nargs="+", default=DEFAULT_GAPS,
                         help="Frame gaps to evaluate (LIBERO 20Hz: 1=0.05s, 13=0.65s, 20=1s, 40=2s)")
     parser.add_argument("--max-length-percentile", type=float, default=99.0,
@@ -363,22 +364,38 @@ def main():
         def collect_embed(demo_list, label):
             embed_chunks, tgt_chunks, demo_ids = [], [], []
             for di, (hp, d, tid) in enumerate(demo_list):
-                frames, eef_pos, ee_ori, actions = load_demo(hp, d, view=args.view)
-                T = frames.shape[0]
+                if args.view == "both":
+                    # §C12 paper main: av+eih feature-level concat
+                    frames_av, eef_pos, ee_ori, actions = load_demo(hp, d, view="agentview_rgb")
+                    frames_eih, _, _, _ = load_demo(hp, d, view="eye_in_hand_rgb")
+                    T = frames_av.shape[0]
+                else:
+                    frames, eef_pos, ee_ori, actions = load_demo(hp, d, view=args.view)
+                    T = frames.shape[0]
                 if T <= gap + 1:
                     continue
                 tgts = np.stack([
                     libero_action_target(eef_pos, ee_ori, actions, t, gap)
                     for t in range(T - gap)
                 ])
-                prev = preprocess_frames(frames[:T - gap], img_size)
-                curr = preprocess_frames(frames[gap:], img_size)
-                emb = encode_fn(prev, curr)  # (T-gap, D), already on CPU
+                if args.view == "both":
+                    prev_av = preprocess_frames(frames_av[:T - gap], img_size)
+                    curr_av = preprocess_frames(frames_av[gap:], img_size)
+                    prev_eih = preprocess_frames(frames_eih[:T - gap], img_size)
+                    curr_eih = preprocess_frames(frames_eih[gap:], img_size)
+                    emb_av = encode_fn(prev_av, curr_av)
+                    emb_eih = encode_fn(prev_eih, curr_eih)
+                    emb = torch.cat([emb_av, emb_eih], dim=-1)  # (T-gap, 2D)
+                    del frames_av, frames_eih, prev_av, curr_av, prev_eih, curr_eih, emb_av, emb_eih
+                else:
+                    prev = preprocess_frames(frames[:T - gap], img_size)
+                    curr = preprocess_frames(frames[gap:], img_size)
+                    emb = encode_fn(prev, curr)  # (T-gap, D), already on CPU
+                    del frames, prev, curr
                 embed_chunks.append(emb)
                 tgt_chunks.append(tgts)
                 demo_ids.extend([di] * (T - gap))
-                # raw frames release
-                del frames, prev, curr, emb
+                del emb
             print(f"    [{label}] embedded {len(demo_ids)} pairs from {len(embed_chunks)} demos")
             return (
                 torch.cat(embed_chunks, 0),

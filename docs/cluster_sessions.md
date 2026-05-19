@@ -194,19 +194,51 @@ paper §5 ¶6 sub-analysis (Tab 7 appendix). 비교군: **v15-ptptk + LIBERO BC 
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 34599785 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **eye_in_hand** probing (`p_t_p_tk`, 4 gaps) | PENDING |
-| 34599786 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO object eye_in_hand probing (동일) | PENDING |
-| 34599788 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO goal eye_in_hand probing (동일) | PENDING |
-| 34599613 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial eye_in_hand probing | PENDING |
-| 34599617 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object eye_in_hand probing | PENDING |
-| 34599621 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal eye_in_hand probing | PENDING |
-| 34599614 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial eye_in_hand probing | PENDING |
-| 34599618 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object eye_in_hand probing | PENDING |
-| 34599622 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal eye_in_hand probing | PENDING |
+| 34599785 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **eye_in_hand** probing (`p_t_p_tk`, 4 gaps) | ✅ COMPLETED 16m38s. gap1 +0.777, gap13 +0.764, gap20 **+0.735**, gap40 +0.595 |
+| 34599786 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO object eye_in_hand probing (동일) | ✅ COMPLETED 19m59s. gap1 +0.727, gap13 +0.748, gap20 **+0.710**, gap40 +0.650 |
+| 34599788 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO goal eye_in_hand probing (동일) | ✅ COMPLETED 16m59s. gap1 +0.733, gap13 +0.801, gap20 **+0.784**, gap40 +0.765 |
+| 34599613 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial eye_in_hand probing | ✅ COMPLETED 16m12s. gap1 +0.818, gap13 +0.802, gap20 **+0.775**, gap40 +0.653 |
+| 34599617 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object eye_in_hand probing | ✅ COMPLETED 19m04s. gap1 +0.760, gap13 +0.799, gap20 **+0.772**, gap40 +0.640 |
+| 34599621 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal eye_in_hand probing | ✅ COMPLETED 15m57s. gap1 +0.778, gap13 +0.794, gap20 **+0.794**, gap40 +0.781 |
+| 34599614 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial eye_in_hand probing | ✅ COMPLETED 14m28s. gap1 +0.804, gap13 +0.800, gap20 **+0.769**, gap40 +0.664 |
+| 34599618 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object eye_in_hand probing | ✅ COMPLETED 17m44s. gap1 +0.751, gap13 +0.797, gap20 **+0.764**, gap40 +0.673 |
+| 34599622 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal eye_in_hand probing | ✅ COMPLETED 14m40s. gap1 +0.748, gap13 +0.792, gap20 **+0.795**, gap40 +0.781 |
 
-비교 baseline (agentview): `paper_artifacts/libero_action_probing/{two-stream-v11_libero_*_v15ep50,siglip_libero_*,vc1_libero_*}/` (기존 measured). 결과 metric: Δ(eye_in_hand − agentview) per (enc, suite, gap). 예상 cost: 9 × 16.9분 = **2.5 GPU·h**.
+9잡 COMPLETED, 실 cost = **2.5 GPU·h**. **최초 제출 시 v15 ckpt 경로 오타 (`checkpoint_epoch0050.pt`)로 34599612/616/619 3잡 즉시 cancel + `latest.pt` 재제출 (34599785~788). 비용 무시 가능 (PENDING 단계에서 cancel).**
 
-**최초 제출 시 v15 ckpt 경로 오타 (`checkpoint_epoch0050.pt`)로 34599612/616/619 3잡 제출 즉시 cancel + `latest.pt` 재제출 (34599785~788). 실 비용 무시 가능 (PENDING 단계에서 cancel).**
+### 2026-05-19 C12 agentview baseline 보강 (Δ 계산용)
+
+C12 eye_in_hand 결과 확보 후 비교 metric Δ(eih − av) 산출이 필요. paper_artifacts에 v15ep50 agentview는 object/goal만 있고 spatial + siglip 전체 + vc1 전체 부재 → 7잡 추가 제출.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34619063 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **agentview** probing (`p_t_p_tk`, 4 gaps) | PENDING |
+| 34619064 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial agentview probing | PENDING |
+| 34619065 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial agentview probing | PENDING |
+| 34619066 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object agentview probing | PENDING |
+| 34619067 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object agentview probing | PENDING |
+| 34619068 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal agentview probing | PENDING |
+| 34619069 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal agentview probing | PENDING |
+
+v15ep50 object/goal agentview는 기존 `paper_artifacts/libero_action_probing/two-stream-v11_libero_{object,goal}_20260515_161112_v15ep50/` 재활용. 예상 cost: 7 × 16.9분 = **1.97 GPU·h**.
+
+### 2026-05-19 C12 framing 재설계 — av+eih combined view 9잡 (paper §5.1 main)
+
+사용자 비판 (5/19): eye_in_hand 단독은 unrealistic robot setting, single-view 비교는 의미 해석 제한적. **실제 paper main framing = "agentview에 wrist view를 추가했을 때 우리 모델이 가장 큰 격차"** — monotonic, practical. `probe_action_libero.py:251`에 `--view both` 옵션 추가 (av encode ⊕ eih encode → 2× embed_dim concat → linear probe). 기존 eye_in_hand 단독 9잡 = sunk cost (supplementary).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 34619135 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **av+eih combined** probing (`p_t_p_tk`, 4 gaps, view=both) | PENDING |
+| 34619136 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial av+eih combined | PENDING |
+| 34619137 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial av+eih combined | PENDING |
+| 34619138 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO object av+eih combined | PENDING |
+| 34619139 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object av+eih combined | PENDING |
+| 34619140 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object av+eih combined | PENDING |
+| 34619141 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO goal av+eih combined | PENDING |
+| 34619142 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal av+eih combined | PENDING |
+| 34619143 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal av+eih combined | PENDING |
+
+비교 baseline: 위 av_only 7잡 (34619063~069) + 기존 v15ep50 object/goal agentview 재활용. **paper main metric: Δ(av+eih − av_only) per (enc, suite, gap)**. 가설: v15 Δ 최대. 9잡 cost 2.5 GPU·h.
 
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
