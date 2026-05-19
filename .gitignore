@@ -75,6 +75,9 @@ docs/preprocessing/*/samples/
 # 외부 참고 문서 PDF (벤더 자료 등 — 로컬 전용)
 docs/*.pdf
 
+# 외부 codebase clone (submodule 아닌 host-local clone)
+external/eai-vc/
+
 # Claude Code 로컬 설정 (팀 공유 설정 생기면 개별 force add)
 .claude/
 

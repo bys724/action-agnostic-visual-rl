@@ -133,6 +133,39 @@ services:
     command: bash
 
   # ═══════════════════════════════════════════════════════════════
+  # CortexBench 평가 환경 (eai-vc, §C11 manipulation subset)
+  # Adroit + Meta-World만, habitat/trifinger 제외
+  # CUDA 11.6 + PyTorch 1.13 + Python 3.8 (eai-vc 원문 spec)
+  # ═══════════════════════════════════════════════════════════════
+  cortexbench:
+    build:
+      context: .
+      dockerfile: docker/cortexbench/Dockerfile
+    image: cortexbench-eval:latest
+    container_name: cortexbench-eval
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - MUJOCO_GL=egl
+      - PYOPENGL_PLATFORM=egl
+      - LD_LIBRARY_PATH=/root/.mujoco/mujoco200/bin:/usr/lib/nvidia
+    volumes:
+      - .:/workspace
+      - /mnt/data:/mnt/data           # encoder ckpt, CortexBench dataset 마운트
+    network_mode: host
+    stdin_open: true
+    tty: true
+    shm_size: '16gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: bash
+
+  # ═══════════════════════════════════════════════════════════════
   # LIBERO 평가 환경
   # LIBERO 벤치마크용 시뮬레이션 환경 (Python 3.8, robosuite)
   # CUDA 11.3 + PyTorch 1.11 (LIBERO 공식 요구사항)
