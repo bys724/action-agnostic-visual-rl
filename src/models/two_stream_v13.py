@@ -38,6 +38,7 @@ v11 reconstruction + motion-routing 구조 위에 사용자 제안(post-v12 conv
 NOTE: TwoStreamV11Encoder downstream wrapper는 student M/P encoder만 추출 →
       v13 ckpt에 그대로 사용 가능 (state_dict prefix 일치).
 """
+from __future__ import annotations
 
 import copy
 

@@ -12,6 +12,7 @@ P Channel (Parvocellular/Ventral): Spatial structure + color
     - Output: [∂x, ∂y, R, G, B] (5 channels)
     - Luminance z-score normalized, magnitude normalized gradients
 """
+from __future__ import annotations
 
 import torch
 import torch.nn as nn

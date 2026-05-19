@@ -1,11 +1,12 @@
 # CortexBench (eai-vc) Evaluation Environment
 # Manipulation subset only (Adroit + Meta-World) — habitat/trifinger excluded.
-# Original eai-vc spec (paper §C11 protocol 일치):
-#   - Python 3.8 + PyTorch 1.13 + cudatoolkit 11.6
-#   - MuJoCo 200 (legacy) + mujoco-py (eai-vc fork)
-# Risk: H100 sm_90 PTX JIT fallback (PyTorch 1.13에 sm_90 코드 없음).
-#   Frozen encoder forward + linear policy training만 하므로 작동 추정.
-#   Sanity 단계에서 실패 시 cu117 또는 pt2.1 patch 검토.
+# Base spec (eai-vc 원문):
+#   - Python 3.8 + cudatoolkit 11.6 + MuJoCo 200 + mujoco-py (eai-vc fork)
+# H100 적용 변경 (2026-05-19 sanity 후 확정):
+#   - torch: 1.13 → 2.1.2+cu118 (sm_90 PTX 포함, py3.8 호환). install_eai_vc.sh가 교체
+#   - Cython<3: mujoco-py cymj.pyx pre-PEP-688 syntax 호환용
+#   - mujoco<3: dm-control 1.0.5의 mj 2.x API 의존 호환용
+# Our wrapper deps: h5py, einops (probe_action_v11 import chain)
 
 FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
 

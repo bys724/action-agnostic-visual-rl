@@ -56,6 +56,7 @@ EMA teachers (3 modules):
 
 설계 노트: vault `Projects/Action-Agnostic Paper/v14 - Two-Stream Paradigm Specialization (Future).md`
 """
+from __future__ import annotations
 
 import copy
 

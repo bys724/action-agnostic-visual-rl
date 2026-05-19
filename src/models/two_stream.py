@@ -18,6 +18,7 @@ while giving decoders enough spatial information for meaningful reconstruction.
 
 Inspired by biological M/P visual pathways.
 """
+from __future__ import annotations
 
 import math
 

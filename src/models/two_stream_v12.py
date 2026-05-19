@@ -23,6 +23,7 @@ v11 reconstruction path는 그대로 유지 — L_total = L_t + L_tk + λ·L_res
 
 상세 설계: vault `Projects/Action-Agnostic Paper/v12 - Semantic Residual + EMA (Future).md`
 """
+from __future__ import annotations
 
 import copy
 

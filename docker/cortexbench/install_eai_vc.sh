@@ -7,6 +7,12 @@ set -e
 EAI_VC=/workspace/external/eai-vc
 cd "$EAI_VC"
 
+# 0) H100 sm_90 지원: conda yaml의 pytorch=1.13 → torch 2.1.2+cu118 (py3.8 호환 마지막
+#    버전대 중 sm_90 PTX 포함). dm-control 1.0.5 + Adroit/Meta-World 환경에는 영향 없음.
+echo "[install_eai_vc] torch 2.1.2+cu118 upgrade (H100 sm_90)..."
+pip install --index-url https://download.pytorch.org/whl/cu118 \
+    torch==2.1.2 torchvision==0.16.2
+
 echo "[install_eai_vc] mujoco-py..."
 pip install -e ./third_party/mujoco-py
 

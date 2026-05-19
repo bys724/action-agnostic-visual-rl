@@ -3,5 +3,5 @@
 # 사용 시 우리 PROJECT_ROOT가 PYTHONPATH에 있어야 함 + vc_models conf dir에 symlink/override.
 # Self-pair (x, x) → tubelet 통과 → patches mean (768-d).
 _target_: src.cortexbench.videomae_loader.load_videomae_ours
-checkpoint_path: /proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt
+checkpoint_path: ${oc.env:VIDEOMAE_OURS_CKPT,/proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt}
 embed_dim: 768

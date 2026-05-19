@@ -13,6 +13,7 @@ https://github.com/MCG-NJU/VideoMAE
 Adapted for 2-frame input (tubelet_size=2, num_frames=2 → 196 spatial patches).
 With only 1 temporal token, tube masking = random spatial masking.
 """
+from __future__ import annotations
 
 import sys
 from functools import partial

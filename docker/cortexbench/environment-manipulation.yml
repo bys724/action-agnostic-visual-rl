@@ -14,7 +14,8 @@ dependencies:
   - cffi
   - cmake=3.22.1
   - cudatoolkit=11.6
-  - cython
+  # mujoco-py needs Cython<3 (cymj.pyx uses pre-PEP-688 noexcept syntax)
+  - cython<3
   - flake8
   - glfw
   - hydra-core
@@ -36,6 +37,8 @@ dependencies:
   - pytest
   - pytest-xdist
   - python=3.8
+  # NOTE: pytorch=1.13 / torchvision=0.14 from conda는 sm_90 (H100) 미지원.
+  # install_eai_vc.sh 가 pip로 torch 2.1.2+cu118 (sm_90 포함) 으로 교체.
   - pytorch=1.13
   - pyyaml
   - scipy
@@ -55,6 +58,8 @@ dependencies:
   - pip:
     - hydra-submitit-launcher
     - dm-control==1.0.5
+    # dm-control 1.0.5 expects mujoco 2.x API (eq_active field renamed in 3.0)
+    - mujoco<3
     - gym==0.23.1
     - setuptools==59.5.0
     - timm==0.6.11
@@ -62,3 +67,8 @@ dependencies:
     - functorch
     - torchrl
     - classy_vision==0.6.0
+    # v15 / videomae_ours wrapper deps (from src/cortexbench/*_loader.py)
+    - h5py
+    - einops
+    # siglip / dinov2 wrapper: HuggingFace transformers (single-image baseline)
+    - transformers

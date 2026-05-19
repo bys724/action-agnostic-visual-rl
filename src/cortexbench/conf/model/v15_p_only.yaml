@@ -3,6 +3,6 @@
 # 사용 시 우리 PROJECT_ROOT가 PYTHONPATH에 있어야 함 + vc_models conf dir에 symlink/override.
 # M encoder는 학습 시 motion catalyst 역할로만 의미, inference는 P encoder 단독 (768-d).
 _target_: src.cortexbench.v15_loader.load_v15_p_only
-checkpoint_path: /proj/external_group/mrg/checkpoints/two_stream_v15/20260511_045319/latest.pt
+checkpoint_path: ${oc.env:V15_CKPT,/proj/external_group/mrg/checkpoints/two_stream_v15/20260511_045319/latest.pt}
 p_depth: 12
 m_depth: 6

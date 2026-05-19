@@ -399,8 +399,8 @@ Frozen encoder + linear policy 평가 — robotics-specific representation 비�
 
 ```python
 # CortexBench codebase: https://github.com/facebookresearch/eai-vc
-# - Adroit (5 dexterous tasks)
-# - Meta-World (5 multi-task manipulation)
+# - Adroit (pen-v0, relocate-v0 — 공식 eai-vc expert demo zip이 2 task만 제공)
+# - Meta-World (assembly, bin-picking, button-press-topdown, drawer-open, hammer — 5 task)
 # - Frozen visual encoder → linear policy head → BC training
 # TODO (dev session):
 # 1. Clone eai-vc + 의존성 설치
@@ -411,7 +411,7 @@ Frozen encoder + linear policy 평가 — robotics-specific representation 비�
 
 ### 측정 항목
 
-- 5 encoder × {Adroit 5 task, Meta-World 5 task} × 3 seed
+- 5 encoder × {Adroit 2 task, Meta-World 5 task} = **7 task** × 3 seed = **105 BC training**
 - Linear policy head, frozen encoder
 - Eval metric: CortexBench 표준 success rate (per task → 평균)
 
@@ -424,7 +424,7 @@ Frozen encoder + linear policy 평가 — robotics-specific representation 비�
 
 ### 비용
 
-- ~30 GPU·h (10 task × 3 seed × ~1 GPU·h per linear policy + eval)
+- ~21 GPU·h (7 task × 3 seed × ~1 GPU·h per linear policy + eval)
 - 시간 빠듯 — C10/C12 우선, C11은 병행
 
 ### 결과 위치
