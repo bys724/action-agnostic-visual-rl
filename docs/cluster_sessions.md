@@ -184,7 +184,7 @@ v15-vfromm ep32 (fair pair ep) × v15 main 동일 매트릭스로 BC-T fine-tuni
 
 | JobID 범위 | 자원 | --time | 목적 | 결과 |
 |-----------|------|--------|------|------|
-| 34595206~227 (18잡) | AIP 1×1 H100 each | 2-00:00:00 | vfromm ep32 LIBERO BC-T (ptptk × 9 + mp × 9). 출력 → `/proj/external_group/mrg/checkpoints/libero_bct/two-stream-v15-{ptptk,mp}_{suite}_seed{0,1,2}_*_vfromm_ep32/` | PENDING (Priority queue). 예상 elapsed 각 22~35h (v15 main 동일). 18잡 총 cost ≈ **500 GPU·h** |
+| 34595206~227 (18잡) | AIP 1×1 H100 each | 2-00:00:00 | vfromm ep32 LIBERO BC-T (ptptk × 9 + mp × 9). 출력 → `/proj/external_group/mrg/checkpoints/libero_bct/two-stream-v15-{ptptk,mp}_{suite}_seed{0,1,2}_*_vfromm_ep32/` | 2026-05-19 진행: 3잡 (`mp_spatial` × seed 0/1/2) COMPLETED 22h02m~22h18m. **15잡 RUNNING (22h 19m 경과, 1-2h 내 순차 완료 예상)**. 총 cost ≈ 500 GPU·h |
 
 종료 후 → 로컬 워크스테이션 전송 + `bash scripts/local/run_libero_rollouts.sh two-stream-v15-{ptptk,mp} 50` rollout → `paper_artifacts/libero_rollout/` SR 등록.
 
@@ -228,25 +228,31 @@ v15ep50 object/goal agentview는 기존 `paper_artifacts/libero_action_probing/t
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 34619135 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **av+eih combined** probing (`p_t_p_tk`, 4 gaps, view=both) | PENDING |
-| 34619136 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial av+eih combined | PENDING |
-| 34619137 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial av+eih combined | PENDING |
-| 34619138 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO object av+eih combined | PENDING |
-| 34619139 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object av+eih combined | PENDING |
-| 34619140 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object av+eih combined | PENDING |
-| 34619141 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO goal av+eih combined | PENDING |
-| 34619142 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal av+eih combined | PENDING |
-| 34619143 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal av+eih combined | PENDING |
+| 34619135 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO spatial **av+eih combined** probing (`p_t_p_tk`, 4 gaps, view=both) | ✅ COMPLETED 31m57s. gap1 +0.779, gap13 +0.779, gap20 **+0.755**, gap40 +0.625 |
+| 34619136 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO spatial av+eih combined | ✅ COMPLETED 30m09s. gap20 +0.767 |
+| 34619137 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO spatial av+eih combined | ✅ COMPLETED 28m15s. gap20 +0.776 |
+| 34619138 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO object av+eih combined | ✅ COMPLETED 39m59s. gap20 +0.756 |
+| 34619139 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO object av+eih combined | ✅ COMPLETED 37m08s. gap20 +0.782 |
+| 34619140 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO object av+eih combined | ✅ COMPLETED 34m31s. gap20 +0.783 |
+| 34619141 | AIP 1×1 H100 | 01:30:00 | v15 ep50 LIBERO goal av+eih combined | ✅ COMPLETED 32m57s. gap20 +0.804 |
+| 34619142 | AIP 1×1 H100 | 01:30:00 | siglip LIBERO goal av+eih combined | ✅ COMPLETED 30m43s. gap20 +0.801 |
+| 34619143 | AIP 1×1 H100 | 01:30:00 | vc1 LIBERO goal av+eih combined | ✅ COMPLETED 28m43s. gap20 +0.806 |
 
-비교 baseline: 위 av_only 7잡 (34619063~069) + 기존 v15ep50 object/goal agentview 재활용. **paper main metric: Δ(av+eih − av_only) per (enc, suite, gap)**. 가설: v15 Δ 최대. 9잡 cost 2.5 GPU·h.
+9잡 모두 COMPLETED, 실 cost = **5.0 GPU·h** (each ~17~40분, 2 view encode로 av_only 대비 ~2배).
+
+**Δ 분석 결과** → [paper_artifacts/tables/tab7_view_sensitivity/README.md](../paper_artifacts/tables/tab7_view_sensitivity/README.md):
+- Encoder Δ avg overall: **vc1 +0.221 ≈ v15 +0.211 ≫ siglip +0.114**
+- v15는 **goal suite 1위** (Δ +0.238), spatial/object는 vc1 1위
+- "motion-routing unique advantage" 강한 claim 불가, "action-relevant pretrain > VL-SSL" framing 가능
 
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
 paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.
 
-- **CALVIN task_ABCD_D** (166GB 압축, Freiburg CDN): `/proj/external_group/mrg/datasets/calvin/` 다운로드 진행. 속도 200-500 KB/s, ETA ~27h. wget pid 2300554, log: `wget.log`
-- **CortexBench Adroit/Meta-World** (각 ~1.6/3.5GB+, Meta CDN): `/proj/external_group/mrg/datasets/cortexbench/`. Adroit 완료, Meta-World 진행 중. sequence wget
-- **eai-vc codebase**: `external/eai-vc/` clone 완료 (CortexBench Adroit/Meta-World BC training framework)
+- **CALVIN task_ABCD_D** (실제 ~700GB 압축, paper plan 추정 166GB는 부정확): `/proj/external_group/mrg/datasets/calvin/` 다운로드 진행. 2026-05-19 15:12 시점 588 GB / ~700 GB (84%), 속도 3-10 MB/s 진동. ETA ~3-6h 남음
+- **CortexBench Adroit (1.6 GB) + Meta-World (8.9 GB)**: ✅ 모두 완료 (`/proj/external_group/mrg/datasets/cortexbench/*.zip`)
+- **eai-vc codebase**: `external/eai-vc/` host clone 완료 (`.gitignore`로 untrack — 로컬 워크스테이션에서도 별도 clone, commit `95faa12` Docker 환경에 통합)
+- **로컬 워크스테이션 전송용 tar**: 저장소 최상위 `cortexbench_local_setup_*.tar` (v15 ckpt + VideoMAE-ours ckpt + Adroit/MW zip 14.6 GB) — 2026-05-19 생성
 
 ### 2026-05-12 dinov2 + v11 BC-T LIBERO rollout (로컬 H100, cluster cost 0)
 
