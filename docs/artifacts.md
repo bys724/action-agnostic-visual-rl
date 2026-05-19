@@ -90,7 +90,15 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 | 코드 | 위치 | 용도 |
 |------|------|------|
 | VideoMAE | `external/VideoMAE/` | 우리 VideoMAE-ours 구현 base |
-| eai-vc (§C11) | `external/eai-vc/` | CortexBench (Adroit + Meta-World BC training/eval framework) — 2026-05-18 clone |
+| eai-vc (§C11) | `external/eai-vc/` | CortexBench (Adroit + Meta-World BC training/eval framework) — 2026-05-18 clone, third-party 코드, 우리 repo에 commit X |
+
+### C10/C11 wrapper code (우리 repo)
+
+| 모듈 | 위치 | 용도 |
+|------|------|------|
+| CALVIN loader (§C10) | `src/datasets/calvin.py` | episode .npz iteration + rel_actions cumulative target |
+| CALVIN probing main (§C10) | `scripts/eval/probe_action_calvin.py` + `scripts/cluster/probe_action_calvin.sbatch` | probe_action_libero.py 구조 그대로 |
+| v15 CortexBench wrapper (§C11) | `src/cortexbench/v15_loader.py` + `src/cortexbench/conf/model/v15_ptptk.yaml` | self-pair P_t+P_tk = 1536-d, hydra factory. 사용 시 `vc_models` conf dir로 symlink 또는 `--config-dir` override |
 
 ### Probing 결과 (repo 내부, git 동기화)
 - `data/probing_results/probe_v11_*.json` — ep4~ep50 × 12 mode (84개 JSON)

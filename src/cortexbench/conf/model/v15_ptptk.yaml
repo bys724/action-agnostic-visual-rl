@@ -1,0 +1,7 @@
+# Two-Stream v15 encoder for CortexBench (§C11)
+# action-agnostic-visual-rl/src/cortexbench/v15_loader.py 의 factory를 hydra가 instantiate
+# 사용 시 우리 PROJECT_ROOT가 PYTHONPATH에 있어야 함
+_target_: src.cortexbench.v15_loader.load_v15_ptptk
+checkpoint_path: /proj/external_group/mrg/checkpoints/two_stream_v15/20260511_045319/latest.pt
+p_depth: 12
+m_depth: 6
