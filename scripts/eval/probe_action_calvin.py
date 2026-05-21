@@ -49,7 +49,8 @@ from scripts.eval.probe_action_libero import (
 )
 
 CALVIN_SPLITS = ("training", "validation")  # task_ABCD_D 압축 풀면 양쪽 모두
-DEFAULT_GAPS = [1, 15, 30, 60]   # 30Hz → 0.03/0.5/1.0/2.0s
+# Default = stride=10 (effective 3Hz) 가정. gap=3 (1s key) + gap=1/5/10
+DEFAULT_GAPS = [1, 3, 5, 10]
 ACTION_DIM = 7
 
 
@@ -70,6 +71,10 @@ def main():
                         help="Subsample episodes (full = 수천 ep, 너무 많음)")
     parser.add_argument("--max-frames-per-episode", type=int, default=None,
                         help="Optional truncation for very long episodes")
+    parser.add_argument("--frame-stride", type=int, default=10,
+                        help="CALVIN 30Hz → stride=10 = 3Hz effective sampling. "
+                             "Episode 평균 13k frames → stride=10 적용 시 1.3k. "
+                             "stride 적용된 frame index에서 --gaps 적용됨 (gap=3 @ stride=10 = 1.0s).")
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--probe-epochs", type=int, default=20)
     parser.add_argument("--probe-batch", type=int, default=256)
@@ -138,14 +143,19 @@ def main():
     # ── Per-gap loop ─────────────────────────────────────────────────────
     os.makedirs(args.output_dir, exist_ok=True)
 
+    effective_hz = 30 / args.frame_stride
+    print(f"  frame_stride={args.frame_stride} → effective {effective_hz:.1f} Hz")
+
     for gap in args.gaps:
-        print(f"\n=== gap={gap} ({gap/30:.2f}s @ CALVIN 30Hz) ===")
+        seconds = gap / effective_hz
+        print(f"\n=== gap={gap} ({seconds:.2f}s @ effective {effective_hz:.1f}Hz) ===")
         t0 = time.time()
 
         def collect_embed(ep_list, label):
             embed_chunks, tgt_chunks, ep_ids = [], [], []
             for ei, (s, e) in enumerate(ep_list):
-                frames, actions = load_episode_frames(split_dir, s, e, view=args.view)
+                frames, actions = load_episode_frames(split_dir, s, e, view=args.view,
+                                                       stride=args.frame_stride)
                 if args.max_frames_per_episode:
                     frames = frames[:args.max_frames_per_episode]
                     actions = actions[:args.max_frames_per_episode]

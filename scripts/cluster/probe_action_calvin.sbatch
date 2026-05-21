@@ -36,8 +36,9 @@ ENCODER="${ENCODER:?ENCODER required}"
 CHECKPOINT="${CHECKPOINT:-}"
 SPLIT="${SPLIT:-training}"
 VIEW="${VIEW:-rgb_static}"
-GAPS="${GAPS:-1 15 30 60}"
+GAPS="${GAPS:-1 3 5 10}"
 MAX_EPISODES="${MAX_EPISODES:-200}"
+FRAME_STRIDE="${FRAME_STRIDE:-10}"
 V11_MODE="${V11_MODE:-p_t_p_tk}"
 VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
@@ -69,6 +70,7 @@ ARGS=(
     --view "$VIEW"
     --gaps $GAPS
     --max-episodes "$MAX_EPISODES"
+    --frame-stride "$FRAME_STRIDE"
     --output-dir "$OUT_DIR"
 )
 if [[ -n "$CHECKPOINT" ]]; then ARGS+=(--checkpoint "$CHECKPOINT"); fi

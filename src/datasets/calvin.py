@@ -47,17 +47,20 @@ def load_episode_frames(
     start_id: int,
     end_id: int,
     view: str = "rgb_static",
+    stride: int = 1,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Load all frames in an episode.
+    """Load frames in an episode with optional stride.
+
+    CALVIN episode 길이가 매우 큼 (validation 평균 24k frames). stride>1 적용
+    필수 — 메모리 폭증 방지. stride=10 → CALVIN 30Hz가 effective 3Hz로 sub-sample.
 
     Returns:
-        frames: (T, H, W, 3) uint8
-        actions: (T, 7) float32   — rel_actions (delta, normalized -1~1)
+        frames: (T_eff, H, W, 3) uint8 where T_eff = ceil((end_id - start_id + 1) / stride)
+        actions: (T_eff, 7) float32 — rel_actions at strided frame indices
     """
-    T = end_id - start_id + 1
     frames = []
     actions = []
-    for fid in range(start_id, end_id + 1):
+    for fid in range(start_id, end_id + 1, stride):
         d = load_frame(split_dir, fid, keys=(view, "rel_actions"))
         frames.append(d[view])
         actions.append(d["rel_actions"])
