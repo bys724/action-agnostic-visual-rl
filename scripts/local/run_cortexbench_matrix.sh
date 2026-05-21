@@ -1,10 +1,17 @@
 #!/bin/bash
-# CortexBench §C11 full matrix: 5 enc × 7 task × 3 seed = 105 BC trainings
-# 2 H100 round-robin in cortexbench-eval container. Resumable (skip완료 잡).
+# CortexBench §C11 full matrix: N enc × 7 task × 3 seed BC trainings
+# 2 GPU round-robin in cortexbench-eval container. Resumable (skip완료 잡).
 #
 # Usage:
-#   bash scripts/local/run_cortexbench_matrix.sh                # 전체 105잡
+#   bash scripts/local/run_cortexbench_matrix.sh                # 전체 5 enc (105잡)
 #   bash scripts/local/run_cortexbench_matrix.sh --aggregate    # 학습 안 돌리고 집계만
+#   ENCODERS="siglip_base dinov2_base vc1_vitb" bash scripts/local/run_cortexbench_matrix.sh
+#                                                               # 분산용 — 특정 encoder만 (63잡)
+#
+# 분산 운영 예시 (docs/setup/CORTEXBENCH_GUIDE.md 참고):
+#   머신 A: ENCODERS="v15_p_only videomae_ours"
+#   머신 B: ENCODERS="siglip_base dinov2_base vc1_vitb"
+#   → 양쪽 paper_artifacts/cortexbench/ rsync 후 aggregate
 #
 # 학습 잡 출력: paper_artifacts/cortexbench/<enc>/<task>/seed_<n>/
 # 집계 출력:    paper_artifacts/cortexbench/{per_run,per_task,summary}.csv
@@ -13,7 +20,9 @@ set -u
 
 cd "$(dirname "$0")/../.."
 
-ENCODERS=(v15_p_only videomae_ours siglip_base dinov2_base vc1_vitb)
+# Default 5 encoder. ENCODERS env로 override 가능 (분산 운영).
+DEFAULT_ENCODERS="v15_p_only videomae_ours siglip_base dinov2_base vc1_vitb"
+read -ra ENCODERS <<< "${ENCODERS:-$DEFAULT_ENCODERS}"
 
 # task entries: "suite:env:config-name"
 TASKS=(

@@ -90,3 +90,15 @@ paper_artifacts/*_main_train_samples/
 
 # CortexBench 매트릭스 runner의 PID 파일 (잡마다 변경)
 paper_artifacts/cortexbench/_logs/_matrix.pid
+
+# CortexBench 집계 csv — derived data. 분산 운영 시 머신마다 자기 결과만 채운 csv가
+# 서로 덮어쓰지 않도록 git untrack. git pull 후 `python scripts/eval/aggregate_cortexbench.py
+# --root paper_artifacts/cortexbench` 1회면 raw _DONE/log에서 통합 csv 재생성.
+paper_artifacts/cortexbench/per_run.csv
+paper_artifacts/cortexbench/per_task.csv
+paper_artifacts/cortexbench/summary.csv
+
+# CortexBench 잡 산출물 중 무거운 것 (raw _DONE + .hydra + stdout log + job_config.json만 git track)
+paper_artifacts/cortexbench/*/*/seed_*/wandb/
+paper_artifacts/cortexbench/*/*/seed_*/adroit_cortex_vil/
+paper_artifacts/cortexbench/*/*/seed_*/metaworld_cortex_vil/
