@@ -24,6 +24,12 @@ set -euo pipefail
 
 CALVIN_DIR=/proj/external_group/mrg/datasets/calvin
 ZIPFILE=task_ABCD_D.zip
+CONDA_ENV=/proj/external_group/mrg/conda_envs/aavrl-train
+
+# compute node에 unzip 명령어 없음 → conda env 안 unzip 사용
+module load miniforge3/24.11.3-2
+source /opt/ibs_lib/apps/miniforge3/24.11.3-2/etc/profile.d/conda.sh
+conda activate "$CONDA_ENV"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [extract_calvin] $*"; }
 
@@ -31,9 +37,10 @@ cd "$CALVIN_DIR"
 
 log "=== CALVIN unzip 시작 ==="
 log "ZIP file: $(ls -lh $ZIPFILE | awk '{print $5}')"
+log "unzip: $(which unzip)"
 
-# unzip은 single-thread지만 sbatch 자원이 보장됨
-log "Running unzip (single-thread, 수 시간 소요 예상)..."
+# unzip은 single-thread지만 sbatch 자원이 보장됨. 2.4M 파일 추출 — 수 시간 예상
+log "Running unzip (single-thread, 240만 small npz files)..."
 time unzip -q $ZIPFILE
 
 log "=== 압축 해제 완료. directory 구조 확인 ==="
