@@ -6,7 +6,6 @@ name: eai-vc
 channels:
   - pytorch
   - conda-forge
-  - defaults
 dependencies:
   - black
   - click
