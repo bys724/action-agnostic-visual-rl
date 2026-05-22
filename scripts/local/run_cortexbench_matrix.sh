@@ -1,16 +1,19 @@
 #!/bin/bash
 # CortexBench §C11 full matrix: N enc × 7 task × 3 seed BC trainings
-# 2 GPU round-robin in cortexbench-eval container. Resumable (skip완료 잡).
+# Multi-GPU round-robin in cortexbench-eval container. Resumable (skip완료 잡).
 #
 # Usage:
 #   bash scripts/local/run_cortexbench_matrix.sh                # 전체 5 enc (105잡)
 #   bash scripts/local/run_cortexbench_matrix.sh --aggregate    # 학습 안 돌리고 집계만
 #   ENCODERS="siglip_base dinov2_base vc1_vitb" bash scripts/local/run_cortexbench_matrix.sh
 #                                                               # 분산용 — 특정 encoder만 (63잡)
+#   NUM_GPUS=1 ENCODERS="vc1_vitb" bash scripts/local/run_cortexbench_matrix.sh
+#                                                               # 단일 GPU 머신 (직렬 21잡)
 #
 # 분산 운영 예시 (docs/setup/CORTEXBENCH_GUIDE.md 참고):
-#   머신 A: ENCODERS="v15_p_only videomae_ours"
-#   머신 B: ENCODERS="siglip_base dinov2_base vc1_vitb"
+#   머신 A (H100×2): ENCODERS="v15_p_only videomae_ours"
+#   머신 B (H100×2): ENCODERS="siglip_base dinov2_base vc1_vitb"
+#   머신 C (A6000×1, NUM_GPUS=1): ENCODERS="vc1_vitb"
 #   → 양쪽 paper_artifacts/cortexbench/ rsync 후 aggregate
 #
 # 학습 잡 출력: paper_artifacts/cortexbench/<enc>/<task>/seed_<n>/
@@ -23,6 +26,9 @@ cd "$(dirname "$0")/../.."
 # Default 5 encoder. ENCODERS env로 override 가능 (분산 운영).
 DEFAULT_ENCODERS="v15_p_only videomae_ours siglip_base dinov2_base vc1_vitb"
 read -ra ENCODERS <<< "${ENCODERS:-$DEFAULT_ENCODERS}"
+
+# GPU 수 (단일 GPU 머신은 NUM_GPUS=1 로 직렬 실행).
+NUM_GPUS=${NUM_GPUS:-2}
 
 # task entries: "suite:env:config-name"
 TASKS=(
@@ -113,30 +119,23 @@ for ENC in "${ENCODERS[@]}"; do
 done
 
 TOTAL=${#JOBS[@]}
-echo "[$(date '+%F %T')] Total jobs: $TOTAL"
+echo "[$(date '+%F %T')] Total jobs: $TOTAL  (NUM_GPUS=$NUM_GPUS)"
 
-# GPU 0: 짝수 idx, GPU 1: 홀수 idx (round-robin)
-(
-    for JOB in "${JOBS[@]}"; do
-        IFS='|' read -r IDX ENC SUITE TASK CFG SEED DATA_DIR <<< "$JOB"
-        if [ $((IDX % 2)) -eq 0 ]; then
-            run_one "$IDX" 0 "$ENC" "$SUITE" "$TASK" "$CFG" "$SEED" "$DATA_DIR"
-        fi
-    done
-) &
-P0=$!
+# NUM_GPUS 워커가 round-robin으로 IDX 분배 (NUM_GPUS=1이면 직렬).
+WORKER_PIDS=()
+for ((G=0; G<NUM_GPUS; G++)); do
+    (
+        for JOB in "${JOBS[@]}"; do
+            IFS='|' read -r IDX ENC SUITE TASK CFG SEED DATA_DIR <<< "$JOB"
+            if [ $((IDX % NUM_GPUS)) -eq "$G" ]; then
+                run_one "$IDX" "$G" "$ENC" "$SUITE" "$TASK" "$CFG" "$SEED" "$DATA_DIR"
+            fi
+        done
+    ) &
+    WORKER_PIDS+=($!)
+done
 
-(
-    for JOB in "${JOBS[@]}"; do
-        IFS='|' read -r IDX ENC SUITE TASK CFG SEED DATA_DIR <<< "$JOB"
-        if [ $((IDX % 2)) -eq 1 ]; then
-            run_one "$IDX" 1 "$ENC" "$SUITE" "$TASK" "$CFG" "$SEED" "$DATA_DIR"
-        fi
-    done
-) &
-P1=$!
-
-wait $P0 $P1
+wait "${WORKER_PIDS[@]}"
 echo "[$(date '+%F %T')] All jobs complete"
 
 echo "Aggregating to $OUT_ROOT/{per_run,per_task,summary}.csv ..."

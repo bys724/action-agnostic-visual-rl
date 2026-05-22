@@ -1,7 +1,40 @@
-[2026-05-19 17:31:29] Total jobs: 105
-[1 GPU1 2026-05-19 17:31:29] START: v15_p_only pen-v0 seed=200 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed200.log
-[0 GPU0 2026-05-19 17:31:29] START: v15_p_only pen-v0 seed=100 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed100.log
-[0 GPU0 2026-05-19 18:52:52] DONE rc=0: v15_p_only pen-v0 seed=100
-[2 GPU0 2026-05-19 18:52:52] START: v15_p_only pen-v0 seed=300 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed300.log
-[1 GPU1 2026-05-19 18:53:02] DONE rc=0: v15_p_only pen-v0 seed=200
-[3 GPU1 2026-05-19 18:53:02] START: v15_p_only relocate-v0 seed=100 → paper_artifacts/cortexbench/_logs/v15_p_only_relocate-v0_seed100.log
+[2026-05-21 18:13:44] Total jobs: 21  (NUM_GPUS=1)
+[0 GPU0 2026-05-21 18:13:44] START: vc1_vitb pen-v0 seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_pen-v0_seed100.log
+[0 GPU0 2026-05-21 18:30:55] DONE rc=0: vc1_vitb pen-v0 seed=100
+[1 GPU0 2026-05-21 18:30:55] START: vc1_vitb pen-v0 seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_pen-v0_seed200.log
+[1 GPU0 2026-05-21 18:47:59] DONE rc=0: vc1_vitb pen-v0 seed=200
+[2 GPU0 2026-05-21 18:47:59] START: vc1_vitb pen-v0 seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_pen-v0_seed300.log
+[2 GPU0 2026-05-21 19:05:19] DONE rc=0: vc1_vitb pen-v0 seed=300
+[3 GPU0 2026-05-21 19:05:19] START: vc1_vitb relocate-v0 seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_relocate-v0_seed100.log
+[3 GPU0 2026-05-21 19:39:00] DONE rc=0: vc1_vitb relocate-v0 seed=100
+[4 GPU0 2026-05-21 19:39:00] START: vc1_vitb relocate-v0 seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_relocate-v0_seed200.log
+[4 GPU0 2026-05-21 20:13:03] DONE rc=0: vc1_vitb relocate-v0 seed=200
+[5 GPU0 2026-05-21 20:13:03] START: vc1_vitb relocate-v0 seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_relocate-v0_seed300.log
+[5 GPU0 2026-05-21 20:46:51] DONE rc=0: vc1_vitb relocate-v0 seed=300
+[6 GPU0 2026-05-21 20:46:51] START: vc1_vitb assembly-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_assembly-v2-goal-observable_seed100.log
+[6 GPU0 2026-05-21 22:08:08] DONE rc=0: vc1_vitb assembly-v2-goal-observable seed=100
+[7 GPU0 2026-05-21 22:08:08] START: vc1_vitb assembly-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_assembly-v2-goal-observable_seed200.log
+[7 GPU0 2026-05-21 23:29:41] DONE rc=0: vc1_vitb assembly-v2-goal-observable seed=200
+[8 GPU0 2026-05-21 23:29:41] START: vc1_vitb assembly-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_assembly-v2-goal-observable_seed300.log
+[8 GPU0 2026-05-22 00:51:07] DONE rc=0: vc1_vitb assembly-v2-goal-observable seed=300
+[9 GPU0 2026-05-22 00:51:07] START: vc1_vitb bin-picking-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_bin-picking-v2-goal-observable_seed100.log
+[9 GPU0 2026-05-22 02:11:18] DONE rc=0: vc1_vitb bin-picking-v2-goal-observable seed=100
+[10 GPU0 2026-05-22 02:11:18] START: vc1_vitb bin-picking-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_bin-picking-v2-goal-observable_seed200.log
+[10 GPU0 2026-05-22 03:31:48] DONE rc=0: vc1_vitb bin-picking-v2-goal-observable seed=200
+[11 GPU0 2026-05-22 03:31:48] START: vc1_vitb bin-picking-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_bin-picking-v2-goal-observable_seed300.log
+[11 GPU0 2026-05-22 04:51:52] DONE rc=0: vc1_vitb bin-picking-v2-goal-observable seed=300
+[12 GPU0 2026-05-22 04:51:52] START: vc1_vitb button-press-topdown-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_button-press-topdown-v2-goal-observable_seed100.log
+[12 GPU0 2026-05-22 06:11:46] DONE rc=0: vc1_vitb button-press-topdown-v2-goal-observable seed=100
+[13 GPU0 2026-05-22 06:11:46] START: vc1_vitb button-press-topdown-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_button-press-topdown-v2-goal-observable_seed200.log
+[13 GPU0 2026-05-22 07:31:27] DONE rc=0: vc1_vitb button-press-topdown-v2-goal-observable seed=200
+[14 GPU0 2026-05-22 07:31:27] START: vc1_vitb button-press-topdown-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_button-press-topdown-v2-goal-observable_seed300.log
+[14 GPU0 2026-05-22 08:51:23] DONE rc=0: vc1_vitb button-press-topdown-v2-goal-observable seed=300
+[15 GPU0 2026-05-22 08:51:23] START: vc1_vitb drawer-open-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_drawer-open-v2-goal-observable_seed100.log
+[15 GPU0 2026-05-22 10:10:59] DONE rc=0: vc1_vitb drawer-open-v2-goal-observable seed=100
+[16 GPU0 2026-05-22 10:10:59] START: vc1_vitb drawer-open-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_drawer-open-v2-goal-observable_seed200.log
+[16 GPU0 2026-05-22 11:30:04] DONE rc=0: vc1_vitb drawer-open-v2-goal-observable seed=200
+[17 GPU0 2026-05-22 11:30:04] START: vc1_vitb drawer-open-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_drawer-open-v2-goal-observable_seed300.log
+[17 GPU0 2026-05-22 12:49:23] DONE rc=0: vc1_vitb drawer-open-v2-goal-observable seed=300
+[18 GPU0 2026-05-22 12:49:23] START: vc1_vitb hammer-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_hammer-v2-goal-observable_seed100.log
+[18 GPU0 2026-05-22 14:11:03] DONE rc=0: vc1_vitb hammer-v2-goal-observable seed=100
+[19 GPU0 2026-05-22 14:11:03] START: vc1_vitb hammer-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_hammer-v2-goal-observable_seed200.log
