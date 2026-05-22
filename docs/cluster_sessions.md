@@ -245,6 +245,49 @@ v15ep50 object/goal agentview는 기존 `paper_artifacts/libero_action_probing/t
 - v15는 **goal suite 1위** (Δ +0.238), spatial/object는 vc1 1위
 - "motion-routing unique advantage" 강한 claim 불가, "action-relevant pretrain > VL-SSL" framing 가능
 
+### 2026-05-21 C10 CALVIN unzip + loader 검증 + validation 5잡
+
+CALVIN 다운로드 완료 (2026-05-19 22:19, 704 GB) 후 5/20-5/21 압축 해제 + loader 검증.
+
+**unzip 잡 진행**:
+- 34653934 long_cpu PENDING 4h (35h 예약 됨) → cancel
+- 34666478 core_l RUNNING → FAILED 1m (compute node에 `unzip` 명령 부재). conda env에 unzip 설치 + sbatch script 수정 후 재제출
+- **34673903 core_l × 8 CPU × 12h** ✅ COMPLETED elapsed **4h 40m** (commit `bd4c675`). 2,406,171 파일 추출 (99.9%). `task_ABCD_D/{training/178ep, validation/4ep}/episode_XXXXXXX.npz` 구조 확인 — `src/datasets/calvin.py` loader 가정 일치 ✅
+
+**Episode 길이 진단**:
+- training: 178 episodes 평균 12,961 frames (max 44,087)
+- validation: 4 episodes 평균 24,756 frames (max 37,683)
+- 전체 frame을 stack 시 episode 1개 = 4.5 GB RGB uint8 → 메모리 폭증 발견 (sanity 잡 36 GB RSS stuck)
+
+**loader 수정 (commit `21f907d`)**: `--frame-stride 10` default 추가 (30Hz → effective 3Hz), gaps default = [1, 3, 5, 10] (stride space, gap=3 = 1.0s key).
+
+| JobID | 자원 | 결과 |
+|-------|------|------|
+| 34674929 (sanity v1) | AIP 1 GPU | CANCELLED — 17m stuck (메모리 36 GB, stride 없음) |
+| 34676122 (sanity v2 stride=10) | AIP 1 GPU | ✅ COMPLETED 6m58s. validation 4ep, gap=1/3/5/10. **v15 main ep50 R²: gap=3 +0.239 / gap=10 +0.399** — loader OK |
+
+### 2026-05-21~22 C10 본 매트릭스 (5 enc × 2 splits = 10잡)
+
+| JobID 범위 | 자원 | 결과 |
+|-----------|------|------|
+| 34676187/189/191/193/195 (validation 5잡) | AIP 1×1 H100 each | ✅ COMPLETED 3~5분/잡, total **0.4 GPU·h**. paper_artifacts/calvin_action_probing/*_validation_*/ |
+| 34676186/188/190/192/194 (training 5잡, time=2h) | AIP 1×1 H100 each | ❌ **TIMEOUT @ 2h** (gap1만 partial). training=178 ep 6h+ 필요 |
+| **34721946~998 (training 재제출, time=8h)** | AIP 1×1 H100 each | RUNNING 시작 2026-05-22 11:39, 4-6h 예상. total ~25 GPU·h |
+
+**Validation 결과 (CALVIN D split OOD, 4 ep, gap=3 = 1.0s @ effective 3 Hz)**:
+| Encoder | R² gap=3 | R² gap=10 | Rank |
+|---------|----------|-----------|------|
+| **dinov2** | **+0.469** ★ | **+0.588** | 1위 |
+| **siglip** | **+0.411** | +0.535 | 2위 |
+| videomae-ours | +0.246 | +0.352 | 3위 |
+| v15 (ep50, two-stream-v11 mode) | +0.239 | +0.399 | 4위 |
+| vc1 | +0.210 | +0.369 | 5위 |
+
+**Paper §4 ¶2 (iii) narrative 영향** (비판적):
+- CALVIN cleaner setting (cf. DROID 모두 R²≈0)에서 **v15가 single-frame SSL baseline 대비 명확히 낮음**
+- "action-agnostic 단점" evidence 가능성 — cross-embodiment gap (EgoDex human hand → CALVIN tabletop arm)에서 우리 방식이 일반 SSL보다 약함
+- training (in-distribution) 결과 확보 후 OOD vs in-distribution 격차 확인 필요. paper framing 신중: e.g., "v15 advantage is on natural human videos; for specialized tabletop robotics generic vision SSL retains an edge."
+
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
 paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.
