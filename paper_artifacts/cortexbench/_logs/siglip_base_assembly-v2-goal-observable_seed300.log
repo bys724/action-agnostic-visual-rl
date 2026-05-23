@@ -1,0 +1,375 @@
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/hydra/_internal/defaults_list.py:251: UserWarning: In 'Metaworld_BC_config.yaml': Defaults list is missing `_self_`. See https://hydra.cc/docs/1.2/upgrades/1.0_to_1.1/default_composition_order for more information
+  warnings.warn(msg, UserWarning)
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/hydra/_internal/hydra.py:119: UserWarning: Future Hydra versions will no longer change working directory at job runtime by default.
+See https://hydra.cc/docs/1.2/upgrades/1.1_to_1.2/changes_to_job_working_dir/ for more information.
+  ret = run_job(
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+/workspace/external/eai-vc/third_party/dmc2gym/dmc2gym/wrappers.py:10: DeprecationWarning: `np.int` is a deprecated alias for the builtin `int`. To silence this warning, use `int` by itself. Doing this will not modify any behavior and is safe. When replacing `np.int`, you may wish to use e.g. `np.int64` or `np.int32` to specify the precision. If you wish to review your current use, check the release note link for additional information.
+Deprecated in NumPy 1.20; for more details and guidance: https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations
+  dim = np.int(np.prod(s.shape))
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/gym/spaces/box.py:84: UserWarning: [33mWARN: Box bound precision lowered by casting to float32[0m
+  logger.warn(f"Box bound precision lowered by casting to {self.dtype}")
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/torchvision/io/image.py:13: UserWarning: Failed to load image Python extension: /opt/conda/envs/eai-vc/lib/python3.8/site-packages/torchvision/image.so: undefined symbol: _ZN3c106detail19maybe_wrap_dim_slowEllb
+  warn(f"Failed to load image Python extension: {e}")
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/gym/spaces/box.py:84: UserWarning: [33mWARN: Box bound precision lowered by casting to float32[0m
+  logger.warn(f"Box bound precision lowered by casting to {self.dtype}")
+========================================
+Job Configuration
+========================================
+RS:> Registering Arms Envs
+RS:> Registering Biomechanics Envs
+RS:> Registering Hand Envs
+RS:> Registering Kitchen Envs
+wandb:
+  project: cortexbench_c11
+  entity: local
+  mode: offline
+env: assembly-v2-goal-observable
+algorithm: BC
+pixel_based: true
+embedding: siglip_base
+camera: top_cap2
+device: cuda
+data_dir: /mnt/data/cortexbench/datasets/metaworld-expert-v1.0/
+data_parallel: true
+seed: 300
+epochs: 100
+eval_frequency: 5
+save_frequency: 10
+eval_num_traj: 25
+num_cpu: 1
+num_demos: 25
+exp_notes: Add experiment notes here to help organize results down the road.
+env_kwargs:
+  env_name: ${env}
+  suite: metaworld
+  device: ${device}
+  image_width: 256
+  image_height: 256
+  camera_name: ${camera}
+  embedding_name: ${embedding}
+  pixel_based: ${pixel_based}
+  render_gpu_id: 0
+  seed: ${seed}
+  history_window: 3
+  add_proprio: true
+  proprio_key: gripper_proprio
+bc_kwargs:
+  hidden_sizes: (256, 256, 256)
+  nonlinearity: relu
+  loss_type: MSE
+  batch_size: 256
+  lr: 0.001
+  dropout: 0
+job_name: metaworld_cortex_vil
+cwd: /workspace/external/eai-vc/cortexbench/mujoco_vc/visual_imitation
+
+No GPUs detected. Defaulting to 0 as the device ID
+Number of demonstrations used : 25
+Demonstration score : 4291.72 
+Using CUDA.
+Loading config path: /workspace/external/eai-vc/vc_models/src/vc_models/conf/model/siglip_base.yaml
+===================================================================
+>>>>>>>>> Precomputing frozen embedding dataset >>>>>>>>>>>>>>>>>>>
+Loading config path: /workspace/external/eai-vc/vc_models/src/vc_models/conf/model/siglip_base.yaml
+  0%|          | 0/25 [00:00<?, ?it/s]  4%|▍         | 1/25 [00:02<01:08,  2.84s/it]  8%|▊         | 2/25 [00:05<00:56,  2.45s/it] 12%|█▏        | 3/25 [00:07<00:50,  2.28s/it] 16%|█▌        | 4/25 [00:09<00:47,  2.25s/it] 20%|██        | 5/25 [00:11<00:43,  2.18s/it] 24%|██▍       | 6/25 [00:13<00:40,  2.15s/it] 28%|██▊       | 7/25 [00:15<00:38,  2.13s/it] 32%|███▏      | 8/25 [00:17<00:35,  2.11s/it] 36%|███▌      | 9/25 [00:19<00:33,  2.10s/it] 40%|████      | 10/25 [00:21<00:31,  2.10s/it] 44%|████▍     | 11/25 [00:23<00:29,  2.11s/it] 48%|████▊     | 12/25 [00:25<00:27,  2.10s/it] 52%|█████▏    | 13/25 [00:28<00:25,  2.09s/it] 56%|█████▌    | 14/25 [00:30<00:23,  2.09s/it] 60%|██████    | 15/25 [00:32<00:20,  2.09s/it] 64%|██████▍   | 16/25 [00:34<00:18,  2.09s/it] 68%|██████▊   | 17/25 [00:36<00:16,  2.09s/it] 72%|███████▏  | 18/25 [00:38<00:14,  2.09s/it] 76%|███████▌  | 19/25 [00:40<00:12,  2.09s/it] 80%|████████  | 20/25 [00:42<00:10,  2.09s/it] 84%|████████▍ | 21/25 [00:44<00:08,  2.09s/it] 88%|████████▊ | 22/25 [00:46<00:06,  2.09s/it] 92%|█████████▏| 23/25 [00:48<00:04,  2.09s/it] 96%|█████████▌| 24/25 [00:51<00:02,  2.09s/it]100%|██████████| 25/25 [00:53<00:00,  2.09s/it]100%|██████████| 25/25 [00:53<00:00,  2.13s/it]
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/wandb/analytics/sentry.py:90: SentryHubDeprecationWarning: `sentry_sdk.Hub` is deprecated and will be removed in a future major release. Please consult our 1.x to 2.x migration guide for details on how to migrate `Hub` usage to the new API: https://docs.sentry.io/platforms/python/migration/1.x-to-2.x
+  self.hub = sentry_sdk.Hub(client)
+wandb: WARNING `resume` will be ignored since W&B syncing is set to `offline`. Starting a new run with run id 877dn94t.
+wandb: Tracking run with wandb version 0.16.6
+wandb: W&B syncing is set to `offline` in this directory.  
+wandb: Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
+  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:00<00:23,  4.28it/s]  2%|▏         | 2/100 [00:00<00:22,  4.43it/s]  3%|▎         | 3/100 [00:00<00:21,  4.44it/s]  4%|▍         | 4/100 [00:00<00:21,  4.53it/s]  5%|▌         | 5/100 [00:01<00:20,  4.53it/s]  6%|▌         | 6/100 [04:58<2:38:37, 101.25s/it]  7%|▋         | 7/100 [04:58<1:45:44, 68.22s/it]   8%|▊         | 8/100 [04:58<1:11:24, 46.57s/it]  9%|▉         | 9/100 [04:59<48:39, 32.08s/it]   10%|█         | 10/100 [04:59<33:21, 22.24s/it] 11%|█         | 11/100 [09:57<2:38:03, 106.56s/it] 12%|█▏        | 12/100 [09:57<1:48:50, 74.21s/it]  13%|█▎        | 13/100 [09:57<1:15:06, 51.79s/it] 14%|█▍        | 14/100 [09:57<51:54, 36.21s/it]   15%|█▌        | 15/100 [09:57<35:55, 25.36s/it] 16%|█▌        | 16/100 [14:56<2:30:33, 107.55s/it] 17%|█▋        | 17/100 [14:56<1:44:07, 75.27s/it]  18%|█▊        | 18/100 [14:56<1:12:03, 52.72s/it] 19%|█▉        | 19/100 [14:57<49:53, 36.95s/it]   20%|██        | 20/100 [14:57<34:35, 25.94s/it] 21%|██        | 21/100 [19:55<2:21:42, 107.63s/it] 22%|██▏       | 22/100 [19:55<1:38:01, 75.40s/it]  23%|██▎       | 23/100 [19:55<1:07:48, 52.84s/it] 24%|██▍       | 24/100 [19:56<46:55, 37.05s/it]   25%|██▌       | 25/100 [19:56<32:29, 26.00s/it] 26%|██▌       | 26/100 [24:55<2:13:16, 108.06s/it] 27%|██▋       | 27/100 [24:55<1:32:06, 75.71s/it]  28%|██▊       | 28/100 [24:56<1:03:40, 53.06s/it] 29%|██▉       | 29/100 [24:56<44:01, 37.21s/it]   30%|███       | 30/100 [24:56<30:27, 26.11s/it] 31%|███       | 31/100 [29:58<2:05:10, 108.85s/it] 32%|███▏      | 32/100 [29:58<1:26:25, 76.26s/it]  33%|███▎      | 33/100 [29:58<59:40, 53.45s/it]   34%|███▍      | 34/100 [29:59<41:13, 37.48s/it] 35%|███▌      | 35/100 [29:59<28:29, 26.31s/it] 36%|███▌      | 36/100 [35:00<1:55:57, 108.71s/it] 37%|███▋      | 37/100 [35:00<1:19:58, 76.17s/it]  38%|███▊      | 38/100 [35:00<55:09, 53.38s/it]   39%|███▉      | 39/100 [35:01<38:03, 37.44s/it] 40%|████      | 40/100 [35:01<26:16, 26.28s/it] 41%|████      | 41/100 [39:58<1:45:46, 107.56s/it] 42%|████▏     | 42/100 [39:58<1:12:50, 75.36s/it]  43%|████▎     | 43/100 [39:59<50:10, 52.82s/it]   44%|████▍     | 44/100 [39:59<34:34, 37.04s/it] 45%|████▌     | 45/100 [39:59<23:49, 25.99s/it] 46%|████▌     | 46/100 [45:00<1:37:34, 108.41s/it] 47%|████▋     | 47/100 [45:00<1:07:05, 75.96s/it]  48%|████▊     | 48/100 [45:00<46:08, 53.25s/it]   49%|████▉     | 49/100 [45:00<31:44, 37.34s/it] 50%|█████     | 50/100 [45:01<21:50, 26.20s/it] 51%|█████     | 51/100 [50:01<1:28:31, 108.40s/it] 52%|█████▏    | 52/100 [50:01<1:00:45, 75.95s/it]  53%|█████▎    | 53/100 [50:01<41:41, 53.23s/it]   54%|█████▍    | 54/100 [50:01<28:36, 37.33s/it] 55%|█████▌    | 55/100 [50:02<19:38, 26.19s/it] 56%|█████▌    | 56/100 [55:02<1:19:34, 108.50s/it] 57%|█████▋    | 57/100 [55:02<54:28, 76.02s/it]    58%|█████▊    | 58/100 [55:03<37:17, 53.28s/it] 59%|█████▉    | 59/100 [55:03<25:31, 37.36s/it] 60%|██████    | 60/100 [55:03<17:29, 26.23s/it] 61%|██████    | 61/100 [1:00:04<1:10:39, 108.69s/it] 62%|██████▏   | 62/100 [1:00:04<48:13, 76.15s/it]    63%|██████▎   | 63/100 [1:00:05<32:54, 53.38s/it] 64%|██████▍   | 64/100 [1:00:05<22:27, 37.43s/it] 65%|██████▌   | 65/100 [1:00:05<15:19, 26.26s/it] 66%|██████▌   | 66/100 [1:05:06<1:01:33, 108.63s/it] 67%|██████▋   | 67/100 [1:05:06<41:51, 76.11s/it]    68%|██████▊   | 68/100 [1:05:06<28:26, 53.34s/it] 69%|██████▉   | 69/100 [1:05:07<19:19, 37.41s/it] 70%|███████   | 70/100 [1:05:07<13:07, 26.25s/it] 71%|███████   | 71/100 [1:10:08<52:32, 108.70s/it] 72%|███████▏  | 72/100 [1:10:08<35:32, 76.15s/it]  73%|███████▎  | 73/100 [1:10:08<24:01, 53.37s/it] 74%|███████▍  | 74/100 [1:10:09<16:13, 37.43s/it] 75%|███████▌  | 75/100 [1:10:09<10:56, 26.26s/it] 76%|███████▌  | 76/100 [1:15:07<43:09, 107.89s/it] 77%|███████▋  | 77/100 [1:15:07<28:58, 75.59s/it]  78%|███████▊  | 78/100 [1:15:08<19:25, 52.97s/it] 79%|███████▉  | 79/100 [1:15:08<13:00, 37.15s/it] 80%|████████  | 80/100 [1:15:08<08:41, 26.07s/it] 81%|████████  | 81/100 [1:20:07<34:09, 107.86s/it] 82%|████████▏ | 82/100 [1:20:07<22:40, 75.57s/it]  83%|████████▎ | 83/100 [1:20:07<15:00, 52.96s/it] 84%|████████▍ | 84/100 [1:20:07<09:54, 37.14s/it] 85%|████████▌ | 85/100 [1:20:08<06:30, 26.06s/it] 86%|████████▌ | 86/100 [1:25:06<25:08, 107.73s/it] 87%|████████▋ | 87/100 [1:25:06<16:21, 75.48s/it]  88%|████████▊ | 88/100 [1:25:06<10:34, 52.90s/it] 89%|████████▉ | 89/100 [1:25:07<06:48, 37.09s/it] 90%|█████████ | 90/100 [1:25:07<04:20, 26.03s/it] 91%|█████████ | 91/100 [1:30:05<16:09, 107.68s/it] 92%|█████████▏| 92/100 [1:30:05<10:03, 75.44s/it]  93%|█████████▎| 93/100 [1:30:05<06:10, 52.87s/it] 94%|█████████▍| 94/100 [1:30:06<03:42, 37.08s/it] 95%|█████████▌| 95/100 [1:30:06<02:10, 26.02s/it] 96%|█████████▌| 96/100 [1:35:04<07:10, 107.63s/it] 97%|█████████▋| 97/100 [1:35:04<03:46, 75.41s/it]  98%|█████████▊| 98/100 [1:35:04<01:45, 52.85s/it] 99%|█████████▉| 99/100 [1:35:05<00:37, 37.06s/it]100%|██████████| 100/100 [1:40:05<00:00, 116.07s/it]100%|██████████| 100/100 [1:40:05<00:00, 60.05s/it] Epoch = 5 | BC performance (eval mode) = 493.283 
+---------------------  -------
+eval/epoch               5
+eval/highest_score     493.283
+eval/highest_success     4
+eval/score_mean        493.283
+eval/success             4
+train/epoch              5
+train/highest_score    650.038
+train/highest_success   12
+train/score            650.038
+train/success           12
+---------------------  -------
+Epoch = 10 | BC performance (eval mode) = 2797.770 
+---------------------  -------
+eval/epoch               10
+eval/highest_score     2797.77
+eval/highest_success     60
+eval/score_mean        2797.77
+eval/success             60
+train/epoch              10
+train/highest_score    2432.16
+train/highest_success    48
+train/score            2432.16
+train/success            48
+---------------------  -------
+Epoch = 15 | BC performance (eval mode) = 2530.235 
+---------------------  -------
+eval/epoch               15
+eval/highest_score     2797.77
+eval/highest_success     60
+eval/score_mean        2530.23
+eval/success             52
+train/epoch              15
+train/highest_score    2467.2
+train/highest_success    52
+train/score            2467.2
+train/success            52
+---------------------  -------
+Epoch = 20 | BC performance (eval mode) = 2567.034 
+---------------------  -------
+eval/epoch               20
+eval/highest_score     2797.77
+eval/highest_success     60
+eval/score_mean        2567.03
+eval/success             56
+train/epoch              20
+train/highest_score    3060.77
+train/highest_success    64
+train/score            3060.77
+train/success            64
+---------------------  -------
+Epoch = 25 | BC performance (eval mode) = 1426.431 
+---------------------  -------
+eval/epoch               25
+eval/highest_score     2797.77
+eval/highest_success     60
+eval/score_mean        1426.43
+eval/success             28
+train/epoch              25
+train/highest_score    3060.77
+train/highest_success    64
+train/score            1277.24
+train/success            24
+---------------------  -------
+Epoch = 30 | BC performance (eval mode) = 3908.370 
+---------------------  -------
+eval/epoch               30
+eval/highest_score     3908.37
+eval/highest_success     88
+eval/score_mean        3908.37
+eval/success             88
+train/epoch              30
+train/highest_score    3285.4
+train/highest_success    76
+train/score            3285.4
+train/success            76
+---------------------  -------
+Epoch = 35 | BC performance (eval mode) = 2037.889 
+---------------------  -------
+eval/epoch               35
+eval/highest_score     3908.37
+eval/highest_success     88
+eval/score_mean        2037.89
+eval/success             48
+train/epoch              35
+train/highest_score    3285.4
+train/highest_success    76
+train/score            2252.1
+train/success            48
+---------------------  -------
+Epoch = 40 | BC performance (eval mode) = 733.617 
+---------------------  --------
+eval/epoch               40
+eval/highest_score     3908.37
+eval/highest_success     88
+eval/score_mean         733.617
+eval/success             12
+train/epoch              40
+train/highest_score    3285.4
+train/highest_success    76
+train/score            1068.66
+train/success            20
+---------------------  --------
+Epoch = 45 | BC performance (eval mode) = 3699.754 
+---------------------  -------
+eval/epoch               45
+eval/highest_score     3908.37
+eval/highest_success     88
+eval/score_mean        3699.75
+eval/success             84
+train/epoch              45
+train/highest_score    3502.75
+train/highest_success    76
+train/score            3502.75
+train/success            76
+---------------------  -------
+Epoch = 50 | BC performance (eval mode) = 3109.589 
+---------------------  -------
+eval/epoch               50
+eval/highest_score     3908.37
+eval/highest_success     88
+eval/score_mean        3109.59
+eval/success             64
+train/epoch              50
+train/highest_score    3502.75
+train/highest_success    76
+train/score            2731.96
+train/success            56
+---------------------  -------
+Epoch = 55 | BC performance (eval mode) = 3563.546 
+---------------------  -------
+eval/epoch               55
+eval/highest_score     3908.37
+eval/highest_success     88
+eval/score_mean        3563.55
+eval/success             80
+train/epoch              55
+train/highest_score    3748.08
+train/highest_success    84
+train/score            3748.08
+train/success            84
+---------------------  -------
+Epoch = 60 | BC performance (eval mode) = 3901.533 
+---------------------  -------
+eval/epoch               60
+eval/highest_score     3908.37
+eval/highest_success     92
+eval/score_mean        3901.53
+eval/success             92
+train/epoch              60
+train/highest_score    3942.32
+train/highest_success    92
+train/score            3942.32
+train/success            92
+---------------------  -------
+Epoch = 65 | BC performance (eval mode) = 3443.627 
+---------------------  -------
+eval/epoch               65
+eval/highest_score     3908.37
+eval/highest_success     92
+eval/score_mean        3443.63
+eval/success             76
+train/epoch              65
+train/highest_score    3942.32
+train/highest_success    92
+train/score            3676.47
+train/success            84
+---------------------  -------
+Epoch = 70 | BC performance (eval mode) = 3473.360 
+---------------------  -------
+eval/epoch               70
+eval/highest_score     3908.37
+eval/highest_success     92
+eval/score_mean        3473.36
+eval/success             84
+train/epoch              70
+train/highest_score    3944.35
+train/highest_success    92
+train/score            3944.35
+train/success            92
+---------------------  -------
+Epoch = 75 | BC performance (eval mode) = 4064.534 
+---------------------  -------
+eval/epoch               75
+eval/highest_score     4064.53
+eval/highest_success     92
+eval/score_mean        4064.53
+eval/success             92
+train/epoch              75
+train/highest_score    3944.35
+train/highest_success    92
+train/score            3933.33
+train/success            88
+---------------------  -------
+Epoch = 80 | BC performance (eval mode) = 3668.277 
+---------------------  -------
+eval/epoch               80
+eval/highest_score     4064.53
+eval/highest_success     92
+eval/score_mean        3668.28
+eval/success             84
+train/epoch              80
+train/highest_score    3944.35
+train/highest_success    92
+train/score            3580.4
+train/success            80
+---------------------  -------
+Epoch = 85 | BC performance (eval mode) = 3664.556 
+---------------------  -------
+eval/epoch               85
+eval/highest_score     4064.53
+eval/highest_success     92
+eval/score_mean        3664.56
+eval/success             84
+train/epoch              85
+train/highest_score    3944.35
+train/highest_success    92
+train/score            3632.96
+train/success            80
+---------------------  -------
+Epoch = 90 | BC performance (eval mode) = 3709.566 
+---------------------  -------
+eval/epoch               90
+eval/highest_score     4064.53
+eval/highest_success     92
+eval/score_mean        3709.57
+eval/success             84
+train/epoch              90
+train/highest_score    4076.11
+train/highest_success    96
+train/score            4076.11
+train/success            96
+---------------------  -------
+Epoch = 95 | BC performance (eval mode) = 3220.665 
+---------------------  -------
+eval/epoch               95
+eval/highest_score     4064.53
+eval/highest_success     92
+eval/score_mean        3220.66
+eval/success             72
+train/epoch              95
+train/highest_score    4076.11
+train/highest_success    96
+train/score            2808.54
+train/success            60
+---------------------  -------
+Epoch = 99 | BC performance (eval mode) = 4019.397 
+---------------------  -------
+eval/epoch               99
+eval/highest_score     4064.53
+eval/highest_success     92
+eval/score_mean        4019.4
+eval/success             92
+train/epoch              99
+train/highest_score    4076.11
+train/highest_success    96
+train/score            3968.99
+train/success            88
+---------------------  -------
+
+wandb: 
+wandb: Run history:
+wandb:            epoch_loss █▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:            eval/epoch ▁▁▂▂▂▃▃▄▄▄▅▅▅▆▆▇▇▇██
+wandb:    eval/highest_score ▁▆▆▆▆███████████████
+wandb:  eval/highest_success ▁▅▅▅▅███████████████
+wandb:       eval/score_mean ▁▆▅▅▃█▄▁▇▆▇█▇▇█▇▇▇▆█
+wandb:          eval/success ▁▅▅▅▃█▅▂▇▆▇█▇▇█▇▇▇▆█
+wandb:           train/epoch ▁▁▂▂▂▃▃▄▄▄▅▅▅▆▆▇▇▇██
+wandb:   train/highest_score ▁▅▅▆▆▆▆▆▇▇▇█████████
+wandb: train/highest_success ▁▄▄▅▅▆▆▆▆▆▇█████████
+wandb:           train/score ▁▅▅▆▂▆▄▂▇▅▇█▇██▇▇█▅█
+wandb:         train/success ▁▄▄▅▂▆▄▂▆▅▇█▇█▇▇▇█▅▇
+wandb: 
+wandb: Run summary:
+wandb:            epoch_loss 0.00015
+wandb:            eval/epoch 99
+wandb:    eval/highest_score 4064.5343
+wandb:  eval/highest_success 92.0
+wandb:       eval/score_mean 4019.39661
+wandb:          eval/success 92.0
+wandb:           train/epoch 99
+wandb:   train/highest_score 4076.11315
+wandb: train/highest_success 96.0
+wandb:           train/score 3968.99122
+wandb:         train/success 88.0
+wandb: 
+wandb: You can sync this run to the cloud by running:
+wandb: wandb sync /workspace/paper_artifacts/cortexbench/siglip_base/assembly-v2-goal-observable/seed_300/wandb/offline-run-20260522_142747-877dn94t
+wandb: Find logs at: ./wandb/offline-run-20260522_142747-877dn94t/logs
+Found 3 GPUs for rendering. Using device 0.

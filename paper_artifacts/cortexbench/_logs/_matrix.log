@@ -38,3 +38,17 @@
 [18 GPU0 2026-05-22 12:49:23] START: vc1_vitb hammer-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/vc1_vitb_hammer-v2-goal-observable_seed100.log
 [18 GPU0 2026-05-22 14:11:03] DONE rc=0: vc1_vitb hammer-v2-goal-observable seed=100
 [19 GPU0 2026-05-22 14:11:03] START: vc1_vitb hammer-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/vc1_vitb_hammer-v2-goal-observable_seed200.log
+[19 GPU0 2026-05-22 15:32:30] DONE rc=0: vc1_vitb hammer-v2-goal-observable seed=200
+[20 GPU0 2026-05-22 15:32:30] START: vc1_vitb hammer-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/vc1_vitb_hammer-v2-goal-observable_seed300.log
+[20 GPU0 2026-05-22 16:53:13] DONE rc=0: vc1_vitb hammer-v2-goal-observable seed=300
+[2026-05-22 16:53:13] All jobs complete
+Aggregating to paper_artifacts/cortexbench/{per_run,per_task,summary}.csv ...
+per_run.csv:  105 rows (DONE=23, RUNNING=2, MISSING=80)
+per_task.csv: 8 rows
+summary.csv:  3 rows
+
+=== Per-suite mean (encoder × suite) ===
+encoder            suite       n_tasks  mean_success   mean_score
+v15_p_only         adroit            1       50.0000    2032.1000
+vc1_vitb           adroit            2       48.6667    1910.2587
+vc1_vitb           metaworld         5       88.8000    3073.5973
