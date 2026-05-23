@@ -28,11 +28,33 @@ from collections import defaultdict
 
 # ckpt path → seed 추출용 (디렉명: vc1_libero_spatial_seed0_20260505_042336_v3)
 SEED_RE = re.compile(r"_seed(\d+)_")
+# ckpt path → suffix 추출용 (디렉명 마지막 토큰, _seed N_ TIMESTAMP_ 뒤)
+CKPT_SUFFIX_RE = re.compile(r"_seed\d+_\d{8}_\d{6}_([^/]+?)/best\.pt$")
+# "main" suffix는 encoder name에 합치지 않음 (기존 paper rows 이름 유지).
+# ablation suffix (예: vfromm_ep32)는 encoder name에 합쳐 별도 row 분리.
+MAIN_CKPT_SUFFIXES = {"v3", "v15ep50"}
 
 
 def extract_seed_from_ckpt(ckpt_path: str) -> int | None:
     m = SEED_RE.search(ckpt_path)
     return int(m.group(1)) if m else None
+
+
+def encoder_name_for(md: dict) -> str:
+    """encoder name = encoder_type (+ suffix if ablation).
+
+    main suffix (v3 / v15ep50) → encoder_type 그대로 (paper main row).
+    ablation suffix (vfromm_ep32 등) → "encoder_type_suffix" 별도 row.
+    suffix 추출 실패 시 fallback = encoder_type.
+    """
+    base = md.get("encoder_type", "unknown")
+    m = CKPT_SUFFIX_RE.search(md.get("checkpoint", "") or "")
+    if not m:
+        return base
+    suffix = m.group(1)
+    if suffix in MAIN_CKPT_SUFFIXES:
+        return base
+    return f"{base}_{suffix}"
 
 
 def load_jsons(
@@ -83,7 +105,7 @@ def write_episodes_csv(jsons: list, out_path: pathlib.Path) -> int:
                     continue
                 for ep in eps:
                     w.writerow({
-                        "encoder": md.get("encoder_type", "unknown"),
+                        "encoder": encoder_name_for(md),
                         "suite": md["task_suite"],
                         "seed": seed,
                         "task_id": tr["task_id"],
@@ -115,7 +137,7 @@ def write_per_task_csv(jsons: list, out_path: pathlib.Path) -> int:
             seed = ckpt_seed if ckpt_seed is not None else md.get("seed")
             for tr in data["task_results"]:
                 w.writerow({
-                    "encoder": md.get("encoder_type", "unknown"),
+                    "encoder": encoder_name_for(md),
                     "suite": md["task_suite"],
                     "seed": seed,
                     "task_id": tr["task_id"],
@@ -137,7 +159,7 @@ def write_summary_csv(jsons: list, out_path: pathlib.Path) -> int:
         md = data["metadata"]
         ckpt_seed = extract_seed_from_ckpt(md["checkpoint"])
         seed = ckpt_seed if ckpt_seed is not None else md.get("seed")
-        key = (md.get("encoder_type", "unknown"), md["task_suite"])
+        key = (encoder_name_for(md), md["task_suite"])
         seed_sr[key][seed] = data["overall_success_rate"]
         seed_eps[key][seed] = data["total_episodes"]
 
