@@ -19,6 +19,14 @@ import torch.nn as nn
 import torchvision.transforms as T
 from PIL import Image
 
+# A6000(sm_86) 호환성: patch_embed_p 출력 std≈24의 큰 attention score에서
+# flash/mem_efficient SDPA backend가 NaN 발생 (Block 0부터 폭주).
+# math backend의 standard softmax는 numerically stable. H100(sm_90)에서는
+# 같은 입력도 안정 backend 자동 선택 — 즉 본 강제는 A6000 호환성 workaround.
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+torch.backends.cuda.enable_math_sdp(True)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -27,6 +35,10 @@ class V15POnlyWrapper(nn.Module):
 
     Strategy: P encoder만 단일 forward → patches mean (skip CLS) = 768-d.
     M encoder는 학습 시 motion catalyst 역할만 했으므로 inference에서 제외.
+
+    Note: ckpt가 v15 lineage (motion routing + composition head 포함)이므로
+    `TwoStreamV15Model` 직접 instantiate. v11 class로 load 시 motion routing
+    weight 289개가 unexpected keys로 누락되어 일부 GPU에서 forward 불안정.
     """
 
     def __init__(self, checkpoint_path: str, p_depth: int = 12, m_depth: int = 6):
@@ -34,14 +46,27 @@ class V15POnlyWrapper(nn.Module):
         import sys
         if str(PROJECT_ROOT) not in sys.path:
             sys.path.insert(0, str(PROJECT_ROOT))
-        from scripts.eval.probe_action_v11 import (
-            _p_encoder_forward,
-            load_v11_model,
-        )
+        from src.models import TwoStreamV15Model
+        from scripts.eval.probe_action_v11 import _p_encoder_forward
         self._p_encoder_forward = _p_encoder_forward
-        self.model = load_v11_model(
-            checkpoint_path, p_depth=p_depth, m_depth=m_depth, device="cpu",
+        self.model = TwoStreamV15Model(
+            embed_dim=768, p_depth=p_depth, m_depth=m_depth,
+            num_heads=12, mlp_ratio=4.0, image_size=224, patch_size=16,
+            mask_ratio_m=0.0, mask_ratio_p=0.0,
+            decoder_depth_m=3, interpreter_depth=3, num_motion_iters=2,
+            rotation_aug=False,
         )
+        ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        state_dict = ckpt.get("model_state_dict", ckpt)
+        state_dict = {
+            (k[len("module."):] if k.startswith("module.") else k): v
+            for k, v in state_dict.items()
+        }
+        missing, unexpected = self.model.load_state_dict(state_dict, strict=False)
+        if missing:
+            print(f"  WARNING: {len(missing)} missing keys (first 3: {missing[:3]})")
+        if unexpected:
+            print(f"  WARNING: {len(unexpected)} unexpected keys (first 3: {unexpected[:3]})")
         for p in self.model.parameters():
             p.requires_grad = False
         self.model.eval()
