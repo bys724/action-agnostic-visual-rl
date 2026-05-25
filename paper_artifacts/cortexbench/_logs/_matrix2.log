@@ -38,3 +38,63 @@
 [18 GPU0 2026-05-23 16:06:49] START: siglip_base hammer-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/siglip_base_hammer-v2-goal-observable_seed100.log
 [18 GPU0 2026-05-23 17:47:43] DONE rc=0: siglip_base hammer-v2-goal-observable seed=100
 [19 GPU0 2026-05-23 17:47:43] START: siglip_base hammer-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/siglip_base_hammer-v2-goal-observable_seed200.log
+[19 GPU0 2026-05-23 19:28:36] DONE rc=0: siglip_base hammer-v2-goal-observable seed=200
+[20 GPU0 2026-05-23 19:28:36] START: siglip_base hammer-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/siglip_base_hammer-v2-goal-observable_seed300.log
+[20 GPU0 2026-05-23 21:09:24] DONE rc=0: siglip_base hammer-v2-goal-observable seed=300
+[21 GPU0 2026-05-23 21:09:24] START: dinov2_base pen-v0 seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_pen-v0_seed100.log
+[21 GPU0 2026-05-23 21:30:01] DONE rc=0: dinov2_base pen-v0 seed=100
+[22 GPU0 2026-05-23 21:30:01] START: dinov2_base pen-v0 seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_pen-v0_seed200.log
+[22 GPU0 2026-05-23 21:50:38] DONE rc=0: dinov2_base pen-v0 seed=200
+[23 GPU0 2026-05-23 21:50:38] START: dinov2_base pen-v0 seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_pen-v0_seed300.log
+[23 GPU0 2026-05-23 22:11:19] DONE rc=0: dinov2_base pen-v0 seed=300
+[24 GPU0 2026-05-23 22:11:19] START: dinov2_base relocate-v0 seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_relocate-v0_seed100.log
+[24 GPU0 2026-05-23 22:51:59] DONE rc=0: dinov2_base relocate-v0 seed=100
+[25 GPU0 2026-05-23 22:51:59] START: dinov2_base relocate-v0 seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_relocate-v0_seed200.log
+[25 GPU0 2026-05-23 23:32:44] DONE rc=0: dinov2_base relocate-v0 seed=200
+[26 GPU0 2026-05-23 23:32:44] START: dinov2_base relocate-v0 seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_relocate-v0_seed300.log
+[26 GPU0 2026-05-24 00:13:43] DONE rc=0: dinov2_base relocate-v0 seed=300
+[27 GPU0 2026-05-24 00:13:43] START: dinov2_base assembly-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_assembly-v2-goal-observable_seed100.log
+[27 GPU0 2026-05-24 01:51:09] DONE rc=0: dinov2_base assembly-v2-goal-observable seed=100
+[28 GPU0 2026-05-24 01:51:09] START: dinov2_base assembly-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_assembly-v2-goal-observable_seed200.log
+[28 GPU0 2026-05-24 03:29:28] DONE rc=0: dinov2_base assembly-v2-goal-observable seed=200
+[29 GPU0 2026-05-24 03:29:28] START: dinov2_base assembly-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_assembly-v2-goal-observable_seed300.log
+[29 GPU0 2026-05-24 05:07:19] DONE rc=0: dinov2_base assembly-v2-goal-observable seed=300
+[30 GPU0 2026-05-24 05:07:19] START: dinov2_base bin-picking-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_bin-picking-v2-goal-observable_seed100.log
+[30 GPU0 2026-05-24 06:43:42] DONE rc=0: dinov2_base bin-picking-v2-goal-observable seed=100
+[31 GPU0 2026-05-24 06:43:42] START: dinov2_base bin-picking-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_bin-picking-v2-goal-observable_seed200.log
+[31 GPU0 2026-05-24 08:19:38] DONE rc=0: dinov2_base bin-picking-v2-goal-observable seed=200
+[32 GPU0 2026-05-24 08:19:38] START: dinov2_base bin-picking-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_bin-picking-v2-goal-observable_seed300.log
+[32 GPU0 2026-05-24 09:56:05] DONE rc=0: dinov2_base bin-picking-v2-goal-observable seed=300
+[33 GPU0 2026-05-24 09:56:05] START: dinov2_base button-press-topdown-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_button-press-topdown-v2-goal-observable_seed100.log
+[33 GPU0 2026-05-24 11:31:22] DONE rc=0: dinov2_base button-press-topdown-v2-goal-observable seed=100
+[34 GPU0 2026-05-24 11:31:22] START: dinov2_base button-press-topdown-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_button-press-topdown-v2-goal-observable_seed200.log
+[34 GPU0 2026-05-24 13:07:29] DONE rc=0: dinov2_base button-press-topdown-v2-goal-observable seed=200
+[35 GPU0 2026-05-24 13:07:29] START: dinov2_base button-press-topdown-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_button-press-topdown-v2-goal-observable_seed300.log
+[35 GPU0 2026-05-24 14:43:20] DONE rc=0: dinov2_base button-press-topdown-v2-goal-observable seed=300
+[36 GPU0 2026-05-24 14:43:20] START: dinov2_base drawer-open-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_drawer-open-v2-goal-observable_seed100.log
+[36 GPU0 2026-05-24 16:19:10] DONE rc=0: dinov2_base drawer-open-v2-goal-observable seed=100
+[37 GPU0 2026-05-24 16:19:10] START: dinov2_base drawer-open-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_drawer-open-v2-goal-observable_seed200.log
+[37 GPU0 2026-05-24 17:55:07] DONE rc=0: dinov2_base drawer-open-v2-goal-observable seed=200
+[38 GPU0 2026-05-24 17:55:07] START: dinov2_base drawer-open-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_drawer-open-v2-goal-observable_seed300.log
+[38 GPU0 2026-05-24 19:31:02] DONE rc=0: dinov2_base drawer-open-v2-goal-observable seed=300
+[39 GPU0 2026-05-24 19:31:02] START: dinov2_base hammer-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/dinov2_base_hammer-v2-goal-observable_seed100.log
+[39 GPU0 2026-05-24 21:09:11] DONE rc=0: dinov2_base hammer-v2-goal-observable seed=100
+[40 GPU0 2026-05-24 21:09:11] START: dinov2_base hammer-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/dinov2_base_hammer-v2-goal-observable_seed200.log
+[40 GPU0 2026-05-24 22:46:13] DONE rc=0: dinov2_base hammer-v2-goal-observable seed=200
+[41 GPU0 2026-05-24 22:46:13] START: dinov2_base hammer-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/dinov2_base_hammer-v2-goal-observable_seed300.log
+[41 GPU0 2026-05-25 00:23:29] DONE rc=0: dinov2_base hammer-v2-goal-observable seed=300
+[2026-05-25 00:23:29] All jobs complete
+Aggregating to paper_artifacts/cortexbench/{per_run,per_task,summary}.csv ...
+per_run.csv:  105 rows (DONE=65, RUNNING=2, MISSING=38)
+per_task.csv: 22 rows
+summary.csv:  7 rows
+
+=== Per-suite mean (encoder × suite) ===
+encoder            suite       n_tasks  mean_success   mean_score
+dinov2_base        adroit            2       54.0000    1928.3338
+dinov2_base        metaworld         5       85.8667    2975.3980
+siglip_base        adroit            2       54.6667    2031.3750
+siglip_base        metaworld         5       88.8000    3053.2727
+v15_p_only         adroit            1       50.0000    2032.1000
+vc1_vitb           adroit            2       48.6667    1910.2587
+vc1_vitb           metaworld         5       88.8000    3073.5973
