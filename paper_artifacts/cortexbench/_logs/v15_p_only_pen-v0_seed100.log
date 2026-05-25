@@ -11,6 +11,8 @@ Deprecated in NumPy 1.20; for more details and guidance: https://numpy.org/devdo
   dim = np.int(np.prod(s.shape))
 /opt/conda/envs/eai-vc/lib/python3.8/site-packages/gym/spaces/box.py:84: UserWarning: [33mWARN: Box bound precision lowered by casting to float32[0m
   logger.warn(f"Box bound precision lowered by casting to {self.dtype}")
+/opt/conda/envs/eai-vc/lib/python3.8/site-packages/torchvision/io/image.py:13: UserWarning: Failed to load image Python extension: /opt/conda/envs/eai-vc/lib/python3.8/site-packages/torchvision/image.so: undefined symbol: _ZN3c106detail19maybe_wrap_dim_slowEllb
+  warn(f"Failed to load image Python extension: {e}")
 /opt/conda/envs/eai-vc/lib/python3.8/site-packages/gym/spaces/box.py:84: UserWarning: [33mWARN: Box bound precision lowered by casting to float32[0m
   logger.warn(f"Box bound precision lowered by casting to {self.dtype}")
 /opt/conda/envs/eai-vc/lib/python3.8/site-packages/wandb/analytics/sentry.py:90: SentryHubDeprecationWarning: `sentry_sdk.Hub` is deprecated and will be removed in a future major release. Please consult our 1.x to 2.x migration guide for details on how to migrate `Hub` usage to the new API: https://docs.sentry.io/platforms/python/migration/1.x-to-2.x
@@ -71,305 +73,12 @@ Number of demonstrations used : 100
 Demonstration score : 3358.05 
 Using CUDA.
 Loading config path: /workspace/external/eai-vc/vc_models/src/vc_models/conf/model/v15_p_only.yaml
-  WARNING: 289 unexpected keys (first 3: ['p_motion_decoder.0.routing.norm_m.weight', 'p_motion_decoder.0.routing.norm_m.bias', 'p_motion_decoder.0.routing.qk_m.weight'])
 ===================================================================
 >>>>>>>>> Precomputing frozen embedding dataset >>>>>>>>>>>>>>>>>>>
 Loading config path: /workspace/external/eai-vc/vc_models/src/vc_models/conf/model/v15_p_only.yaml
-  WARNING: 289 unexpected keys (first 3: ['p_motion_decoder.0.routing.norm_m.weight', 'p_motion_decoder.0.routing.norm_m.bias', 'p_motion_decoder.0.routing.qk_m.weight'])
-  1%|          | 1/100 [00:00<00:42,  2.31it/s]  2%|▏         | 2/100 [00:00<00:29,  3.31it/s]  3%|▎         | 3/100 [00:00<00:25,  3.87it/s]  4%|▍         | 4/100 [00:01<00:27,  3.47it/s]  5%|▌         | 5/100 [00:01<00:24,  3.91it/s]  6%|▌         | 6/100 [00:01<00:22,  4.24it/s]  7%|▋         | 7/100 [00:01<00:20,  4.47it/s]  8%|▊         | 8/100 [00:01<00:19,  4.65it/s]  9%|▉         | 9/100 [00:02<00:19,  4.77it/s] 10%|█         | 10/100 [00:02<00:18,  4.87it/s] 11%|█         | 11/100 [00:02<00:18,  4.94it/s] 12%|█▏        | 12/100 [00:02<00:17,  4.98it/s] 13%|█▎        | 13/100 [00:02<00:17,  5.01it/s] 14%|█▍        | 14/100 [00:03<00:17,  5.04it/s] 15%|█▌        | 15/100 [00:03<00:16,  5.05it/s] 16%|█▌        | 16/100 [00:03<00:16,  5.06it/s] 17%|█▋        | 17/100 [00:03<00:16,  5.08it/s] 18%|█▊        | 18/100 [00:03<00:16,  5.09it/s] 19%|█▉        | 19/100 [00:04<00:15,  5.08it/s] 20%|██        | 20/100 [00:04<00:15,  5.08it/s] 21%|██        | 21/100 [00:04<00:15,  5.08it/s] 22%|██▏       | 22/100 [00:04<00:15,  5.10it/s] 23%|██▎       | 23/100 [00:04<00:15,  5.09it/s] 24%|██▍       | 24/100 [00:05<00:14,  5.07it/s] 25%|██▌       | 25/100 [00:05<00:14,  5.08it/s] 26%|██▌       | 26/100 [00:05<00:14,  5.07it/s] 27%|██▋       | 27/100 [00:05<00:14,  5.09it/s] 28%|██▊       | 28/100 [00:05<00:14,  5.09it/s] 29%|██▉       | 29/100 [00:06<00:13,  5.07it/s] 30%|███       | 30/100 [00:06<00:13,  5.08it/s] 31%|███       | 31/100 [00:06<00:13,  5.09it/s] 32%|███▏      | 32/100 [00:06<00:13,  5.09it/s] 33%|███▎      | 33/100 [00:06<00:13,  5.08it/s] 34%|███▍      | 34/100 [00:07<00:12,  5.08it/s] 35%|███▌      | 35/100 [00:07<00:12,  5.08it/s] 36%|███▌      | 36/100 [00:07<00:12,  5.08it/s] 37%|███▋      | 37/100 [00:07<00:12,  5.08it/s] 38%|███▊      | 38/100 [00:07<00:12,  5.09it/s] 39%|███▉      | 39/100 [00:08<00:11,  5.09it/s] 40%|████      | 40/100 [00:08<00:11,  5.09it/s] 41%|████      | 41/100 [00:08<00:11,  5.10it/s] 42%|████▏     | 42/100 [00:08<00:11,  5.10it/s] 43%|████▎     | 43/100 [00:08<00:11,  5.07it/s] 44%|████▍     | 44/100 [00:09<00:11,  5.08it/s] 45%|████▌     | 45/100 [00:09<00:10,  5.08it/s] 46%|████▌     | 46/100 [00:09<00:10,  5.10it/s] 47%|████▋     | 47/100 [00:09<00:10,  5.09it/s] 48%|████▊     | 48/100 [00:09<00:10,  5.09it/s] 49%|████▉     | 49/100 [00:10<00:10,  5.08it/s] 50%|█████     | 50/100 [00:10<00:09,  5.05it/s] 51%|█████     | 51/100 [00:10<00:09,  5.00it/s] 52%|█████▏    | 52/100 [00:10<00:09,  5.01it/s] 53%|█████▎    | 53/100 [00:10<00:09,  5.00it/s] 54%|█████▍    | 54/100 [00:11<00:09,  5.00it/s] 55%|█████▌    | 55/100 [00:11<00:09,  5.00it/s] 56%|█████▌    | 56/100 [00:11<00:08,  5.01it/s] 57%|█████▋    | 57/100 [00:11<00:08,  5.00it/s] 58%|█████▊    | 58/100 [00:11<00:08,  5.00it/s] 59%|█████▉    | 59/100 [00:12<00:08,  5.00it/s] 60%|██████    | 60/100 [00:12<00:08,  5.00it/s] 61%|██████    | 61/100 [00:12<00:07,  5.00it/s] 62%|██████▏   | 62/100 [00:12<00:07,  5.00it/s] 63%|██████▎   | 63/100 [00:12<00:07,  5.00it/s] 64%|██████▍   | 64/100 [00:13<00:07,  4.99it/s] 65%|██████▌   | 65/100 [00:13<00:07,  4.99it/s] 66%|██████▌   | 66/100 [00:13<00:06,  4.99it/s] 67%|██████▋   | 67/100 [00:13<00:06,  4.94it/s] 68%|██████▊   | 68/100 [00:13<00:06,  4.90it/s] 69%|██████▉   | 69/100 [00:14<00:06,  4.90it/s] 70%|███████   | 70/100 [00:14<00:06,  4.90it/s] 71%|███████   | 71/100 [00:14<00:05,  4.90it/s] 72%|███████▏  | 72/100 [00:14<00:05,  4.91it/s] 73%|███████▎  | 73/100 [00:14<00:05,  4.92it/s] 74%|███████▍  | 74/100 [00:15<00:05,  4.93it/s] 75%|███████▌  | 75/100 [00:15<00:05,  4.93it/s] 76%|███████▌  | 76/100 [00:15<00:04,  4.93it/s] 77%|███████▋  | 77/100 [00:15<00:04,  4.94it/s] 78%|███████▊  | 78/100 [00:15<00:04,  4.78it/s] 79%|███████▉  | 79/100 [00:16<00:04,  4.83it/s] 80%|████████  | 80/100 [00:16<00:04,  4.87it/s] 81%|████████  | 81/100 [00:16<00:03,  4.90it/s] 82%|████████▏ | 82/100 [00:16<00:03,  4.92it/s] 83%|████████▎ | 83/100 [00:16<00:03,  4.95it/s] 84%|████████▍ | 84/100 [00:17<00:03,  4.95it/s] 85%|████████▌ | 85/100 [00:17<00:03,  4.94it/s] 86%|████████▌ | 86/100 [00:17<00:02,  4.94it/s] 87%|████████▋ | 87/100 [00:17<00:02,  4.95it/s] 88%|████████▊ | 88/100 [00:17<00:02,  4.96it/s] 89%|████████▉ | 89/100 [00:18<00:02,  4.95it/s] 90%|█████████ | 90/100 [00:18<00:02,  4.94it/s] 91%|█████████ | 91/100 [00:18<00:01,  4.95it/s] 92%|█████████▏| 92/100 [00:18<00:01,  4.95it/s] 93%|█████████▎| 93/100 [00:18<00:01,  4.96it/s] 94%|█████████▍| 94/100 [00:19<00:01,  4.95it/s] 95%|█████████▌| 95/100 [00:19<00:01,  4.95it/s] 96%|█████████▌| 96/100 [00:19<00:00,  4.95it/s] 97%|█████████▋| 97/100 [00:19<00:00,  4.96it/s] 98%|█████████▊| 98/100 [00:19<00:00,  4.96it/s] 99%|█████████▉| 99/100 [00:20<00:00,  4.97it/s]100%|██████████| 100/100 [00:20<00:00,  4.97it/s]100%|██████████| 100/100 [00:20<00:00,  4.92it/s]
-wandb: WARNING `resume` will be ignored since W&B syncing is set to `offline`. Starting a new run with run id 3c2jsiqr.
+  1%|          | 1/100 [00:00<01:38,  1.01it/s]  2%|▏         | 2/100 [00:01<00:58,  1.69it/s]  3%|▎         | 3/100 [00:01<00:44,  2.16it/s]  4%|▍         | 4/100 [00:01<00:38,  2.50it/s]  5%|▌         | 5/100 [00:02<00:34,  2.72it/s]  6%|▌         | 6/100 [00:02<00:32,  2.89it/s]  7%|▋         | 7/100 [00:02<00:30,  3.00it/s]  8%|▊         | 8/100 [00:03<00:29,  3.08it/s]  9%|▉         | 9/100 [00:03<00:29,  3.13it/s] 10%|█         | 10/100 [00:03<00:28,  3.17it/s] 11%|█         | 11/100 [00:04<00:27,  3.19it/s] 12%|█▏        | 12/100 [00:04<00:27,  3.22it/s] 13%|█▎        | 13/100 [00:04<00:27,  3.20it/s] 14%|█▍        | 14/100 [00:05<00:27,  3.14it/s] 15%|█▌        | 15/100 [00:05<00:26,  3.17it/s] 16%|█▌        | 16/100 [00:05<00:26,  3.19it/s] 17%|█▋        | 17/100 [00:05<00:25,  3.20it/s] 18%|█▊        | 18/100 [00:06<00:25,  3.17it/s] 19%|█▉        | 19/100 [00:06<00:25,  3.19it/s] 20%|██        | 20/100 [00:06<00:25,  3.17it/s] 21%|██        | 21/100 [00:07<00:24,  3.18it/s] 22%|██▏       | 22/100 [00:07<00:24,  3.18it/s] 23%|██▎       | 23/100 [00:07<00:24,  3.16it/s] 24%|██▍       | 24/100 [00:08<00:23,  3.18it/s] 25%|██▌       | 25/100 [00:08<00:23,  3.14it/s] 26%|██▌       | 26/100 [00:08<00:23,  3.12it/s] 27%|██▋       | 27/100 [00:09<00:23,  3.13it/s] 28%|██▊       | 28/100 [00:09<00:23,  3.13it/s] 29%|██▉       | 29/100 [00:09<00:22,  3.10it/s] 30%|███       | 30/100 [00:10<00:22,  3.09it/s] 31%|███       | 31/100 [00:10<00:22,  3.10it/s] 32%|███▏      | 32/100 [00:10<00:21,  3.10it/s] 33%|███▎      | 33/100 [00:11<00:21,  3.10it/s] 34%|███▍      | 34/100 [00:11<00:21,  3.11it/s] 35%|███▌      | 35/100 [00:11<00:20,  3.11it/s] 36%|███▌      | 36/100 [00:12<00:20,  3.11it/s] 37%|███▋      | 37/100 [00:12<00:20,  3.12it/s] 38%|███▊      | 38/100 [00:12<00:19,  3.12it/s] 39%|███▉      | 39/100 [00:12<00:19,  3.11it/s] 40%|████      | 40/100 [00:13<00:19,  3.13it/s] 41%|████      | 41/100 [00:13<00:18,  3.12it/s] 42%|████▏     | 42/100 [00:13<00:18,  3.13it/s] 43%|████▎     | 43/100 [00:14<00:18,  3.14it/s] 44%|████▍     | 44/100 [00:14<00:17,  3.13it/s] 45%|████▌     | 45/100 [00:14<00:17,  3.09it/s] 46%|████▌     | 46/100 [00:15<00:17,  3.06it/s] 47%|████▋     | 47/100 [00:15<00:17,  3.06it/s] 48%|████▊     | 48/100 [00:15<00:17,  3.05it/s] 49%|████▉     | 49/100 [00:16<00:16,  3.08it/s] 50%|█████     | 50/100 [00:16<00:16,  3.11it/s] 51%|█████     | 51/100 [00:16<00:15,  3.11it/s] 52%|█████▏    | 52/100 [00:17<00:15,  3.07it/s] 53%|█████▎    | 53/100 [00:17<00:15,  3.08it/s] 54%|█████▍    | 54/100 [00:17<00:14,  3.08it/s] 55%|█████▌    | 55/100 [00:18<00:14,  3.08it/s] 56%|█████▌    | 56/100 [00:18<00:14,  3.06it/s] 57%|█████▋    | 57/100 [00:18<00:14,  3.06it/s] 58%|█████▊    | 58/100 [00:19<00:13,  3.07it/s] 59%|█████▉    | 59/100 [00:19<00:13,  3.06it/s] 60%|██████    | 60/100 [00:19<00:13,  3.05it/s] 61%|██████    | 61/100 [00:20<00:12,  3.03it/s] 62%|██████▏   | 62/100 [00:20<00:12,  3.04it/s] 63%|██████▎   | 63/100 [00:20<00:12,  3.07it/s] 64%|██████▍   | 64/100 [00:21<00:11,  3.09it/s] 65%|██████▌   | 65/100 [00:21<00:11,  3.10it/s] 66%|██████▌   | 66/100 [00:21<00:11,  3.09it/s] 67%|██████▋   | 67/100 [00:22<00:10,  3.10it/s] 68%|██████▊   | 68/100 [00:22<00:10,  3.11it/s] 69%|██████▉   | 69/100 [00:22<00:10,  3.07it/s] 70%|███████   | 70/100 [00:23<00:09,  3.09it/s] 71%|███████   | 71/100 [00:23<00:09,  3.11it/s] 72%|███████▏  | 72/100 [00:23<00:09,  3.10it/s] 73%|███████▎  | 73/100 [00:24<00:08,  3.10it/s] 74%|███████▍  | 74/100 [00:24<00:08,  3.12it/s] 75%|███████▌  | 75/100 [00:24<00:08,  3.08it/s] 76%|███████▌  | 76/100 [00:24<00:07,  3.07it/s] 77%|███████▋  | 77/100 [00:25<00:07,  3.07it/s] 78%|███████▊  | 78/100 [00:25<00:07,  3.08it/s] 79%|███████▉  | 79/100 [00:25<00:06,  3.07it/s] 80%|████████  | 80/100 [00:26<00:06,  3.10it/s] 81%|████████  | 81/100 [00:26<00:06,  3.10it/s] 82%|████████▏ | 82/100 [00:26<00:05,  3.13it/s] 83%|████████▎ | 83/100 [00:27<00:05,  3.13it/s] 84%|████████▍ | 84/100 [00:27<00:05,  3.14it/s] 85%|████████▌ | 85/100 [00:27<00:04,  3.14it/s] 86%|████████▌ | 86/100 [00:28<00:04,  3.08it/s] 87%|████████▋ | 87/100 [00:28<00:04,  3.05it/s] 88%|████████▊ | 88/100 [00:28<00:03,  3.07it/s] 89%|████████▉ | 89/100 [00:29<00:03,  3.08it/s] 90%|█████████ | 90/100 [00:29<00:03,  3.10it/s] 91%|█████████ | 91/100 [00:29<00:02,  3.10it/s] 92%|█████████▏| 92/100 [00:30<00:02,  3.12it/s] 93%|█████████▎| 93/100 [00:30<00:02,  3.14it/s] 94%|█████████▍| 94/100 [00:30<00:01,  3.16it/s] 95%|█████████▌| 95/100 [00:31<00:01,  3.16it/s] 96%|█████████▌| 96/100 [00:31<00:01,  3.17it/s] 97%|█████████▋| 97/100 [00:31<00:00,  3.16it/s] 98%|█████████▊| 98/100 [00:32<00:00,  3.17it/s] 99%|█████████▉| 99/100 [00:32<00:00,  3.17it/s]100%|██████████| 100/100 [00:32<00:00,  3.14it/s]100%|██████████| 100/100 [00:32<00:00,  3.06it/s]
+wandb: WARNING `resume` will be ignored since W&B syncing is set to `offline`. Starting a new run with run id x8zu7bd0.
 wandb: Tracking run with wandb version 0.16.6
 wandb: W&B syncing is set to `offline` in this directory.  
 wandb: Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
-  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:00<00:24,  4.10it/s]  2%|▏         | 2/100 [00:00<00:19,  5.15it/s]  3%|▎         | 3/100 [00:00<00:16,  5.75it/s]  4%|▍         | 4/100 [00:00<00:15,  6.10it/s]  5%|▌         | 5/100 [00:00<00:15,  6.30it/s]  6%|▌         | 6/100 [04:21<2:18:50, 88.62s/it]  7%|▋         | 7/100 [04:21<1:32:34, 59.72s/it]  8%|▊         | 8/100 [04:21<1:02:30, 40.77s/it]  9%|▉         | 9/100 [04:21<42:35, 28.08s/it]   10%|█         | 10/100 [04:21<29:11, 19.46s/it] 11%|█         | 11/100 [08:40<2:17:28, 92.68s/it] 12%|█▏        | 12/100 [08:41<1:34:44, 64.59s/it] 13%|█▎        | 13/100 [08:41<1:05:23, 45.10s/it] 14%|█▍        | 14/100 [08:41<45:14, 31.57s/it]   15%|█▌        | 15/100 [08:41<31:21, 22.13s/it] 16%|█▌        | 16/100 [13:01<2:11:11, 93.71s/it] 17%|█▋        | 17/100 [13:02<1:30:47, 65.63s/it] 18%|█▊        | 18/100 [13:02<1:02:48, 45.96s/it] 19%|█▉        | 19/100 [13:02<43:28, 32.21s/it]   20%|██        | 20/100 [13:02<30:07, 22.59s/it] 21%|██        | 21/100 [17:17<2:01:37, 92.37s/it] 22%|██▏       | 22/100 [17:17<1:24:08, 64.72s/it] 23%|██▎       | 23/100 [17:18<58:11, 45.35s/it]   24%|██▍       | 24/100 [17:18<40:17, 31.81s/it] 25%|██▌       | 25/100 [17:18<27:54, 22.32s/it] 26%|██▌       | 26/100 [21:52<2:00:31, 97.72s/it] 27%|██▋       | 27/100 [21:52<1:23:21, 68.51s/it] 28%|██▊       | 28/100 [21:52<57:37, 48.02s/it]   29%|██▉       | 29/100 [21:52<39:50, 33.66s/it] 30%|███       | 30/100 [21:52<27:32, 23.61s/it] 31%|███       | 31/100 [25:55<1:42:49, 89.41s/it] 32%|███▏      | 32/100 [25:56<1:11:02, 62.69s/it] 33%|███▎      | 33/100 [25:56<49:04, 43.95s/it]   34%|███▍      | 34/100 [25:56<33:54, 30.83s/it] 35%|███▌      | 35/100 [25:56<23:27, 21.65s/it] 36%|███▌      | 36/100 [29:49<1:30:34, 84.92s/it] 37%|███▋      | 37/100 [29:49<1:02:28, 59.50s/it] 38%|███▊      | 38/100 [29:49<43:05, 41.69s/it]   39%|███▉      | 39/100 [29:49<29:43, 29.23s/it] 40%|████      | 40/100 [29:50<20:30, 20.51s/it] 41%|████      | 41/100 [33:41<1:22:19, 83.72s/it] 42%|████▏     | 42/100 [33:41<56:42, 58.67s/it]   43%|████▎     | 43/100 [33:41<39:03, 41.12s/it] 44%|████▍     | 44/100 [33:41<26:55, 28.84s/it] 45%|████▌     | 45/100 [33:42<18:34, 20.26s/it] 46%|████▌     | 46/100 [37:42<1:17:34, 86.20s/it] 47%|████▋     | 47/100 [37:42<53:22, 60.43s/it]   48%|████▊     | 48/100 [37:42<36:43, 42.38s/it] 49%|████▉     | 49/100 [37:43<25:17, 29.76s/it] 50%|█████     | 50/100 [37:43<17:24, 20.90s/it] 51%|█████     | 51/100 [41:34<1:08:40, 84.08s/it] 52%|█████▏    | 52/100 [41:35<47:07, 58.91s/it]   53%|█████▎    | 53/100 [41:35<32:20, 41.28s/it] 54%|█████▍    | 54/100 [41:35<22:11, 28.94s/it] 55%|█████▌    | 55/100 [41:35<15:13, 20.31s/it] 56%|█████▌    | 56/100 [45:30<1:02:04, 84.64s/it] 57%|█████▋    | 57/100 [45:30<42:31, 59.33s/it]   58%|█████▊    | 58/100 [45:30<29:07, 41.60s/it] 59%|█████▉    | 59/100 [45:30<19:56, 29.18s/it] 60%|██████    | 60/100 [45:31<13:40, 20.50s/it] 61%|██████    | 61/100 [49:21<54:10, 83.34s/it] 62%|██████▏   | 62/100 [49:21<36:58, 58.39s/it] 63%|██████▎   | 63/100 [49:21<25:13, 40.92s/it] 64%|██████▍   | 64/100 [49:21<17:12, 28.69s/it] 65%|██████▌   | 65/100 [49:21<11:44, 20.13s/it] 66%|██████▌   | 66/100 [53:09<46:41, 82.40s/it] 67%|██████▋   | 67/100 [53:09<31:45, 57.75s/it] 68%|██████▊   | 68/100 [53:09<21:35, 40.48s/it] 69%|██████▉   | 69/100 [53:10<14:40, 28.39s/it] 70%|███████   | 70/100 [53:10<09:57, 19.93s/it] 71%|███████   | 71/100 [57:06<40:56, 84.71s/it] 72%|███████▏  | 72/100 [57:06<27:42, 59.38s/it] 73%|███████▎  | 73/100 [57:06<18:43, 41.62s/it] 74%|███████▍  | 74/100 [57:06<12:38, 29.18s/it] 75%|███████▌  | 75/100 [57:06<08:31, 20.48s/it] 76%|███████▌  | 76/100 [1:00:58<33:35, 83.96s/it] 77%|███████▋  | 77/100 [1:00:59<22:33, 58.85s/it] 78%|███████▊  | 78/100 [1:00:59<15:07, 41.25s/it] 79%|███████▉  | 79/100 [1:00:59<10:07, 28.92s/it] 80%|████████  | 80/100 [1:00:59<06:45, 20.29s/it] 81%|████████  | 81/100 [1:04:58<27:12, 85.91s/it] 82%|████████▏ | 82/100 [1:04:58<18:03, 60.19s/it] 83%|████████▎ | 83/100 [1:04:59<11:57, 42.18s/it] 84%|████████▍ | 84/100 [1:04:59<07:53, 29.60s/it] 85%|████████▌ | 85/100 [1:04:59<05:11, 20.79s/it] 86%|████████▌ | 86/100 [1:08:49<19:28, 83.50s/it] 87%|████████▋ | 87/100 [1:08:49<12:40, 58.51s/it] 88%|████████▊ | 88/100 [1:08:49<08:12, 41.01s/it] 89%|████████▉ | 89/100 [1:08:49<05:16, 28.77s/it] 90%|█████████ | 90/100 [1:08:50<03:22, 20.20s/it] 91%|█████████ | 91/100 [1:12:42<12:34, 83.79s/it] 92%|█████████▏| 92/100 [1:12:42<07:49, 58.70s/it] 93%|█████████▎| 93/100 [1:12:42<04:47, 41.14s/it] 94%|█████████▍| 94/100 [1:12:42<02:53, 28.86s/it] 95%|█████████▌| 95/100 [1:12:43<01:41, 20.27s/it] 96%|█████████▌| 96/100 [1:16:40<05:41, 85.47s/it] 97%|█████████▋| 97/100 [1:16:40<02:59, 59.90s/it] 98%|█████████▊| 98/100 [1:16:41<01:23, 42.00s/it] 99%|█████████▉| 99/100 [1:16:41<00:29, 29.47s/it]100%|██████████| 100/100 [1:20:40<00:00, 92.44s/it]100%|██████████| 100/100 [1:20:40<00:00, 48.41s/it]Epoch = 5 | BC performance (eval mode) = 657.773 
----------------------  -------
-eval/epoch               5
-eval/highest_score     657.773
-eval/highest_success    12
-eval/score_mean        657.773
-eval/success            12
-train/epoch              5
-train/highest_score    708.726
-train/highest_success   16
-train/score            708.726
-train/success           16
----------------------  -------
-Epoch = 10 | BC performance (eval mode) = 1520.913 
----------------------  --------
-eval/epoch               10
-eval/highest_score     1520.91
-eval/highest_success     32
-eval/score_mean        1520.91
-eval/success             32
-train/epoch              10
-train/highest_score     842.303
-train/highest_success    20
-train/score             842.303
-train/success            20
----------------------  --------
-Epoch = 15 | BC performance (eval mode) = 702.986 
----------------------  --------
-eval/epoch               15
-eval/highest_score     1520.91
-eval/highest_success     32
-eval/score_mean         702.986
-eval/success             12
-train/epoch              15
-train/highest_score     842.303
-train/highest_success    20
-train/score             602.28
-train/success            12
----------------------  --------
-Epoch = 20 | BC performance (eval mode) = 1372.912 
----------------------  --------
-eval/epoch               20
-eval/highest_score     1520.91
-eval/highest_success     32
-eval/score_mean        1372.91
-eval/success             24
-train/epoch              20
-train/highest_score     842.303
-train/highest_success    20
-train/score             545.401
-train/success             8
----------------------  --------
-Epoch = 25 | BC performance (eval mode) = 1789.764 
----------------------  --------
-eval/epoch               25
-eval/highest_score     1789.76
-eval/highest_success     36
-eval/score_mean        1789.76
-eval/success             36
-train/epoch              25
-train/highest_score     842.303
-train/highest_success    20
-train/score             569.265
-train/success             8
----------------------  --------
-Epoch = 30 | BC performance (eval mode) = 1654.415 
----------------------  -------
-eval/epoch               30
-eval/highest_score     1789.76
-eval/highest_success     36
-eval/score_mean        1654.41
-eval/success             32
-train/epoch              30
-train/highest_score    1022.33
-train/highest_success    20
-train/score            1022.33
-train/success            20
----------------------  -------
-Epoch = 35 | BC performance (eval mode) = 1649.369 
----------------------  --------
-eval/epoch               35
-eval/highest_score     1789.76
-eval/highest_success     36
-eval/score_mean        1649.37
-eval/success             32
-train/epoch              35
-train/highest_score    1022.33
-train/highest_success    20
-train/score             740.246
-train/success            12
----------------------  --------
-Epoch = 40 | BC performance (eval mode) = 1991.140 
----------------------  -------
-eval/epoch               40
-eval/highest_score     1991.14
-eval/highest_success     44
-eval/score_mean        1991.14
-eval/success             44
-train/epoch              40
-train/highest_score    1161.97
-train/highest_success    24
-train/score            1161.97
-train/success            24
----------------------  -------
-Epoch = 45 | BC performance (eval mode) = 1899.378 
----------------------  --------
-eval/epoch               45
-eval/highest_score     1991.14
-eval/highest_success     44
-eval/score_mean        1899.38
-eval/success             40
-train/epoch              45
-train/highest_score    1161.97
-train/highest_success    24
-train/score             980.082
-train/success            20
----------------------  --------
-Epoch = 50 | BC performance (eval mode) = 1615.483 
----------------------  --------
-eval/epoch               50
-eval/highest_score     1991.14
-eval/highest_success     44
-eval/score_mean        1615.48
-eval/success             36
-train/epoch              50
-train/highest_score    1161.97
-train/highest_success    24
-train/score             909.254
-train/success            20
----------------------  --------
-Epoch = 55 | BC performance (eval mode) = 1906.410 
----------------------  -------
-eval/epoch               55
-eval/highest_score     1991.14
-eval/highest_success     44
-eval/score_mean        1906.41
-eval/success             44
-train/epoch              55
-train/highest_score    1538.91
-train/highest_success    36
-train/score            1538.91
-train/success            36
----------------------  -------
-Epoch = 60 | BC performance (eval mode) = 2259.595 
----------------------  -------
-eval/epoch               60
-eval/highest_score     2259.6
-eval/highest_success     60
-eval/score_mean        2259.6
-eval/success             60
-train/epoch              60
-train/highest_score    1538.91
-train/highest_success    36
-train/score            1016.15
-train/success            32
----------------------  -------
-Epoch = 65 | BC performance (eval mode) = 1743.256 
----------------------  -------
-eval/epoch               65
-eval/highest_score     2259.6
-eval/highest_success     60
-eval/score_mean        1743.26
-eval/success             36
-train/epoch              65
-train/highest_score    1538.91
-train/highest_success    36
-train/score            1220.99
-train/success            24
----------------------  -------
-Epoch = 70 | BC performance (eval mode) = 2519.227 
----------------------  -------
-eval/epoch               70
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        2519.23
-eval/success             60
-train/epoch              70
-train/highest_score    1538.91
-train/highest_success    36
-train/score            1232.17
-train/success            28
----------------------  -------
-Epoch = 75 | BC performance (eval mode) = 1892.069 
----------------------  -------
-eval/epoch               75
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        1892.07
-eval/success             44
-train/epoch              75
-train/highest_score    1715.08
-train/highest_success    40
-train/score            1715.08
-train/success            40
----------------------  -------
-Epoch = 80 | BC performance (eval mode) = 2002.098 
----------------------  -------
-eval/epoch               80
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        2002.1
-eval/success             48
-train/epoch              80
-train/highest_score    1715.08
-train/highest_success    40
-train/score            1681.43
-train/success            40
----------------------  -------
-Epoch = 85 | BC performance (eval mode) = 1891.551 
----------------------  -------
-eval/epoch               85
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        1891.55
-eval/success             44
-train/epoch              85
-train/highest_score    1846.83
-train/highest_success    44
-train/score            1846.83
-train/success            44
----------------------  -------
-Epoch = 90 | BC performance (eval mode) = 1649.643 
----------------------  --------
-eval/epoch               90
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        1649.64
-eval/success             40
-train/epoch              90
-train/highest_score    1846.83
-train/highest_success    44
-train/score             838.381
-train/success            16
----------------------  --------
-Epoch = 95 | BC performance (eval mode) = 1969.093 
----------------------  -------
-eval/epoch               95
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        1969.09
-eval/success             44
-train/epoch              95
-train/highest_score    1846.83
-train/highest_success    44
-train/score            1539.06
-train/success            32
----------------------  -------
-Epoch = 99 | BC performance (eval mode) = 1935.779 
----------------------  -------
-eval/epoch               99
-eval/highest_score     2519.23
-eval/highest_success     60
-eval/score_mean        1935.78
-eval/success             40
-train/epoch              99
-train/highest_score    1846.83
-train/highest_success    44
-train/score            1248.26
-train/success            24
----------------------  -------
-
-wandb: 
-wandb: Run history:
-wandb:            epoch_loss █▃▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-wandb:            eval/epoch ▁▁▂▂▂▃▃▄▄▄▅▅▅▆▆▇▇▇██
-wandb:    eval/highest_score ▁▄▄▄▅▅▅▆▆▆▆▇▇███████
-wandb:  eval/highest_success ▁▄▄▄▅▅▅▆▆▆▆█████████
-wandb:       eval/score_mean ▁▄▁▄▅▅▅▆▆▅▆▇▅█▆▆▆▅▆▆
-wandb:          eval/success ▁▄▁▃▅▄▄▆▅▅▆█▅█▆▆▆▅▆▅
-wandb:           train/epoch ▁▁▂▂▂▃▃▄▄▄▅▅▅▆▆▇▇▇██
-wandb:   train/highest_score ▁▂▂▂▂▃▃▄▄▄▆▆▆▆▇▇████
-wandb: train/highest_success ▁▂▂▂▂▂▂▃▃▃▆▆▆▆▇▇████
-wandb:           train/score ▂▃▁▁▁▄▂▄▃▃▆▄▅▅▇▇█▃▆▅
-wandb:         train/success ▃▃▂▁▁▃▂▄▃▃▆▆▄▅▇▇█▃▆▄
-wandb: 
-wandb: Run summary:
-wandb:            epoch_loss 0.00319
-wandb:            eval/epoch 99
-wandb:    eval/highest_score 2519.22707
-wandb:  eval/highest_success 60.0
-wandb:       eval/score_mean 1935.77927
-wandb:          eval/success 40.0
-wandb:           train/epoch 99
-wandb:   train/highest_score 1846.82565
-wandb: train/highest_success 44.0
-wandb:           train/score 1248.26356
-wandb:         train/success 24.0
-wandb: 
-wandb: You can sync this run to the cloud by running:
-wandb: wandb sync /workspace/paper_artifacts/cortexbench/v15_p_only/pen-v0/seed_100/wandb/offline-run-20260519_083205-3c2jsiqr
-wandb: Find logs at: ./wandb/offline-run-20260519_083205-3c2jsiqr/logs
-Found 1 GPUs for rendering. Using device 0.
+  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:00<00:24,  4.07it/s]  2%|▏         | 2/100 [00:00<00:21,  4.60it/s]  3%|▎         | 3/100 [00:00<00:20,  4.76it/s]  4%|▍         | 4/100 [00:00<00:18,  5.12it/s]  5%|▌         | 5/100 [00:00<00:17,  5.37it/s]  6%|▌         | 6/100 [00:48<25:36, 16.35s/it]  7%|▋         | 7/100 [00:48<17:09, 11.07s/it]  8%|▊         | 8/100 [00:49<11:40,  7.61s/it]  9%|▉         | 9/100 [00:49<08:01,  5.29s/it] 10%|█         | 10/100 [00:49<05:33,  3.71s/it] 11%|█         | 11/100 [01:37<25:32, 17.22s/it] 12%|█▏        | 12/100 [01:37<17:39, 12.04s/it] 13%|█▎        | 13/100 [01:37<12:14,  8.44s/it] 14%|█▍        | 14/100 [01:37<08:31,  5.95s/it] 15%|█▌        | 15/100 [01:38<05:57,  4.21s/it]

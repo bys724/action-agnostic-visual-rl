@@ -1,0 +1,2 @@
+[2026-05-25 16:23:02] Total jobs: 21  (NUM_GPUS=1)
+[0 GPU0 2026-05-25 16:23:02] START: v15_p_only pen-v0 seed=100 → paper_artifacts/cortexbench/_logs/v15_p_only_pen-v0_seed100.log
