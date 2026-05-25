@@ -154,16 +154,19 @@ def main():
         def collect_embed(ep_list, label):
             embed_chunks, tgt_chunks, ep_ids = [], [], []
             for ei, (s, e) in enumerate(ep_list):
-                frames, actions = load_episode_frames(split_dir, s, e, view=args.view,
-                                                       stride=args.frame_stride)
+                frames, robot_obs, actions = load_episode_frames(
+                    split_dir, s, e, view=args.view, stride=args.frame_stride,
+                )
                 if args.max_frames_per_episode:
                     frames = frames[:args.max_frames_per_episode]
+                    robot_obs = robot_obs[:args.max_frames_per_episode]
                     actions = actions[:args.max_frames_per_episode]
                 T = frames.shape[0]
                 if T <= gap + 1:
                     continue
                 tgts = np.stack([
-                    calvin_action_target(actions, t, gap) for t in range(T - gap)
+                    calvin_action_target(robot_obs, actions, t, gap)
+                    for t in range(T - gap)
                 ])
                 prev = preprocess_frames(frames[:T - gap], img_size)
                 curr = preprocess_frames(frames[gap:], img_size)

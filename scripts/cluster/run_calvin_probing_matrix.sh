@@ -45,7 +45,14 @@ for ENC in "${ENCODERS[@]}"; do
     esac
 
     SHORT_ENC=$(echo $ENC | tr '/-' '_')
+    # training (178 ep)은 ~4-5h 필요 → 8h. validation (4 ep)은 sbatch default 2h OK
+    if [[ "$SPLIT" == "training" ]]; then
+      TIME_LIMIT="08:00:00"
+    else
+      TIME_LIMIT="02:00:00"
+    fi
     sbatch --job-name=calvin_${SHORT_ENC}_${SPLIT} \
+      --time=$TIME_LIMIT \
       --export=ALL,ENCODER=$ENC,${CKPT_ARG}SPLIT=$SPLIT,MAX_EPISODES=200 \
       $REPO/scripts/cluster/probe_action_calvin.sbatch
   done

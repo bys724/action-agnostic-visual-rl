@@ -48,12 +48,16 @@ class VideoMAEOursWrapper(nn.Module):
 
 
 def videomae_transforms():
-    """ImageNet preprocessing, 224×224 (CortexBench/PVR convention)."""
+    """Match EgoDex pretraining input: 224×224, raw [0, 1] tensor.
+
+    학습 파이프라인(src/datasets/base.py)이 frame을 `float / 255.0`만 적용해
+    [0, 1] raw로 forward. VideoMAE pretrain도 동일 EgoDex loader 경유 → inference에
+    ImageNet Normalize 추가하면 학습 분포와 mismatch.
+    """
     return T.Compose([
         T.Resize(256),
         T.CenterCrop(224),
         T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 

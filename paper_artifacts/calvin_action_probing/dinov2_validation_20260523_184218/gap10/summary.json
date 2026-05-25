@@ -1,0 +1,26 @@
+{
+  "encoder": "dinov2",
+  "checkpoint": null,
+  "split": "validation",
+  "view": "rgb_static",
+  "gap": 10,
+  "gap_seconds": 0.3333333333333333,
+  "v11_mode": null,
+  "n_train_episodes": 3,
+  "n_eval_episodes": 1,
+  "n_train_pairs": 6105,
+  "n_eval_pairs": 3759,
+  "best_epoch": 20,
+  "r2_aggregate": 0.3110103475041043,
+  "r2_per_dim": [
+    0.9150483220447891,
+    0.8562116424249242,
+    0.6659390408291922,
+    0.3585382082113111,
+    0.5959879474304985,
+    0.362961005789577,
+    0.2483646609031379
+  ],
+  "mse": 0.12449628114700317,
+  "cosine_sim": 0.5432295799255371
+}
