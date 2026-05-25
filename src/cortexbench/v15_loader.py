@@ -59,12 +59,17 @@ class V15POnlyWrapper(nn.Module):
 
 
 def v15_transforms():
-    """CortexBench/PVR convention: 224×224, ImageNet norm."""
+    """Match EgoDex pretraining input: 224×224, raw [0, 1] tensor.
+
+    학습 파이프라인(src/datasets/base.py)이 frame을 `float / 255.0`만 적용해
+    [0, 1] raw로 forward. TwoStreamPreprocessing.compute_p_channel도 입력을
+    [0, 1]로 명시 가정 (luminance/Sobel/RGB 정규화 기준). 따라서 inference도
+    ImageNet Normalize 없이 [0, 1] 그대로 통과해야 학습 분포와 일치.
+    """
     return T.Compose([
         T.Resize(256),
         T.CenterCrop(224),
         T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 
