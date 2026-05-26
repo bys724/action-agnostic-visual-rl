@@ -76,7 +76,8 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 | DROID frames sample | `datasets/droid_frames_sample` | sanity test용 소규모 |
 | DROID raw | `datasets/droid` | gsutil 다운로드본 |
 | LIBERO | `datasets/libero/` | ✅ HuggingFace |
-| Ego4D | `datasets/ego4d/` | 라이선스 + gsutil. 다운로드 진행 중 |
+| Ego4D raw | `datasets/ego4d/v2/` + `ego4d.json` (86 MB) | 라이선스 + gsutil |
+| Ego4D frames | `datasets/ego4d/frames/` | 추출 완료. 9,821 UUID 폴더, **~4 TB / ~9천만 jpg 추정** (5폴더 샘플 평균). 클러스터→로컬 이동: [Ego4D frames pull](#ego4d-frames-pull) |
 | Nymeria | `datasets/nymeria/` | (참조만, 사용 안 함) |
 | EpicKitchens-100 | `datasets/epic_kitchens_100/` | (참조만) |
 | **CALVIN** (§C10) | `datasets/calvin/task_ABCD_D.zip` | 🔄 다운로드 진행 중 (2026-05-18, 166 GB 압축, Freiburg CDN, ETA ~27h) |
@@ -220,6 +221,25 @@ rsync -avzP \
   bys724@<cluster>:/proj/external_group/mrg/checkpoints/libero_bct/<run_dir>/best.pt \
   /mnt/data/checkpoints/libero_bct/bct_<encoder>_<suite>_seed<N>_best.pt
 ```
+
+### 클러스터 → 워크스테이션 (대용량 데이터셋)
+
+#### Ego4D frames pull
+
+- **Source**: `<cluster>:/proj/external_group/mrg/datasets/ego4d/frames/` (9,821 UUID 폴더, ~4 TB / ~9천만 jpg 추정)
+- **Dest**: `/mnt/data/ego4d/frames/` (워크스테이션. 실제 도착 경로 결정 후 본 문서 갱신)
+- **실행**: 양쪽 SSH 가능한 워크스테이션 `tmux` 안에서 [`scripts/local/transfer_ego4d_from_cluster.sh`](../scripts/local/transfer_ego4d_from_cluster.sh)
+- **재개 전략** — 개별 파일 `rsync`는 9천만 회 `stat` syscall 폭발로 비현실적. UUID 폴더 단위 streaming `tar` over SSH + manifest 기반 재개:
+  - 완료된 UUID 폴더는 `$HOME/ego4d_done.txt`에 기록 → 끊기면 빠진 폴더만 재시도
+  - `until bash ... ; do sleep 60; done` wrapper로 네트워크 단절 자동 복구
+  - `~/.ssh/config`에 `ControlMaster auto` 등록 → 6병렬 전송이 TCP 1개를 공유 (인증 0회 추가)
+  - `mbuffer` 있으면 자동 사용 (네트워크 throughput 변동 흡수). 없으면 직접 파이프
+  - 압축 없음 — jpg는 이미 압축되어 있어 zstd/gzip 효과 ~0, CPU만 낭비
+- **사전 sanity**: `bash scripts/local/transfer_ego4d_from_cluster.sh --sanity` (앞 20 폴더만, throughput 측정용)
+- **무결성 검증**: 종료 후 양쪽 `find . -type f -printf '%P %s\n' | LC_ALL=C sort` diff
+- **예상 시간**: 1 Gbps 단일 stream ≈ 9h. 6병렬 + LAN 대역폭에 따라 2~6h 추정
+
+자세한 옵션·환경변수·트러블슈팅은 스크립트 헤더 주석 참고.
 
 ### 워크스테이션 → 클러스터 (분석 결과)
 - 작은 산출물 (probing JSON, viz PNG ≤ 10 MB): git push/pull로 동기화
