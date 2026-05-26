@@ -102,3 +102,6 @@ paper_artifacts/cortexbench/summary.csv
 paper_artifacts/cortexbench/*/*/seed_*/wandb/
 paper_artifacts/cortexbench/*/*/seed_*/adroit_cortex_vil/
 paper_artifacts/cortexbench/*/*/seed_*/metaworld_cortex_vil/
+# 임시 데이터 inspection PNG (calvin_pairs_*.png, calvin_inspect_*.png)
+calvin_pairs_*.png
+calvin_inspect_*.png
