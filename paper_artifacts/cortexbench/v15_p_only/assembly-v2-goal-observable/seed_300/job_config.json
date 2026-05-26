@@ -1,0 +1,43 @@
+wandb:
+  project: cortexbench_c11
+  entity: local
+  mode: offline
+env: assembly-v2-goal-observable
+algorithm: BC
+pixel_based: true
+embedding: v15_p_only
+camera: top_cap2
+device: cuda
+data_dir: /mnt/data/cortexbench/datasets/metaworld-expert-v1.0/
+data_parallel: true
+seed: 300
+epochs: 100
+eval_frequency: 5
+save_frequency: 10
+eval_num_traj: 25
+num_cpu: 1
+num_demos: 25
+exp_notes: Add experiment notes here to help organize results down the road.
+env_kwargs:
+  env_name: ${env}
+  suite: metaworld
+  device: ${device}
+  image_width: 256
+  image_height: 256
+  camera_name: ${camera}
+  embedding_name: ${embedding}
+  pixel_based: ${pixel_based}
+  render_gpu_id: 0
+  seed: ${seed}
+  history_window: 3
+  add_proprio: true
+  proprio_key: gripper_proprio
+bc_kwargs:
+  hidden_sizes: (256, 256, 256)
+  nonlinearity: relu
+  loss_type: MSE
+  batch_size: 256
+  lr: 0.001
+  dropout: 0
+job_name: metaworld_cortex_vil
+cwd: /workspace/external/eai-vc/cortexbench/mujoco_vc/visual_imitation
