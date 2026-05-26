@@ -31,7 +31,7 @@ read -ra ENCODERS <<< "${ENCODERS:-$DEFAULT_ENCODERS}"
 NUM_GPUS=${NUM_GPUS:-2}
 
 # task entries: "suite:env:config-name"
-TASKS=(
+ALL_TASKS=(
     "adroit:pen-v0:Adroit_BC_config.yaml"
     "adroit:relocate-v0:Adroit_BC_config.yaml"
     "metaworld:assembly-v2-goal-observable:Metaworld_BC_config.yaml"
@@ -40,7 +40,30 @@ TASKS=(
     "metaworld:drawer-open-v2-goal-observable:Metaworld_BC_config.yaml"
     "metaworld:hammer-v2-goal-observable:Metaworld_BC_config.yaml"
 )
+# TASKS_OVERRIDE: task name (env) space-separated. 워크스테이션 간 잡 분배용.
+# 예: TASKS_OVERRIDE="bin-picking-v2-goal-observable button-press-topdown-v2-goal-observable"
+if [ -n "${TASKS_OVERRIDE:-}" ]; then
+    read -ra OVERRIDE_NAMES <<< "$TASKS_OVERRIDE"
+    TASKS=()
+    for nm in "${OVERRIDE_NAMES[@]}"; do
+        for t in "${ALL_TASKS[@]}"; do
+            IFS=':' read -r _S _T _C <<< "$t"
+            if [ "$_T" = "$nm" ]; then TASKS+=("$t"); fi
+        done
+    done
+    if [ ${#TASKS[@]} -eq 0 ]; then
+        echo "[err] TASKS_OVERRIDE='$TASKS_OVERRIDE' 에 매칭된 task 없음"; exit 1
+    fi
+    echo "[info] TASKS_OVERRIDE 적용: ${#TASKS[@]} task → $TASKS_OVERRIDE"
+else
+    TASKS=("${ALL_TASKS[@]}")
+fi
 SEEDS=(100 200 300)
+
+# CPU 스레드 제한 — 호스트 코어 oversubscription 회피 (어제 진단: 두 잡이 호스트 64코어
+# 거의 점유해서 load>64로 잡당 8h. OMP/MKL 제한 시 잡당 4-5h 추정).
+# 다른 사양 머신은 호스트 코어 수에 맞춰 조정 (권장: NUM_GPUS × OMP_NUM_THREADS ≤ 코어수 × 0.75).
+OMP_NUM_THREADS_VAL=${OMP_NUM_THREADS_VAL:-24}
 
 OUT_ROOT=paper_artifacts/cortexbench
 LOG_DIR=$OUT_ROOT/_logs
@@ -84,6 +107,10 @@ run_one() {
         -e PYTHONPATH=/workspace \
         -e WANDB_MODE=offline \
         -e CUDA_VISIBLE_DEVICES=$gpu \
+        -e OMP_NUM_THREADS=$OMP_NUM_THREADS_VAL \
+        -e MKL_NUM_THREADS=$OMP_NUM_THREADS_VAL \
+        -e OPENBLAS_NUM_THREADS=$OMP_NUM_THREADS_VAL \
+        -e MUJOCO_GL=egl \
         cortexbench-eval bash -c "
             cd /workspace/external/eai-vc/cortexbench/mujoco_vc/visual_imitation && \
             python hydra_launcher.py --config-name '$cfg' \
