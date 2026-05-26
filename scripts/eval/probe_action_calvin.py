@@ -33,8 +33,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.datasets.calvin import (
     calvin_action_target,
-    list_episodes,
-    load_episode_frames,
+    load_segments,
+    load_segment_frames,
 )
 # probe_action_libero에서 재사용 (DRY)
 from scripts.eval.probe_action_libero import (
@@ -50,7 +50,7 @@ from scripts.eval.probe_action_libero import (
 
 CALVIN_SPLITS = ("training", "validation")  # task_ABCD_D 압축 풀면 양쪽 모두
 # Default = stride=10 (effective 3Hz) 가정. gap=3 (1s key) + gap=1/5/10
-DEFAULT_GAPS = [1, 3, 5, 10]
+DEFAULT_GAPS = [10, 20, 30, 45]  # segment-based raw 30Hz: 0.33/0.67/1.00/1.50s
 ACTION_DIM = 7
 
 
@@ -61,7 +61,10 @@ def main():
     parser.add_argument("--data-root", default="/proj/external_group/mrg/datasets/calvin/task_ABCD_D",
                         help="압축 풀린 CALVIN 루트 (training/, validation/ 하위에 episode .npz)")
     parser.add_argument("--split", default="training", choices=list(CALVIN_SPLITS),
-                        help="training (수많은 ep) 또는 validation (소수, sanity용)")
+                        help="single-folder self-contained 80:20 split (legacy)")
+    parser.add_argument("--cross-folder", action="store_true",
+                        help="True 시: training/ 폴더 segments로 probe 학습 + "
+                             "validation/ 폴더 segments로 R² 평가 (진짜 OOD test, paper §C10 main).")
     parser.add_argument("--view", default="rgb_static",
                         choices=["rgb_static", "rgb_gripper"],
                         help="rgb_static (200x200, paper main) | rgb_gripper (84x84, sub)")
@@ -96,17 +99,37 @@ def main():
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(f"[probe_calvin] encoder={args.encoder} split={args.split} gaps={args.gaps} device={device}")
 
-    split_dir = Path(args.data_root) / args.split
-    if not split_dir.exists():
-        raise FileNotFoundError(f"CALVIN split dir not found: {split_dir}")
-
-    eps = list_episodes(split_dir)
-    print(f"  total episodes in {args.split}: {len(eps)}")
-    if args.max_episodes and len(eps) > args.max_episodes:
-        rng = np.random.default_rng(args.seed)
-        idx = rng.permutation(len(eps))[:args.max_episodes]
-        eps = [eps[i] for i in idx]
-        print(f"  subsampled to {len(eps)} episodes")
+    # Segment-based sampling (2026-05-26: episode → task segment 변경)
+    # CALVIN multi-task chain의 random pair는 task boundary 포함 → LIBERO와 unfair.
+    # 같은 task segment 안 frame pair만 sampling = 모든 encoder fair condition.
+    if args.cross_folder:
+        # Paper §C10 main: training/ → probe 학습 + validation/ → R² 평가 (진짜 OOD)
+        train_split_dir = Path(args.data_root) / "training"
+        eval_split_dir = Path(args.data_root) / "validation"
+        if not train_split_dir.exists() or not eval_split_dir.exists():
+            raise FileNotFoundError(f"Cross-folder: need both training/ and validation/ under {args.data_root}")
+        train_segments_all = load_segments(train_split_dir)
+        eval_segments_all = load_segments(eval_split_dir)
+        print(f"  CROSS-FOLDER mode: train segments={len(train_segments_all)} (training/) | "
+              f"eval segments={len(eval_segments_all)} (validation/, OOD)")
+        if args.max_episodes and len(train_segments_all) > args.max_episodes:
+            rng = np.random.default_rng(args.seed)
+            idx = rng.permutation(len(train_segments_all))[:args.max_episodes]
+            train_segments_all = [train_segments_all[i] for i in idx]
+            print(f"  train sub-sampled to {len(train_segments_all)} segments (max_episodes cap)")
+        # 본 매트릭스: eval은 모든 validation segments 사용 (1087개, 항상)
+    else:
+        # Legacy: 단일 폴더에서 80:20 self-contained split
+        split_dir = Path(args.data_root) / args.split
+        if not split_dir.exists():
+            raise FileNotFoundError(f"CALVIN split dir not found: {split_dir}")
+        segments = load_segments(split_dir)
+        print(f"  total task segments in {args.split}: {len(segments)}")
+        if args.max_episodes and len(segments) > args.max_episodes:
+            rng = np.random.default_rng(args.seed)
+            idx = rng.permutation(len(segments))[:args.max_episodes]
+            segments = [segments[i] for i in idx]
+            print(f"  subsampled to {len(segments)} segments")
 
     # ── Build encoder ────────────────────────────────────────────────────
     if args.encoder == "two-stream-v11":
@@ -132,35 +155,38 @@ def main():
 
     print(f"  img_size={img_size}")
 
-    # ── Episode-level train/eval split ──────────────────────────────────
-    rng = np.random.default_rng(args.seed)
-    perm = rng.permutation(len(eps))
-    n_train = int(len(perm) * args.train_ratio)
-    train_eps = [eps[i] for i in perm[:n_train]]
-    eval_eps = [eps[i] for i in perm[n_train:]]
-    print(f"  episodes: train={len(train_eps)} / eval={len(eval_eps)}")
+    # ── Segment-level train/eval split ───────────────────────────────────
+    if args.cross_folder:
+        train_segs = train_segments_all
+        eval_segs = eval_segments_all
+        train_dir = train_split_dir
+        eval_dir = eval_split_dir
+    else:
+        rng = np.random.default_rng(args.seed)
+        perm = rng.permutation(len(segments))
+        n_train = int(len(perm) * args.train_ratio)
+        train_segs = [segments[i] for i in perm[:n_train]]
+        eval_segs = [segments[i] for i in perm[n_train:]]
+        train_dir = split_dir
+        eval_dir = split_dir
+    print(f"  segments: train={len(train_segs)} / eval={len(eval_segs)}")
 
     # ── Per-gap loop ─────────────────────────────────────────────────────
     os.makedirs(args.output_dir, exist_ok=True)
-
-    effective_hz = 30 / args.frame_stride
-    print(f"  frame_stride={args.frame_stride} → effective {effective_hz:.1f} Hz")
+    # CALVIN raw 30Hz, gap = raw frame interval. gap=30 = 1.0s
+    print(f"  segment-based sampling (raw 30Hz, no stride)")
 
     for gap in args.gaps:
-        seconds = gap / effective_hz
-        print(f"\n=== gap={gap} ({seconds:.2f}s @ effective {effective_hz:.1f}Hz) ===")
+        seconds = gap / 30.0
+        print(f"\n=== gap={gap} ({seconds:.2f}s @ raw 30Hz) ===")
         t0 = time.time()
 
-        def collect_embed(ep_list, label):
+        def collect_embed(seg_list, label, base_dir):
             embed_chunks, tgt_chunks, ep_ids = [], [], []
-            for ei, (s, e) in enumerate(ep_list):
-                frames, robot_obs, actions = load_episode_frames(
-                    split_dir, s, e, view=args.view, stride=args.frame_stride,
+            for ei, (s, e, task) in enumerate(seg_list):
+                frames, robot_obs, actions = load_segment_frames(
+                    base_dir, s, e, view=args.view,
                 )
-                if args.max_frames_per_episode:
-                    frames = frames[:args.max_frames_per_episode]
-                    robot_obs = robot_obs[:args.max_frames_per_episode]
-                    actions = actions[:args.max_frames_per_episode]
                 T = frames.shape[0]
                 if T <= gap + 1:
                     continue
@@ -183,9 +209,9 @@ def main():
             )
 
         print("  encoding train ...")
-        emb_tr, tgt_tr, _ = collect_embed(train_eps, "train")
+        emb_tr, tgt_tr, _ = collect_embed(train_segs, "train", train_dir)
         print("  encoding eval ...")
-        emb_ev, tgt_ev, _ = collect_embed(eval_eps, "eval")
+        emb_ev, tgt_ev, _ = collect_embed(eval_segs, "eval", eval_dir)
         print(f"  pairs: train={len(tgt_tr)} eval={len(tgt_ev)}")
 
         print(f"  training probe (epoch={args.probe_epochs}, lr={args.probe_lr}) ...")
@@ -209,8 +235,8 @@ def main():
                 "gap": gap,
                 "gap_seconds": gap / 30.0,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
-                "n_train_episodes": len(train_eps),
-                "n_eval_episodes": len(eval_eps),
+                "n_train_episodes": len(train_segs),
+                "n_eval_episodes": len(eval_segs),
                 "n_train_pairs": int(len(tgt_tr)),
                 "n_eval_pairs": int(len(tgt_ev)),
                 "best_epoch": best["epoch"],

@@ -1,0 +1,26 @@
+{
+  "encoder": "two-stream-v11",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15/20260511_045319/latest.pt",
+  "split": "training",
+  "view": "rgb_static",
+  "gap": 3,
+  "gap_seconds": 0.1,
+  "v11_mode": "p_t_p_tk",
+  "n_train_episodes": 142,
+  "n_eval_episodes": 36,
+  "n_train_pairs": 190185,
+  "n_eval_pairs": 40069,
+  "best_epoch": 20,
+  "r2_aggregate": 0.18723892478707915,
+  "r2_per_dim": [
+    0.83931138827374,
+    0.8360873334764314,
+    0.7877351096109948,
+    0.45358024987054035,
+    0.5689583888852234,
+    0.26376918759405477,
+    0.149229296353936
+  ],
+  "mse": 0.135249525308609,
+  "cosine_sim": 0.3999212086200714
+}

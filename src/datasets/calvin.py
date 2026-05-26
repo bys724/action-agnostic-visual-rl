@@ -1,24 +1,26 @@
-"""CALVIN dataset loader (§C10 action probing).
+"""CALVIN dataset loader — segment-based sampling (§C10 action probing).
 
 CALVIN (Mees et al. 2021) tabletop language-conditioned manipulation.
 - 4 splits: A, B, C, D (task_ABCD_D 다운로드 시 모두 포함)
 - Per-frame .npz: episode_XXXXXXX.npz
-- Episode boundaries: ep_start_end_ids.npy (N, 2) [start_id, end_id) per episode
-- 30Hz continuous control
+- Per-segment language annotation: lang_annotations/auto_lang_ann.npy
 
-Per-frame .npz keys (CALVIN dataset/README.md):
-- rgb_static:  (200, 200, 3) uint8       — paper main view
-- rgb_gripper: (84, 84, 3) uint8         — wrist view (sub-analysis only)
-- robot_obs:   (15,) float32             — [ee_pos(3), ee_euler(3), gripper_width(1),
-                                              joint_pos(7), gripper_action(1)]
-- actions:     (7,) float32              — abs TCP pose (x,y,z,euler_x/y/z,gripper)
-- rel_actions: (7,) float32              — relative, normalized [-1, 1]
+**Segment-based sampling (2026-05-26 update)**:
+이전 episode-level sampling은 multi-task chain 안에서 random pair 추출 → frame
+약 35-40%가 task 외 (idle/transition) → motion encoding이 anchor 잡기 어려움.
+LIBERO/EgoDex와 fair 비교 위해 **단일 task segment 안 frame pair만** sampling.
 
-**Target (pose-derived, LIBERO/EgoDex와 동일 protocol)**:
-- target_pos    = ee_pos[t+k] - ee_pos[t]                                       (3,)
-- target_rotvec = (R.from_euler(ee_euler[t]).inv() * R.from_euler(ee_euler[t+k])).as_rotvec()  (3,)
-- target_gripper = actions[t+k-1, 6:7]                                          (1,)
-→ 7-DoF target, scale 단위 m + rad
+Annotation 구조 (lang_annotations/auto_lang_ann.npy):
+- d['info']['indx']: list of (start_frame, end_frame) — 각 task segment 경계
+- d['language']['task']: list of task name str (34종)
+- d['language']['ann']: list of natural language instruction str
+- segment 길이: min 34, max 65 frame (1.13~2.17s @ 30Hz)
+
+**Target (pose-derived, LIBERO/EgoDex와 동일)**:
+- target_pos    = robot_obs[t+k, :3] - robot_obs[t, :3]
+- target_rotvec = (R.from_euler(ee_euler[t]).inv() * R.from_euler(ee_euler[t+k])).as_rotvec()
+- target_gripper = actions[t+k-1, 6:7]
+→ 7-DoF
 """
 from __future__ import annotations
 
@@ -30,15 +32,26 @@ from scipy.spatial.transform import Rotation as R
 
 
 FRAME_FILENAME_FMT = "episode_{:07d}.npz"
-EP_INDEX_FILE = "ep_start_end_ids.npy"
+ANN_PATH_RELATIVE = "lang_annotations/auto_lang_ann.npy"
 
 
-def load_episode_index(split_dir: Path) -> np.ndarray:
-    """Load (N, 2) episode boundary array [start_id, end_id]."""
-    path = split_dir / EP_INDEX_FILE
-    if not path.exists():
-        raise FileNotFoundError(f"Missing CALVIN episode index: {path}")
-    return np.load(path)
+def load_segments(split_dir: Path) -> List[Tuple[int, int, str]]:
+    """Load language-annotated task segments.
+
+    Returns:
+        list of (start_frame, end_frame, task_name) — 모든 segment.
+        validation: ~1k segments, training: ~23k segments.
+    """
+    ann_path = split_dir / ANN_PATH_RELATIVE
+    if not ann_path.exists():
+        raise FileNotFoundError(f"Missing CALVIN language annotation: {ann_path}")
+    d = np.load(ann_path, allow_pickle=True).item()
+    indx = d["info"]["indx"]            # list of (start, end)
+    tasks = d["language"]["task"]       # list of str
+    out = []
+    for (s, e), task in zip(indx, tasks):
+        out.append((int(s), int(e), str(task)))
+    return out
 
 
 def load_frame(split_dir: Path, frame_id: int,
@@ -49,25 +62,23 @@ def load_frame(split_dir: Path, frame_id: int,
         return {k: np.asarray(f[k]) for k in keys}
 
 
-def load_episode_frames(
+def load_segment_frames(
     split_dir: Path,
     start_id: int,
     end_id: int,
     view: str = "rgb_static",
-    stride: int = 1,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load frames + robot_obs + actions in an episode (with optional stride).
+    """Load all frames in a task segment.
 
-    CALVIN episode 길이가 매우 큼 (validation 평균 24k frames). stride>1 적용
-    필수 — 메모리 폭증 방지. stride=10 → CALVIN 30Hz가 effective 3Hz로 sub-sample.
+    Segment 길이 max 65 frame이라 stride 불필요 (메모리 OK).
 
     Returns:
-        frames:    (T_eff, H, W, 3) uint8     where T_eff = ceil((end_id-start_id+1) / stride)
-        robot_obs: (T_eff, 15) float32        — TCP pose + gripper + joints
-        actions:   (T_eff, 7) float32         — abs TCP pose actions (마지막 dim = gripper binary)
+        frames:    (T, H, W, 3) uint8       where T = end_id - start_id + 1
+        robot_obs: (T, 15) float32          — TCP pose + gripper + joints
+        actions:   (T, 7) float32           — abs TCP pose + binary gripper
     """
     frames, robot_obs, actions = [], [], []
-    for fid in range(start_id, end_id + 1, stride):
+    for fid in range(start_id, end_id + 1):
         d = load_frame(split_dir, fid, keys=(view, "robot_obs", "actions"))
         frames.append(d[view])
         robot_obs.append(d["robot_obs"])
@@ -77,12 +88,6 @@ def load_episode_frames(
         np.stack(robot_obs, dtype=np.float32),
         np.stack(actions, dtype=np.float32),
     )
-
-
-def list_episodes(split_dir: Path) -> List[Tuple[int, int]]:
-    """Return list of (start_id, end_id) tuples."""
-    ep_arr = load_episode_index(split_dir)
-    return [(int(s), int(e)) for s, e in ep_arr]
 
 
 def calvin_action_target(
@@ -96,13 +101,13 @@ def calvin_action_target(
     Args:
         robot_obs: (T, 15) — ee_pos[:3], ee_euler[3:6], ...
         actions:   (T, 7)  — last dim = gripper binary (-1/+1)
-        t, k: frame indices in strided-space
+        t, k: frame indices within segment
 
     Returns:
-        7-DoF: pos Δ(3, meters) + rotvec Δ(3, rad) + gripper binary(1)
+        7-DoF: pos Δ(3, m) + rotvec Δ(3, rad) + gripper binary(1)
     """
     if t + k >= robot_obs.shape[0]:
-        raise ValueError(f"t+k={t+k} exceeds episode length {robot_obs.shape[0]}")
+        raise ValueError(f"t+k={t+k} exceeds segment length {robot_obs.shape[0]}")
     target_pos = robot_obs[t + k, :3] - robot_obs[t, :3]
     r1 = R.from_euler("xyz", robot_obs[t, 3:6])
     r2 = R.from_euler("xyz", robot_obs[t + k, 3:6])

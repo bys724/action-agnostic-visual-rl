@@ -36,12 +36,13 @@ ENCODER="${ENCODER:?ENCODER required}"
 CHECKPOINT="${CHECKPOINT:-}"
 SPLIT="${SPLIT:-training}"
 VIEW="${VIEW:-rgb_static}"
-GAPS="${GAPS:-1 3 5 10}"
+GAPS="${GAPS:-10 20 30 45}"
 MAX_EPISODES="${MAX_EPISODES:-200}"
 FRAME_STRIDE="${FRAME_STRIDE:-10}"
 V11_MODE="${V11_MODE:-p_t_p_tk}"
 VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
+CROSS_FOLDER="${CROSS_FOLDER:-}"           # 0이 아닌 임의 값이면 --cross-folder flag 추가
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT_DIR="$OUT_BASE/${ENCODER}_${SPLIT}_${TIMESTAMP}${SUFFIX:+_$SUFFIX}"
@@ -76,6 +77,7 @@ ARGS=(
 if [[ -n "$CHECKPOINT" ]]; then ARGS+=(--checkpoint "$CHECKPOINT"); fi
 if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE"); fi
+if [[ -n "$CROSS_FOLDER" ]]; then ARGS+=(--cross-folder); fi
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"
 
