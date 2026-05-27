@@ -1,0 +1,12 @@
+[2026-05-25 15:08:05] Total jobs: 21  (NUM_GPUS=2)
+[0 GPU0] SKIP (done): videomae_ours pen-v0 seed=100
+[1 GPU1] SKIP (done): videomae_ours pen-v0 seed=200
+[2 GPU0] SKIP (done): videomae_ours pen-v0 seed=300
+[3 GPU1] SKIP (done): videomae_ours relocate-v0 seed=100
+[4 GPU0] SKIP (done): videomae_ours relocate-v0 seed=200
+[5 GPU1] SKIP (done): videomae_ours relocate-v0 seed=300
+[6 GPU0] SKIP (done): videomae_ours assembly-v2-goal-observable seed=100
+[7 GPU1] SKIP (done): videomae_ours assembly-v2-goal-observable seed=200
+[8 GPU0] SKIP (done): videomae_ours assembly-v2-goal-observable seed=300
+[9 GPU1 2026-05-25 15:08:05] START: videomae_ours bin-picking-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed100.log
+[10 GPU0 2026-05-25 15:08:05] START: videomae_ours bin-picking-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed200.log

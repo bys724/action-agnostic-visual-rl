@@ -1,0 +1,6 @@
+- env=pen-v0
+- embedding=videomae_ours
+- seed=100
+- data_dir=/mnt/data/cortexbench/datasets/adroit-expert-v1.0/
+- wandb.project=cortexbench_c11
+- wandb.entity=local

@@ -1,0 +1,31 @@
+[info] TASKS_OVERRIDE 적용: 2 task → bin-picking-v2-goal-observable button-press-topdown-v2-goal-observable
+[2026-05-26 19:06:22] Total jobs: 6  (NUM_GPUS=2)
+[0 GPU0] SKIP (done): videomae_ours bin-picking-v2-goal-observable seed=100
+[1 GPU1 2026-05-26 19:06:22] START: videomae_ours bin-picking-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed200.log
+[2 GPU0 2026-05-26 19:06:22] START: videomae_ours bin-picking-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed300.log
+[1 GPU1 2026-05-27 02:06:11] DONE rc=0: videomae_ours bin-picking-v2-goal-observable seed=200
+[3 GPU1 2026-05-27 02:06:11] START: videomae_ours button-press-topdown-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_button-press-topdown-v2-goal-observable_seed100.log
+[2 GPU0 2026-05-27 02:09:09] DONE rc=0: videomae_ours bin-picking-v2-goal-observable seed=300
+[4 GPU0 2026-05-27 02:09:09] START: videomae_ours button-press-topdown-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_button-press-topdown-v2-goal-observable_seed200.log
+[4 GPU0 2026-05-27 08:47:02] DONE rc=0: videomae_ours button-press-topdown-v2-goal-observable seed=200
+[3 GPU1 2026-05-27 08:48:16] DONE rc=0: videomae_ours button-press-topdown-v2-goal-observable seed=100
+[5 GPU1 2026-05-27 08:48:16] START: videomae_ours button-press-topdown-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_button-press-topdown-v2-goal-observable_seed300.log
+[5 GPU1 2026-05-27 15:24:01] DONE rc=0: videomae_ours button-press-topdown-v2-goal-observable seed=300
+[2026-05-27 15:24:01] All jobs complete
+Aggregating to paper_artifacts/cortexbench/{per_run,per_task,summary}.csv ...
+per_run.csv:  105 rows (DONE=99, RUNNING=6, MISSING=0)
+per_task.csv: 33 rows
+summary.csv:  10 rows
+
+=== Per-suite mean (encoder × suite) ===
+encoder            suite       n_tasks  mean_success   mean_score
+dinov2_base        adroit            2       54.0000    1928.3338
+dinov2_base        metaworld         5       85.8667    2975.3980
+siglip_base        adroit            2       54.6667    2031.3750
+siglip_base        metaworld         5       88.8000    3053.2727
+v15_p_only         adroit            2       52.0000    1955.4750
+v15_p_only         metaworld         5       89.8667    3127.6973
+vc1_vitb           adroit            2       48.6667    1910.2587
+vc1_vitb           metaworld         5       88.8000    3073.5973
+videomae_ours      adroit            2       48.0000    1777.9073
+videomae_ours      metaworld         3       71.1111    2925.9367

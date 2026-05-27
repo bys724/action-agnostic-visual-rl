@@ -1,0 +1,27 @@
+[2026-05-25 15:50:33] Total jobs: 21  (NUM_GPUS=2)
+[1 GPU1 2026-05-25 15:50:33] START: videomae_ours pen-v0 seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_pen-v0_seed200.log
+[0 GPU0 2026-05-25 15:50:33] START: videomae_ours pen-v0 seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_pen-v0_seed100.log
+[0 GPU0 2026-05-25 17:24:54] DONE rc=0: videomae_ours pen-v0 seed=100
+[2 GPU0 2026-05-25 17:24:54] START: videomae_ours pen-v0 seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_pen-v0_seed300.log
+[1 GPU1 2026-05-25 17:28:05] DONE rc=0: videomae_ours pen-v0 seed=200
+[3 GPU1 2026-05-25 17:28:05] START: videomae_ours relocate-v0 seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_relocate-v0_seed100.log
+[2 GPU0 2026-05-25 19:02:36] DONE rc=0: videomae_ours pen-v0 seed=300
+[4 GPU0 2026-05-25 19:02:36] START: videomae_ours relocate-v0 seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_relocate-v0_seed200.log
+[3 GPU1 2026-05-25 20:45:39] DONE rc=0: videomae_ours relocate-v0 seed=100
+[5 GPU1 2026-05-25 20:45:39] START: videomae_ours relocate-v0 seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_relocate-v0_seed300.log
+[4 GPU0 2026-05-25 22:06:57] DONE rc=0: videomae_ours relocate-v0 seed=200
+[6 GPU0 2026-05-25 22:06:57] START: videomae_ours assembly-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_assembly-v2-goal-observable_seed100.log
+[5 GPU1 2026-05-25 23:46:00] DONE rc=0: videomae_ours relocate-v0 seed=300
+[7 GPU1 2026-05-25 23:46:00] START: videomae_ours assembly-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_assembly-v2-goal-observable_seed200.log
+[6 GPU0 2026-05-26 06:28:54] DONE rc=0: videomae_ours assembly-v2-goal-observable seed=100
+[8 GPU0 2026-05-26 06:28:54] START: videomae_ours assembly-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_assembly-v2-goal-observable_seed300.log
+[7 GPU1 2026-05-26 07:58:07] DONE rc=0: videomae_ours assembly-v2-goal-observable seed=200
+[9 GPU1 2026-05-26 07:58:07] START: videomae_ours bin-picking-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed100.log
+[8 GPU0 2026-05-26 14:33:04] DONE rc=0: videomae_ours assembly-v2-goal-observable seed=300
+[10 GPU0 2026-05-26 14:33:04] START: videomae_ours bin-picking-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed200.log
+[9 GPU1 2026-05-26 15:56:36] DONE rc=0: videomae_ours bin-picking-v2-goal-observable seed=100
+[11 GPU1 2026-05-26 15:56:36] START: videomae_ours bin-picking-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_bin-picking-v2-goal-observable_seed300.log
+[10 GPU0 2026-05-26 19:02:51] DONE rc=143: videomae_ours bin-picking-v2-goal-observable seed=200
+[12 GPU0 2026-05-26 19:02:51] START: videomae_ours button-press-topdown-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_button-press-topdown-v2-goal-observable_seed100.log
+[11 GPU1 2026-05-26 19:02:53] DONE rc=143: videomae_ours bin-picking-v2-goal-observable seed=300
+[13 GPU1 2026-05-26 19:02:53] START: videomae_ours button-press-topdown-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_button-press-topdown-v2-goal-observable_seed200.log
