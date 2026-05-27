@@ -321,6 +321,36 @@ v11은 4 위치에서 representation 추출 가능: A=M encoder, B=P encoder, D'
 3. **Two-Stream vs VideoMAE**: ep4에서 거의 동등(0.208 vs 0.198). 이후 학습 효율에서 차이 — VideoMAE 수렴(→0.326), Two-Stream은 rotaug/mask 설정에 민감
 4. **Gap 효과**: gap=1은 노이즈 수준(~0.0006). full training 후 평가는 **gap=10 기본**
 
+## CALVIN Cross-folder OOD Probing 결과 (paper §C10 main, 2026-05-26)
+
+Segment-based fair protocol (commit `7eb0c48`) + cross-folder OOD (training/ → validation/). gap=10/15/20/30, max_episodes=200.
+
+### per-dim R² 분리 (gap=30 = 1.0s)
+
+| Encoder | pos avg | rot avg | **gripper** | aggregate |
+|---------|---------|---------|-------------|-----------|
+| **v15** | +0.262 | −0.005 | **−0.005** | −0.012 |
+| videomae-ours | **+0.553** ★ | +0.152 | +0.059 | +0.056 |
+| vc1 | +0.536 | +0.203 | +0.022 | +0.035 |
+| **dinov2** | +0.223 | +0.173 | **+0.359** ★ | **+0.307** |
+| siglip | −0.314 | −0.029 | +0.183 | +0.162 |
+
+자세한 표·plot: [paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.{csv,png}](../paper_artifacts/calvin_action_probing/_diagnostic/) (CALVIN + LIBERO 비교).
+
+### 핵심 발견 — aggregate R²가 v15에 unfair
+
+- **R² aggregate가 binary gripper에 dominated**. dinov2 aggregate 우위(+0.307)는 gripper R² (+0.359)에서 옴. continuous motion (pos delta)은 motion-SSL (videomae +0.553, v15 +0.262 ≈ dinov2 +0.223) 우위
+- 모든 벤치에서 일관:
+  - **EgoDex** (18-dim joint pose, gripper 없음): v15 +0.390 ★ 1위 — gripper bias 없는 motion-only 지표
+  - **LIBERO spatial** gap=20: v15 pos avg **+0.896 ★ 1위**, dinov2 +0.766. gripper만 dinov2 우위(−0.09 격차)
+  - **CALVIN**: 위 표대로
+- CALVIN-specific 격차 큰 이유: pos delta scale 매우 작음(fine manipulation) → pos R² 절댓값 낮아 gripper dim이 aggregate 더 dominate. gripper R² 격차도 LIBERO 대비 4배
+- gap sweep: v15 R² drop gap=10→30 = −120%, dinov2 −40%. segment 길이(34~65)에 gap=30이 거의 닿아 P_tk가 segment 끝 cluster → motion-SSL에 추가 hurt. 단 base 격차는 gripper에서 옴
+
+**paper §C10 narrative**: "v15가 CALVIN OOD에서 약함"(오해) → "R² aggregate는 binary gripper-dominated metric. v15는 continuous motion에서 image-SSL 동급/우위, gripper binary 식별에서 약함. 모든 벤치 per-dim 분석 시 v15 motion 인코딩 1위 또는 공동 1위 일관".
+
+자세한 진단 series (Case 1 per-task + Case 2 motion magnitude + Case 3 GAP sweep)는 [docs/cluster_sessions.md `2026-05-26 CALVIN cross-folder 원인 진단`](cluster_sessions.md) 참고.
+
 ## 권장 평가 프로토콜
 
 ```bash

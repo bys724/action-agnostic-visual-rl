@@ -308,18 +308,70 @@ target metric 변경: rel_actions cumulative sum → robot_obs[:6] pose delta (L
 | 34796897~908 (5 enc × 2 split self-contained, time=2h training fail) | AIP | training 5잡 cancel — sub-folder self-contained 의미 약함 |
 | **34798739~744 (5 enc × cross-folder OOD)** | AIP 1×1 H100 × ~2h | ✅ COMPLETED 2h07m each, total **10.6 GPU·h** |
 
-**Cross-folder OOD (paper §C10 main, gap=30 = 1.0s)**:
-| Encoder | training-folder train + validation-folder eval R² |
-|---------|------------|
-| **dinov2** | **+0.535** ★ |
-| siglip | +0.345 |
-| vc1 | +0.242 |
-| videomae-ours | +0.180 |
-| **v15** | **+0.105** (5위, drop −66% vs in-dist self-contained 0.310) |
+**Cross-folder OOD (gap=30 = 1.0s) — ⚠️ episode-based sampling, deprecated**:
+| Encoder | R² aggregate | 비고 |
+|---------|------------|------|
+| dinov2 | +0.535 | gripper R² dominated (per-dim 미보고) |
+| siglip | +0.345 | |
+| vc1 | +0.242 | |
+| videomae-ours | +0.180 | |
+| v15 | +0.105 | |
 
-**핵심 발견**: cross-folder OOD에서도 v15가 baseline 대비 명확히 약함. dinov2가 OOD에서도 가장 robust. siglip은 in-dist 0.769 → OOD 0.345 (drop −0.424) — vision-language SSL의 generalization 약점. **paper §4 ¶2 (iii) limitation 보고**:
-- v15 weakness on CALVIN cross-environment OOD probing
-- 대조적으로 **CortexBench MetaWorld BC 1위** (commit `24eda1a`, v15 89.87 vs siglip 88.8) — v15 main claim 직접 지지
+**🔴 이 결과는 paper §C10 main 아님**: 본 잡 시점(2026-05-26 14시)은 `b90ce37` commit (episode-based + stride=10, idle/transition pair 35% 포함). 같은 날 22시 `7eb0c48` commit(=segment-based fair)에서 GAP sweep 재측정. paper §C10 main은 5/26 22시 결과(아래 entry) 사용. n_train_pairs 비교: 본 잡 59,904 (episode) vs 22시 잡 6,114 (segment, ~10×차이).
+
+### 2026-05-26 CALVIN cross-folder 원인 진단 (Case 1 per-task + GAP sweep)
+
+**배경**: §C10 cross-folder OOD에서 v15가 다른 벤치 (EgoDex/LIBERO/CortexBench MetaWorld 모두 1위)와 정반대로 5위. 이유 규명을 위한 진단 series.
+
+**Case 1 (완료) — per-task R² breakdown**:
+| JobID | 자원 | 결과 |
+|-------|------|------|
+| 34815090 (`diagnose_calvin_per_task.py`, 5 enc × 1 gap=30) | AIP 1×1 H100 × 2h49m = **2.81 GPU·h** | ✅ COMPLETED. v15가 34 task 중 33개에서 dinov2에 lag (median Δ=−0.52). worst 8개 중 5개가 `rotate_*_block_*` — rotation/fine-motion task에 집중. **단 v15만 약함이 아님**: siglip/vc1/videomae도 rotate task에 약함, dinov2만 일관 우위. → "motion/temporal SSL의 CALVIN-specific 약점" 가설로 재정의 |
+
+**Case 2 (완료, 18:11) — motion magnitude 분포**: CALVIN bi-modal (peak 0.03-0.05m + 0.1m), LIBERO uni-modal (0.18-0.22m). CALVIN idle pair 2배, 작은 motion 2.4배. **단 baseline에도 동등 영향이라 v15-specific 원인은 설명 못 함**.
+
+**Case 3 (완료) — GAP sweep + per-dim 분석 = paper §C10 main fair**:
+
+코드 점검 발견 (commit `7eb0c48` segment-based 적용 후 재측정):
+- [src/datasets/calvin.py:17](../src/datasets/calvin.py#L17) segment 길이 **min 34, max 65 frame**. eval 32183 pairs / 1087 segs ≈ 30 pairs/seg → 평균 segment ≈ 60 frame
+- gap=30 (1.0s) → P_tk가 segment의 50-88% 지점 = **task 종료 직전 frame cluster**
+
+| JobID | 자원 | 결과 |
+|-------|------|------|
+| 34869586~590 (5 enc × cross-folder × gap 10/15/20/30, segment-based) | AIP 1×1 H100 × 27분 each, total **2.3 GPU·h** | ✅ COMPLETED 22:04 |
+
+**R² aggregate**:
+| Encoder | gap=10 | gap=15 | gap=20 | gap=30 |
+|---------|-------|-------|-------|-------|
+| dinov2 | +0.508 | +0.471 | +0.412 | +0.307 |
+| siglip | +0.293 | +0.272 | +0.212 | +0.162 |
+| vc1 | +0.093 | +0.072 | +0.060 | +0.035 |
+| videomae-ours | +0.077 | +0.069 | +0.072 | +0.056 |
+| **v15** | **+0.059** | +0.045 | +0.032 | **−0.012** |
+
+**Per-dim R² @ gap=30** (사용자 직관 검증 — gripper가 aggregate dominate):
+| Encoder | pos_x | pos_y | pos_z | rot_x | rot_y | rot_z | **gripper** | agg |
+|---------|------|------|------|------|------|------|------|------|
+| **v15** | +0.355 | +0.199 | +0.234 | +0.050 | −0.001 | −0.063 | **−0.005** | −0.012 |
+| videomae-ours | **+0.617** ★ | +0.510 | +0.533 | +0.049 | +0.421 | −0.015 | +0.059 | +0.056 |
+| vc1 | +0.544 | +0.453 | +0.610 | +0.158 | +0.434 | +0.016 | +0.022 | +0.035 |
+| dinov2 | +0.413 | +0.169 | +0.088 | +0.110 | +0.271 | +0.139 | **+0.359** ★ | +0.307 |
+| siglip | +0.062 | −0.071 | −0.934 | −0.218 | −0.005 | +0.136 | +0.183 | +0.162 |
+
+**🔥 핵심 발견 (paper §C10 narrative 결정)**:
+
+1. **dinov2 aggregate 우위는 motion 인코딩 아니라 binary gripper R² (+0.359)에서 옴**. v15/videomae는 pos delta에서 dinov2 추월(pos avg v15 +0.262 / videomae **+0.553** / dinov2 +0.223)
+2. **LIBERO에서도 같은 패턴** (gap=20 per-dim): v15 pos avg **+0.896 1위**, dinov2 +0.766, gripper만 dinov2 우위. 단 LIBERO는 pos delta scale 큼 → aggregate에서 격차 작음 (v15 +0.581 vs dinov2 +0.666, Δ=−0.085)
+3. **EgoDex (gripper 없음, 18-dim joint pose)**: v15 +0.390 1위 — gripper bias 없는 motion-only metric으로 v15 main claim 직접 입증
+4. **CALVIN-specific 격차 큰 이유**: (a) pos delta scale 매우 작음 (fine manipulation) → pos R² 절댓값 모두 낮아 gripper dim이 aggregate 더 dominate. (b) gripper R² 격차가 LIBERO 대비 4배 (−0.36 vs −0.09)
+5. **H2 (segment-끝 cluster) 가설 부분 입증**: v15 R² drop gap=10→gap=30 −120%, dinov2 −40%, videomae −27%. v15가 gap 증가에 가장 민감. 단 base 격차(gap=10에서도 −0.45)는 gripper에서 옴
+
+**paper §C10 narrative 재정의**: "v15가 CALVIN OOD에서 약함"(오해) → **"R² aggregate는 binary gripper에 dominated metric. v15는 continuous motion (pos delta)에서 image-SSL과 동급/우위, gripper binary 식별에서 약함. 모든 벤치(EgoDex/LIBERO/CALVIN)에서 per-dim 분석 시 v15가 motion 인코딩 1위 또는 공동 1위로 일관"**
+
+산출물:
+- [paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.csv](../paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.csv) — CALVIN + LIBERO per-dim 통합 table
+- [paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.png](../paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.png) — bar chart (2 panel)
+- [paper_artifacts/calvin_action_probing/_diagnostic/aggregate_per_dim.py](../paper_artifacts/calvin_action_probing/_diagnostic/aggregate_per_dim.py) — regeneration script
 
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 

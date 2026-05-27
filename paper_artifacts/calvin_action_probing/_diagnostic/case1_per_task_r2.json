@@ -1,0 +1,707 @@
+{
+  "v15": {
+    "r2_overall": 0.10678233416844274,
+    "per_task": {
+      "open_drawer": {
+        "r2": -1.7147690114821827,
+        "n_pairs": 1085
+      },
+      "turn_on_led": {
+        "r2": -0.3448959334888504,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_slider": {
+        "r2": -0.011345538412962597,
+        "n_pairs": 1008
+      },
+      "move_slider_left": {
+        "r2": -0.37253232783574797,
+        "n_pairs": 1050
+      },
+      "lift_red_block_slider": {
+        "r2": 0.11654164327830552,
+        "n_pairs": 1050
+      },
+      "place_in_drawer": {
+        "r2": 0.1142340741849821,
+        "n_pairs": 798
+      },
+      "close_drawer": {
+        "r2": -0.33157492752817963,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_table": {
+        "r2": -0.02580226127852292,
+        "n_pairs": 1050
+      },
+      "place_in_slider": {
+        "r2": -0.1524909318832437,
+        "n_pairs": 655
+      },
+      "turn_on_lightbulb": {
+        "r2": 0.4083581764456261,
+        "n_pairs": 707
+      },
+      "turn_off_led": {
+        "r2": -0.054638707292016475,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_table": {
+        "r2": 0.05940057313597402,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_slider": {
+        "r2": 0.03417648173969279,
+        "n_pairs": 1050
+      },
+      "turn_off_lightbulb": {
+        "r2": -0.04014217955953403,
+        "n_pairs": 1050
+      },
+      "move_slider_right": {
+        "r2": -0.17790595123454467,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_drawer": {
+        "r2": 0.11319800727788454,
+        "n_pairs": 1050
+      },
+      "lift_red_block_drawer": {
+        "r2": 0.16250694274362443,
+        "n_pairs": 1050
+      },
+      "push_red_block_right": {
+        "r2": -0.2761460810180265,
+        "n_pairs": 1015
+      },
+      "lift_pink_block_drawer": {
+        "r2": 0.09079022355238842,
+        "n_pairs": 1050
+      },
+      "lift_red_block_table": {
+        "r2": 0.015626760621109126,
+        "n_pairs": 721
+      },
+      "rotate_pink_block_left": {
+        "r2": -1.1086789293421857,
+        "n_pairs": 932
+      },
+      "stack_block": {
+        "r2": -0.13257588403506593,
+        "n_pairs": 398
+      },
+      "unstack_block": {
+        "r2": -2.3955602700202423,
+        "n_pairs": 307
+      },
+      "push_into_drawer": {
+        "r2": -0.03402320742516918,
+        "n_pairs": 1228
+      },
+      "rotate_pink_block_right": {
+        "r2": -1.060990434663073,
+        "n_pairs": 994
+      },
+      "rotate_red_block_left": {
+        "r2": -0.6105301050314267,
+        "n_pairs": 1225
+      },
+      "rotate_blue_block_right": {
+        "r2": -0.9158652548232789,
+        "n_pairs": 1138
+      },
+      "rotate_red_block_right": {
+        "r2": -0.8269159949710048,
+        "n_pairs": 466
+      },
+      "rotate_blue_block_left": {
+        "r2": -0.8000335082689929,
+        "n_pairs": 1024
+      },
+      "push_pink_block_left": {
+        "r2": -1.4384468062401057,
+        "n_pairs": 1088
+      },
+      "push_blue_block_right": {
+        "r2": -0.7937885109961813,
+        "n_pairs": 859
+      },
+      "push_blue_block_left": {
+        "r2": -0.1205461064182487,
+        "n_pairs": 1004
+      },
+      "push_pink_block_right": {
+        "r2": 0.07847582009154375,
+        "n_pairs": 705
+      },
+      "push_red_block_left": {
+        "r2": 0.1286432644894112,
+        "n_pairs": 1176
+      }
+    }
+  },
+  "videomae-ours": {
+    "r2_overall": 0.17832826159002002,
+    "per_task": {
+      "open_drawer": {
+        "r2": -2.4820249397282206,
+        "n_pairs": 1085
+      },
+      "turn_on_led": {
+        "r2": 0.12804695412419176,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_slider": {
+        "r2": -0.0225750582504336,
+        "n_pairs": 1008
+      },
+      "move_slider_left": {
+        "r2": -0.3408553293049015,
+        "n_pairs": 1050
+      },
+      "lift_red_block_slider": {
+        "r2": 0.37302678001402956,
+        "n_pairs": 1050
+      },
+      "place_in_drawer": {
+        "r2": -0.18618000448603778,
+        "n_pairs": 798
+      },
+      "close_drawer": {
+        "r2": -0.903544156204029,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_table": {
+        "r2": -0.1561980093614943,
+        "n_pairs": 1050
+      },
+      "place_in_slider": {
+        "r2": -0.41857216764210303,
+        "n_pairs": 655
+      },
+      "turn_on_lightbulb": {
+        "r2": 0.2628066410119374,
+        "n_pairs": 707
+      },
+      "turn_off_led": {
+        "r2": 0.21880039496300097,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_table": {
+        "r2": 0.06284861888132776,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_slider": {
+        "r2": 0.19068266555500357,
+        "n_pairs": 1050
+      },
+      "turn_off_lightbulb": {
+        "r2": -0.196368375739715,
+        "n_pairs": 1050
+      },
+      "move_slider_right": {
+        "r2": -0.07841242221110378,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_drawer": {
+        "r2": 0.09339927002743642,
+        "n_pairs": 1050
+      },
+      "lift_red_block_drawer": {
+        "r2": 0.19350305459061568,
+        "n_pairs": 1050
+      },
+      "push_red_block_right": {
+        "r2": -0.14590976914638554,
+        "n_pairs": 1015
+      },
+      "lift_pink_block_drawer": {
+        "r2": 0.41722389647085323,
+        "n_pairs": 1050
+      },
+      "lift_red_block_table": {
+        "r2": 0.23292671840477042,
+        "n_pairs": 721
+      },
+      "rotate_pink_block_left": {
+        "r2": -0.9185313458481623,
+        "n_pairs": 932
+      },
+      "stack_block": {
+        "r2": -0.5398965975520769,
+        "n_pairs": 398
+      },
+      "unstack_block": {
+        "r2": -1.2177235030834619,
+        "n_pairs": 307
+      },
+      "push_into_drawer": {
+        "r2": -0.028285312025109643,
+        "n_pairs": 1228
+      },
+      "rotate_pink_block_right": {
+        "r2": -0.6743047881995314,
+        "n_pairs": 994
+      },
+      "rotate_red_block_left": {
+        "r2": -0.14996650190027938,
+        "n_pairs": 1225
+      },
+      "rotate_blue_block_right": {
+        "r2": -0.7206003881824854,
+        "n_pairs": 1138
+      },
+      "rotate_red_block_right": {
+        "r2": -0.5762436350940725,
+        "n_pairs": 466
+      },
+      "rotate_blue_block_left": {
+        "r2": -0.39591570896811024,
+        "n_pairs": 1024
+      },
+      "push_pink_block_left": {
+        "r2": -2.0471788372351103,
+        "n_pairs": 1088
+      },
+      "push_blue_block_right": {
+        "r2": -0.6487848097539761,
+        "n_pairs": 859
+      },
+      "push_blue_block_left": {
+        "r2": 0.011116264846024237,
+        "n_pairs": 1004
+      },
+      "push_pink_block_right": {
+        "r2": 0.002842327584858917,
+        "n_pairs": 705
+      },
+      "push_red_block_left": {
+        "r2": -0.1339104699100755,
+        "n_pairs": 1176
+      }
+    }
+  },
+  "dinov2": {
+    "r2_overall": 0.537542216512719,
+    "per_task": {
+      "open_drawer": {
+        "r2": -1.2311656333930934,
+        "n_pairs": 1085
+      },
+      "turn_on_led": {
+        "r2": 0.28430682365193694,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_slider": {
+        "r2": 0.5697250236924727,
+        "n_pairs": 1008
+      },
+      "move_slider_left": {
+        "r2": 0.4989791392173958,
+        "n_pairs": 1050
+      },
+      "lift_red_block_slider": {
+        "r2": 0.5650253823680738,
+        "n_pairs": 1050
+      },
+      "place_in_drawer": {
+        "r2": 0.40243694240235106,
+        "n_pairs": 798
+      },
+      "close_drawer": {
+        "r2": 0.10887508409681645,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_table": {
+        "r2": 0.21393083182564276,
+        "n_pairs": 1050
+      },
+      "place_in_slider": {
+        "r2": 0.2732307258003117,
+        "n_pairs": 655
+      },
+      "turn_on_lightbulb": {
+        "r2": 0.6996453976371472,
+        "n_pairs": 707
+      },
+      "turn_off_led": {
+        "r2": 0.7402625203348384,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_table": {
+        "r2": 0.4946875940543286,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_slider": {
+        "r2": 0.31636818176537795,
+        "n_pairs": 1050
+      },
+      "turn_off_lightbulb": {
+        "r2": 0.41897161949649286,
+        "n_pairs": 1050
+      },
+      "move_slider_right": {
+        "r2": 0.5715196908522092,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_drawer": {
+        "r2": 0.633388098511776,
+        "n_pairs": 1050
+      },
+      "lift_red_block_drawer": {
+        "r2": 0.30514919729532086,
+        "n_pairs": 1050
+      },
+      "push_red_block_right": {
+        "r2": 0.43547422685327297,
+        "n_pairs": 1015
+      },
+      "lift_pink_block_drawer": {
+        "r2": 0.44546329966031784,
+        "n_pairs": 1050
+      },
+      "lift_red_block_table": {
+        "r2": 0.47147202403826005,
+        "n_pairs": 721
+      },
+      "rotate_pink_block_left": {
+        "r2": 0.12936631930943465,
+        "n_pairs": 932
+      },
+      "stack_block": {
+        "r2": 0.6622721574355606,
+        "n_pairs": 398
+      },
+      "unstack_block": {
+        "r2": -5.494417687972749,
+        "n_pairs": 307
+      },
+      "push_into_drawer": {
+        "r2": 0.48839822613176054,
+        "n_pairs": 1228
+      },
+      "rotate_pink_block_right": {
+        "r2": -0.24292497932506385,
+        "n_pairs": 994
+      },
+      "rotate_red_block_left": {
+        "r2": 0.5896300916987227,
+        "n_pairs": 1225
+      },
+      "rotate_blue_block_right": {
+        "r2": -0.1165950237826332,
+        "n_pairs": 1138
+      },
+      "rotate_red_block_right": {
+        "r2": 0.4355420352246142,
+        "n_pairs": 466
+      },
+      "rotate_blue_block_left": {
+        "r2": 0.16754317016420317,
+        "n_pairs": 1024
+      },
+      "push_pink_block_left": {
+        "r2": -0.6947066690157184,
+        "n_pairs": 1088
+      },
+      "push_blue_block_right": {
+        "r2": 0.01914511955744591,
+        "n_pairs": 859
+      },
+      "push_blue_block_left": {
+        "r2": 0.5240837552198776,
+        "n_pairs": 1004
+      },
+      "push_pink_block_right": {
+        "r2": 0.4467338119251276,
+        "n_pairs": 705
+      },
+      "push_red_block_left": {
+        "r2": 0.33489171361510195,
+        "n_pairs": 1176
+      }
+    }
+  },
+  "siglip": {
+    "r2_overall": 0.3525675515718196,
+    "per_task": {
+      "open_drawer": {
+        "r2": -2.606716915979643,
+        "n_pairs": 1085
+      },
+      "turn_on_led": {
+        "r2": -0.01553733610120478,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_slider": {
+        "r2": 0.26796669212616053,
+        "n_pairs": 1008
+      },
+      "move_slider_left": {
+        "r2": -0.066856350611602,
+        "n_pairs": 1050
+      },
+      "lift_red_block_slider": {
+        "r2": 0.19804844269431066,
+        "n_pairs": 1050
+      },
+      "place_in_drawer": {
+        "r2": 0.5242196915702866,
+        "n_pairs": 798
+      },
+      "close_drawer": {
+        "r2": -0.6957914996297228,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_table": {
+        "r2": 0.026086393906983196,
+        "n_pairs": 1050
+      },
+      "place_in_slider": {
+        "r2": 0.31409336068409466,
+        "n_pairs": 655
+      },
+      "turn_on_lightbulb": {
+        "r2": 0.6523323467224451,
+        "n_pairs": 707
+      },
+      "turn_off_led": {
+        "r2": 0.5410209995596603,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_table": {
+        "r2": 0.4781418552062534,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_slider": {
+        "r2": 0.15647822459339922,
+        "n_pairs": 1050
+      },
+      "turn_off_lightbulb": {
+        "r2": 0.1272092027995907,
+        "n_pairs": 1050
+      },
+      "move_slider_right": {
+        "r2": -0.22469503991071504,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_drawer": {
+        "r2": 0.5705911303280675,
+        "n_pairs": 1050
+      },
+      "lift_red_block_drawer": {
+        "r2": -0.05821180259212144,
+        "n_pairs": 1050
+      },
+      "push_red_block_right": {
+        "r2": -0.564322990264202,
+        "n_pairs": 1015
+      },
+      "lift_pink_block_drawer": {
+        "r2": 0.49997950668445756,
+        "n_pairs": 1050
+      },
+      "lift_red_block_table": {
+        "r2": 0.6622352486259862,
+        "n_pairs": 721
+      },
+      "rotate_pink_block_left": {
+        "r2": -0.5390368918857926,
+        "n_pairs": 932
+      },
+      "stack_block": {
+        "r2": 0.5348901918017249,
+        "n_pairs": 398
+      },
+      "unstack_block": {
+        "r2": -5.0146447426625675,
+        "n_pairs": 307
+      },
+      "push_into_drawer": {
+        "r2": 0.21052817549618807,
+        "n_pairs": 1228
+      },
+      "rotate_pink_block_right": {
+        "r2": -0.31806584141493777,
+        "n_pairs": 994
+      },
+      "rotate_red_block_left": {
+        "r2": 0.2642189239861342,
+        "n_pairs": 1225
+      },
+      "rotate_blue_block_right": {
+        "r2": -0.5312433444592937,
+        "n_pairs": 1138
+      },
+      "rotate_red_block_right": {
+        "r2": 0.2638706737116323,
+        "n_pairs": 466
+      },
+      "rotate_blue_block_left": {
+        "r2": -0.13085597865292953,
+        "n_pairs": 1024
+      },
+      "push_pink_block_left": {
+        "r2": -1.5547926272901287,
+        "n_pairs": 1088
+      },
+      "push_blue_block_right": {
+        "r2": -1.3140592241558688,
+        "n_pairs": 859
+      },
+      "push_blue_block_left": {
+        "r2": 0.4010899973480708,
+        "n_pairs": 1004
+      },
+      "push_pink_block_right": {
+        "r2": 0.16510615763233205,
+        "n_pairs": 705
+      },
+      "push_red_block_left": {
+        "r2": 0.22130656377351943,
+        "n_pairs": 1176
+      }
+    }
+  },
+  "vc1": {
+    "r2_overall": 0.23454797222244017,
+    "per_task": {
+      "open_drawer": {
+        "r2": -3.9851341270995073,
+        "n_pairs": 1085
+      },
+      "turn_on_led": {
+        "r2": 0.03574956365793025,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_slider": {
+        "r2": 0.1497343714097894,
+        "n_pairs": 1008
+      },
+      "move_slider_left": {
+        "r2": -0.32490172509261894,
+        "n_pairs": 1050
+      },
+      "lift_red_block_slider": {
+        "r2": 0.15600529503528338,
+        "n_pairs": 1050
+      },
+      "place_in_drawer": {
+        "r2": 0.21530941766623113,
+        "n_pairs": 798
+      },
+      "close_drawer": {
+        "r2": -0.5228122239768562,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_table": {
+        "r2": 0.022332173491209972,
+        "n_pairs": 1050
+      },
+      "place_in_slider": {
+        "r2": 0.19150232910210319,
+        "n_pairs": 655
+      },
+      "turn_on_lightbulb": {
+        "r2": 0.5303305434649883,
+        "n_pairs": 707
+      },
+      "turn_off_led": {
+        "r2": 0.01607089380624993,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_table": {
+        "r2": 0.1496824254569512,
+        "n_pairs": 1050
+      },
+      "lift_pink_block_slider": {
+        "r2": 0.1704282918778912,
+        "n_pairs": 1050
+      },
+      "turn_off_lightbulb": {
+        "r2": -0.563905621721613,
+        "n_pairs": 1050
+      },
+      "move_slider_right": {
+        "r2": -0.22405902283560675,
+        "n_pairs": 1050
+      },
+      "lift_blue_block_drawer": {
+        "r2": 0.22754242570574268,
+        "n_pairs": 1050
+      },
+      "lift_red_block_drawer": {
+        "r2": 0.13385098918162153,
+        "n_pairs": 1050
+      },
+      "push_red_block_right": {
+        "r2": 0.0659936277684311,
+        "n_pairs": 1015
+      },
+      "lift_pink_block_drawer": {
+        "r2": 0.1827575251714465,
+        "n_pairs": 1050
+      },
+      "lift_red_block_table": {
+        "r2": -0.21237980388368993,
+        "n_pairs": 721
+      },
+      "rotate_pink_block_left": {
+        "r2": -0.7534349353557819,
+        "n_pairs": 932
+      },
+      "stack_block": {
+        "r2": -0.13109376368886472,
+        "n_pairs": 398
+      },
+      "unstack_block": {
+        "r2": -3.227184439987859,
+        "n_pairs": 307
+      },
+      "push_into_drawer": {
+        "r2": 0.20299661368564936,
+        "n_pairs": 1228
+      },
+      "rotate_pink_block_right": {
+        "r2": -0.5062255754589435,
+        "n_pairs": 994
+      },
+      "rotate_red_block_left": {
+        "r2": 0.19693611600582628,
+        "n_pairs": 1225
+      },
+      "rotate_blue_block_right": {
+        "r2": -0.5310914724048565,
+        "n_pairs": 1138
+      },
+      "rotate_red_block_right": {
+        "r2": -0.2026011613147456,
+        "n_pairs": 466
+      },
+      "rotate_blue_block_left": {
+        "r2": -0.26760420784069483,
+        "n_pairs": 1024
+      },
+      "push_pink_block_left": {
+        "r2": -1.192023885230527,
+        "n_pairs": 1088
+      },
+      "push_blue_block_right": {
+        "r2": -1.087011510425544,
+        "n_pairs": 859
+      },
+      "push_blue_block_left": {
+        "r2": 0.17071284267481435,
+        "n_pairs": 1004
+      },
+      "push_pink_block_right": {
+        "r2": 0.30230457284924117,
+        "n_pairs": 705
+      },
+      "push_red_block_left": {
+        "r2": 0.12396835269802842,
+        "n_pairs": 1176
+      }
+    }
+  }
+}
