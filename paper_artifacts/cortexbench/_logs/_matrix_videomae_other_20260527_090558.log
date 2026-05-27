@@ -1,0 +1,31 @@
+[info] TASKS_OVERRIDE 적용: 2 task → drawer-open-v2-goal-observable hammer-v2-goal-observable
+[2026-05-27 09:05:59] Total jobs: 6  (NUM_GPUS=1)
+[0 GPU0 2026-05-27 09:05:59] START: videomae_ours drawer-open-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_drawer-open-v2-goal-observable_seed100.log
+[0 GPU0 2026-05-27 10:33:35] DONE rc=0: videomae_ours drawer-open-v2-goal-observable seed=100
+[1 GPU0 2026-05-27 10:33:35] START: videomae_ours drawer-open-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_drawer-open-v2-goal-observable_seed200.log
+[1 GPU0 2026-05-27 12:01:59] DONE rc=0: videomae_ours drawer-open-v2-goal-observable seed=200
+[2 GPU0 2026-05-27 12:01:59] START: videomae_ours drawer-open-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_drawer-open-v2-goal-observable_seed300.log
+[2 GPU0 2026-05-27 13:30:40] DONE rc=0: videomae_ours drawer-open-v2-goal-observable seed=300
+[3 GPU0 2026-05-27 13:30:40] START: videomae_ours hammer-v2-goal-observable seed=100 → paper_artifacts/cortexbench/_logs/videomae_ours_hammer-v2-goal-observable_seed100.log
+[3 GPU0 2026-05-27 15:01:02] DONE rc=0: videomae_ours hammer-v2-goal-observable seed=100
+[4 GPU0 2026-05-27 15:01:02] START: videomae_ours hammer-v2-goal-observable seed=200 → paper_artifacts/cortexbench/_logs/videomae_ours_hammer-v2-goal-observable_seed200.log
+[4 GPU0 2026-05-27 16:31:52] DONE rc=0: videomae_ours hammer-v2-goal-observable seed=200
+[5 GPU0 2026-05-27 16:31:52] START: videomae_ours hammer-v2-goal-observable seed=300 → paper_artifacts/cortexbench/_logs/videomae_ours_hammer-v2-goal-observable_seed300.log
+[5 GPU0 2026-05-27 18:01:52] DONE rc=0: videomae_ours hammer-v2-goal-observable seed=300
+[2026-05-27 18:01:52] All jobs complete
+Aggregating to paper_artifacts/cortexbench/{per_run,per_task,summary}.csv ...
+per_run.csv:  105 rows (DONE=90, RUNNING=0, MISSING=15)
+per_task.csv: 30 rows
+summary.csv:  9 rows
+
+=== Per-suite mean (encoder × suite) ===
+encoder            suite       n_tasks  mean_success   mean_score
+dinov2_base        adroit            2       54.0000    1928.3338
+dinov2_base        metaworld         5       85.8667    2975.3980
+siglip_base        adroit            2       54.6667    2031.3750
+siglip_base        metaworld         5       88.8000    3053.2727
+v15_p_only         adroit            2       52.0000    1955.4750
+v15_p_only         metaworld         5       89.8667    3127.6973
+vc1_vitb           adroit            2       48.6667    1910.2587
+vc1_vitb           metaworld         5       88.8000    3073.5973
+videomae_ours      metaworld         2       99.3333    2856.2400
