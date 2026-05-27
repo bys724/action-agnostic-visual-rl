@@ -397,6 +397,52 @@ Paper accept 후 project page용 가시화 자료 1단계 — DINOv2-style RGB o
 
 산출물: [paper_artifacts/visualizations/pca_overlay/libero_spatial_task0_demo0/](../paper_artifacts/visualizations/pca_overlay/libero_spatial_task0_demo0/)
 
+### 2026-05-27 Grad-CAM arrow viz + axis-alignment 분석 (representation_visualization_plan #1)
+
+Paper accept 후 project page용 두 번째 가시화 prototype. concat probe (P_t patches mean ⊕ P_tk patches mean → 7-DoF) 위 Grad-CAM contribution 계산 + motion arrow overlay + ground-truth motion 정합 검증 + probe weight 직접 분석.
+
+| 잡 범위 | 자원 | 시간 |
+|---------|------|------|
+| 34990729 (1차, single-demo R²=0.318) | AIP 1×1 H100 | 12s |
+| 34990805 (2차, **multi-demo 47k pair, R²=0.685**) | AIP 1×1 H100 | 2m22s |
+| 34990886~34997017 (v3~v9 iteration: V 부호 fix → tail pivot → paired t/tk layout → red/cyan sum + pixel scale → GT overlay → V flip → axis-alignment) | AIP 1×1 H100 each, ~2m | 각 ~2-3분 |
+| **34997500~502 (v15/dinov2/videomae-ours 3 encoder × 70 frame pair full analysis)** | AIP 1×1 H100 each | 각 ~3분 |
+
+총 잡: ~12개. 약 **0.5 GPU·h**.
+
+**Iteration 핵심 (사용자 review 기반)**:
+1. multi-demo probe (47k pair) → arrow magnitude 4배 + frame별 다른 패턴
+2. paired t/tk panel (frame_t arrow | frame_tk arrow) — frame transition 보임
+3. sum vector pixel-scale (red P_t / cyan P_tk, 상대 magnitude 유지)
+4. V 부호 flip (사용자 시각: 그리퍼 down=image up)
+5. Ground-truth motion overlay (green dashed) — 좌표축 정합 직접 검증 도구
+6. Per-axis sign-match rate (전체 70 frame pair) — 사용자 관찰 "P_t는 vertical, P_tk는 horizontal" 검증
+7. Probe weight 직접 분석 (cos(W_t, −W_tk)) — implicit subtraction 가설 직접 증명
+
+**🔥 핵심 발견 (paper-relevant insight)**:
+
+**A. Linear probe가 implicit (P_tk − P_t) subtraction 학습** — 3 encoder 모두 공통:
+| Encoder | cos(W_Δx) | cos(W_Δy) | cos(W_Δz) | cos(W_Δrx) | cos(W_Δrz) | grip |
+|---------|-----------|-----------|-----------|------------|------------|------|
+| v15 | +0.61 | +0.67 | **+0.79** | +0.59 | +0.75 | −0.10 |
+| DINOv2 | +0.60 | +0.61 | +0.76 | +0.62 | +0.73 | +0.15 |
+| VideoMAE | +0.60 | +0.68 | +0.78 | +0.61 | +0.76 | +0.02 |
+
+→ 모든 encoder에서 W_t와 −W_tk가 정합 (cos +0.6~0.8 for motion dims). **motion = frame embedding difference로 추론 가능한 metric-aligned representation** = ViT general property.
+
+**B. 그러나 patch contribution sum 분배는 encoder-specific** (sign-match rate, |GT|≥10cm):
+| Encoder | P_t u | P_t v | P_tk u | P_tk v |
+|---------|-------|-------|--------|--------|
+| v15 | 0.37 | **1.00** | 0.63 | **0.00** (정반대) |
+| DINOv2 | **1.00** | **1.00** | 0.63 | 0.03 |
+| VideoMAE | 0.63 | 0.71 | 0.37 | 0.97 (P_t와 같이) |
+
+→ DINOv2: P_t single frame이 가장 informative (당연 — single frame instance discrimination 강함). v15: axis-specific role (P_t vertical, P_tk horizontal). VideoMAE: subtraction 약함.
+
+**paper narrative 위치**: viz는 **mechanism interpretability** (어떻게 motion 정보 인코딩하나)에 들어감. v15의 quantitative advantage는 main BC/probing table (LIBERO/CortexBench/EgoDex)에서 보임.
+
+산출물: [paper_artifacts/visualizations/grad_cam_arrow/](../paper_artifacts/visualizations/grad_cam_arrow/) — v1~v9 + 3 encoder 비교 디렉토리. 각자 `arrow_pair_*.png` + `axis_alignment.csv` + `probe_weight_summary.csv` + `static_arrow_grid.png`.
+
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
 paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.

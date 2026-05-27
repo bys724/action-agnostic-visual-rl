@@ -246,6 +246,35 @@ def quiver_overlay(frame, cx_map, cy_map, patch_grid_shape):
 
 ---
 
+## 7.5 Prototype 1차 findings (2026-05-27, cluster session)
+
+`#3 PCA overlay`와 `#1 Grad-CAM arrow` 모두 LIBERO spatial task_0 demo (multi-demo probe 학습, holdout demo_45)로 prototype 완료. 산출: `paper_artifacts/visualizations/{pca_overlay,grad_cam_arrow}/`.
+
+**#3 PCA overlay**: v15 / DINOv2 / VideoMAE-ours 3 encoder 비교. PC1-3 explained variance:
+- v15: 19/12/7% (balanced)
+- DINOv2: 19/11/7%
+- VideoMAE: **24**/10/8% (PC1 dominate = 단조 패턴, paper "no scaffolding baseline" 약점 정량 evidence)
+
+**#1 Grad-CAM arrow** (V flip 적용 — 사용자 시각 검증: 그리퍼 down=image up). paired t/tk panel + sum vector (red P_t / cyan P_tk) + GT motion (green dashed) overlay.
+
+**핵심 발견 — Linear probe가 implicit (P_tk − P_t) subtraction 학습**:
+| Encoder | cos(W_t, −W_tk) Δz | sign match \|GT\|≥10cm P_t v / P_tk v |
+|---------|--------------------|---------------------------------------|
+| v15 | +0.79 | 1.00 / 0.00 |
+| DINOv2 | +0.76 | 1.00 / 0.03 |
+| VideoMAE | +0.78 | 0.71 / 0.97 |
+
+→ 3 encoder 공통으로 `cos(W_t, −W_tk) ≈ 0.6−0.8` for motion dims = **ViT representation의 일반 metric structure** (v15-specific 아님). encoder-specific 차이는 **patch contribution 분배 방식**:
+- DINOv2: single-frame discriminative 강함 (P_t u/v 모두 GT match)
+- v15: axis-specific role (P_t vertical, P_tk horizontal)
+- VideoMAE: subtraction 약함 (P_tk v sign이 P_t v와 같이 감)
+
+**paper narrative**: viz는 **mechanism description** (어떻게 motion 인코딩되나)에 사용. v15 quantitative advantage는 main BC/probing table에서 보임. axis-alignment 자체로는 DINOv2 vs v15 명확한 advantage 안 드러남 — "single vs two frame 차이는 trivial". 두 frame 정보 **역할 분담** 자체가 v15의 contribution.
+
+**남은 작업**: 로컬 세션에서 LIBERO rollout video 적용 + GIF 생성 + 3 encoder Grad-CAM 확장 (현재 1차는 v15만 viz, 3 encoder는 alignment metric만).
+
+---
+
 ## 8. Cross-references
 
 - Vault: `Projects/Action-Agnostic Paper/README.md` (paper 전체 진행 상황 + project page 논의)
