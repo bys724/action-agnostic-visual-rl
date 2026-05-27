@@ -373,6 +373,30 @@ target metric 변경: rel_actions cumulative sum → robot_obs[:6] pose delta (L
 - [paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.png](../paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.png) — bar chart (2 panel)
 - [paper_artifacts/calvin_action_probing/_diagnostic/aggregate_per_dim.py](../paper_artifacts/calvin_action_probing/_diagnostic/aggregate_per_dim.py) — regeneration script
 
+### 2026-05-27 PCA overlay 가시화 prototype (representation_visualization_plan #3)
+
+Paper accept 후 project page용 가시화 자료 1단계 — DINOv2-style RGB overlay (3 encoder 비교). LIBERO demo HDF5로 prototype 검증 후 로컬에서 rollout video 적용 예정.
+
+| JobID | 자원 | 결과 |
+|-------|------|------|
+| 34990706 (1차) | AIP 1×1 H100 | ❌ FAILED 14s — `ModuleNotFoundError: sklearn`. → numpy SVD로 PCA 구현 변경 (sklearn 의존성 제거) |
+| 34990711 (alpha=0.55) | AIP 1×1 H100 × 57s | ✅ COMPLETED. 3 encoder × 98 frame patch feature 추출 + PCA(numpy SVD top-3) → RGB overlay. side_by_side.gif (9 MB) + static_grid.png. alpha=0.55가 다소 강해 원본 묻힘 |
+| **34990721 (alpha=0.4 + explained variance)** | AIP 1×1 H100 × 36s = **0.01 GPU·h** | ✅ COMPLETED. 원본 detail 보존 + PC1-3 % 라벨 표시. **VideoMAE PC1=24%** vs v15/dinov2 PC1=19% → VideoMAE 단조 패턴이 PCA artifact 아닌 encoder 자체 특성 정량 확정 |
+
+**PCA explained variance**:
+- v15: 19/12/7 % (cum 37.5)
+- dinov2: 19/11/7 % (cum 37.3)
+- **videomae-ours: 24/10/8 % (cum 42.0)** — PC1 dominance = paper "no scaffolding baseline" 약점 정량 evidence
+
+**검증 통과**:
+- frame 간 색 일관성 OK (전체 video patches로 한 번만 PCA fit)
+- v15 ↔ DINOv2 ↔ VideoMAE 명확히 다른 patch clustering
+- v15: 그리퍼/물체/배경 spatial separation
+- DINOv2: 강한 instance discrimination contrast
+- VideoMAE: 단조 (PC1 dominate)
+
+산출물: [paper_artifacts/visualizations/pca_overlay/libero_spatial_task0_demo0/](../paper_artifacts/visualizations/pca_overlay/libero_spatial_task0_demo0/)
+
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
 paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.
