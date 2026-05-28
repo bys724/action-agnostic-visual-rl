@@ -1,0 +1,5 @@
+encoder,input_channel,n_frames,recon_path,egodex_ptptk_r2_gap10,source
+videomae-ours,RGB (no Sobel),2,symmetric MAE,0.4705,probe_videomae_patch_mean_concat_p_t_p_tk_gap10_test_20260515_164024.json
+v15,Sobel+RGB (5ch),3,symmetric MAE (3-frame direct),0.3898,probe_v11_checkpoint_epoch0032_patch_mean_concat_p_t_p_tk_gap10_test_20260512_153646.json (ckpt=two_stream_v15 ep32)
+v11,Sobel+RGB (5ch),2,asymmetric (frame_t+k routed),0.0097,cluster_sessions 34367515
+dinov2,RGB,1,instance discrimination,0.0062,cluster_sessions 34370933

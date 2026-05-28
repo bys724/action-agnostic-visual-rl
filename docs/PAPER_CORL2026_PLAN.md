@@ -56,7 +56,9 @@
 
 **D. 규명 후 확정 (클러스터 ablation)**:
 - **D1 ✅** — reconstruction symmetry (위 §1).
-- **D2**: VideoMAE-ours(RGB pixel MAE) `P_t⊕P_tk` 측정 → **Sobel-channel 기여 격리** (현재 pending, `paper_artifacts` C7, ~0.5 GPU·h).
+- **D2 ✅** — VideoMAE-ours(RGB pixel MAE, **Sobel 없음**) `P_t⊕P_tk` EgoDex gap=10 = **+0.4705** > v15(Sobel+RGB) **+0.3898**. → **Sobel-channel은 +0.390의 핵심 아님** (오히려 RGB-only가 더 높음). 핵심은 **symmetric multi-frame MAE** (D1과 정합). 데이터: [`paper_artifacts/fig2_catalyst/d2_sobel_isolation.csv`](../paper_artifacts/fig2_catalyst/d2_sobel_isolation.csv).
+  - 보강 비교 (동일 probe): v11(asymmetric, frame_t+k routed) **+0.0097**, dinov2(single-frame) **+0.0062**. → symmetric MAE(videomae 0.47 / v15 0.39) ≫ asymmetric(v11 0.01) / single-frame(dinov2 0.01).
+  - ⚠️ VideoMAE vs v15는 Sobel 외에도 frame수(2 vs 3)·architecture 차이 있음 → 순수 Sobel 격리는 **D3** (v15에서 Sobel만 제거)에서 확정.
 - **D3**: v15에서 요소(multi-frame / sampling-time / Sobel / EMA) 하나씩 제거 → +0.390 어디서 무너지나.
 
 ---
