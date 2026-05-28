@@ -38,13 +38,14 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'two-stream-v15', 'videomae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'two-stream-v15', 'two-stream-v15b', 'videomae'],
                         help='Model type (default: two-stream). '
                              'two-stream-v11 = motion-guided routing + dual-target. '
                              'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
                              'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS. '
                              'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO). '
-                             'two-stream-v15 = v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training.')
+                             'two-stream-v15 = v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training. '
+                             'two-stream-v15b = v15 아키텍처 동일 (student-anchor catalyst fix 반영) + collapse 방지 재학습 레시피 (recon-first gate). 로컬 재학습용.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -230,6 +231,10 @@ def main():
                         help='[v15 final] EMA momentum start (TeacherP + TeacherM_encoder).')
     parser.add_argument('--v15-ema-momentum-final', type=float, default=0.9999,
                         help='[v15 final] EMA momentum final (linear warmup).')
+    parser.add_argument('--v15-lambda-gate-epochs', type=int, default=0,
+                        help='[v15b] reconstruction-first hard-gate 길이 (epoch). 이 기간 동안 '
+                             'λ_pred/λ_m_jepa/λ_compose=0 (MAE만 학습) → 이후 warmup ramp 시작. '
+                             '기본 0 (=gate 없음, cluster 본 학습 동작).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -377,7 +382,8 @@ def main():
             dino_student_temp=args.v14_dino_student_temp,
             dino_center_momentum=args.v14_dino_center_momentum,
         )
-    elif args.model == 'two-stream-v15':
+    elif args.model in ('two-stream-v15', 'two-stream-v15b'):
+        # v15 / v15b: 동일 아키텍처 (v15b = collapse 방지 재학습 레시피만 다름).
         # v15 final: docs/v15_compositional_aux_design.md 기준
         # - DINO 제거 → L_compose 추가 (compositional structure on M_encoder)
         # - V-JEPA P: V source + target 모두 TeacherP (predictor only)
@@ -447,7 +453,7 @@ def main():
 
     # v13/v14: train dataset이 raw 256 view도 함께 반환해야 함 (DINO teacher용)
     needs_global = args.model in ('two-stream-v13', 'two-stream-v14')
-    needs_triple = args.model == 'two-stream-v15'
+    needs_triple = args.model in ('two-stream-v15', 'two-stream-v15b')
 
     splits = [s.strip() for s in args.egodex_splits.split(',')]
     split_datasets = []
@@ -531,7 +537,7 @@ def main():
             'v14_lambda_pred_warmup_epochs': args.v14_lambda_pred_warmup_epochs,
             'v14_lambda_pred_target': args.v14_lambda_pred,
         }
-    elif args.model == 'two-stream-v15':
+    elif args.model in ('two-stream-v15', 'two-stream-v15b'):
         v12_kwargs = {
             'v12_ema_momentum_init': args.v15_ema_momentum_init,
             'v12_ema_momentum_final': args.v15_ema_momentum_final,
@@ -546,6 +552,7 @@ def main():
             'v15_lambda_compose_warmup_start': args.v15_lambda_compose_warmup_start,
             'v15_lambda_compose_warmup_epochs': args.v15_lambda_compose_warmup_epochs,
             'v15_lambda_compose_target': args.v15_lambda_compose,
+            'v15_lambda_gate_epochs': args.v15_lambda_gate_epochs,
         }
 
     model, history = train(
