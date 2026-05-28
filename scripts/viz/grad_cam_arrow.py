@@ -266,7 +266,15 @@ def compute_contribution(
 def _draw_quiver_on_ax(ax, frame_uint8, cx, cy, grid_shape, title,
                        shared_norm: float, sum_pixel_scale: float,
                        sum_color: str, top_percentile: float = 60.0,
-                       gt_dxdy_pixel: tuple = None):
+                       gt_dxdy_pixel: tuple = None,
+                       diag_label: str = ""):
+    """변경 이력:
+    - v6 (2026-05-27): patch arrow scale 5→12 (작게), sum vector pixel-scale, alpha=mag·keep
+    - v8 (2026-05-27): V 부호 flip (사용자 시각: 그리퍼 down=image up). U=cy, V=-cx
+    - v9 (2026-05-27): axis-alignment 정량 분석 추가
+    - v10 (2026-05-27): yellow (kept patches mean) vs red sum direction cosine 진단 출력 추가
+      (이유: 사용자가 "노란색 평균과 빨간색 sum이 반대 방향" 우려 — 정량 검증 필요)
+    """
     """ax 위에 quiver overlay + sum vector (별도 pixel scale).
 
     LIBERO agentview camera (pos=[0.589,0,1.49], quat=[0.638,0.305,0.305,0.638]) →
@@ -309,6 +317,23 @@ def _draw_quiver_on_ax(ax, frame_uint8, cx, cy, grid_shape, title,
     # Sum vector: data 좌표 직접 (pixel scale). frame 중앙에서 시작.
     sum_cx = cx_n.sum(); sum_cy = cy_n.sum()
     sum_mag = np.sqrt(sum_cx ** 2 + sum_cy ** 2)
+
+    # 진단: yellow (kept patches mean) vs red sum direction cosine
+    # 사용자 우려: yellow 평균 방향이 red sum과 반대로 보임 → 정량 align 검증.
+    if keep.sum() > 0:
+        ky_cx = cx_n[keep].mean(); ky_cy = cy_n[keep].mean()
+        ky_mag = np.sqrt(ky_cx ** 2 + ky_cy ** 2)
+        cos_yk_sum = float((ky_cx * sum_cx + ky_cy * sum_cy) / (ky_mag * sum_mag + 1e-8))
+    else:
+        cos_yk_sum = float("nan")
+    # all patches mean (unfiltered) vs sum — 이건 trivially 정합 (mean=sum/N, sign 동일).
+    am_cx = cx_n.mean(); am_cy = cy_n.mean()
+    am_mag = np.sqrt(am_cx ** 2 + am_cy ** 2)
+    cos_all_sum = float((am_cx * sum_cx + am_cy * sum_cy) / (am_mag * sum_mag + 1e-8))
+    print(f"  [{diag_label}] yellow_kept_mean vs red_sum cos={cos_yk_sum:+.3f}  "
+          f"all_mean vs sum cos={cos_all_sum:+.3f}  "
+          f"(kept {int(keep.sum())}/{keep.size}, kept_mag={ky_mag:.3f}, sum_mag={sum_mag:.3f})")
+
     cx_frame, cy_frame = W / 2, H / 2
     dx_pix = sum_cy * sum_pixel_scale       # image right (U)
     dy_pix = -sum_cx * sum_pixel_scale      # V flip: world Δx 양수 = image up (사용자 시각 검증)
@@ -389,14 +414,16 @@ def paired_overlay(frame_t_uint8, frame_tk_uint8, contribs_t, contribs_tk,
                        sum_pixel_scale=sum_pixel_scale,
                        sum_color="red",
                        top_percentile=top_percentile,
-                       gt_dxdy_pixel=gt_dxdy_pix)
+                       gt_dxdy_pixel=gt_dxdy_pix,
+                       diag_label=f"P_t  t={t:03d}")
     _draw_quiver_on_ax(axR, frame_tk_uint8, cx_tk, cy_tk, grid_shape,
                        title=f"frame t+gap={tk}  (P_(t+k) patch contrib)",
                        shared_norm=shared_norm,
                        sum_pixel_scale=sum_pixel_scale,
                        sum_color="cyan",
                        top_percentile=top_percentile,
-                       gt_dxdy_pixel=gt_dxdy_pix)
+                       gt_dxdy_pixel=gt_dxdy_pix,
+                       diag_label=f"P_tk tk={tk:03d}")
     fig.suptitle(
         "v15 Grad-CAM (Δx, Δy)  —  yellow=per-patch, red=Σ_P_t, cyan=Σ_P_tk, "
         "green dashed=GT motion (ee_pos Δ projected)",

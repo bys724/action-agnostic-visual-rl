@@ -443,6 +443,42 @@ Paper accept 후 project page용 두 번째 가시화 prototype. concat probe (P
 
 산출물: [paper_artifacts/visualizations/grad_cam_arrow/](../paper_artifacts/visualizations/grad_cam_arrow/) — v1~v9 + 3 encoder 비교 디렉토리. 각자 `arrow_pair_*.png` + `axis_alignment.csv` + `probe_weight_summary.csv` + `static_arrow_grid.png`.
 
+### 2026-05-27 viz prototype 확장 — 5 encoder × 4 dataset (PCA) + Grad-CAM align 검증
+
+**1. PCA overlay 5 encoder × 4 dataset**: `scripts/viz/pca_overlay.py` v3 (단일 파일 update 정책):
+- 5 encoder (ours / dinov2 / siglip / vc1 / videomae-ours) — VC-1는 ViT forward 재현 (forward_features는 CLS만)
+- 4 dataset source (libero HDF5 / egodex frames / droid frames / calvin npz)
+- "v15" → "ours" 라벨 변경
+
+| Job | Source | OUT_TAG | Elapsed |
+|-----|--------|---------|---------|
+| 35003236 | LIBERO spatial task_0 demo_0 | libero_spatial_task0_demo0_5enc | ~1m |
+| 35003237 | EgoDex part1/add_remove_lid/0 | egodex_add_remove_lid_0 | ~1m |
+| 35003238 | DROID ext1/ep_000000 | droid_ep000000 | ~1m |
+| 35003239 | CALVIN validation seg 37683-37803 | calvin_val_37683 | ~1m |
+
+**PC1 explained variance (단조성 지표, 높을수록 정보 한 축에 쏠림)**:
+| Dataset | ours | dinov2 | siglip | **vc1** | videomae |
+|---------|------|--------|--------|---------|----------|
+| LIBERO  | 19% | 19% | 9% | **39%** | 24% |
+| EgoDex  | 19% | 18% | 13% | **47%** | 14% |
+| DROID   | **30%** | 17% | 9% | **52%** | 38% |
+| CALVIN  | 23% | 15% | 11% | **39%** | 22% |
+
+→ VC-1이 모든 dataset에서 PC1 dominate (39-52%) = ImageNet single-frame discriminative. DROID는 image content가 가장 1차원적으로 인코딩됨.
+
+**2. Grad-CAM yellow vs red 정합 검증** (사용자 우려: yellow patches 평균이 red sum과 반대로 보임):
+- Job 35003240 → `grad_cam_align_check/`
+- 모든 10 케이스 (5 frame pair × 2 source): **yellow_kept_mean vs red_sum cos = +0.996 ~ +1.000**
+- `all_mean vs sum cos = +1.000` (수학적 trivial 정합)
+- → **bug 아님, 시각적 illusion** (분산된 작은 화살표에서 mean direction 가시화 한계)
+
+총 5잡 × ~1분 = **~0.1 GPU·h**.
+
+**3. Cleanup (사용자 정책: 최신 버전만 commit/push)**:
+- 삭제: grad_cam_arrow v1~v9 iteration 디렉토리, pca_overlay 첫 3-encoder prototype
+- 유지: pca v3 (5 encoder × 4 dataset), grad_cam v15/dinov2/videomae 3 encoder + align_check
+
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
 paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.
