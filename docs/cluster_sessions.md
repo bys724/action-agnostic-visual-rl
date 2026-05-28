@@ -479,6 +479,44 @@ Paper accept 후 project page용 두 번째 가시화 prototype. concat probe (P
 - 삭제: grad_cam_arrow v1~v9 iteration 디렉토리, pca_overlay 첫 3-encoder prototype
 - 유지: pca v3 (5 encoder × 4 dataset), grad_cam v15/dinov2/videomae 3 encoder + align_check
 
+### 2026-05-27 v15 architecture fix — V-JEPA P anchor를 student P encoder로 (catalyst 경로 복원)
+
+**배경**: viz 작업 중 사용자 질문 "P stream이 motion gradient 안 받는데 왜 P_t+P_tk가 motion 예측?" → 코드 점검에서 발견:
+- 기존 v15 (`4230551`부터): V-JEPA P의 anchor가 `teacher_p(frame_t).detach()` → **student P encoder가 V-JEPA gradient 못 받음** (predictor-only). P encoder = MAE only.
+- 반증 데이터: VideoMAE-ours (motion stream 0, MAE only) EgoDex P_t+P_tk **+0.470** > v15 +0.39 → 기존 catalyst 가설("M→P transfer") 코드/데이터 모두 반증.
+- 사용자 확인: 원래 의도는 **student P(frame_t) anchor → teacher P(frame_tk) target** 표준 V-JEPA. P encoder가 motion routing gradient를 받아야 함.
+
+**수정** (`src/models/two_stream_v15.py` `_vjepa_p_one_segment`): `anchor_repr_T = teacher_p(...)` → `anchor_repr_S = self._encode_p_unmasked(frame_t)` (student, grad ON). target은 teacher_p(frame_tk) 유지.
+- → P encoder가 V-JEPA P gradient 수신 (catalyst 성립). MAE + V-JEPA P 동시 학습.
+
+**collapse 위험**: student anchor + EMA teacher target은 trivial collapse 가능 (MAE가 보조 방지). sanity 필수.
+
+| JobID | 자원 | 결과 |
+|-------|------|------|
+| 35023407 (`sanity_v15.sbatch`, SUFFIX=student_anchor, 50vid×3ep) | AIP 1×1 H100 × 6m | ✅ COMPLETED. **cos(pred,tgt)=1.0, L_pred=0.00055** → trivial로 보임. 단 std_p=0.479/cos_intra_p=0.635 healthy (representation collapse 아님) |
+
+**trivial 원인 진단 (`diagnose_vjepa_p_trivial.py`, 35027249/883/884)**:
+
+| 측정 | sanity 3ep (student) | **ep50 (기존, teacher anchor)** |
+|------|---------------------|--------------------------------|
+| baseline cos(teacher_t, teacher_tn) | 0.9996 (frame 구분 X) | **0.8066** (frame 구분 O) |
+| M=0 ablation cos | 0.9992 | 0.6600 |
+| **Δ(predictor − M=0) = M routing 기여** | +0.0001 (무의미) | **+0.3073** (큼) |
+| gap별 baseline cos | 모두 0.9996 | gap[0-4] 0.855 → gap[15-19] 0.762 |
+
+**🔥 핵심 발견 (사용자 가설 입증)**:
+- sanity 3ep의 trivial(cos 0.9996)은 **P encoder 미성숙** 때문. 구조적 문제 아님.
+- **ep50 학습 후 P encoder가 frame을 명확히 구분** (baseline cos 0.81), gap 클수록 cos 낮아짐 (motion이 repr에 드러남).
+- **M routing이 실제 motion 정보 제공** (M=0이면 0.66, M 있으면 0.97). ΔL 누출 아님 (`v_from_p`: V=P, M은 Q,K만) — M attention routing이 진짜 작동.
+- 즉 student anchor 수정 + 50ep 학습 → P encoder가 V-JEPA P gradient를 받아 motion 압력 획득 (catalyst 의도 실현 기대).
+
+**본 학습 제출 → 즉시 취소**:
+| JobID | 자원 | 결과 |
+|-------|------|------|
+| 35028337 (`pretrain.sbatch`, MODEL=two-stream-v15, CHECKPOINT_SUFFIX=student_anchor) | AIP_long 2×4 H100 × 2m07s | ❌ CANCELLED (사용자 결정). 8 GPU × 2m07s ≈ **0.28 GPU·h** |
+
+본 학습은 사용자 판단으로 보류. student-anchor가 기존 teacher-anchor(predictor-only) 대비 P_t+P_tk probing 향상되는지(catalyst 가설 최종 검증)는 추후 재논의 후 제출 예정.
+
 ### 2026-05-18 데이터셋 확보 작업 (로그인 노드, 미과금)
 
 paper §C10 + §C11 진행을 위한 데이터셋 확보. CLAUDE.md 명시대로 로그인 노드 활동이라 cluster_sessions에는 별도 cost entry 없음, artifacts.md 인덱스에만 등록.

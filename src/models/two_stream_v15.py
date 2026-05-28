@@ -120,7 +120,9 @@ class CompositionHead(nn.Module):
 
 class TeacherPv15(nn.Module):
     """EMA copy of student P encoder.
-    V-JEPA P V source + target 모두 제공 (predictor-only learning, stable)."""
+    V-JEPA P target 제공 (frame_tk 정답지, stop-grad). 2026-05-27 변경 전에는
+    anchor(frame_t)도 teacher였으나(predictor-only), 이제 anchor는 student P encoder가
+    인코딩 → P encoder가 V-JEPA gradient를 받음 (표준 V-JEPA)."""
 
     def __init__(self, student: "TwoStreamV15Model"):
         super().__init__()
@@ -391,11 +393,19 @@ class TwoStreamV15Model(TwoStreamV11Model):
         if m_local_routing is None:
             m_local_routing = self._encode_m_unmasked(m_channel)
 
+        # 변경 (2026-05-27): anchor를 teacher → STUDENT P encoder로 (표준 V-JEPA 복원).
+        # 기존: anchor=teacher_p(frame_t).detach() → P encoder가 V-JEPA gradient 못 받음
+        #       (predictor-only V-JEPA). P encoder = MAE only.
+        # 현재: anchor=student P encoder(frame_t), grad ON → P encoder가 motion routing
+        #       gradient를 받아 motion-predictable representation 학습 (catalyst 의도 복원).
+        #   - anchor (context) = student P encoder(frame_t)
+        #   - target (정답지)   = teacher_p(frame_tk).detach() (EMA, stop-grad)
+        #   - predictor (p_motion_decoder) + M routing이 student anchor → teacher target 예측
+        anchor_repr_S = self._encode_p_unmasked(p_channel_anchor)  # student frame_t, grad ON
         with torch.no_grad():
-            anchor_repr_T = self.teacher_p.forward_unmasked(p_channel_anchor).detach()
             target_repr_T = self.teacher_p.forward_unmasked(p_channel_target).detach()
 
-        p_state = anchor_repr_T
+        p_state = anchor_repr_S
         for step in self.p_motion_decoder:
             p_state = step(p_state, m_local_routing)
         predicted_tk_repr = self.p_motion_decoder_norm(p_state)
