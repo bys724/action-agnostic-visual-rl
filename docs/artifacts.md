@@ -77,7 +77,7 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 | DROID raw | `datasets/droid` | gsutil 다운로드본 |
 | LIBERO | `datasets/libero/` | ✅ HuggingFace |
 | Ego4D raw | `datasets/ego4d/v2/` + `ego4d.json` (86 MB) | 라이선스 + gsutil |
-| Ego4D frames | `datasets/ego4d/frames/` | 추출 완료. 9,821 UUID 폴더, **~4 TB / ~9천만 jpg 추정** (5폴더 샘플 평균). 클러스터→로컬 이동: [Ego4D frames pull](#ego4d-frames-pull) |
+| Ego4D frames | `datasets/ego4d/frames/` | 추출 완료. 9,821 UUID 폴더, **실측 ~14.7 TB** (10폴더 검증 평균 1.5 GB/UUID; 이전 "~4 TB"는 5폴더 outlier 추정으로 부정확). 클러스터→로컬 이동: [Ego4D frames pull](#ego4d-frames-pull) |
 | Nymeria | `datasets/nymeria/` | (참조만, 사용 안 함) |
 | EpicKitchens-100 | `datasets/epic_kitchens_100/` | (참조만) |
 | **CALVIN** (§C10) | `datasets/calvin/task_ABCD_D.zip` | 🔄 다운로드 진행 중 (2026-05-18, 166 GB 압축, Freiburg CDN, ETA ~27h) |
@@ -238,8 +238,34 @@ rsync -avzP \
 - **사전 sanity**: `bash scripts/local/transfer_ego4d_from_cluster.sh --sanity` (앞 20 폴더만, throughput 측정용)
 - **무결성 검증**: 종료 후 양쪽 `find . -type f -printf '%P %s\n' | LC_ALL=C sort` diff
 - **예상 시간**: 1 Gbps 단일 stream ≈ 9h. 6병렬 + LAN 대역폭에 따라 2~6h 추정
+  - ※ 위 추정은 4 TB 가정. 실측 ~14.7 TB 기준 PARALLEL_N=4, ~7.1 MB/s에서 약 20일.
 
 자세한 옵션·환경변수·트러블슈팅은 스크립트 헤더 주석 참고.
+
+##### 진행 기록 (ETRI 워크스테이션, 2-hop streaming)
+
+ETRI는 cluster와 H100(`10.254.39.136`) 양쪽 접근 가능하지만 H100은 cluster
+직결 불가, ETRI 디스크는 1 TB로 4 TB 수용 부족 → ETRI를 pure pipe로 두고
+tar stream을 `cluster | ssh h100 tar -xf`로 흘리는 변형 사용:
+[`scripts/local/stream_ego4d_cluster_to_h100.sh`](../scripts/local/stream_ego4d_cluster_to_h100.sh).
+
+| 시점 (KST) | manifest | H100 dest 크기 | 비고 |
+|---|---|---|---|
+| 2026-05-27 09:45 | 시작 | 0 | wrapper(`until ... sleep 60`) + 4 worker |
+| 2026-05-28 09:00 | 504 | ~625 GB | 4 worker 동시 FAIL (진단 ssh가 ControlMaster 깸 → 수동 복구 완료) |
+| 2026-05-30 07:04 | — | — | 4 worker 동시 FAIL 재발 (수동 복구 완료) |
+| **2026-06-01 12:15** | **2749 / 9821** | **~3.3 TB** | **사용자 요청 중지** (xargs 강제 종료, 부분 다운로드 UUID 4개는 manifest 미기록 → 재개 시 자동 재처리) |
+
+- **실측 평균 크기**: 1.25 GB/UUID (받은 2749개) / 1.70 GB/UUID (앞쪽 미수신 10개 검증 평균) → 전체 추정 ~14.7 TB. 이전 "~4 TB"는 5폴더 outlier 추정으로 부정확.
+- **재개 명령** (ETRI에서):
+  ```
+  nohup bash -c '
+      until bash scripts/local/stream_ego4d_cluster_to_h100.sh; do sleep 60; done
+  ' > /tmp/transfer_logs/ego4d_resume_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+  ```
+- **재개 시 데이터 손실**: manifest에 있는 UUID는 skip, 부분 다운로드 4개만 처음부터 (≤ 6 GB 재전송).
+- **남은 ETA** (재개 후): ~11.4 TB / 7.1 MB/s ≈ 18.6일.
+- **ControlMaster 주의**: 같은 host 진단 시 `-o ControlMaster=no -o ControlPath=none` 우회 — 안 하면 worker FAIL 유발.
 
 ### 워크스테이션 → 클러스터 (분석 결과)
 - 작은 산출물 (probing JSON, viz PNG ≤ 10 MB): git push/pull로 동기화
