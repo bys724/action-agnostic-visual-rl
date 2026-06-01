@@ -298,13 +298,15 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                     out = model(img_t, img_t_n, img_t_m)
                 else:
                     out = model(img_t, img_tk, img_t_global, img_tk_global)
-                loss = out['loss']
-                loss_t = out['loss_t']
-                loss_tk = out['loss_tk']
-                loss_pred = out['loss_pred']
-                loss_dino = out['loss_dino']
-                loss_m_jepa = out.get('loss_m_jepa', torch.tensor(0.0, device=loss.device))
-                loss_compose = out.get('loss_compose', torch.tensor(0.0, device=loss.device))
+                # DataParallel(로컬 multi-GPU): per-GPU scalar loss가 [n_gpu]로 gather됨 →
+                # .mean()으로 reduce. DDP/단일 GPU에선 이미 scalar라 no-op (cluster 동작 보존).
+                loss = out['loss'].mean()
+                loss_t = out['loss_t'].mean()
+                loss_tk = out['loss_tk'].mean()
+                loss_pred = out['loss_pred'].mean()
+                loss_dino = out['loss_dino'].mean()
+                loss_m_jepa = out.get('loss_m_jepa', torch.tensor(0.0, device=loss.device)).mean()
+                loss_compose = out.get('loss_compose', torch.tensor(0.0, device=loss.device)).mean()
                 img_pred = out['pred_tk']
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -952,6 +954,19 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
             model.train()
 
 
+def _gated_warmup_lambda(epoch, gate_epochs, warmup_start, warmup_epochs, target):
+    """λ schedule: gate_epochs 동안 0 → 이후 warmup_start→target 선형 ramp(warmup_epochs) → target.
+
+    gate_epochs=0이면 기존 warmup과 동일 (epoch 1부터 ramp). epoch은 1-based.
+    """
+    g = epoch - gate_epochs
+    if g <= 0:
+        return 0.0
+    if warmup_epochs <= 1 or g >= warmup_epochs:
+        return target
+    return warmup_start + (target - warmup_start) * ((g - 1) / max(warmup_epochs - 1, 1))
+
+
 def train(
     model,
     train_dataset,
@@ -978,6 +993,7 @@ def train(
     v15_lambda_compose_warmup_start=None,
     v15_lambda_compose_warmup_epochs=10,
     v15_lambda_compose_target=None,
+    v15_lambda_gate_epochs=0,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -1232,57 +1248,48 @@ def train(
         # 그 noise를 motion-routing이 흉내내도록 강제하면 motion-routing 학습 방향이
         # 망가짐. 처방: λ_pred를 작게 시작해 reconstruction 안정 후 점진 증가.
         if v14_lambda_pred_target is not None and v14_lambda_pred_warmup_start is not None:
-            if v14_lambda_pred_warmup_epochs <= 1 or epoch >= v14_lambda_pred_warmup_epochs:
-                v14_lambda_pred = v14_lambda_pred_target
-            else:
-                warmup_progress = (epoch - 1) / max(v14_lambda_pred_warmup_epochs - 1, 1)
-                v14_lambda_pred = (
-                    v14_lambda_pred_warmup_start
-                    + (v14_lambda_pred_target - v14_lambda_pred_warmup_start) * warmup_progress
-                )
+            v14_lambda_pred = _gated_warmup_lambda(
+                epoch, v15_lambda_gate_epochs,
+                v14_lambda_pred_warmup_start, v14_lambda_pred_warmup_epochs, v14_lambda_pred_target,
+            )
             target_model = model.module if hasattr(model, 'module') else model
             if hasattr(target_model, 'lambda_pred'):
                 target_model.lambda_pred = v14_lambda_pred
             if is_master:
                 log(f"  [schedule] λ_pred = {v14_lambda_pred:.4f} "
-                    f"(warmup {epoch}/{v14_lambda_pred_warmup_epochs}, target {v14_lambda_pred_target})")
+                    f"(gate {v15_lambda_gate_epochs} + warmup {v14_lambda_pred_warmup_epochs}, "
+                    f"epoch {epoch}, target {v14_lambda_pred_target})")
 
         # v15: λ_m_jepa warmup. V-JEPA-M target도 학습 초기 미숙 (TeacherM = student EMA copy).
         # M_decoder가 reconstruction 학습 안정 후 V-JEPA-M 활성화 → 같은 schedule 패턴.
         if v15_lambda_m_jepa_target is not None and v15_lambda_m_jepa_warmup_start is not None:
-            if v15_lambda_m_jepa_warmup_epochs <= 1 or epoch >= v15_lambda_m_jepa_warmup_epochs:
-                v15_lambda_m_jepa = v15_lambda_m_jepa_target
-            else:
-                warmup_progress = (epoch - 1) / max(v15_lambda_m_jepa_warmup_epochs - 1, 1)
-                v15_lambda_m_jepa = (
-                    v15_lambda_m_jepa_warmup_start
-                    + (v15_lambda_m_jepa_target - v15_lambda_m_jepa_warmup_start) * warmup_progress
-                )
+            v15_lambda_m_jepa = _gated_warmup_lambda(
+                epoch, v15_lambda_gate_epochs,
+                v15_lambda_m_jepa_warmup_start, v15_lambda_m_jepa_warmup_epochs, v15_lambda_m_jepa_target,
+            )
             target_model = model.module if hasattr(model, 'module') else model
             if hasattr(target_model, 'lambda_m_jepa'):
                 target_model.lambda_m_jepa = v15_lambda_m_jepa
             if is_master:
                 log(f"  [schedule] λ_m_jepa = {v15_lambda_m_jepa:.4f} "
-                    f"(warmup {epoch}/{v15_lambda_m_jepa_warmup_epochs}, target {v15_lambda_m_jepa_target})")
+                    f"(gate {v15_lambda_gate_epochs} + warmup {v15_lambda_m_jepa_warmup_epochs}, "
+                    f"epoch {epoch}, target {v15_lambda_m_jepa_target})")
 
         # v15 final: λ_compose warmup (replaces λ_dino warmup).
         # Reconstruction 우선 → composition_head + L_compose는 점진 활성화.
         # M_encoder가 안정 후 algebraic structure 학습 신호 들어가도록.
         if v15_lambda_compose_target is not None and v15_lambda_compose_warmup_start is not None:
-            if v15_lambda_compose_warmup_epochs <= 1 or epoch >= v15_lambda_compose_warmup_epochs:
-                v15_lambda_compose = v15_lambda_compose_target
-            else:
-                warmup_progress = (epoch - 1) / max(v15_lambda_compose_warmup_epochs - 1, 1)
-                v15_lambda_compose = (
-                    v15_lambda_compose_warmup_start
-                    + (v15_lambda_compose_target - v15_lambda_compose_warmup_start) * warmup_progress
-                )
+            v15_lambda_compose = _gated_warmup_lambda(
+                epoch, v15_lambda_gate_epochs,
+                v15_lambda_compose_warmup_start, v15_lambda_compose_warmup_epochs, v15_lambda_compose_target,
+            )
             target_model = model.module if hasattr(model, 'module') else model
             if hasattr(target_model, 'lambda_compose'):
                 target_model.lambda_compose = v15_lambda_compose
             if is_master:
                 log(f"  [schedule] λ_compose = {v15_lambda_compose:.4f} "
-                    f"(warmup {epoch}/{v15_lambda_compose_warmup_epochs}, target {v15_lambda_compose_target})")
+                    f"(gate {v15_lambda_gate_epochs} + warmup {v15_lambda_compose_warmup_epochs}, "
+                    f"epoch {epoch}, target {v15_lambda_compose_target})")
 
         # Train
         train_result = train_epoch(
