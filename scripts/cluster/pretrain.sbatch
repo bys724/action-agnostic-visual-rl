@@ -358,8 +358,10 @@ elif [ "$MODEL" = "two-stream-v14" ]; then
         )
     fi
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v14${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
-elif [ "$MODEL" = "two-stream-v15" ]; then
+elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     # v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training
+    # v15b: 동일 아키텍처 (student-anchor catalyst fix 반영) + collapse 방지 재학습 레시피
+    #       (① recon-first hard-gate V15_GATE_EPOCHS, ② EMA init 0.996).
     # 환경변수:
     #   V11_M_DEPTH (default 6), V11_ROUTING_MODE (default v_from_p)
     #   MASK_P (default 0.75)
@@ -367,11 +369,18 @@ elif [ "$MODEL" = "two-stream-v15" ]; then
     #   V15_MASK_M_JEPA (default 0.5)
     #   V15_COMP_MODE (default linear_residual; sanity=linear_residual, 본=mlp)
     #   V15_COMP_HIDDEN (default 비어있음 → embed_dim)
-    #   V15_EMA_INIT (default 0.999), V15_EMA_FINAL (default 0.9999)
+    #   V15_EMA_INIT (default v15=0.999 / v15b=0.996), V15_EMA_FINAL (default 0.9999)
+    #   V15_GATE_EPOCHS (default 0 = no-op; v15b 권장 본학습 10, sanity 0)
     #   V15_LAMBDA_PRED_WARMUP_START + V15_LAMBDA_PRED_WARMUP_EPOCHS
     #   V15_LAMBDA_M_JEPA_WARMUP_START + V15_LAMBDA_M_JEPA_WARMUP_EPOCHS
     #   V15_LAMBDA_COMPOSE_WARMUP_START + V15_LAMBDA_COMPOSE_WARMUP_EPOCHS
     #   MAX_GAP=30, SAMPLE_CENTER=15 (각 구간 1~30 frame, triangular center=15)
+    # v15b는 EMA init을 0.996으로 (recipe ②). 명시 override 없으면 모델별 default.
+    if [ "$MODEL" = "two-stream-v15b" ]; then
+        _EMA_INIT_DEFAULT="0.996"
+    else
+        _EMA_INIT_DEFAULT="0.999"
+    fi
     MODEL_ARGS=(
         --depth 12
         --v11-m-depth "${V11_M_DEPTH:-6}"
@@ -384,8 +393,9 @@ elif [ "$MODEL" = "two-stream-v15" ]; then
         --v15-lambda-compose "${V15_LAMBDA_COMPOSE:-1.0}"
         --v15-mask-ratio-m-jepa "${V15_MASK_M_JEPA:-0.5}"
         --v15-composition-mode "${V15_COMP_MODE:-linear_residual}"
-        --v15-ema-momentum-init "${V15_EMA_INIT:-0.999}"
+        --v15-ema-momentum-init "${V15_EMA_INIT:-$_EMA_INIT_DEFAULT}"
         --v15-ema-momentum-final "${V15_EMA_FINAL:-0.9999}"
+        --v15-lambda-gate-epochs "${V15_GATE_EPOCHS:-0}"
     )
     if [ -n "${V15_COMP_HIDDEN:-}" ]; then
         MODEL_ARGS+=(--v15-composition-hidden-dim "${V15_COMP_HIDDEN}")
@@ -408,7 +418,7 @@ elif [ "$MODEL" = "two-stream-v15" ]; then
             --v15-lambda-compose-warmup-epochs "${V15_LAMBDA_COMPOSE_WARMUP_EPOCHS:-10}"
         )
     fi
-    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v15${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+    CKPT_DIR="$CHECKPOINT_ROOT/${MODEL//-/_}${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12

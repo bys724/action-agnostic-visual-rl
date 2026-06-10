@@ -89,6 +89,24 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-06-10 v15b student-anchor 재학습 (main 브랜치, catalyst 최종 검증)
+
+**배경**: 논문 v15(teacher-anchor)는 V-JEPA P anchor=`teacher_p(frame_t).detach()`라 P encoder가 V-JEPA gradient를 못 받음 → **M stream이 P 학습에 영향 0**. `0fb74c8`에서 anchor를 student P encoder로 변경(표준 V-JEPA 복원) → P·M 모두 motion routing gradient 수신. `b41b177` v15b = 동일 아키텍처 + collapse 방지 레시피(① recon-first hard-gate ② EMA 0.996 ⑤ lr scaling). 이번 재학습으로 M→P catalyst 가설 최종 검증.
+
+**코드 변경 (2026-06-10)**:
+- `scripts/cluster/pretrain.sbatch`: v15 분기가 `two-stream-v15b`도 매칭. `V15_GATE_EPOCHS`(default 0) + 모델별 EMA init default(v15b=0.996) 노출. CKPT_DIR `${MODEL//-/_}`로 v15/v15b 분리.
+- `scripts/cluster/sanity_v15.sbatch`: `MODEL` override + `V15_GATE_EPOCHS` + 모델별 EMA/CKPT 분리. (v15 기존 동작 불변.)
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35478663 | AIP 1×1 H100 | 02:00:00 | v15b sanity (student-anchor, gate=0, 50vid × 5ep, batch=8, nw=4). loss 규모·per-ep 시간·collapse 진단 → 본학습 파라미터 조정용 | ✅ COMPLETED 9m11s (0.15 GPU·h). ~93s/ep, 53.7 samp/s. **구조 안정**(NaN/발산 없음), **P MAE 건강**(L_t 0.049→0.0186, std_p 0.06→0.45, cos_intra_p 0.996→0.66). ⚠️ **L_pred trivial collapse**(0.044→0.0014@ep2, cos(pred,tgt) 0.955→0.998) — catalyst 채널 신호 ~0. ⚠️ std_m ep2-3 near-collapse(0.010)→ep5 0.118 회복. L_compose ~0.42 stuck(total의 87%). **단, gate=0이라 V-JEPA가 미성숙 P에서 켜진 preview** — gate=10 본학습과 timing 다름 |
+
+성공 기준: ep2+에서 L_pred/L_m_jepa/L_compose nonzero·하강, total loss 발산/NaN 없음, cls_p·cls_m std uniform collapse 없음. **판정**: 구조/P MAE는 통과, 그러나 catalyst 핵심인 L_pred가 trivial → 본학습 직행 전 추가 진단/파라미터 검토 필요 (save-interval 999라 ckpt 미저장 → diagnose 불가).
+
+| 35481545 | AIP 1×1 H100 | 02:00:00 | v15b sanity #2 진단 (gate=3 본학습 timing 모사, 200vid × 8ep, batch=8, nw=4, SAVE_INTERVAL=8 ckpt 저장). L_pred trivial이 P 미성숙 탓인지 과제 자체 trivial인지 분리 + diagnose_vjepa_p_trivial(M=0 vs M-on ablation) 용 | PENDING |
+
+**코드 변경 (sanity #2)**: `sanity_v15.sbatch` `--save-interval` env 노출(`SAVE_INTERVAL`, default 999).
+
 ### 2026-05-15 paper_experiments_plan §C6 + §C7 (신규 코드 작성 + 잡 제출)
 
 §C6 (recon quality v11 vs v15) + §C7 (VideoMAE-ours P_t+P_tk catalyst evidence) 는 기존 probing 인터페이스로 안 됐던 작업. 코드 추가 후 잡 제출.
