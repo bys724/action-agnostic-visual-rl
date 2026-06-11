@@ -382,12 +382,16 @@ class TwoStreamV15Model(TwoStreamV11Model):
         p_channel_anchor: torch.Tensor,
         p_channel_target: torch.Tensor,
         m_local_routing: Optional[torch.Tensor] = None,
+        anchor_repr_S: Optional[torch.Tensor] = None,
+        target_repr_T: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """V-JEPA P for one motion segment.
 
         anchor → routing → predicted target_repr.
         m_local_routing: 미리 계산한 routing K/Q source (m_channel에서 student M_encoder unmasked).
                          None이면 함수가 직접 계산.
+        anchor_repr_S / target_repr_T: forward에서 unique frame당 1회 인코딩한 결과를 전달받아
+                         중복 unmasked P-encoder forward 제거 (무손실 최적화). None이면 직접 계산.
         Returns (loss, predicted_tk_repr, target_tk_repr).
         """
         if m_local_routing is None:
@@ -401,9 +405,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
         #   - anchor (context) = student P encoder(frame_t)
         #   - target (정답지)   = teacher_p(frame_tk).detach() (EMA, stop-grad)
         #   - predictor (p_motion_decoder) + M routing이 student anchor → teacher target 예측
-        anchor_repr_S = self._encode_p_unmasked(p_channel_anchor)  # student frame_t, grad ON
-        with torch.no_grad():
-            target_repr_T = self.teacher_p.forward_unmasked(p_channel_target).detach()
+        # dropout/droppath 없음 → unmasked forward는 deterministic. 같은 frame을 여러 segment가
+        # 공유하면 forward에서 1회만 인코딩해 재사용 (gradient 합산 동치, 무손실).
+        if anchor_repr_S is None:
+            anchor_repr_S = self._encode_p_unmasked(p_channel_anchor)  # student frame_t, grad ON
+        if target_repr_T is None:
+            with torch.no_grad():
+                target_repr_T = self.teacher_p.forward_unmasked(p_channel_target).detach()
 
         p_state = anchor_repr_S
         for step in self.p_motion_decoder:
@@ -475,14 +483,27 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_local_long = self._encode_m_unmasked(m_chan_long)
 
         # ── 3. V-JEPA P × 3 segment (predictor only) ───────────────────────
+        # 중복 unmasked P-encoder forward 제거 (무손실): 3 segment의 anchor/target는
+        #   anchor(student): t(short,long), t+n(step)   → unique {t, t+n}
+        #   target(teacher): t+n(short), t+m(step,long) → unique {t+n, t+m}
+        # dropout 없어 deterministic → unique frame당 1회 인코딩해 재사용 (6→4 full P forward).
+        p_anchor_t = self._encode_p_unmasked(p_channel_t)    # student, short+long anchor
+        p_anchor_tn = self._encode_p_unmasked(p_channel_tn)  # student, step anchor
+        with torch.no_grad():
+            p_target_tn = self.teacher_p.forward_unmasked(p_channel_tn).detach()  # short target
+            p_target_tm = self.teacher_p.forward_unmasked(p_channel_tm).detach()  # step+long target
+
         loss_pred_short, predicted_repr_short, target_repr_short = self._vjepa_p_one_segment(
             m_chan_short, p_channel_t, p_channel_tn, m_local_routing=m_local_short,
+            anchor_repr_S=p_anchor_t, target_repr_T=p_target_tn,
         )
         loss_pred_step, predicted_repr_step, target_repr_step = self._vjepa_p_one_segment(
             m_chan_step, p_channel_tn, p_channel_tm, m_local_routing=m_local_step,
+            anchor_repr_S=p_anchor_tn, target_repr_T=p_target_tm,
         )
         loss_pred_long, predicted_repr_long, target_repr_long = self._vjepa_p_one_segment(
             m_chan_long, p_channel_t, p_channel_tm, m_local_routing=m_local_long,
+            anchor_repr_S=p_anchor_t, target_repr_T=p_target_tm,
         )
         loss_pred = (loss_pred_short + loss_pred_step + loss_pred_long) / 3.0
 

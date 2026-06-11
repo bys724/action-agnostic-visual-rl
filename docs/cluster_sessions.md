@@ -117,7 +117,19 @@ sanity 2회 + diagnose 통과 후 본학습. 파라미터: 8 GPU(2×4) global ba
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 35493293 | AIP_long 2×4 H100 | 5-00:00:00 | **v15b 본학습** (50ep × part1-5, student-anchor V-JEPA, gate=10, EMA 0.996). M→P motion gradient 복원 검증 | PENDING. 예상 ~52h/~420 GPU·h. **abort 기준**: ep12-18에서 cos(pred,tgt)>0.99 & L_pred<0.01(trivial collapse) 또는 train·eval 동반 발산(원래 v15 ep45-50 선례) 시 중단 |
+| 35493293 | AIP_long 2×4 H100 | 5-00:00:00 | **v15b 본학습 1차** (50ep, student-anchor, gate=10). 63min/ep 실측 | ❌ CANCELLED 34m39s = 8 GPU × 0.58h = **4.6 GPU·h**. forward 최적화 적용 위해 조기 중단 → 캐시 검증 후 재제출 |
+
+### 2026-06-11 v15b forward 무손실 최적화 (중복 unmasked P-encoder 캐시)
+
+**병목 진단**: 실행 중 잡 GPU util 88-98% = **compute-bound** (데이터 로딩/3-frame 추출 아님, 프레임은 사전 추출 JPEG). 모델 forward가 step당 full unmasked depth-12 P-encoder를 **6회** (V-JEPA P 3 segment × {student anchor, teacher target}) 호출하는데, 그중 2회가 중복(student P(t) ×2, teacher P(t+m) ×2). 인코더에 dropout/droppath 없음(`drop_path_rate=0.0` 미사용) → unmasked forward deterministic → **gradient 합산 동치로 무손실 캐시 가능**.
+
+**수정** (`src/models/two_stream_v15.py`): forward에서 unique frame당 1회만 인코딩(student {t,t+n}, teacher {t+n,t+m})해 `_vjepa_p_one_segment`에 전달. full P forward 6→4 (~30% P 연산↓, wall-clock ~15-20% 예상). batch는 32 유지(원래 v15 비교 보존 — batch 키우면 update수·LR 변해 comparability 깨짐 → 미적용).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35493303 | AIP 1×1 H100 | 02:00:00 | 캐시 forward smoke sanity (gate=0, 50vid×3ep — sanity#1 동일조건). loss 규모가 sanity#1과 일치하는지 검증 | ✅ COMPLETED 4m37s (0.08 GPU·h). **무손실 확인**: well-conditioned 항 L_t 0.0497/L_cp 0.408/std_p 0.058 ≈ sanity#1(0.0493/0.418/0.059) 1-3% 이내, total 궤적 동일, NaN 없음. L_pred/L_mj 미세차는 trivial-collapse chaotic+bf16 비결정성(버그 아님) |
+
+**⏸ 본학습 2차 보류 (2026-06-11)**: forward 최적화 검증 통과했으나, 사용자가 **추가 리팩토링을 다른 워크스테이션에서 진행 후** 재제출 예정. 현재 작업 commit+push 후 대기. (재제출 명령은 `docs/v15b_retraining_status.md` §6 참조 — 캐시 코드 반영본.)
 
 ### 2026-05-15 paper_experiments_plan §C6 + §C7 (신규 코드 작성 + 잡 제출)
 

@@ -42,25 +42,51 @@
 - trivial collapse 아님. M 기여 작으나 ep8 미성숙(M 5ep만) — teacher-anchor ep50은 +0.31였음. **maturity 신호로 해석, 본학습으로 확인.**
 - gap별 baseline: gap0-9 0.92 → gap30 0.81 (큰 gap=motion 신호 많음; follow-up lever).
 
-## 5. 본학습 — JobID 35493293 🔄 RUNNING (2026-06-11 시작)
+## 5. 본학습 — ⏸ 보류 중 (1차 캔슬, 리팩토링 후 재제출 예정)
 
-- 8 GPU(AIP_long 2×4) DDP 정상 기동(world_size=8). global batch 256, lr 2e-4, gate=10, EMA 0.996, nw=8, MAX_GAP=30(원래 v15 유지), shared gate.
-- ckpt → `/proj/external_group/mrg/checkpoints/two_stream_v15b/<timestamp>/` (save_interval=4 → ep4/8/12/...).
-- 로그: `/proj/external_group/mrg/logs/pretrain_v15b_35493293.{out,err}`
+**진행 경과**:
+- 35493293 (1차): 8 GPU DDP 정상 기동, **63min/ep 실측**(50ep ~52h). 34m39s만에 **CANCELLED** — forward 최적화 적용 위해 조기 중단 (4.6 GPU·h).
+- **forward 무손실 최적화 적용+검증 완료** (§6 참조). smoke sanity 35493303 통과.
+- **⏸ 재제출 보류**: 사용자가 **추가 리팩토링을 다른 워크스테이션에서 진행** 후 재제출 예정. 리팩토링 내용 파악 대기 중.
 
-### ▶ 다음 세션 할 일
+### 🔧 forward 무손실 최적화 (2026-06-11, 적용됨)
 
-1. **ep12-18 abort 모니터링** (V-JEPA gate 해제 ep11 직후, P 성숙):
-   - `grep "\[v14\]" /proj/external_group/mrg/logs/pretrain_v15b_35493293.out | sed -n '11,18p'`
-   - **abort 조건**: cos(pred,tgt)>0.99 & L_pred<0.01 (trivial collapse) → 중단. 또는 train·eval 동반 발산(원래 v15 ep45-50 선례).
-2. **ETA 재검산**: 첫 1-2 ep elapsed로 `잔여ep × per_ep + wall > TIME_LIMIT` 확인 (cluster_sessions --time 가이드).
-3. **mid-run diagnose** (ep20+, ep30+ ckpt): `diagnose_vjepa_p_trivial.py --ckpt <epXX> --tag v15b_epXX` → **M 기여(+0.013→?)가 자라는지** 추적. 이게 student-anchor 성공 여부의 핵심 지표.
-4. **완주 후**: EgoDex P_t⊕P_tk probing → 원래 v15(+0.39)/VideoMAE(+0.47) 대비. 넘으면 M→P motion 기여 성립, 못 넘으면 "multi-frame MAE concat baseline" 재서술.
+**병목 진단**: 실행 중 GPU util 88-98% = **compute-bound** (데이터/3-frame 추출 아님). step당 full unmasked depth-12 P-encoder 6회 호출 중 2회 중복.
+
+**수정** (`src/models/two_stream_v15.py`): forward에서 unique frame당 unmasked P 인코딩 1회만 계산해 `_vjepa_p_one_segment(anchor_repr_S=, target_repr_T=)`로 전달. student {t,t+n}, teacher {t+n,t+m} → full P forward 6→4. dropout 없어 deterministic + gradient 합산 동치라 **무손실**(smoke 검증: well-conditioned 항 sanity#1과 1-3% 일치). wall-clock ~15-20% 단축 예상.
+
+### ▶ 다음 (리팩토링 파악 후)
+
+1. 사용자의 워크스테이션 리팩토링 변경사항 파악 (diff 리뷰).
+2. 통합 후 smoke sanity 재검증 (gate=0, 50vid, 3ep → loss 규모 sanity#1 대조).
+3. 본학습 2차 재제출 (§6 명령). 첫 ep에서 **새 per-ep 시간 실측** (최적화 효과 확인).
+4. **ep12-18 abort 모니터링**: cos(pred,tgt)>0.99 & L_pred<0.01(trivial collapse) 또는 train·eval 동반 발산 시 중단.
+5. **mid-run diagnose** (ep20/30 ckpt): `diagnose_vjepa_p_trivial.py --ckpt <epXX>` → M 기여(+0.013→?) 성장 추적 = student-anchor 성공 핵심 지표.
+6. **완주 후**: EgoDex P_t⊕P_tk probing vs 원래 v15(+0.39)/VideoMAE(+0.47).
 
 ### 미적용/보류 (필요 시 follow-up)
-- **L_pred-only gate 분리**(M을 ep1부터 성숙): 미검증·M trivial collapse 위험 → 이번엔 shared gate 유지. M 기여가 끝까지 약하면 다음 arm에서 시도.
-- **MAX_GAP 60**: RESEARCH_PLAN 검증된 개선(eval -16%, probing +0.054) + diagnose의 "gap 작아 너무 쉬움". 이번엔 v15 비교 위해 30 유지.
-- **lr 1e-4**(linear scaling): v15 divergence 대비 안정. 이번엔 2e-4(v15 동일) 유지.
+- **L_pred-only gate 분리**(M을 ep1부터 성숙): 미검증·M trivial collapse 위험 → shared gate 유지.
+- **MAX_GAP 60**: RESEARCH_PLAN 검증된 개선이나 v15 비교 위해 30 유지.
+- **lr 1e-4 / batch 64**: 안정성/속도 lever이나 comparability 위해 보류 (batch 키우면 update수·LR 변함).
+- **추가 forward 최적화 후보**(다음 model ver): torch.compile, V-JEPA anchor를 masked context로(MAE 토큰 재사용), segment 3→2.
+
+## 6. 본학습 2차 재제출 명령 (리팩토링 통합 후)
+
+```bash
+sbatch --partition=AIP_long --nodes=2 --ntasks-per-node=4 --gres=gpu:4 \
+    --cpus-per-task=8 --time=5-00:00:00 --job-name=aavrl_v15b_main \
+    --output=/proj/external_group/mrg/logs/pretrain_v15b_%j.out \
+    --error=/proj/external_group/mrg/logs/pretrain_v15b_%j.err \
+    --export=ALL,MODEL=two-stream-v15b,EPOCHS=50,BATCH_SIZE_PER_GPU=32,LR=2e-4,\
+SPLITS=part1,part2,part3,part4,part5,V11_ROUTING_MODE=v_from_p,\
+V15_GATE_EPOCHS=10,V15_EMA_INIT=0.996,\
+V15_LAMBDA_PRED_WARMUP_START=0,V15_LAMBDA_PRED_WARMUP_EPOCHS=10,\
+V15_LAMBDA_M_JEPA_WARMUP_START=0,V15_LAMBDA_M_JEPA_WARMUP_EPOCHS=10,\
+V15_LAMBDA_COMPOSE_WARMUP_START=0,V15_LAMBDA_COMPOSE_WARMUP_EPOCHS=10,\
+NUM_WORKERS=8 \
+    scripts/cluster/pretrain.sbatch
+```
+- ckpt → `/proj/external_group/mrg/checkpoints/two_stream_v15b/`. 1차 63min/ep(미최적화) → 최적화 후 ~50min/ep 예상(첫 ep 실측 필요).
 
 ## 7. 결정된 설계 판단 (재론 불필요)
 
