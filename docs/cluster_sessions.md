@@ -97,7 +97,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 35550604 | AIP 1×1 H100 | 02:00:00 | **Parvo no-Sobel 진단 sanity** (gate=0, 50vid×3ep, PRETRAIN_DIAG=1). 입력 parity·loss 스케일·NaN·병목 진단 → 본학습 전 검증 | PENDING |
+| 35550604 | AIP 1×1 H100 | 02:00:00 | **Parvo no-Sobel 진단 sanity** (gate=0, 50vid×3ep, PRETRAIN_DIAG=1) | ✅ COMPLETED 5m15s (0.09 GPU·h). **입력 parity OK**(P=RGB 3ch [0,1], M=ΔL 1ch [-0.7,0.7]). loss 스케일 Sobel판과 동등(L_t 0.047→0.019). **병목 = COMPUTE-bound 99%, data-load ≤1%** (3-frame 추출 병목 아님 확정). NaN 없음 |
+| 35560151 | AIP_long 2×4 H100 | 5-00:00:00 | **Parvo 본학습** (MODEL=parvo = v15b+no-Sobel, gate=10, EMA 0.996, 50ep × part1-5, lr 2e-4). Paper 2 scaffold 검증. ckpt → checkpoints/parvo/ | PENDING. abort: ep12-18 trivial collapse(cos>0.99&L_pred<0.01)/발산 |
 
 ### 2026-06-10 v15b student-anchor 재학습 (main 브랜치, catalyst 최종 검증)
 
