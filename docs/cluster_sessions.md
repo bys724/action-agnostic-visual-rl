@@ -89,6 +89,16 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-06-11 Parvo 준비 (cleanup + rename + no-Sobel 입력 + 진단 계측)
+
+**코드 변경 (커밋)**: ① cleanup(b6d912e): 루트 tar 69GB + deprecated v12-14 스크립트 12개 삭제. ② rename(9ce778d): `MODEL=parvo`→내부 v15b 정규화 + ckpt `parvo/` (최소 rename, 코드 식별자 별도). ③ no-Sobel(9ce778d): `use_sobel` 플래그 — Paper 2(Parvo)는 P=RGB(3ch)/M=ΔL(1ch), Sobel은 Paper 1 주제라 격리. M depth 6 유지(1ch≠작은모델). ④ 진단계측(cd23ee8): `PRETRAIN_DIAG=1`로 첫 batch 입력통계+data/compute 병목분리, NaN guard 상시.
+
+검증: CPU forward 양 모드 통과(sobel True 5/3ch, False 3/1ch).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35550604 | AIP 1×1 H100 | 02:00:00 | **Parvo no-Sobel 진단 sanity** (gate=0, 50vid×3ep, PRETRAIN_DIAG=1). 입력 parity·loss 스케일·NaN·병목 진단 → 본학습 전 검증 | PENDING |
+
 ### 2026-06-10 v15b student-anchor 재학습 (main 브랜치, catalyst 최종 검증)
 
 **배경**: 논문 v15(teacher-anchor)는 V-JEPA P anchor=`teacher_p(frame_t).detach()`라 P encoder가 V-JEPA gradient를 못 받음 → **M stream이 P 학습에 영향 0**. `0fb74c8`에서 anchor를 student P encoder로 변경(표준 V-JEPA 복원) → P·M 모두 motion routing gradient 수신. `b41b177` v15b = 동일 아키텍처 + collapse 방지 레시피(① recon-first hard-gate ② EMA 0.996 ⑤ lr scaling). 이번 재학습으로 M→P catalyst 가설 최종 검증.
