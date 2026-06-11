@@ -46,6 +46,11 @@ mkdir -p "$CHECKPOINT_ROOT" "$LOG_DIR"
 
 # ── 사용자 override 가능 변수 (sbatch --export=...) ──────────────────────────
 MODEL="${MODEL:-two-stream}"
+# parvo = 논문 핵심 모델명 (현재 구현 = code two-stream-v15b). MODEL flag/ckpt만 rename
+# (코드 식별자 two_stream_v15b 등 rename은 별도 단계). parvo → 내부 v15b로 정규화, ckpt만 parvo/.
+PARVO_CKPT=""
+# parvo = Paper 2 = no-Sobel(RGB) 기본 (NO_SOBEL로 override 가능).
+if [ "$MODEL" = "parvo" ]; then MODEL="two-stream-v15b"; PARVO_CKPT="parvo"; NO_SOBEL="${NO_SOBEL:-1}"; fi
 EPOCHS="${EPOCHS:-50}"
 BATCH_SIZE_PER_GPU="${BATCH_SIZE_PER_GPU:-64}"
 LR="${LR:-2e-4}"   # 8 GPU global batch 512 ~ sqrt(4) * 1e-4 (square-root scaling)
@@ -54,7 +59,7 @@ EXTRA_ARGS="${EXTRA_ARGS:-}"
 # CHECKPOINT_SUFFIX: sanity 잡처럼 독립 체크포인트 디렉토리가 필요할 때 설정
 # (기본값 비어있음 → 본 학습은 $CHECKPOINT_ROOT/${MODEL}/에 공유)
 CHECKPOINT_SUFFIX="${CHECKPOINT_SUFFIX:-}"
-CKPT_DIR="$CHECKPOINT_ROOT/${MODEL//-/_}${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+CKPT_DIR="$CHECKPOINT_ROOT/${PARVO_CKPT:-${MODEL//-/_}}${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 
 # ── 분산 환경 정보 ───────────────────────────────────────────────────────────
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [pretrain] $*"; }
@@ -397,6 +402,7 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
         --v15-ema-momentum-final "${V15_EMA_FINAL:-0.9999}"
         --v15-lambda-gate-epochs "${V15_GATE_EPOCHS:-0}"
     )
+    [ "${NO_SOBEL:-0}" = "1" ] && MODEL_ARGS+=(--no-sobel)  # Parvo/Paper 2: P=RGB(3ch), M=ΔL(1ch)
     if [ -n "${V15_COMP_HIDDEN:-}" ]; then
         MODEL_ARGS+=(--v15-composition-hidden-dim "${V15_COMP_HIDDEN}")
     fi
@@ -418,7 +424,7 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
             --v15-lambda-compose-warmup-epochs "${V15_LAMBDA_COMPOSE_WARMUP_EPOCHS:-10}"
         )
     fi
-    CKPT_DIR="$CHECKPOINT_ROOT/${MODEL//-/_}${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
+    CKPT_DIR="$CHECKPOINT_ROOT/${PARVO_CKPT:-${MODEL//-/_}}${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "v-jepa" ]; then
     MODEL_ARGS=(
         --depth 12

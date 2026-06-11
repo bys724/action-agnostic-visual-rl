@@ -200,9 +200,11 @@ class TwoStreamV11Model(nn.Module):
         rotation_aug: bool = False,
         independent_rotation_prob: float = 0.1,
         routing_mode: str = "v_from_p",
+        use_sobel: bool = True,
     ):
         super().__init__()
         self.routing_mode = routing_mode
+        self.use_sobel = use_sobel
 
         self.embed_dim = embed_dim
         self.p_depth = p_depth
@@ -217,18 +219,20 @@ class TwoStreamV11Model(nn.Module):
         self.rotation_aug = rotation_aug
         self.independent_rotation_prob = independent_rotation_prob
 
-        # ── Preprocessing (RGB pair → M:3ch, P:5ch) ───────────────────────
-        self.preprocessing = TwoStreamPreprocessing()
+        # ── Preprocessing ─────────────────────────────────────────────────
+        # use_sobel=True:  M=3ch (ΔL+Sobel(ΔL)),  P=5ch (Sobel+RGB)   [Paper 1 / v15]
+        # use_sobel=False: M=1ch (ΔL),            P=3ch (RGB)         [Paper 2 / Parvo]
+        self.preprocessing = TwoStreamPreprocessing(use_sobel=use_sobel)
+        m_in_ch = 3 if use_sobel else 1
+        p_in_ch = 5 if use_sobel else 3
 
         # ── Stream-independent encoders (v11 전용 직접 구성) ─────────────
-        # M: 3ch (ΔL + Sobel(ΔL)) → D, mask 0.3, depth m_depth
-        # P: 5ch (Sobel + RGB) → D, mask 0.75, depth p_depth
         self.patch_embed_m = nn.Conv2d(
-            in_channels=3, out_channels=embed_dim,
+            in_channels=m_in_ch, out_channels=embed_dim,
             kernel_size=patch_size, stride=patch_size,
         )
         self.patch_embed_p = nn.Conv2d(
-            in_channels=5, out_channels=embed_dim,
+            in_channels=p_in_ch, out_channels=embed_dim,
             kernel_size=patch_size, stride=patch_size,
         )
 

@@ -29,7 +29,11 @@
 
 set -euo pipefail
 
-MODEL="${MODEL:-two-stream-v15}"            # v15b sanity: MODEL=two-stream-v15b
+MODEL="${MODEL:-two-stream-v15}"            # v15b sanity: MODEL=two-stream-v15b (또는 parvo)
+# parvo = 논문 핵심 모델명 (code two-stream-v15b). 내부 v15b로 정규화, ckpt만 parvo_sanity.
+PARVO_CKPT=""
+if [ "$MODEL" = "parvo" ]; then MODEL="two-stream-v15b"; PARVO_CKPT="parvo"; NO_SOBEL="${NO_SOBEL:-1}"; fi
+NO_SOBEL_ARG=""; [ "${NO_SOBEL:-0}" = "1" ] && NO_SOBEL_ARG="--no-sobel"  # Parvo: P=RGB(3ch), M=ΔL(1ch)
 MAX_VIDEOS="${MAX_VIDEOS:-200}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 EPOCHS="${EPOCHS:-5}"
@@ -42,7 +46,7 @@ if [ "$MODEL" = "two-stream-v15b" ]; then _EMA_INIT_DEFAULT="0.996"; else _EMA_I
 PROJECT_ROOT="/proj/home/mrg/bys724/action-agnostic-visual-rl"
 FRAMES_ROOT="/proj/external_group/mrg/datasets/egodex/frames"
 CONDA_ENV="/proj/external_group/mrg/conda_envs/aavrl-train"
-CHECKPOINT_DIR="/proj/external_group/mrg/checkpoints/${MODEL//-/_}_sanity${SUFFIX:+_$SUFFIX}"
+CHECKPOINT_DIR="/proj/external_group/mrg/checkpoints/${PARVO_CKPT:-${MODEL//-/_}}_sanity${SUFFIX:+_$SUFFIX}"
 
 # Clean previous sanity checkpoints (avoid resume contamination)
 rm -rf "$CHECKPOINT_DIR" 2>/dev/null || true
@@ -80,6 +84,7 @@ echo ""
     --v15-ema-momentum-init "${V15_EMA_INIT:-$_EMA_INIT_DEFAULT}" \
     --v15-ema-momentum-final "${V15_EMA_FINAL:-0.9999}" \
     --v15-lambda-gate-epochs "$V15_GATE_EPOCHS" \
+    $NO_SOBEL_ARG \
     --train-data egodex --egodex-root "$FRAMES_ROOT" \
     --egodex-splits part1 --max-videos "$MAX_VIDEOS" \
     --max-gap "${MAX_GAP:-30}" --sample-dist triangular --sample-center "${SAMPLE_CENTER:-15}" \

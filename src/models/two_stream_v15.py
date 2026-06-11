@@ -230,6 +230,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         rotation_aug: bool = False,
         independent_rotation_prob: float = 0.1,
         routing_mode: str = "v_from_p",
+        use_sobel: bool = True,
         # v15 args
         lambda_pred: float = 1.0,
         lambda_m_jepa: float = 1.0,
@@ -254,6 +255,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
             rotation_aug=rotation_aug,
             independent_rotation_prob=independent_rotation_prob,
             routing_mode=routing_mode,
+            use_sobel=use_sobel,
         )
 
         self.lambda_pred = lambda_pred

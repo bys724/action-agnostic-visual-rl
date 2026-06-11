@@ -28,8 +28,13 @@ class TwoStreamPreprocessing(nn.Module):
     - P channel: Spatial structure (shape/color)
     """
 
-    def __init__(self):
+    def __init__(self, use_sobel: bool = True):
         super().__init__()
+
+        # use_sobel=False (Paper 2 / Parvo): Sobel edge prior 제외 → P=RGB(3ch), M=ΔL(1ch).
+        #   Sobel/edge-channel 기여는 Paper 1(Input-Prior)의 주제 → Paper 2는 RGB 입력 위에서
+        #   M/P scaffold 효과만 격리. use_sobel=True(기본)는 기존 5ch/3ch 유지 (Paper 1 / v15).
+        self.use_sobel = use_sobel
 
         # Luminance weights (BT.709 standard, fixed)
         # NOTE: Attempted learnable weights but gradient instability occurred
@@ -98,6 +103,9 @@ class TwoStreamPreprocessing(nn.Module):
         grad_x_normalized = grad_x / max_magnitude
         grad_y_normalized = grad_y / max_magnitude
 
+        if not self.use_sobel:
+            return delta_l  # Paper 2 / Parvo: 휘도 차분 motion만 (1ch)
+
         return torch.cat([delta_l, grad_x_normalized, grad_y_normalized], dim=1)
 
     def compute_p_channel(self, image: torch.Tensor) -> torch.Tensor:
@@ -108,8 +116,11 @@ class TwoStreamPreprocessing(nn.Module):
             image: [B, 3, H, W], range [0, 1]
 
         Returns:
-            p_channel: [B, 5, H, W], [∂x, ∂y, R, G, B]
+            p_channel: [B, 5, H, W] [∂x, ∂y, R, G, B] (use_sobel=True) | [B, 3, H, W] RGB (False)
         """
+        if not self.use_sobel:
+            return image  # Paper 2 / Parvo: raw RGB appearance만 (3ch). RGB 채널이 곧 원본 이미지.
+
         # 1. Compute luminance
         luminance = self.compute_luminance(image)
 

@@ -235,6 +235,10 @@ def main():
                         help='[v15b] reconstruction-first hard-gate 길이 (epoch). 이 기간 동안 '
                              'λ_pred/λ_m_jepa/λ_compose=0 (MAE만 학습) → 이후 warmup ramp 시작. '
                              '기본 0 (=gate 없음, cluster 본 학습 동작).')
+    parser.add_argument('--no-sobel', action='store_true',
+                        help='[Parvo/Paper 2] Sobel edge prior 제외 → P=RGB(3ch), M=ΔL(1ch). '
+                             'Sobel 기여는 Paper 1(Input-Prior) 주제 → Paper 2는 RGB 입력 위 scaffold만 격리. '
+                             '미설정(기본)은 P=5ch/M=3ch (Paper 1 / v15).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -398,6 +402,7 @@ def main():
             mask_ratio_p=v15_mask_p,
             rotation_aug=args.rotation_aug,
             routing_mode=args.v11_routing_mode,
+            use_sobel=not args.no_sobel,
             lambda_pred=args.v15_lambda_pred,
             lambda_m_jepa=args.v15_lambda_m_jepa,
             lambda_compose=args.v15_lambda_compose,
