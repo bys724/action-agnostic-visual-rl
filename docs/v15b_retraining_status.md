@@ -1,13 +1,14 @@
-# v15b 재학습 진행 상태 (세션 핸드오프)
+# Parvo (code v15b) 재학습 진행 상태 (세션 핸드오프)
 
-> **브랜치**: `main` (student-anchor = 새 구조). 논문 v15는 `paper-corl2026` 브랜치(teacher-anchor)와 영구 분리.
+> **명명** (2026-06-11): 논문 핵심 모델 = **`Parvo`** (현재 구현 = code `v15b`, student-anchor). 직전 **v15**(teacher-anchor)는 버전명 유지. "catalyst" → **scaffold**로 용어 통일. 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조". 코드 식별자(`MODEL=two-stream-v15b` 등)는 rename 보류 중이라 유지.
+> **브랜치**: `main` (Parvo = 새 구조, code v15b). v15(논문 teacher-anchor)는 `paper-corl2026` 브랜치와 영구 분리.
 > **최종 업데이트**: 2026-06-10. 이 문서는 다른 세션이 작업을 이어받기 위한 현황 메모.
 
 ## 1. 목표
 
 원래 v15(teacher-anchor)는 V-JEPA P anchor=`teacher_p(frame_t).detach()`라 **P encoder가 motion(M) gradient를 전혀 못 받고 순수 MAE로 독립 학습**됨. `0fb74c8`에서 anchor를 student P encoder로 바꿔(표준 V-JEPA 복원) P·M 모두 motion routing gradient를 받게 함. `b41b177` = **v15b** (동일 아키텍처 + collapse 방지 레시피: ① recon-first hard-gate ② EMA 0.996 ⑤ lr scaling).
 
-**검증 질문**: M→P gradient를 실제로 연결했을 때 catalyst가 작동해 VideoMAE(+0.47)/원래 v15(+0.39, P_t⊕P_tk)를 넘는가? 못 넘으면 "multi-frame MAE concat이 강력한 단순 baseline"으로 정직하게 재서술.
+**검증 질문**: M→P gradient를 실제로 연결했을 때 **scaffold**가 작동해 VideoMAE(+0.47)/v15(+0.39, P_t⊕P_tk)를 넘는가? 못 넘으면 "multi-frame MAE concat이 강력한 단순 baseline"으로 정직하게 재서술.
 
 관련: `paper-corl2026:docs/PAPER_CORL2026_PLAN.md` §2 (D1/D2 확정 — symmetric multi-frame MAE가 핵심, motion routing은 load-bearing 아님).
 

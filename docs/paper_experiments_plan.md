@@ -1,5 +1,6 @@
-# Paper Experiments Plan — v15 CoRL 2026 main table 완성
+# Paper Experiments Plan (구 v15 CoRL 2026 main table)
 
+> 🔴 **2026-06-11 재편**: CoRL 미제출 + scaffold 인과 철회 + 2논문 분리(ICRA/AAAI)로 본 plan의 "v15 main table" 전제는 **무효**. 논문 핵심 모델만 `Parvo`(현재 구현 code v15b)로 명명; 직전 v15 등 나머지는 버전명 유지. 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조". 아래 C1~C9는 **구 v15 시점 실험 설계 기록** — Parvo 검증 계획으로 재정렬 필요(별도 갱신).
 > **Status**: 2026-05-14 plan 작성, 2026-05-18 갱신 (CALVIN + CortexBench + view-sensitivity 추가).
 > **Scope**: Cluster + 로컬 워크스테이션 (rollout) 실험 전부.
 > **Source decision**: Vault `Projects/Action-Agnostic Paper/3. Experiments.md` + `7. Outline.md` + paper §5 ablation plan.
@@ -255,11 +256,13 @@ MODEL_CKPT=two_stream_v15/<timestamp>/checkpoint_latest.pt  # ep50
 
 ---
 
-## 7. C7 — VideoMAE-ours P_t+P_tk probing (선택, catalyst 인과 보강)
+## 7. C7 — VideoMAE-ours P_t+P_tk probing (선택)
+
+> ⚠️ **2026-06-11 재해석**: 원래 "catalyst 인과 보강" 목적이었으나 scaffold 인과 철회(v15 no-op)로 의미 변경. 이제 이 실험은 **artifact 가설 검증**용 — VideoMAE-ours(구조적 scaffold 없음)도 P_t⊕P_tk concat에서 양수가 나오면 "+0.390은 multi-frame concat artifact"의 직접 증거.
 
 ### 목적
 
-DINOv2 controlled (+0.006 vs v15 +0.390)의 짝. 2-frame MAE SSL (VideoMAE-ours)도 P_t+P_tk concat에서 motion 정보 emerge 안 함 입증 → catalyst hypothesis 추가 인과 증거.
+DINOv2 controlled (+0.006 vs v15 +0.390)의 짝. 2-frame MAE SSL (VideoMAE-ours)의 P_t⊕P_tk concat이 어디까지 오르는지로 concat-artifact 기여분을 정량화 (scaffold 인과가 아니라 input/concat 효과 분리).
 
 ### 측정
 

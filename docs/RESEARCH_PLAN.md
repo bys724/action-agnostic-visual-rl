@@ -1,10 +1,10 @@
 # Action-Agnostic Visual RL Research Plan
 
-**마지막 업데이트**: 2026-04-29
-**투고 목표**: NeurIPS 2026
+**마지막 업데이트**: 2026-06-11
+**투고 목표**: Paper 1 = **ICRA** (Input-Prior), Paper 2 = **AAAI** (Action-Agnostic). (CoRL 2026 미제출)
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
-> 현재 진행 상태 / 체크포인트 / sbatch 로그 등은 [`CLAUDE.md`](../CLAUDE.md)·[`docs/cluster_sessions.md`](cluster_sessions.md)·[`docs/PROBING_GUIDE.md`](PROBING_GUIDE.md) 참고. 본 문서는 **연구 설계와 로드맵**에 집중한다.
+> 🔴 **2026-06-11 재편**: 모델 명명(`Parvo`)·2논문 분리·catalyst→scaffold 인과 철회는 [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조" 섹션이 정규 출처. 본 문서 본문의 v11/v15 "paper main"·"catalyst" 표현은 그 이전 시점 기록 — **개발 narrative로만 유효**. 진행 상태/체크포인트/로그는 [`CLAUDE.md`](../CLAUDE.md)·[`cluster_sessions.md`](cluster_sessions.md)·[`v15b_retraining_status.md`](v15b_retraining_status.md) 참고.
 
 ## 연구 동기
 
@@ -614,10 +614,10 @@ encoder (frozen) → projection (학습) → Llama 7B + LoRA (학습) → action
 - v11 ep44 P_t+P_tk = +0.010 (거의 0) → motion 정보가 D'에 인코딩
 - v15 ep32 P_t+P_tk = +0.390 → **P encoder 자체가 frame-discriminative motion 정보 인코딩**
 
-**M stream catalyst 가설** (post-hoc finding):
-- v15 학습 중 M encoder가 P encoder에 motion-friendly 학습 압력 transfer → 학습 후 M 자체 망가져도 P_t+P_tk가 강력
-- **paper main claim에서 빼고 Section "Architecture Analysis" sub-claim으로 처리** (post-hoc finding, design motivation 아니므로)
-- 통상 Two-Stream 해석 ("M=motion at inference") 뒤집는 narrative 가치 있음. 단 v15-internal ablation (V-JEPA-M 제거 등) 없이는 인과 단정 어려움 → future work로 정직하게 처리
+**~~M stream catalyst 가설~~ → scaffold 인과 철회 (2026-06-11)**:
+- ~~v15 학습 중 M encoder가 P encoder에 motion-friendly 학습 압력 transfer → 학습 후 M 망가져도 P_t+P_tk 강력~~
+- **철회 사유**: v15(직전 버전)는 motion routing이 student P에 gradient=0 **no-op** → +0.390을 motion 인과로 귀속 불가. 유력 대안 = **multi-frame MAE concat + probe artifact**. 메타포도 catalyst(kinetic only) → **scaffold**(학습 중 임시 지원 + 배포 시 제거)로 전환.
+- **인과 검증은 Parvo(논문 핵심 모델, code v15b)로 이관** — M→P gradient를 실제 연결한 의도된 설계가 input-only baseline(Paper 1의 image MAE)을 넘는지로 판정. [`v15b_retraining_status.md`](v15b_retraining_status.md) 참조.
 
 **시간 부족 대응**:
 - v15-internal ablation 50ep 추가 학습 포기. Mode 비교 ablation (no extra training: P_t+P_tk vs A+B+D' vs A/B/D' single) 으로 대체 — paper Section "Architecture Analysis" Table로 정리
