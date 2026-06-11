@@ -1,6 +1,8 @@
 # Representation Visualization Plan (Project Page용)
 
-> **목적**: Paper accept 후 project page 제작 시 v15 인코더의 representation을 직관적으로 보여줄 가시화 자료 생성 계획. 일반 viewer 임팩트보다는 *related-work 검색 중 들어온 동료 연구자의 빠른 이해*가 main audience.
+> 🔴 **2026-06-11 주의**: 모델 명명 `Parvo`(= 본 문서 "v15 P encoder"), CoRL 미제출→AAAI(Paper 2). **더 중요**: 본 plan의 figure 전제("scaffolding이 P에 motion encoding을 emerge시킴")는 **scaffold 인과 철회**(v15 motion routing no-op)와 충돌 — 시각화가 retracted claim을 그리게 됨. Parvo(code v15b) 검증 결과 확정 전까지 figure 전제 재검토 필요. 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조".
+>
+> **목적**: Paper accept 후 project page 제작 시 Parvo(v15 P encoder)의 representation을 직관적으로 보여줄 가시화 자료 생성 계획. 일반 viewer 임팩트보다는 *related-work 검색 중 들어온 동료 연구자의 빠른 이해*가 main audience.
 >
 > **시점**: CoRL 2026 accept 발표 이후 (paper 마감 5/29 이후 워크플로우). Anonymous review 기간 동안 public 공개 X.
 >
