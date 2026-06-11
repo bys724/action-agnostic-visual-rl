@@ -107,6 +107,18 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 **코드 변경 (sanity #2)**: `sanity_v15.sbatch` `--save-interval` env 노출(`SAVE_INTERVAL`, default 999).
 
+**sanity #2 결과 (35481545 COMPLETED 50m38s, 0.84 GPU·h)**: gate=3가 trivial collapse 방어 성공. gate 중(λ_pred=0) baseline cos(pred,tgt)≈0.77 = **과제 intrinsic trivial 아님** (sanity #1 0.998 collapse는 미성숙 P에서 V-JEPA 조기 점화 탓). gate 후 L_pred ~0.08 / cos ~0.94 plateau (sanity #1 0.002/0.998과 질적으로 다름). P 최종 건강(std_p 0.53, cos_intra_p 0.52). L_compose 0.43→0.32 학습됨. ⚠️ gate가 L_pred·L_mj·L_compose 셋 다 막아 M이 gate 동안 gradient 0(std_m flat 0.185) → 본학습 gate 설계 재고 필요(L_pred만 gate, M은 조기 성숙).
+
+| 35493291 | AIP 1×1 H100 | 00:20:00 | diagnose_vjepa_p_trivial (sanity#2 ep8 ckpt). baseline cos + **M=0 vs M-on ablation** = M routing 실제 기여 측정 → 본학습 최종 분기 | ✅ COMPLETED 1m6s (0.02 GPU·h). **baseline cos 0.9015** (프레임 유사), predictor 0.9279, M=0 0.9147 → **Δ(M routing 기여)=+0.0132**. trivial collapse 아님(0.928<1.0). M 기여 작으나 ep8 미성숙(M 5ep만) — teacher-anchor ep50은 +0.31였음. gap별 baseline: gap0-9 0.92 → gap30 0.81 (큰 gap=motion 많음). **판정: collapse 없음 + M 양수(미성숙 한정) → 본학습 진행** |
+
+### 2026-06-10 v15b 8-GPU 본학습 (student-anchor, gate=10)
+
+sanity 2회 + diagnose 통과 후 본학습. 파라미터: 8 GPU(2×4) global batch 256, lr 2e-4(원래 v15 동일), V15_GATE_EPOCHS=10(sanity#2 검증), V15_EMA_INIT=0.996, warmup-start=0/epochs=10(gate→ramp), nw=8, MAX_GAP=30(원래 v15 유지). shared gate(pred/mj/compose 공통) 유지. ckpt → `/proj/external_group/mrg/checkpoints/two_stream_v15b/`.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35493293 | AIP_long 2×4 H100 | 5-00:00:00 | **v15b 본학습** (50ep × part1-5, student-anchor V-JEPA, gate=10, EMA 0.996). M→P motion gradient 복원 검증 | PENDING. 예상 ~52h/~420 GPU·h. **abort 기준**: ep12-18에서 cos(pred,tgt)>0.99 & L_pred<0.01(trivial collapse) 또는 train·eval 동반 발산(원래 v15 ep45-50 선례) 시 중단 |
+
 ### 2026-05-15 paper_experiments_plan §C6 + §C7 (신규 코드 작성 + 잡 제출)
 
 §C6 (recon quality v11 vs v15) + §C7 (VideoMAE-ours P_t+P_tk catalyst evidence) 는 기존 probing 인터페이스로 안 됐던 작업. 코드 추가 후 잡 제출.
