@@ -17,6 +17,19 @@
 | ⬜ SSv2 | 라이선스 신청 필요 | ~220 GB | Qualcomm academic form |
 | ⬜ HoloAssist | 라이선스 신청 필요 | ~300 GB | Microsoft Research form |
 
+## SIMPLER 평가용 (OXE robot manipulation) — 2026-06-11 추가
+
+[`simpler_eval_plan.md`](simpler_eval_plan.md) §A. 정책(our encoder + BC head) 학습용 OXE 서브셋. ego/video 본학습 데이터와 별개 카테고리.
+
+| 데이터셋 | 상태 | 크기 | 경로 | 비고 |
+|---------|------|------|------|------|
+| 🔄 BridgeData V2 (OXE) | **다운로드 중** (2026-06-11) | 416 GB | `datasets/oxe/bridge/0.1.0/` | WidowX/Bridge setup. 계획 우선 (widowx250s asset 준비됨) |
+| ⏳ Fractal (RT-1, OXE) | Bridge 완료 후 자동 | 119 GB | `datasets/oxe/fractal20220817_data/0.1.0/` | Google Robot setup |
+
+- 스크립트: [`scripts/cluster/download_simpler_oxe.sh`](../scripts/cluster/download_simpler_oxe.sh) (gsutil rsync, 순차, resume). nohup 로그: `/proj/external_group/mrg/logs/download_simpler.log`.
+- 출처: `gs://gresearch/robotics/{bridge,fractal20220817_data}/0.1.0/`, RLDS/TFDS.
+- ⚠️ OXE `bridge` = BridgeData V2의 RLDS 버전. SIMPLER 정확 재현 시 original(rail-berkeley) 여부 확인 (BC head 학습엔 RLDS면 충분).
+
 ## 진행 순서
 
 1. **Nymeria → Epic-Kitchens 순차 다운로드 (현재 실행 중)**
