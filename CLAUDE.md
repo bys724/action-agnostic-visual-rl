@@ -5,10 +5,12 @@
 ## 핵심 문서 (업데이트 우선)
 
 1. **`docs/RESEARCH_PLAN.md`** - 전체 연구 계획 및 현재 phase (마스터 문서)
-2. **`docs/PROBING_GUIDE.md`** - Action probing 실험 가이드 + 결과
-3. **`docs/setup/LIBERO_TEST_GUIDE.md`** - LIBERO 평가
-4. **`docs/cluster_sessions.md`** - IBS 클러스터 sbatch/salloc 세션 로그 (비용 청구 대조)
-5. **`docs/artifacts.md`** - 클러스터/로컬 워크스테이션 산출물·데이터셋 경로 인덱스 (양쪽 작업 시 참조)
+2. **`docs/paper1_input_prior_plan.md`** - **Paper 1 (ICRA, Input-Prior)** 계획·근거
+3. **`docs/paper_experiments_plan.md`** - **Paper 2 (AAAI, Action-Agnostic)** 실험 plan (구 v15-era, Parvo 검증으로 재정렬 중)
+4. **`docs/PROBING_GUIDE.md`** - Action probing 실험 가이드 + 결과
+5. **`docs/setup/LIBERO_TEST_GUIDE.md`** - LIBERO 평가
+6. **`docs/cluster_sessions.md`** - IBS 클러스터 sbatch/salloc 세션 로그 (비용 청구 대조)
+7. **`docs/artifacts.md`** - 클러스터/로컬 워크스테이션 산출물·데이터셋 경로 인덱스 (양쪽 작업 시 참조)
 
 **문서 작성 원칙**:
 - 새 문서를 만들기보다 기존 핵심 문서 **업데이트** 우선
@@ -51,7 +53,8 @@
 
 | 카테고리 | 경로 |
 |---------|------|
-| 프로젝트 메인 인덱스 | `Projects/Action-Agnostic Paper/README.md` |
+| 프로젝트 메인 인덱스 (Paper 2, AAAI) | `Projects/Action-Agnostic Paper/README.md` |
+| Paper 1 (ICRA, Input-Prior) | `Projects/Input-Prior Robot Representation (ICRA)/{README, 1. Core Claim & Plan}.md` |
 | 단계별 정리 | `Projects/Action-Agnostic Paper/{1. Core Idea, 2. Technical Details, 3. Experiments, 4. Paper Writing, 5. Project Management}.md` |
 | 우려사항 | `Projects/Action-Agnostic Paper/우려사항 및 대응방안.md` |
 | 핵심 개념 | `Concepts/{Action-Agnostic Pretraining Framework, Two Visual Pathways, Two-Stream Image Preprocessing, Pixel-wise Channel Fusion for Behavior Representation, Target LayerNorm (V-JEPA)}.md` |
