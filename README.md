@@ -1,94 +1,66 @@
 # Action-Agnostic Visual Representation Learning
 
-**연구 질문**: 행동 정보 없이 학습한 시각적 표현이 다양한 로봇과 작업에 더 잘 일반화되는가?
+**연구 질문**: 행동 정보 없이 학습한 시각 표현이 로봇 조작에 더 범용적인가? — 그리고 그 표현을 만드는 데 무엇이 정말 필요한가 (temporal/video 구조? 생물학적 M/P 경로 분리? 단순 input prior?).
 
-## 핵심 아이디어
+이 저장소는 두 갈래의 논문을 공유 substrate 위에서 진행한다.
 
-1. **EgoDex Pretraining**: 대규모 자기중심 비디오로 행동-독립적 시각 표현 학습
-2. **Action Probing**: 학습된 표현이 행동 정보를 인코딩하는지 검증 (EgoDex + DROID)
-3. **LIBERO Evaluation**: 로봇 조작 태스크에서 fine-tuning + 시뮬레이터 rollout
+## 두 갈래
 
-## 빠른 시작
+### Paper 1 — Input-Prior Robot Representation (ICRA)
+단일프레임 **image MAE**에 hand-crafted **input prior(Sobel edge + RGB)**를 주면, 같은 스케일의 **VideoMAE를 이긴다**. → 로봇 표현 학습에 temporal/video 아키텍처가 필수가 아니며 input prior로 충분할 수 있다. 좁게 입증된 결과에서 출발해 ablation(edge vs RGB)·실로봇으로 확정. 계획: [`docs/paper1_input_prior_plan.md`](docs/paper1_input_prior_plan.md).
 
-### Pre-training
+### Paper 2 — Action-Agnostic (AAAI)
+영장류 시각피질의 **M(magnocellular, motion) / P(parvocellular, form) 경로 분리**를 모방한 two-stream 모델 **Parvo**. M이 학습 중 P를 **scaffold**하고 배포 시 P encoder만 남는다. action label 없이도 구조적 cross-stream bias가 표현을 개선하는지 검증 중. 실험: [`docs/paper_experiments_plan.md`](docs/paper_experiments_plan.md).
 
-```bash
-# Two-Stream v4 (제안 모델)
-python scripts/pretrain.py --model two-stream \
-    --depth 12 --num-stages 2 \
-    --mask-ratio 0.3 --mask-ratio-p 0.5 \
-    --max-gap 60 --sample-dist triangular --sample-center 30 \
-    --epochs 30
+## 핵심 모델 — Parvo
 
-# VideoMAE (baseline)
-python scripts/pretrain.py --model videomae --epochs 30
-```
-
-### Action Probing
-
-```bash
-# EgoDex (within-domain)
-python scripts/eval/probe_action.py \
-    --encoder two-stream --checkpoint <ckpt> \
-    --gap 10 --cls-mode patch_mean_concat
-
-# DROID (cross-domain)
-python scripts/eval/probe_action_droid.py \
-    --encoder two-stream --checkpoint <ckpt> --gap 10
-```
-
-### LIBERO Evaluation
-
-```bash
-# Fine-tuning
-python scripts/eval/finetune_libero.py --encoder two-stream --checkpoint <ckpt>
-
-# 시뮬레이터 rollout
-docker compose up -d libero
-docker exec libero-eval python src/eval_libero.py --encoder two-stream
-```
-
-## 모델
+- **구조**: two-stream. P=appearance(form), M=motion(change). pixel reconstruction(MAE) + cross-stream routing + compositional/V-JEPA aux loss.
+- **배포**: P encoder 단독 (M은 학습 시 scaffold 후 제거).
+- **명명**: 논문 핵심 모델만 `Parvo` (현재 구현 = code `two_stream_v15b`); 이전/divergent 버전은 버전명(v4…v15) 유지. 명명·이력은 [`CLAUDE.md`](CLAUDE.md) "명명 · 2논문 구조".
 
 | 모델 | 설명 | 역할 |
 |------|------|------|
-| **Two-Stream** | M/P 채널 분리 + CLS exchange + 2D RoPE + MAE masking | 제안 모델 |
-| VideoMAE | Masked autoencoder | Comparison baseline |
+| **Parvo** (code v15b) | two-stream M/P, scaffolded | 제안 (Paper 2) |
+| image MAE (Sobel+RGB) | 단일프레임, = Parvo의 P stream 단독 | 제안 (Paper 1) |
+| VideoMAE-ours | 2-frame masked autoencoder | controlled baseline |
+| DINOv2 / SigLIP / VC-1 / V-JEPA 2.1 | internet/embodied SSL | 외부 baseline |
+
+## 평가
+
+- **Action probing** (EgoDex within-domain, DROID/CALVIN cross-domain): 표현이 변화/행동 정보를 인코딩하는지 회귀 R²로 측정
+- **로봇 조작 BC** (LIBERO BC-Transformer, CortexBench, CALVIN): frozen encoder + policy head
+- **실로봇** (Paper 1 본체 lift): manipulation deploy
 
 ## 프로젝트 구조
 
 ```
 ├── src/
-│   ├── models/          # Two-Stream, VideoMAE
-│   ├── datasets/        # EgoDex, Bridge V2, DROID
-│   ├── training/        # Pre-training 루프
-│   └── eval_libero.py   # LIBERO 시뮬레이터 평가
+│   ├── models/          # two_stream_v15(b)=Parvo, videomae, two_stream_v11 등
+│   ├── encoders/adapters/  # BC-T 어댑터 (baseline 포함)
+│   ├── datasets/        # EgoDex, DROID, LIBERO, CALVIN
+│   ├── cortexbench/     # CortexBench (Adroit/MetaWorld) loader·config
+│   └── training/        # Pre-training 루프
 ├── scripts/
-│   ├── pretrain.py      # Pre-training 메인
-│   ├── eval/            # Probing, fine-tuning, 시각화
-│   └── data/            # 데이터 전처리
-├── docs/
-│   ├── RESEARCH_PLAN.md  # 연구 계획 (마스터 문서)
-│   ├── PROBING_GUIDE.md  # Probing 가이드 + 결과
-│   └── setup/            # LIBERO 평가 가이드
-└── data/                 # 데이터셋, 체크포인트 (gitignore)
+│   ├── pretrain.py      # Pre-training 메인 (env-agnostic)
+│   ├── cluster/         # IBS 클러스터 sbatch launcher
+│   ├── local/           # 로컬 워크스테이션 launcher
+│   ├── eval/            # probing, BC-T fine-tune, 시각화
+│   └── viz/             # PCA overlay, Grad-CAM arrow
+└── docs/                # 아래 "문서"
 ```
 
 ## 문서
 
-- **연구 계획**: [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md)
-- **개발 가이드**: [`CLAUDE.md`](CLAUDE.md)
+- **개발 가이드 + 현재 상태**: [`CLAUDE.md`](CLAUDE.md)
+- **연구 계획 (마스터)**: [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md)
+- **Paper 1 (ICRA)**: [`docs/paper1_input_prior_plan.md`](docs/paper1_input_prior_plan.md)
+- **Paper 2 (AAAI) 실험**: [`docs/paper_experiments_plan.md`](docs/paper_experiments_plan.md)
 - **Probing**: [`docs/PROBING_GUIDE.md`](docs/PROBING_GUIDE.md)
 - **LIBERO 평가**: [`docs/setup/LIBERO_TEST_GUIDE.md`](docs/setup/LIBERO_TEST_GUIDE.md)
 
-## 진행 상황 (2026-04-08)
+실행 명령어·환경(클러스터/로컬)은 [`CLAUDE.md`](CLAUDE.md) 워크플로우 섹션 참조.
 
-**Phase 1 완료** — 모든 ablation 종료, v4 설정 확정
-- [x] Two-Stream / VideoMAE 구현
-- [x] Architecture ablation (depth/stages)
-- [x] MAE masking + P self-sufficiency 해결
-- [x] Gap 분포 실험 (triangular)
-- [x] Composition consistency 실험 (효과 없음, 제외)
-- [ ] Full training (8x H100): EgoDex part1~5
-- [ ] DROID action probing (cross-domain)
-- [ ] LIBERO fine-tuning + rollout
+## 상태 (2026-06)
+
+- **Paper 1**: P단독 image MAE > VideoMAE = 좁게 입증 → ablation(edge vs RGB) + 실로봇.
+- **Paper 2**: Parvo(code v15b) scaffold 설계 검증 중 (M→P gradient 연결, input-only baseline 초과 여부가 관건). 본학습 보류·재제출 준비.

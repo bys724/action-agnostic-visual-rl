@@ -1,5 +1,7 @@
 # Action Probing Guide
 
+> 🔴 **2026-06-11 재편 주의**: 본 문서의 "v11/v15 champion", "paper main" 해석은 그 이전 시점 프레이밍. catalyst 인과 철회 + 2논문 분리 + 모델 명명(Parvo=code v15b) 이후 정규 출처는 [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조". **probing 수치·테이블 자체는 유효 기록**이나, 그 위의 결론·우열 서술은 재해석 필요. 특히 v15 P_t⊕P_tk +0.390은 motion 인과가 아니라 multi-frame concat artifact 의심 (CLAUDE.md 참조).
+
 ## 실험 개요
 
 **평가 전략 (2026-04-14 재편)**: Two-Stream과 VideoMAE-ours만 EgoDex로 학습하므로 EgoDex within-domain probing은 **controlled comparison 전용**(Two-Stream vs VideoMAE-ours). 공개 가중치(VC-1, DINOv2, SigLIP, VideoMAE-official, V-JEPA-official)와의 main 비교는 OOD인 **DROID에서 수행**.

@@ -686,12 +686,15 @@ DDP: 2 nodes × 4 H100 on AIP_long partition
 
 ## 현재 상태
 
-`CLAUDE.md` "현재 Phase" 섹션 및 `docs/cluster_sessions.md` 진행 중 표 참고. 요약:
+> 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조" + "현재 Phase". 아래 Phase 1~3B 기록은 **v11-era history** (개발 narrative 보존용, 현재 상태 아님).
 
+**2026-06-11 요약**: 2논문 분리. Paper 1(ICRA) = P단독 image MAE > VideoMAE **좁게 입증** → ablation(edge vs RGB)·실로봇 남음. Paper 2(AAAI) = **Parvo(code v15b)** scaffold 설계 검증 중 (본학습 보류). 상세: [`paper1_input_prior_plan.md`](paper1_input_prior_plan.md) · [`paper_experiments_plan.md`](paper_experiments_plan.md) · [`v15b_retraining_status.md`](v15b_retraining_status.md).
+
+**v11-era history** (보존):
 - Phase 1 ✅ 완료 (v4 설정 확정)
-- Phase 1.5 ✅ **v11 ep44 새 챔피언 등극** (A+B+D' +0.288, v6 +0.259 추월). v10 종료 (+0.221, 추월 실패). VideoMAE +0.326까지 격차 -0.038
-- Phase 2 🔄 DROID cross-domain probing 일부 (VideoMAE vs v11 gap 1/10/15/30 비교), v11 모든 gap 우위
-- Phase 3 🔄 LIBERO BC fine-tune 진행 중 (libero_spatial 30ep, VideoMAE & v11 ep12)
+- Phase 1.5 ✅ v11 ep44 챔피언 (A+B+D' +0.288, v6 +0.259 추월). v10 종료 (+0.221). VideoMAE +0.326까지 격차 -0.038
+- Phase 2 🔄 DROID cross-domain probing (VideoMAE vs v11 gap 1/10/15/30), v11 모든 gap 우위
+- Phase 3 🔄 LIBERO BC fine-tune (libero_spatial 30ep, VideoMAE & v11 ep12)
 - Phase 3B ⏸️ Phase 3 결과 보고 결정
 
 ---
