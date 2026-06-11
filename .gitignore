@@ -102,7 +102,9 @@ paper_artifacts/cortexbench/summary.csv
 paper_artifacts/cortexbench/*/*/seed_*/wandb/
 paper_artifacts/cortexbench/*/*/seed_*/adroit_cortex_vil/
 paper_artifacts/cortexbench/*/*/seed_*/metaworld_cortex_vil/
-# 임시 데이터 inspection PNG (calvin_pairs_*.png, calvin_inspect_*.png)
+# 임시 데이터 inspection PNG (루트 일회성 출력 — paper_artifacts/ 또는 docs/preprocessing/로)
 calvin_pairs_*.png
 libero_pairs_*.png
 calvin_inspect_*.png
+calvin_motion_dist.png
+cortex_*_pairs_*.png

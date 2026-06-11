@@ -27,8 +27,6 @@
 | Script | Status | 용도 |
 |--------|--------|------|
 | [`finetune_libero_bct.py`](finetune_libero_bct.py) | **active (Phase 3 main)** | LIBERO 공식 BC-Transformer + 우리 어댑터. 5 encoder 비교 main table |
-| [`finetune_libero.py`](finetune_libero.py) | **legacy (Phase 1.5)** | 초기 LIBERO BC fine-tune (MLP decoder, v6/v10). Phase 3-1 BC-T 도입 전 |
-| [`finetune_libero_v11.py`](finetune_libero_v11.py) | **legacy (Phase 1.5)** | finetune_libero v11 wrapper. 동일 — Phase 3-1 BC-T 도입 전 |
 
 ## Visualization
 
@@ -51,8 +49,6 @@
 | Script | Cluster sbatch |
 |--------|---------------|
 | `finetune_libero_bct.py` | [`scripts/cluster/finetune_libero_bct.sbatch`](../cluster/finetune_libero_bct.sbatch) |
-| `finetune_libero.py` | [`scripts/cluster/finetune_libero.sbatch`](../cluster/finetune_libero.sbatch) |
-| `finetune_libero_v11.py` | [`scripts/cluster/finetune_libero_v11.sbatch`](../cluster/finetune_libero_v11.sbatch) |
 | `probe_action.py` | [`scripts/cluster/probe_action.sbatch`](../cluster/probe_action.sbatch) |
 | `probe_action_droid.py` | [`scripts/cluster/probe_action_droid.sbatch`](../cluster/probe_action_droid.sbatch) |
 | `probe_action_libero.py` | [`scripts/cluster/probe_action_libero.sbatch`](../cluster/probe_action_libero.sbatch) |

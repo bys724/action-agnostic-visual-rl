@@ -222,9 +222,8 @@ bash scripts/local/run_libero_rollouts.sh two-stream-v15-ptptk 50
 | `src/models/two_stream_v12.py` | v11 + CLS semantic residual. sanity cls_p collapse |
 | `src/models/two_stream_v13.py` | Dual-frame + DINO global CLS. ep10+ uniform collapse |
 | `src/models/two_stream_v14.py` | Stream-wise (P=MAE+V-JEPA, M=DINO). ep20 cancel, EgoDex probing R²=-0.065 |
-| `scripts/cluster/sanity_v{12,13,14}.sbatch` | v12/13/14 sanity launcher |
-| `scripts/eval/visualize_attn_v{13,14}.py`, `visualize_v{13,14}_no_mask.py` | v13/14 viz |
-| `scripts/eval/finetune_libero.py`, `finetune_libero_v11.py` | 이전 LIBERO finetune (Phase 3 BC-T로 대체) |
+
+> v12/13/14 모델 파일은 보존(dispatch 정리는 Parvo 본학습 후). 관련 launcher/viz·구 LIBERO finetune(`sanity_v{12,13,14}.sbatch`, `visualize_{attn_,}v{13,14}*.py`, `finetune_libero{,_v11}.py`+sbatch)는 삭제됨 (2026-06-11 cleanup, git history 참조 — BC-T로 대체).
 
 ## 개발 원칙
 
