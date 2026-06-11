@@ -169,7 +169,15 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
     _actual_model_for_unpack = model.module if hasattr(model, 'module') else model
     _is_v15_triple = (type(_actual_model_for_unpack).__name__ == 'TwoStreamV15Model')
 
+    # 진단 계측 (PRETRAIN_DIAG=1, sanity 전용 — 본학습은 per-batch sync 오버헤드 회피).
+    # data-load vs compute 시간 분리 → 병목 구간 진단.
+    _diag = os.environ.get('PRETRAIN_DIAG') == '1'
+    _t_data_sum, _t_compute_sum, _t_prev, _t0 = 0.0, 0.0, time.time(), 0.0
+
     for batch_idx, batch in enumerate(dataloader):
+        if _diag:
+            _t0 = time.time()
+            _t_data_sum += _t0 - _t_prev  # 이 batch fetch 대기 시간 (dataloader)
         # Unpack batch
         # v13/v14:  (img_t, img_tk, img_t_global, img_tk_global, gap) 5-tuple
         # v15:      (img_t, img_t_n, img_t_m, gap_n, gap_m_offset) 5-tuple
@@ -187,6 +195,15 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
             img_t_n = img_t_n.to(device)
             img_t_m = img_t_m.to(device)
             img_tk = img_t_m  # v14 호환 키 (eval 등에서 사용)
+            if _diag and batch_idx == 0 and _is_master():
+                # 입력 parity 진단 (no-Sobel: P=RGB 3ch, M=ΔL 1ch 확인. 2026-05-25 사고 방지).
+                with torch.no_grad():
+                    _pp = _actual_model_for_unpack.preprocessing
+                    _pc = _pp.compute_p_channel(img_t)
+                    _mc = _pp.compute_m_channel(img_t, img_t_m)
+                print(f"  [DIAG input] img_t {tuple(img_t.shape)} range[{img_t.min():.3f},{img_t.max():.3f}] {img_t.dtype} | "
+                      f"P_ch {tuple(_pc.shape)} range[{_pc.min():.3f},{_pc.max():.3f}] mean {_pc.mean():.3f} | "
+                      f"M_ch {tuple(_mc.shape)} range[{_mc.min():.3f},{_mc.max():.3f}] mean {_mc.mean():.3f}", flush=True)
         elif len(batch) == 5:
             img_t, img_tk, img_t_global, img_tk_global, gaps = batch
             gaps = gaps.numpy()
@@ -570,6 +587,15 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 weighted_loss = (per_sample_loss * weights).mean()
                 unweighted_loss = per_sample_loss.mean()
 
+        # NaN/inf guard (항상): 학습 에러 즉시 진단. NaN loss → NaN grad 전파라 fail-fast.
+        if not torch.isfinite(weighted_loss):
+            _m = f"[DIAG][non-finite loss] epoch {epoch} batch {batch_idx}: weighted={weighted_loss.item()}"
+            if model_name == 'TwoStreamV15Model':
+                _m += (f" | L_t={loss_t.item():.4f} L_pred={loss_pred.item():.4f} "
+                       f"L_mj={loss_m_jepa.item():.4f} L_cp={loss_compose.item():.4f}")
+            print(_m, flush=True)
+            raise RuntimeError(_m)
+
         # Backward (BF16 autocast 사용 시 scaler 불필요 — dynamic range가 FP32와 동일)
         weighted_loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -601,6 +627,13 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         total_weighted_loss += weighted_loss.item()
         num_batches += 1
 
+        if _diag:
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            _now = time.time()
+            _t_compute_sum += _now - _t0  # 이 batch forward+backward+step 시간
+            _t_prev = _now
+
         # Track gap distribution
         for g in gaps:
             gap_counts[int(g)] = gap_counts.get(int(g), 0) + 1
@@ -612,6 +645,13 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
     avg_loss = total_loss / num_batches
     avg_weighted = total_weighted_loss / num_batches
+
+    if _diag and _is_master():
+        _tot = max(_t_data_sum + _t_compute_sum, 1e-6)
+        _bound = 'DATA-bound' if _t_data_sum > _t_compute_sum else 'COMPUTE-bound'
+        print(f"  [DIAG bottleneck] data-load {_t_data_sum:.1f}s ({100*_t_data_sum/_tot:.0f}%) | "
+              f"compute(fwd+bwd+step) {_t_compute_sum:.1f}s ({100*_t_compute_sum/_tot:.0f}%) | "
+              f"{num_batches} batch → {_bound}", flush=True)
 
     # Print gap distribution (rank 0)
     if _is_master():
