@@ -75,7 +75,10 @@ def main():
     parser.add_argument('--eval-interval', type=int, default=10,
                         help='Evaluate every N epochs (default: 10)')
     parser.add_argument('--resume', type=str, default=None,
-                        help='Resume from checkpoint path')
+                        help='Resume from checkpoint path (full state: weights+optimizer+scheduler+epoch)')
+    parser.add_argument('--init-from', type=str, default=None,
+                        help='가중치만 로드(strict=False) + fresh schedule. 다른 구조 ckpt에서 '
+                             'encoder/routing 가중치 init용 (예: 3-frame ep8 → 2-frame pair).')
 
     # Multi-gap sampling parameters
     parser.add_argument('--max-gap', type=int, default=30,
@@ -239,6 +242,9 @@ def main():
                         help='[Parvo/Paper 2] Sobel edge prior 제외 → P=RGB(3ch), M=ΔL(1ch). '
                              'Sobel 기여는 Paper 1(Input-Prior) 주제 → Paper 2는 RGB 입력 위 scaffold만 격리. '
                              '미설정(기본)은 P=5ch/M=3ch (Paper 1 / v15).')
+    parser.add_argument('--pair-mode', action='store_true',
+                        help='[Parvo 2-frame] 3-frame triple → 2-frame pair (t, t+k). L_compose 제거, '
+                             'V-JEPA P/M 단일 segment. compose 미입증 → 배제하고 motion routing만 검증.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -409,6 +415,8 @@ def main():
             mask_ratio_m_jepa=args.v15_mask_ratio_m_jepa,
             composition_mode=args.v15_composition_mode,
             composition_hidden_dim=args.v15_composition_hidden_dim,
+            pair_mode=args.pair_mode,
+            use_compose=not args.pair_mode,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
@@ -458,7 +466,7 @@ def main():
 
     # v13/v14: train dataset이 raw 256 view도 함께 반환해야 함 (DINO teacher용)
     needs_global = args.model in ('two-stream-v13', 'two-stream-v14')
-    needs_triple = args.model in ('two-stream-v15', 'two-stream-v15b')
+    needs_triple = args.model in ('two-stream-v15', 'two-stream-v15b') and not args.pair_mode
 
     splits = [s.strip() for s in args.egodex_splits.split(',')]
     split_datasets = []
@@ -572,6 +580,7 @@ def main():
         eval_dataset=eval_dataset,
         eval_interval=args.eval_interval,
         resume_from=args.resume,
+        init_from=args.init_from,
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
         num_workers=args.num_workers,

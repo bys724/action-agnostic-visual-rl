@@ -403,6 +403,8 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
         --v15-lambda-gate-epochs "${V15_GATE_EPOCHS:-0}"
     )
     [ "${NO_SOBEL:-0}" = "1" ] && MODEL_ARGS+=(--no-sobel)  # Parvo/Paper 2: P=RGB(3ch), M=ΔL(1ch)
+    [ "${PAIR_MODE:-0}" = "1" ] && MODEL_ARGS+=(--pair-mode)  # 2-frame, no compose
+    [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)
     if [ -n "${V15_COMP_HIDDEN:-}" ]; then
         MODEL_ARGS+=(--v15-composition-hidden-dim "${V15_COMP_HIDDEN}")
     fi

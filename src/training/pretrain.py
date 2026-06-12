@@ -167,7 +167,8 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
     # v15: triple unpacking 위해 model_name 미리 계산
     _actual_model_for_unpack = model.module if hasattr(model, 'module') else model
-    _is_v15_triple = (type(_actual_model_for_unpack).__name__ == 'TwoStreamV15Model')
+    _is_v15_pair = getattr(_actual_model_for_unpack, 'pair_mode', False)
+    _is_v15_triple = (type(_actual_model_for_unpack).__name__ == 'TwoStreamV15Model') and not _is_v15_pair
 
     # 진단 계측 (PRETRAIN_DIAG=1, sanity 전용 — 본학습은 per-batch sync 오버헤드 회피).
     # data-load vs compute 시간 분리 → 병목 구간 진단.
@@ -312,7 +313,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 # v15 final: (img_t, img_t_n, img_t_m) — triple, L_compose
                 actual_model = model.module if hasattr(model, 'module') else model
                 if model_name == 'TwoStreamV15Model':
-                    out = model(img_t, img_t_n, img_t_m)
+                    if getattr(actual_model, 'pair_mode', False):
+                        out = model(img_t, img_tk)  # 2-frame pair, no compose
+                    else:
+                        out = model(img_t, img_t_n, img_t_m)
                 else:
                     out = model(img_t, img_tk, img_t_global, img_tk_global)
                 # DataParallel(로컬 multi-GPU): per-GPU scalar loss가 [n_gpu]로 gather됨 →
@@ -698,9 +702,10 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
     num_batches = 0
     gap_counts = {}
 
-    # v15 triple unpack 위해 model_name 미리 계산
+    # v15 triple unpack 위해 model_name 미리 계산 (pair_mode면 2-frame이라 triple unpack 제외)
     _eval_actual_model = model.module if hasattr(model, 'module') else model
-    _eval_is_v15 = (type(_eval_actual_model).__name__ == 'TwoStreamV15Model')
+    _eval_is_pair = getattr(_eval_actual_model, 'pair_mode', False)
+    _eval_is_v15 = (type(_eval_actual_model).__name__ == 'TwoStreamV15Model') and not _eval_is_pair
 
     # Manual batch processing (for fast evaluation)
     for i in range(0, eval_size, batch_size):
@@ -748,8 +753,11 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 total_loss_current += out['loss_t'].item()
                 total_loss_future += out['loss_tk'].item()
             elif model_name == 'TwoStreamV15Model':
-                # v15 eval: triple input 그대로 사용. 모든 5 loss 활성 (eval mode라 학습엔 영향 X).
-                out = model(img_t, img_t_n, img_t_m)
+                # v15 eval: triple input. pair_mode면 2-frame (img_t, img_tk).
+                if getattr(actual_model, 'pair_mode', False):
+                    out = model(img_t, img_tk)
+                else:
+                    out = model(img_t, img_t_n, img_t_m)
                 loss = out['loss']
                 img_pred = out['pred_tk']
                 weighted_loss = loss
@@ -1019,6 +1027,7 @@ def train(
     eval_dataset=None,
     eval_interval=1,
     resume_from=None,
+    init_from=None,
     multi_gpu=True,
     use_ssim=False,
     num_workers=16,
@@ -1204,6 +1213,20 @@ def train(
         'samples_per_sec': [],   # Training throughput
         'timestamps': [],        # ISO timestamp at epoch end
     }
+
+    # init_from: 가중치만 로드 (strict=False, fresh optimizer/scheduler/epoch).
+    # resume(전체 상태 복원)와 달리 다른 구조(pair model = composition_head 없음)의 ckpt에서
+    # P/M encoder·routing·recon 가중치만 가져오고 새 schedule로 학습. ep8(pure-MAE) → pair 학습용.
+    if init_from and not resume_from:
+        log(f"Init weights from {init_from} (strict=False, fresh schedule)")
+        map_location = {'cuda:0': str(device)} if distributed else device
+        _ck = torch.load(init_from, map_location=map_location)
+        _sd = _ck.get('model_state_dict', _ck)
+        _sd = {(k[7:] if k.startswith('module.') else k): v for k, v in _sd.items()}
+        _mdl = model.module if hasattr(model, 'module') else model
+        _miss, _unexp = _mdl.load_state_dict(_sd, strict=False)
+        log(f"  init loaded: missing={len(_miss)} unexpected={len(_unexp)} "
+            f"(composition_head 등 pair model 미사용 키 무시)")
 
     if resume_from:
         log(f"Resuming from {resume_from}")

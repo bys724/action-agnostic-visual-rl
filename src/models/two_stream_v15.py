@@ -238,6 +238,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         mask_ratio_m_jepa: float = 0.5,
         composition_mode: str = "linear_residual",
         composition_hidden_dim: Optional[int] = None,
+        use_compose: bool = True,
+        pair_mode: bool = False,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -262,6 +264,11 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.lambda_m_jepa = lambda_m_jepa
         self.lambda_compose = lambda_compose
         self.mask_ratio_m_jepa = mask_ratio_m_jepa
+        # pair_mode=True: 2-frame (t, t+k), L_compose 제거, V-JEPA P/M 단일 segment.
+        #   compose 미입증 → 배제하고 motion routing만 검증. composition_head 미생성
+        #   (DDP unused-param 회피). 3-frame ckpt resume 시 strict=False로 로드.
+        self.pair_mode = pair_mode
+        self.use_compose = use_compose and not pair_mode
 
         # ── p_motion_decoder = (routing + interp) × N (interleaved) ──────
         self.p_motion_decoder = nn.ModuleList([
@@ -274,11 +281,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.p_motion_decoder_norm = nn.LayerNorm(embed_dim)
 
         # ── Composition head (NEW, replaces DINO) ────────────────────────
-        self.composition_head = CompositionHead(
-            embed_dim=embed_dim,
-            mode=composition_mode,
-            hidden_dim=composition_hidden_dim,
-        )
+        # pair_mode(2-frame)에선 L_compose 제거 → composition_head 미생성 (DDP unused-param 회피).
+        if self.use_compose:
+            self.composition_head = CompositionHead(
+                embed_dim=embed_dim,
+                mode=composition_mode,
+                hidden_dim=composition_hidden_dim,
+            )
 
         # Frozen v11 modules (DDP unused-param 회피)
         for p in self.motion_routing.parameters():
@@ -425,6 +434,82 @@ class TwoStreamV15Model(TwoStreamV11Model):
         return loss, predicted_tk_repr, target_repr_T
 
     # ----------------------------------------------------------------------
+    # Forward (pair) — 2-frame, no L_compose
+    # ----------------------------------------------------------------------
+
+    def _forward_pair(self, image_current: torch.Tensor, image_future: torch.Tensor) -> dict:
+        """2-frame Parvo forward (t, t+k). L_compose 제거, V-JEPA P/M 단일 segment.
+
+        Loss = (L_t + L_tk) + λ_pred·L_pred + λ_m_jepa·L_m_jepa   (compose 없음)
+        """
+        if self.rotation_aug and self.training:
+            if torch.rand(1).item() < self.independent_rotation_prob:
+                ks = [torch.randint(0, 4, (1,)).item() for _ in range(2)]
+            else:
+                k0 = torch.randint(0, 4, (1,)).item()
+                ks = [k0, k0]
+            if ks[0] != 0:
+                image_current = torch.rot90(image_current, ks[0], dims=(2, 3))
+            if ks[1] != 0:
+                image_future = torch.rot90(image_future, ks[1], dims=(2, 3))
+
+        B = image_current.shape[0]
+        device = image_current.device
+
+        p_channel_t = self.preprocessing.compute_p_channel(image_current)
+        p_channel_tk = self.preprocessing.compute_p_channel(image_future)
+        m_chan = self.preprocessing.compute_m_channel(image_current, image_future)  # t → t+k
+
+        # 1. P MAE × 2 frame
+        loss_t, patch_pred_t, mask_p_t, p_t_visible = self._mae_one_frame(image_current, p_channel_t)
+        loss_tk, patch_pred_tk, mask_p_tk, p_tk_visible = self._mae_one_frame(image_future, p_channel_tk)
+        cls_p_repr = p_t_visible[:, 0]
+
+        # 2. M encoder unmasked (routing source)
+        m_local = self._encode_m_unmasked(m_chan)
+
+        # 3. V-JEPA P × 1 (t → t+k): student anchor + M routing → teacher target
+        loss_pred, predicted_repr, target_repr = self._vjepa_p_one_segment(
+            m_chan, p_channel_t, p_channel_tk, m_local_routing=m_local,
+        )
+
+        # 4. V-JEPA M × 1 (Option B): M masked + decoder vs TeacherM unmasked
+        mask_m = self._random_mask(B, device, self.mask_ratio_m_jepa)
+        m_visible = self._encode_m_masked(m_chan, mask_m)
+        m_full = self._build_full_seq_m(m_visible, mask_m)
+        m_decoded_masked = self._decode_m(m_full)
+        with torch.no_grad():
+            m_target_encoded = self.teacher_m.forward_unmasked_encoder_only(m_chan).detach()
+        err_m = F.smooth_l1_loss(
+            m_decoded_masked[:, 1:].float(), m_target_encoded[:, 1:].float(), reduction="none",
+        ).mean(dim=-1)
+        denom_m = mask_m.float().sum().clamp(min=1.0)
+        loss_m_jepa = (err_m * mask_m.float()).sum() / denom_m
+
+        # Total (no compose)
+        loss = (loss_t + loss_tk) + self.lambda_pred * loss_pred + self.lambda_m_jepa * loss_m_jepa
+
+        cls_m_repr = m_local[:, 0]
+        zero = torch.zeros((), device=device, dtype=loss.dtype)
+        return {
+            "loss": loss,
+            "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
+            "loss_pred": loss_pred, "loss_pred_short": loss_pred,
+            "loss_pred_step": loss_pred, "loss_pred_long": loss_pred,
+            "loss_m_jepa": loss_m_jepa, "loss_compose": zero, "loss_dino": zero,
+            "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_tk),
+            "mask_p": mask_p_t, "mask_m": mask_m,
+            "m_features": m_local[:, 1:], "p_features_t": p_t_visible[:, 1:],
+            "p_features_tk": predicted_repr[:, 1:], "cls_m": cls_m_repr, "cls_p": cls_p_repr,
+            "predicted_tk_repr": predicted_repr, "target_tk_repr": target_repr,
+            "m_local_short": m_local, "m_local_step": m_local, "m_local_long": m_local,
+            "m_compose_target": m_local, "m_predicted": m_local,
+            "student_dino_cls": cls_m_repr,
+            "teacher_dino_cls": torch.zeros(B, self.embed_dim, device=device, dtype=loss.dtype),
+            "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),
+        }
+
+    # ----------------------------------------------------------------------
     # Forward
     # ----------------------------------------------------------------------
 
@@ -432,12 +517,15 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self,
         image_current: torch.Tensor,   # crop_t        [B, 3, 224, 224]
         image_short:   torch.Tensor,   # crop_t+n      [B, 3, 224, 224]
-        image_future:  torch.Tensor,   # crop_t+m      [B, 3, 224, 224]
+        image_future:  torch.Tensor = None,  # crop_t+m [B, 3, 224, 224] (3-frame만)
     ) -> dict:
         """
-        v15 final forward (3-frame triple).
+        v15 final forward (3-frame triple). pair_mode면 _forward_pair(2-frame)로 분기.
 
-        Loss tracks (옵션 B):
+        Loss tracks (옵션 B):"""
+        if self.pair_mode:
+            return self._forward_pair(image_current, image_short)  # image_short = t+k
+        _orig_docstring = """
           1. P MAE × 3:           L_t (frame_t), L_tn (frame_t+n), L_tm (frame_t+m)
           2. V-JEPA P × 3 segment: short (t→t+n), step (t+n→t+m), long (t→t+m)
           3. V-JEPA M × 1 (long): masked + decoder vs TeacherM_encoder unmasked (Option B)
