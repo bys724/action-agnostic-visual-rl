@@ -89,7 +89,18 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
-### 2026-06-11 Parvo 준비 (cleanup + rename + no-Sobel 입력 + 진단 계측)
+### 2026-06-12 Parvo 2-frame pair 재설계 (compose 제거 + ep8 init)
+
+**배경**: 3-frame Parvo(35560151) ep12+ V-JEPA P trivial collapse (cos(pred,tgt)→1.0, M 기여=0) → 19h45m(158 GPU·h)에 중단. 진단: collapse 근인 = V-JEPA P 자체 trivial(정지영역 지배), compose와 독립. 사용자 결정: **compose(미입증) 배제 + 2-frame pair**로 motion routing만 격리 검증. ep8(gate 구간 pure-MAE, collapse 전 최신 ckpt)에서 가중치만 init.
+
+**코드 (커밋 7b47a7f)**: `pair_mode`/`use_compose` 플래그 + `_forward_pair`(P MAE×2 + V-JEPA P×1 + V-JEPA M×1, L_compose 제거, composition_head 미생성). `--init-from`(strict=False 가중치만). training loop pair unpacking/forward/eval. 독립 크롭 유지(사용자 의도=global-shift 불변 correspondence 학습).
+
+**sanity (35755046)**: ep8 init 정상(L_t 0.0015), L_compose=0, ~37% 빠름(51s vs 81s/50vid). cos(pred,tgt) ep3 0.94 (3-frame 0.999 대비 미붕괴 — 단 3ep라 비결정적).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35560151 | AIP_long 2×4 H100 | — | 3-frame Parvo 본학습 | ❌ CANCELLED 19h45m (158 GPU·h). ep12+ V-JEPA collapse |
+| 35755051 | AIP_long 2×4 H100 | 2-12:00:00 | **2-frame pair 본학습** (compose 제거, ep8 init, batch 64, gate=0 warmup 5ep, 40ep) | PENDING. abort: ep10-15 cos(pred,tgt)>0.99 & L_pred<0.01 |
 
 **코드 변경 (커밋)**: ① cleanup(b6d912e): 루트 tar 69GB + deprecated v12-14 스크립트 12개 삭제. ② rename(9ce778d): `MODEL=parvo`→내부 v15b 정규화 + ckpt `parvo/` (최소 rename, 코드 식별자 별도). ③ no-Sobel(9ce778d): `use_sobel` 플래그 — Paper 2(Parvo)는 P=RGB(3ch)/M=ΔL(1ch), Sobel은 Paper 1 주제라 격리. M depth 6 유지(1ch≠작은모델). ④ 진단계측(cd23ee8): `PRETRAIN_DIAG=1`로 첫 batch 입력통계+data/compute 병목분리, NaN guard 상시.
 
