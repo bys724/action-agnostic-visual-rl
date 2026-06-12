@@ -50,9 +50,15 @@ def to_np_image(t: torch.Tensor) -> np.ndarray:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
-    ap.add_argument("--num-egodex", type=int, default=2)
+    ap.add_argument("--no-sobel", action="store_true",
+                    help="Parvo/Paper2 no-Sobel 모델 (P=RGB 3ch, M=ΔL 1ch)")
+    ap.add_argument("--num-egodex-train", type=int, default=2,
+                    help="EgoDex train split(part1, SEEN) sample 수 — 학습데이터 복구")
+    ap.add_argument("--egodex-train-split", default="part1")
+    ap.add_argument("--num-egodex", type=int, default=2,
+                    help="EgoDex test split (held-out, NEW) sample 수")
     ap.add_argument("--num-droid", type=int, default=2,
-                    help="DROID cross-domain sample 수 (v15 학습은 EgoDex만 → DROID는 unseen)")
+                    help="DROID cross-domain sample 수 (학습은 EgoDex만 → DROID는 NEW/cross-domain)")
     ap.add_argument("--out-dir", default="paper_artifacts/v15_main_train_samples")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument(
@@ -97,16 +103,30 @@ def main():
         mask_ratio_p=0.75,
         rotation_aug=True,
         routing_mode=args.routing_mode,
+        use_sobel=not args.no_sobel,
         lambda_pred=args.lambda_pred,
         lambda_m_jepa=args.lambda_m_jepa,
         lambda_compose=args.lambda_compose,
         mask_ratio_m_jepa=args.mask_ratio_m_jepa,
         composition_mode=args.composition_mode,
     )
-    msg = model.load_state_dict(ckpt["model_state_dict"], strict=True)
-    print(f"  state_dict loaded: {msg}")
+    sd = ckpt["model_state_dict"]
+    sd = {(k[7:] if k.startswith("module.") else k): v for k, v in sd.items()}
+    msg = model.load_state_dict(sd, strict=True)
+    print(f"  state_dict loaded (no_sobel={args.no_sobel}): {msg}")
     model.eval().cuda()
     model.mask_ratio_p = 0.0  # no-mask inference
+
+    ds_egodex_train = EgoDexDataset(
+        data_root=args.egodex_data_root,
+        split=args.egodex_train_split,
+        max_gap=args.egodex_max_gap,
+        sample_dist="triangular",
+        sample_center=args.egodex_sample_center,
+        train=False,
+        return_triple=True,
+    )
+    print(f"EgoDex (train={args.egodex_train_split}, SEEN): {len(ds_egodex_train)} samples")
 
     ds_egodex = EgoDexDataset(
         data_root=args.egodex_data_root,
@@ -117,7 +137,7 @@ def main():
         train=False,
         return_triple=True,
     )
-    print(f"EgoDex (test, return_triple): {len(ds_egodex)} samples")
+    print(f"EgoDex (test, NEW held-out): {len(ds_egodex)} samples")
 
     # NOTE: 클러스터 ext1은 sanity 추출분(처음 10 ep)만 frame이 채워져 있음.
     # 빈 ep에 retry 5회 모두 걸리면 fallback (검정 텐서)이 나오므로 max_videos로 추출된 ep만 제한.
@@ -134,10 +154,13 @@ def main():
     print(f"DROID  (cross-domain, return_triple): {len(ds_droid)} samples")
 
     sources = []
+    if args.num_egodex_train > 0:
+        sources.append(("EgoDex-train(SEEN)", ds_egodex_train,
+                        random.sample(range(len(ds_egodex_train)), args.num_egodex_train)))
     if args.num_egodex > 0:
-        sources.append(("EgoDex", ds_egodex, random.sample(range(len(ds_egodex)), args.num_egodex)))
+        sources.append(("EgoDex-test(NEW)", ds_egodex, random.sample(range(len(ds_egodex)), args.num_egodex)))
     if args.num_droid > 0:
-        sources.append(("DROID",  ds_droid,  random.sample(range(len(ds_droid)),  args.num_droid)))
+        sources.append(("DROID(NEW/x-domain)", ds_droid, random.sample(range(len(ds_droid)), args.num_droid)))
 
     def to_pixel_from_repr(repr_full: torch.Tensor) -> np.ndarray:
         """encoder-level [B,1+N,D] → interpreter_1 → recon_head → unpatchify → np image."""
@@ -262,9 +285,10 @@ def main():
             ha="right", va="center", fontsize=9,
             fontweight="bold",
         )
+    _tag = "Parvo no-Sobel" if args.no_sobel else "v15"
     fig.suptitle(
-        f"v15 epoch {epoch} — no-mask reconstruction + motion routing × 3 segment + L_compose path\n"
-        f"(col 7-10 = encoder-level latent → interpreter_1 → recon_head; mild OOD)",
+        f"{_tag} epoch {epoch} — 단순복구(4-6) + motion routing 복구(7-9) + L_compose 복구(10)\n"
+        f"행: EgoDex-train(SEEN) / EgoDex-test(NEW) / DROID(x-domain). col 7-10 = latent → interpreter_1 → recon_head",
         fontsize=11, y=0.995, fontweight="bold",
     )
     plt.tight_layout()

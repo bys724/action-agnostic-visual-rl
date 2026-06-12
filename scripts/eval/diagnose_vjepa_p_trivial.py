@@ -42,11 +42,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default=SANITY_CKPT)
     ap.add_argument("--tag", default="sanity_3ep")
+    ap.add_argument("--no-sobel", action="store_true",
+                    help="Parvo/Paper2 no-Sobel 모델 (P=RGB 3ch, M=ΔL 1ch)")
     args = ap.parse_args()
     CKPT = args.ckpt
-    print(f"[ckpt] {args.tag}: {CKPT}")
+    print(f"[ckpt] {args.tag}: {CKPT}  (no_sobel={args.no_sobel})")
 
-    model = TwoStreamV15Model(routing_mode="v_from_p")
+    model = TwoStreamV15Model(routing_mode="v_from_p", use_sobel=not args.no_sobel)
     ckpt = torch.load(CKPT, map_location="cpu", weights_only=False)
     sd = ckpt.get("model_state_dict", ckpt)
     sd = {(k[7:] if k.startswith("module.") else k): v for k, v in sd.items()}
@@ -59,6 +61,7 @@ def main():
     print(f"[data] EgoDex part1: {len(ds)} samples")
 
     cb, cn, ca = [], [], []
+    cls_list, patch_list = [], []  # 교차샘플 collapse 진단 (CLS vs patch)
     by_gap = defaultdict(list)  # gap bucket → baseline cos
     with torch.no_grad():
         for i in range(min(N_SAMPLES, len(ds))):
@@ -73,6 +76,8 @@ def main():
 
             tgt_t = model.teacher_p.forward_unmasked(p_ch_t)
             tgt_tn = model.teacher_p.forward_unmasked(p_ch_tn)
+            cls_list.append(tgt_t[0, 0].float().cpu())          # CLS token
+            patch_list.append(tgt_t[0, 1:].mean(0).float().cpu())  # patch-mean
             bcos = cos_tok(tgt_t, tgt_tn)
             cb.append(bcos)
             # gap bucket (5단위)
@@ -100,6 +105,22 @@ def main():
     print(f"3. M=0 ablt  cos(pred_M0, target)        = {np.mean(ca):+.4f}  (std {np.std(ca):.3f})")
     print(f"Δ(predictor − baseline) = {np.mean(cn) - np.mean(cb):+.4f}")
     print(f"Δ(predictor − M=0)      = {np.mean(cn) - np.mean(ca):+.4f}  (M routing 기여)")
+
+    # CLS vs patch collapse 진단 (교차샘플): collapse면 cross-sample std→0, cos→1.
+    # recon은 patch로 됨 → patch가 healthy면 'CLS만 collapse'라 recon 모순 없음.
+    cls_stack = torch.stack(cls_list)      # [N, D]
+    patch_stack = torch.stack(patch_list)  # [N, D]
+    cls_xstd = cls_stack.std(0).mean().item()
+    patch_xstd = patch_stack.std(0).mean().item()
+    def _xcos(x):
+        xn = F.normalize(x, dim=-1)
+        g = xn @ xn.T
+        n = g.shape[0]
+        return (g.sum() - n) / (n * (n - 1))  # off-diagonal mean
+    print(f"\n--- 교차샘플 collapse 진단 (n={len(cls_list)}) ---")
+    print(f"  CLS   : cross-sample std={cls_xstd:.4f}  cos={_xcos(cls_stack):+.4f}  (→0/→1이면 CLS collapse)")
+    print(f"  patch : cross-sample std={patch_xstd:.4f}  cos={_xcos(patch_stack):+.4f}  (healthy면 std>0, cos<1 → recon 가능)")
+
     print(f"\n--- gap별 baseline cos (gap 클수록 frame 차이 커야 = cos 낮아야) ---")
     for g in sorted(by_gap):
         v = by_gap[g]
