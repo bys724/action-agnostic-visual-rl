@@ -133,3 +133,31 @@ NUM_WORKERS=8 \
 - masked anchor(student visible-only) + **completion(self-attn)→routing 순서 교정**(RoutingInterpreterStep 뒤집기, 토글 플래그로) + Run A의 target norm 유지.
 - completion은 predictor(버려질 모듈)에 가두고 encoder는 visible-only → 마스킹 이득 encoder에 잔류.
 - **측정 = 학습-시 ablation**: full Parvo vs M routing 제거 두 run → P probing 비교(= M의 *표현* 기여, gold standard). inference ablation(의존도)은 부적합 — [cluster_sessions](cluster_sessions.md) §35493291 참조.
+
+### Run B 설계 원리 — P encoder의 task format 일관성 (핵심 렌즈, 2026-06-15)
+
+> Run B를 "왜·어떻게" 설계하는지의 단일 출처. anti-collapse를 넘어선 *본질적* 근거.
+
+**문제 인식**: 현재 P encoder student는 *일관되지 않은 두 종류의 task*를 동시에 받는다.
+- MAE 복구: **masked**(visible-only) 입력 → 마스크 위치 추론 (interpreter_1 + recon_head)
+- 모션 라우팅(현재): **full**(unmasked, `_encode_p_unmasked`) 입력 → 미래 표현 변환 (motion predictor)
+
+→ 인코더 관점에서 입력 포맷이 다르다. MAE="부분에서 추론", 모션="전체에서 변환". 같은 가중치가 *두 다른 종류*의 능력으로 끌려가 — 양자택일 압력.
+
+**통일 원리**: P encoder가 배우는 건 *복구 정보 자체*가 아니라 **"부분 관찰을 (interpreter/predictor가) 안 본 것으로 도출하게 하는 substrate"**다. 이 substrate는 공통 통화 — 공간 추론(복구)이든 시간 추론(모션)이든 같은 "부분→예측" 능력이 떠받친다. 모션도 **masked 입력**으로 통일하면:
+- MAE: visible frame_t → masked frame_t 예측 (공간 target)
+- 모션: visible frame_t → frame_tk 예측 (시간 target)
+- 인코더에 *동일* 요구("부분을 예측-지원형으로 표현"), target/head만 다름 → **두 loss가 경쟁이 아니라 시너지.**
+
+**masked anchor의 3중 명분** (이 일관성이 세 번째이자 가장 본질적):
+1. anti-collapse: identity-복사 trivial 모드 차단 (full anchor + 작은 gap).
+2. M load-bearing: predictor가 full frame_t로 못 풀게 해 모션을 필수화.
+3. **task format 일관성**: 모션을 MAE와 *같은 종류*("부분→예측")로 만들어 인코더가 *단일 능력*을 학습 → 시너지.
+
+**정직한 경계**: masked anchor는 *task type*(부분→예측)은 통일하나 *target 추상도*는 다름 — MAE=픽셀(저수준), 모션=latent(고수준). MAE↔JEPA tension은 *줄지만* 완전히 사라지진 않음. (후속 갈래: 모션 target도 masked 픽셀로 가면 추상도까지 통일 가능 — 검토 대상.) 또 우리가 *본* 파괴적 양자택일은 collapse dynamic이었고(variance reg로 차단됨), 붕괴 막은 뒤 full anchor는 "경쟁"보다 "no-op(무임승차)"에 가까움 → 본 논리는 부정형("full=경쟁")보다 **긍정형("masked=시너지")**으로 쓸 것.
+
+**구현 함의**:
+- V-JEPA P anchor를 `_encode_p_unmasked`(full) → `_student_p_encode_visible`(masked, MAE와 동일 마스킹 분포 검토)로 교체.
+- completion(self-attn)→routing 순서 (구멍 채운 뒤 모션 적용; 현재 RoutingInterpreterStep은 routing→interp 역순).
+- completion은 predictor(버려질 모듈)에 가두고 encoder는 visible-only 유지 → bottleneck이 encoder에 박혀 마스킹 이득 잔류.
+- Run A의 target norm(variance reg + target LayerNorm) 유지.
