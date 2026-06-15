@@ -1043,6 +1043,7 @@ def train(
     v15_lambda_compose_warmup_epochs=10,
     v15_lambda_compose_target=None,
     v15_lambda_gate_epochs=0,
+    lr_warmup_epochs=None,
 ):
     """
     Main training loop with periodic evaluation and checkpointing.
@@ -1183,7 +1184,7 @@ def train(
     # LR schedule: linear warmup (10% of epochs) + cosine decay
     # Warmup은 EMA 기반 모델(V-JEPA)의 초기 안정성에 필수.
     # Two-Stream(pixel target)에도 무해하므로 공통 적용.
-    warmup_epochs = max(1, num_epochs // 10)
+    warmup_epochs = lr_warmup_epochs if lr_warmup_epochs else max(1, num_epochs // 10)
     warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer, start_factor=1e-6 / lr, total_iters=warmup_epochs,
     )

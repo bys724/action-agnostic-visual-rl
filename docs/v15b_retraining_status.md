@@ -93,3 +93,43 @@ NUM_WORKERS=8 \
 
 - **인코더(P/M) size 축소 ❌**: 원래 v15는 overfitting이 아니라 **P-CLS collapse + L_m_jepa 폭증 + late divergence(train·eval 동반 상승)**. M은 건강(cos_intra_m 0.27). +0.39 자산은 patch-level P_t⊕P_tk라 P 축소 시 자산 손상. capacity lever는 **predictor(p_motion_decoder)** 가 on-target (V-JEPA trivial 방지). 진짜 overfit 증거 나오면 weight decay/drop-path가 정공법.
 - 아키텍처: embed_dim=768, P depth 12(~85M), M depth 6(~42M), decoder_depth_m=3, interpreter_depth=3.
+
+## 8. 붕괴 진단 확정 + Run A/B 분리 (2026-06-15)
+
+**붕괴 근인 재진단** (SSIM/LR/warmup 5연패 후): recon 노브는 전부 *증상*만 건드림. 근인 = **V-JEPA P 자기참조 collapse**. target = `teacher_p(frame_tk).detach()` = student P의 EMA 거울이라, student가 표현을 저분산/상수로 만들면 teacher(target)도 따라 무너져 loss→0. cos(pred,tgt)→0.993·P 균일 = 이 **constant 모드**. recon(L_t)은 약한 anti-collapse라 못 버팀.
+
+**붕괴 종류 분리** (핵심):
+- **constant 붕괴** (= 우리가 본 것): target 정규화로만 막힘. anchor 마스킹 무관.
+- **identity 복사** (full anchor + 작은 gap): masked anchor가 막음. 단 이건 *본 붕괴와 다른 모드*.
+
+**M 기여 측정 정직화**: 지금까지 "M no-op"의 실제 근거는 **옛 v15의 구조적 gradient=0**(코드 사실) 하나뿐. v15b ablation +0.013은 **inference 시 predictor 의존도**를 잴 뿐 *학습 중 P 표현 기여*가 아님 (옛 v15 ep50 ablation은 +0.31인데 encoder shaping은 구조적 0 → 이 metric이 엉뚱한 양 측정 증명). v15b의 M 표현기여 = **깨끗한 판정 없음**.
+
+**Run A (지금) — 붕괴부터 끄기, 최소 변경**:
+- 현재 구조(full anchor, pair_mode) 그대로 + **target 정규화**: ① target LayerNorm(V-JEPA 표준, scale collapse 방어) ② variance reg(VICReg식, std collapse 직접 금지 = 본 붕괴 정공법).
+- 성공 기준: ep12+ 균일 붕괴 없음(std_p 유지) + L_t 복구 단조감소 + P_t⊕P_tk probing이 비붕괴값.
+- 예상: 붕괴 멈춤·P 건강·복구 생존. **단 M은 여전히 no-op 가능**(full anchor identity → M 무시) — 정상. A는 scaffold 검증이 아니라 *깨끗한 비붕괴 baseline* 확보용.
+
+**Run B (A 확인 후) — scaffold 검증**:
+- A에 **masked anchor + completion(self-attn)→routing 순서** 추가. completion은 predictor(버려질 모듈)에 가두고 student encoder는 visible-only로 → 마스킹 이득을 encoder에 남김.
+- 측정: **학습-시 ablation**(with-M vs no-M 두 run, P probing 비교)이 gold standard. inference ablation은 의존도라 부적합.
+- 귀속: A=붕괴가 원인이었나, B=마스킹이 M을 살리나. 한 run에 섞지 말 것.
+
+> A/B는 논문 두 경쟁가설과 대응: A만으로 P_t⊕P_tk 좋으면 "multi-frame MAE concat 강한 baseline", B에서 M 살아나야 좋아지면 scaffold 지지.
+
+### ▶ 다음 단계 (모니터링·결정 흐름)
+
+**구현 (2026-06-15, 커밋됨)**: `lambda_var`(VICReg variance reg, P enc 출력 per-dim std<1 hinge) + `target_ln`(I-JEPA target LayerNorm) 플래그. [two_stream_v15.py](../src/models/two_stream_v15.py) `_variance_loss`/`_vjepa_p_one_segment`/`_forward_pair`, [pretrain.py](../scripts/pretrain.py), sanity·pretrain sbatch env wiring. CPU smoke + sanity(35763563) 통과 — **std_p 0.58→1.0 궤적 역전 확인**.
+
+**1. Run A 본학습 35764680 모니터링** (cap 20ep, ckpt 매 ep):
+- **ep4~5 조기경보**: L_t 역행(옛 0.008→0.019) 없어야. 있으면 lambda_var 부족 의심.
+- **ep8**: std_p 유지(↓0 아님), std_m 회복(옛 transient면 ep5+ 회복).
+- **ep12 확정 판정**: cos(pred,tgt)<0.97 + std_p 유지 + viz(V100 mig, [feedback_viz_inference_min_spec]) GT급 → **통과**. cos→0.99 or 균일 viz → **붕괴, abort**.
+
+**2. ep12 분기**:
+- **통과** → ep16~20에서 멈춤(50 안 감). ep16/20 ckpt로 **EgoDex P_t⊕P_tk probing** → "비붕괴 baseline 수치"(vs v15 +0.39 / VideoMAE +0.47). 이게 "multi-frame MAE concat 강한 baseline" 가설 답.
+- **붕괴** → lambda_var↑(1→4) 또는 target만으로 부족분 진단 후 재제출.
+
+**3. Run B 준비** (A 통과 후 착수, scaffold 검증):
+- masked anchor(student visible-only) + **completion(self-attn)→routing 순서 교정**(RoutingInterpreterStep 뒤집기, 토글 플래그로) + Run A의 target norm 유지.
+- completion은 predictor(버려질 모듈)에 가두고 encoder는 visible-only → 마스킹 이득 encoder에 잔류.
+- **측정 = 학습-시 ablation**: full Parvo vs M routing 제거 두 run → P probing 비교(= M의 *표현* 기여, gold standard). inference ablation(의존도)은 부적합 — [cluster_sessions](cluster_sessions.md) §35493291 참조.

@@ -240,6 +240,9 @@ class TwoStreamV15Model(TwoStreamV11Model):
         composition_hidden_dim: Optional[int] = None,
         use_compose: bool = True,
         pair_mode: bool = False,
+        lambda_ssim: float = 0.02,
+        lambda_var: float = 0.0,
+        target_ln: bool = False,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -264,6 +267,17 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.lambda_m_jepa = lambda_m_jepa
         self.lambda_compose = lambda_compose
         self.mask_ratio_m_jepa = mask_ratio_m_jepa
+        # P MAE 복구 loss에 SSIM term 보강 (mse + λ_ssim·(1-SSIM)).
+        # MSE는 패치 평균색만 맞춰도 낮아 형상/고주파 collapse에 둔감 → 구버전 two-stream
+        # (v4~v10)처럼 SSIM으로 구조 보존 압력 추가. lambda_ssim=0이면 비활성(MSE only).
+        self.lambda_ssim = lambda_ssim
+        # Run A anti-collapse (2026-06-15): V-JEPA P 자기참조 constant collapse 방어.
+        #   target_ln=True: target(teacher) repr에 LayerNorm(affine 없음) — I-JEPA/V-JEPA 표준.
+        #     predictor 출력은 이미 p_motion_decoder_norm 통과 → 양쪽 scale 정합, magnitude 붕괴 차단.
+        #   lambda_var>0: VICReg식 variance reg — P encoder 출력 per-dim std<1에 hinge 패널티로
+        #     std collapse(우리가 본 균일 붕괴)를 직접 금지. 둘 다 기본 off라 기존 동작 불변.
+        self.lambda_var = lambda_var
+        self.target_ln = target_ln
         # pair_mode=True: 2-frame (t, t+k), L_compose 제거, V-JEPA P/M 단일 segment.
         #   compose 미입증 → 배제하고 motion routing만 검증. composition_head 미생성
         #   (DDP unused-param 회피). 3-frame ckpt resume 시 strict=False로 로드.
@@ -385,6 +399,12 @@ class TwoStreamV15Model(TwoStreamV11Model):
         err = ((patch_pred - patch_target) ** 2).mean(dim=-1)
         denom = mask.float().sum().clamp(min=1.0)
         loss = (err * mask.float()).sum() / denom
+        # SSIM 보강: 형상/구조 보존 압력 (MSE는 평균색에 둔감 → collapse 미검출).
+        # 지연 import로 순환 import 회피 (training.pretrain → models.two_stream).
+        if self.lambda_ssim > 0:
+            from src.training.pretrain import ssim_loss
+            recon_img = self._unpatchify(patch_pred)
+            loss = loss + self.lambda_ssim * ssim_loss(recon_img, image)
         return loss, patch_pred, mask, p_visible
 
     def _vjepa_p_one_segment(
@@ -428,10 +448,26 @@ class TwoStreamV15Model(TwoStreamV11Model):
         for step in self.p_motion_decoder:
             p_state = step(p_state, m_local_routing)
         predicted_tk_repr = self.p_motion_decoder_norm(p_state)
+        # Run A: target LayerNorm(affine 없음). 정답지(EMA teacher)가 작아져 이기는 scale 붕괴 차단.
+        # predicted는 이미 p_motion_decoder_norm(LayerNorm) 통과 → 양쪽 정규화로 scale 정합.
+        target_for_loss = (
+            F.layer_norm(target_repr_T.float(), (target_repr_T.shape[-1],))
+            if self.target_ln else target_repr_T.float()
+        )
         loss = F.smooth_l1_loss(
-            predicted_tk_repr.float(), target_repr_T.float(), reduction="mean",
+            predicted_tk_repr.float(), target_for_loss, reduction="mean",
         )
         return loss, predicted_tk_repr, target_repr_T
+
+    @staticmethod
+    def _variance_loss(z: torch.Tensor) -> torch.Tensor:
+        """VICReg variance term: per-dim batch std<1에 hinge 패널티 → std collapse 직접 금지.
+
+        z: [B, N, D] (CLS 제외 patch tokens 권장). 토큰을 배치 차원으로 펴서 차원별 std 계산.
+        """
+        z = z.reshape(-1, z.shape[-1]).float()
+        std = torch.sqrt(z.var(dim=0) + 1e-4)
+        return torch.mean(F.relu(1.0 - std))
 
     # ----------------------------------------------------------------------
     # Forward (pair) — 2-frame, no L_compose
@@ -486,17 +522,22 @@ class TwoStreamV15Model(TwoStreamV11Model):
         denom_m = mask_m.float().sum().clamp(min=1.0)
         loss_m_jepa = (err_m * mask_m.float()).sum() / denom_m
 
+        # Run A variance reg: P encoder 출력(frame_t visible patches)의 per-dim std collapse 금지.
+        zero = torch.zeros((), device=device, dtype=loss_t.dtype)
+        loss_var = self._variance_loss(p_t_visible[:, 1:]) if self.lambda_var > 0 else zero
+
         # Total (no compose)
-        loss = (loss_t + loss_tk) + self.lambda_pred * loss_pred + self.lambda_m_jepa * loss_m_jepa
+        loss = (loss_t + loss_tk) + self.lambda_pred * loss_pred \
+            + self.lambda_m_jepa * loss_m_jepa + self.lambda_var * loss_var
 
         cls_m_repr = m_local[:, 0]
-        zero = torch.zeros((), device=device, dtype=loss.dtype)
         return {
             "loss": loss,
             "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
             "loss_pred": loss_pred, "loss_pred_short": loss_pred,
             "loss_pred_step": loss_pred, "loss_pred_long": loss_pred,
             "loss_m_jepa": loss_m_jepa, "loss_compose": zero, "loss_dino": zero,
+            "loss_var": loss_var,
             "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_tk),
             "mask_p": mask_p_t, "mask_m": mask_m,
             "m_features": m_local[:, 1:], "p_features_t": p_t_visible[:, 1:],

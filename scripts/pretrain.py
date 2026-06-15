@@ -52,6 +52,8 @@ def main():
                         help='Number of epochs (default: 100)')
     parser.add_argument('--batch-size', type=int, default=32,
                         help='Batch size (default: 32, H100 can handle more)')
+    parser.add_argument('--lr-warmup-epochs', type=int, default=None,
+                        help='LR linear warmup epochs (default: num_epochs//10). scratch 초기 안정화용')
     parser.add_argument('--lr', type=float, default=1e-4,
                         help='Learning rate (default: 1e-4)')
 
@@ -245,6 +247,12 @@ def main():
     parser.add_argument('--pair-mode', action='store_true',
                         help='[Parvo 2-frame] 3-frame triple → 2-frame pair (t, t+k). L_compose 제거, '
                              'V-JEPA P/M 단일 segment. compose 미입증 → 배제하고 motion routing만 검증.')
+    parser.add_argument('--v15-lambda-var', type=float, default=0.0,
+                        help='[Run A anti-collapse] VICReg variance reg 가중치. P encoder 출력 per-dim '
+                             'std<1 hinge 패널티 → std collapse 직접 금지. 0=비활성(기존 동작).')
+    parser.add_argument('--v15-target-ln', action='store_true',
+                        help='[Run A anti-collapse] V-JEPA P target(EMA teacher) repr에 LayerNorm 적용 '
+                             '(I-JEPA 표준, scale collapse 차단). 미설정=비활성.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -417,6 +425,8 @@ def main():
             composition_hidden_dim=args.v15_composition_hidden_dim,
             pair_mode=args.pair_mode,
             use_compose=not args.pair_mode,
+            lambda_var=args.v15_lambda_var,
+            target_ln=args.v15_target_ln,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
@@ -574,6 +584,7 @@ def main():
         num_epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
+        lr_warmup_epochs=args.lr_warmup_epochs,
         device='cuda',
         checkpoint_dir=args.checkpoint_dir,
         save_interval=args.save_interval,

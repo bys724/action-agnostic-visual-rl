@@ -36,6 +36,9 @@ if [ "$MODEL" = "parvo" ]; then MODEL="two-stream-v15b"; PARVO_CKPT="parvo"; NO_
 NO_SOBEL_ARG=""; [ "${NO_SOBEL:-0}" = "1" ] && NO_SOBEL_ARG="--no-sobel"  # Parvo: P=RGB(3ch), M=ΔL(1ch)
 PAIR_ARG=""; [ "${PAIR_MODE:-0}" = "1" ] && PAIR_ARG="--pair-mode"  # 2-frame, no compose
 INIT_ARG=""; [ -n "${INIT_FROM:-}" ] && INIT_ARG="--init-from ${INIT_FROM}"
+# Run A anti-collapse: variance reg(VICReg) + target LayerNorm. 기본 off.
+VAR_ARG=""; [ -n "${V15_LAMBDA_VAR:-}" ] && VAR_ARG="--v15-lambda-var ${V15_LAMBDA_VAR}"
+TLN_ARG=""; [ "${V15_TARGET_LN:-0}" = "1" ] && TLN_ARG="--v15-target-ln"
 MAX_VIDEOS="${MAX_VIDEOS:-200}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
 EPOCHS="${EPOCHS:-5}"
@@ -86,7 +89,7 @@ echo ""
     --v15-ema-momentum-init "${V15_EMA_INIT:-$_EMA_INIT_DEFAULT}" \
     --v15-ema-momentum-final "${V15_EMA_FINAL:-0.9999}" \
     --v15-lambda-gate-epochs "$V15_GATE_EPOCHS" \
-    $NO_SOBEL_ARG $PAIR_ARG $INIT_ARG \
+    $NO_SOBEL_ARG $PAIR_ARG $INIT_ARG $VAR_ARG $TLN_ARG \
     --train-data egodex --egodex-root "$FRAMES_ROOT" \
     --egodex-splits part1 --max-videos "$MAX_VIDEOS" \
     --max-gap "${MAX_GAP:-30}" --sample-dist triangular --sample-center "${SAMPLE_CENTER:-15}" \
