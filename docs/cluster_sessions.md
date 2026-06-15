@@ -89,6 +89,16 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-06-15 Run B-2 — masked anchor (마스킹만으로 붕괴 해결 검증)
+
+**배경**: Run A(full anchor + variance reg λ=1.0) 붕괴(ep2 cos_intra_p→1.0). penalty가 강한 attractor에 짐 → **task-structural 해법 직행**. 가설(사용자) = anti-collapse 알고리즘 *없이* masking만으로 상수 read-off를 약화시킬 수 있나. 설계 = [v15b_retraining_status.md](v15b_retraining_status.md) §8.
+
+**설계 (커밋 예정)**: V-JEPA P를 MAE 포맷으로 통일 — ① anchor = student VISIBLE frame_t(MAE p_t_visible 재사용) + mask token 주입 → ② **interp(self-attn=완성)→routing(모션)** 순서(decode_first) → ③ **masked 위치에서만** teacher frame_tk 예측 loss. ④ M은 conditioning oracle이라 full routing 유지하되 **L_m_jepa 폐기**(λ_m_jepa=0, M 일관성). anti-collapse 알고리즘(variance reg/target_ln) **0**. 코드: `_vjepa_p_masked`, `RoutingInterpreterStep(decode_first)`, `--v15-masked-anchor`. CPU smoke 통과.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35788399 | AIP_long 2×4 H100 | 18:00:00 | **Run B-2 본학습 (cap 20ep)** (parvo pair scratch, masked_anchor + L_m_jepa=0, reg 없음, gate=0+warmup5, batch 64, part1-5, SUFFIX=runB2 → ckpt `parvo_runB2/`) | ⏳ 제출. **판정 ep2~4**(Run A는 ep2 붕괴) — std_p 유지·cos_intra_p<1·cos(pred,tgt)<0.99면 masking만으로 성공. 붕괴 시 B-1(variance reg 추가, 타게팅 수정)로. DDP unused-param(λ_mj=0) 첫 batch 점검 |
+
 ### 2026-06-15 Run A — target 정규화 anti-collapse (붕괴 정공법 전환)
 
 **배경**: SSIM/LR/warmup 5연패(35757465·35760276·35760399·35760680) 종결. 붕괴 근인 재진단 = V-JEPA P **자기참조 constant collapse**(target=EMA student 거울 → student 저분산화하면 target도 따라 무너져 loss→0). recon 노브는 증상만 건드림. → **target 정규화**(① target LayerNorm ② VICReg variance reg)로 전환. masked anchor(scaffold용)는 별개 영역이라 **Run B로 분리**(단일변수 격리). 상세 = [v15b_retraining_status.md](v15b_retraining_status.md) §8.
@@ -98,7 +108,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 35763563 | AIP 1×1 H100 | 02:00:00 | **Run A sanity** (parvo pair, gate=0, V15_LAMBDA_VAR=1.0 + target_ln, 50vid×3ep, SUFFIX=runA). 체크: DDP/GPU 무크래시·NaN 없음·loss 스케일·std 회복 | ✅ COMPLETED 3m13s (~0.05 GPU·h). **붕괴 궤적 역전 확인**: std_p 0.58→**1.0**(옛 붕괴는 →0, variance reg가 target=1로 끌어올림), cos_intra_p 0.60→**0.165**(P 다양화), cos(pred,tgt) 0.57~0.84(0.99 미saturate), NaN 없음. ⚠️ std_m 0.05(M엔 reg 없음, 옛 transient 패턴). 3ep라 증명 아님 but 궤적 명백 역전 → 통과 |
-| 35764680 | AIP_long 2×4 H100 | 18:00:00 | **Run A 본학습 (cap 20ep)** (parvo pair scratch, V15_LAMBDA_VAR=1.0+target_ln, gate=0+warmup5(V-JEPA 일찍 활성→판정 빠름), batch 64, lr 2e-4, part1-5, SUFFIX=runA → ckpt `parvo_runA/`). **50ep 안 감**(진단+baseline용, 라우팅순서 fix는 Run B). | ⏳ RUNNING. **판정 ep12**(cos(pred,tgt)<0.97·std_p 유지·viz GT급이면 통과), **조기경보 ep4~5**(L_t 역행 없어야). 붕괴 시 즉시 abort. 건강 시 ep16~20 멈춤(resume로 50 확장 가능=sunk cost 아님). 예상 ~12h/~96 GPU·h |
+| 35764680 | AIP_long 2×4 H100 | 18:00:00 | **Run A 본학습 (cap 20ep)** (parvo pair scratch, V15_LAMBDA_VAR=1.0+target_ln, gate=0+warmup5, batch 64, lr 2e-4, part1-5, SUFFIX=runA) | ❌ CANCELLED 2h19m (~18.6 GPU·h, ep5). **붕괴 재현 — variance reg(λ=1.0) 실패**: ep2부터 cos_intra_p→1.0, std_p→0.02, cos(pred,tgt)→0.995. **sanity(35763563)의 std_p 1.0은 오판** — 18 step뿐이라 붕괴 발현 전. 본학습은 ep1에 9030 step → 강한 collapse attractor가 λ_var=1.0 압도. 진단: λ_var 과소 or directional collapse(cos_intra→1, magnitude varies라 per-dim variance reg 미발화) → λ_var↑(VICReg=25) 또는 normalize-then-var 타게팅 수정, 혹은 Run B(task-structural)로 직행 |
 
 ### 2026-06-12 Parvo 2-frame pair 재설계 (compose 제거 + ep8 init)
 

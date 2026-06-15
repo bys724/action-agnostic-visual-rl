@@ -253,6 +253,9 @@ def main():
     parser.add_argument('--v15-target-ln', action='store_true',
                         help='[Run A anti-collapse] V-JEPA P target(EMA teacher) repr에 LayerNorm 적용 '
                              '(I-JEPA 표준, scale collapse 차단). 미설정=비활성.')
+    parser.add_argument('--v15-masked-anchor', action='store_true',
+                        help='[Run B] V-JEPA P anchor를 full→masked(MAE p_t_visible 재사용). mask token '
+                             '주입 후 routing → masked 위치에서만 teacher frame_tk 예측. MAE 포맷 통일.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -427,6 +430,7 @@ def main():
             use_compose=not args.pair_mode,
             lambda_var=args.v15_lambda_var,
             target_ln=args.v15_target_ln,
+            masked_anchor=args.v15_masked_anchor,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)

@@ -406,6 +406,7 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ "${PAIR_MODE:-0}" = "1" ] && MODEL_ARGS+=(--pair-mode)  # 2-frame, no compose
     [ -n "${V15_LAMBDA_VAR:-}" ] && MODEL_ARGS+=(--v15-lambda-var "${V15_LAMBDA_VAR}")  # Run A: VICReg variance reg
     [ "${V15_TARGET_LN:-0}" = "1" ] && MODEL_ARGS+=(--v15-target-ln)  # Run A: target LayerNorm
+    [ "${V15_MASKED_ANCHOR:-0}" = "1" ] && MODEL_ARGS+=(--v15-masked-anchor)  # Run B: masked anchor
     [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)
     if [ -n "${V15_COMP_HIDDEN:-}" ]; then
         MODEL_ARGS+=(--v15-composition-hidden-dim "${V15_COMP_HIDDEN}")

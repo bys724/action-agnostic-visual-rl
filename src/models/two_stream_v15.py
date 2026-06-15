@@ -57,7 +57,8 @@ class RoutingInterpreterStep(nn.Module):
     routing(M→P) cross-attention + interpreter self-attention. interleaved 패턴.
     """
 
-    def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float, routing_mode: str):
+    def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float, routing_mode: str,
+                 decode_first: bool = False):
         super().__init__()
         self.routing = MotionRoutingBlock(
             embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
@@ -66,10 +67,18 @@ class RoutingInterpreterStep(nn.Module):
         self.interp = TransformerBlock(
             embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
         )
+        # decode_first=True (Run B masked anchor): interp(self-attn=완성)→routing(모션).
+        #   mask token 주입된 입력을 먼저 self-attn으로 visible에서 채운 뒤 모션 적용
+        #   ("구멍 채운 뒤 이동"). False(기존 full anchor): routing→interp.
+        self.decode_first = decode_first
 
     def forward(self, p_state: torch.Tensor, m_local: torch.Tensor) -> torch.Tensor:
-        p_state = self.routing(p_state, m_local)
-        p_state = self.interp(p_state, freqs_cis=None)
+        if self.decode_first:
+            p_state = self.interp(p_state, freqs_cis=None)   # 완성(self-attn) 먼저
+            p_state = self.routing(p_state, m_local)          # 모션 routing 나중
+        else:
+            p_state = self.routing(p_state, m_local)
+            p_state = self.interp(p_state, freqs_cis=None)
         return p_state
 
 
@@ -243,6 +252,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         lambda_ssim: float = 0.02,
         lambda_var: float = 0.0,
         target_ln: bool = False,
+        masked_anchor: bool = False,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -278,6 +288,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
         #     std collapse(우리가 본 균일 붕괴)를 직접 금지. 둘 다 기본 off라 기존 동작 불변.
         self.lambda_var = lambda_var
         self.target_ln = target_ln
+        # Run B (masked anchor): V-JEPA P를 MAE 포맷으로 통일.
+        #   student VISIBLE frame_t 인코딩(=MAE의 p_t_visible 재사용) → mask token 주입 →
+        #   motion routing → **masked 위치에서만** teacher frame_tk 예측 loss.
+        #   "본 것(visible)으로 안 본 것(masked)의 미래를 예측" = MAE와 동일 포맷 →
+        #   상수 read-off trivial 해 약화 + 추론 강제. target=teacher frame_tk full의 masked 위치.
+        #   pair_mode 전용. anti-collapse 알고리즘(variance reg/target_ln)과 독립 토글.
+        self.masked_anchor = masked_anchor
         # pair_mode=True: 2-frame (t, t+k), L_compose 제거, V-JEPA P/M 단일 segment.
         #   compose 미입증 → 배제하고 motion routing만 검증. composition_head 미생성
         #   (DDP unused-param 회피). 3-frame ckpt resume 시 strict=False로 로드.
@@ -288,7 +305,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.p_motion_decoder = nn.ModuleList([
             RoutingInterpreterStep(
                 embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
-                routing_mode=routing_mode,
+                routing_mode=routing_mode, decode_first=masked_anchor,
             )
             for _ in range(num_motion_iters)
         ])
@@ -469,6 +486,38 @@ class TwoStreamV15Model(TwoStreamV11Model):
         std = torch.sqrt(z.var(dim=0) + 1e-4)
         return torch.mean(F.relu(1.0 - std))
 
+    def _vjepa_p_masked(
+        self,
+        p_t_visible: torch.Tensor,      # [B, 1+N_vis, D] student frame_t visible (MAE 재사용)
+        mask: torch.Tensor,             # [B, N] bool, True=masked (= MAE mask_p_t)
+        p_channel_target: torch.Tensor, # frame_tk (teacher 입력)
+        m_local_routing: torch.Tensor,  # [B, 1+N, D] full M (routing source)
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run B masked-anchor V-JEPA P — MAE 포맷 통일.
+
+        visible → mask token 주입(_build_full_seq_p, MAE와 동일) → motion routing →
+        **masked 위치에서만** teacher frame_tk 예측 loss. "본 것으로 안 본 미래 예측."
+        정렬: pred/target 양쪽 동일 `[mask]` 추출이라 구성상 자동 정합.
+        """
+        # 1. mask token 주입 → full seq (dec_pos 포함, MAE 복구 경로와 동일 머신어리)
+        full_seq = self._build_full_seq_p(p_t_visible, mask)  # [B, 1+N, D]
+        # 2. motion routing (M-conditioned)
+        p_state = full_seq
+        for step in self.p_motion_decoder:
+            p_state = step(p_state, m_local_routing)
+        predicted = self.p_motion_decoder_norm(p_state)  # [B, 1+N, D]
+        # 3. teacher target (full frame_tk, stop-grad)
+        with torch.no_grad():
+            target_full = self.teacher_p.forward_unmasked(p_channel_target).detach()  # [B, 1+N, D]
+        # 4. masked 위치만 loss
+        B, D = predicted.shape[0], predicted.shape[-1]
+        pred_m = predicted[:, 1:][mask].reshape(B, -1, D)
+        tgt_m = target_full[:, 1:][mask].reshape(B, -1, D).float()
+        if self.target_ln:
+            tgt_m = F.layer_norm(tgt_m, (D,))
+        loss = F.smooth_l1_loss(pred_m.float(), tgt_m, reduction="mean")
+        return loss, predicted, target_full
+
     # ----------------------------------------------------------------------
     # Forward (pair) — 2-frame, no L_compose
     # ----------------------------------------------------------------------
@@ -505,9 +554,15 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_local = self._encode_m_unmasked(m_chan)
 
         # 3. V-JEPA P × 1 (t → t+k): student anchor + M routing → teacher target
-        loss_pred, predicted_repr, target_repr = self._vjepa_p_one_segment(
-            m_chan, p_channel_t, p_channel_tk, m_local_routing=m_local,
-        )
+        if self.masked_anchor:
+            # Run B: masked anchor (MAE의 p_t_visible 재사용) → masked 위치 미래 예측
+            loss_pred, predicted_repr, target_repr = self._vjepa_p_masked(
+                p_t_visible, mask_p_t, p_channel_tk, m_local,
+            )
+        else:
+            loss_pred, predicted_repr, target_repr = self._vjepa_p_one_segment(
+                m_chan, p_channel_t, p_channel_tk, m_local_routing=m_local,
+            )
 
         # 4. V-JEPA M × 1 (Option B): M masked + decoder vs TeacherM unmasked
         mask_m = self._random_mask(B, device, self.mask_ratio_m_jepa)
