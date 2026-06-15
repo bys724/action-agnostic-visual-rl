@@ -157,7 +157,21 @@ NUM_WORKERS=8 \
 **정직한 경계**: masked anchor는 *task type*(부분→예측)은 통일하나 *target 추상도*는 다름 — MAE=픽셀(저수준), 모션=latent(고수준). MAE↔JEPA tension은 *줄지만* 완전히 사라지진 않음. (후속 갈래: 모션 target도 masked 픽셀로 가면 추상도까지 통일 가능 — 검토 대상.) 또 우리가 *본* 파괴적 양자택일은 collapse dynamic이었고(variance reg로 차단됨), 붕괴 막은 뒤 full anchor는 "경쟁"보다 "no-op(무임승차)"에 가까움 → 본 논리는 부정형("full=경쟁")보다 **긍정형("masked=시너지")**으로 쓸 것.
 
 **구현 함의**:
-- V-JEPA P anchor를 `_encode_p_unmasked`(full) → `_student_p_encode_visible`(masked, MAE와 동일 마스킹 분포 검토)로 교체.
+- V-JEPA P anchor를 `_encode_p_unmasked`(full) → `_student_p_encode_visible`(masked)로 교체. **MAE의 visible 인코딩을 *그대로 재사용*** (같은 mask·같은 forward) → 두 loss가 *같은 latent* 공유 + forward 절약.
+- 모션 loss를 **visible 위치**에 둠 (각 visible 패치의 미래 예측).
 - completion(self-attn)→routing 순서 (구멍 채운 뒤 모션 적용; 현재 RoutingInterpreterStep은 routing→interp 역순).
 - completion은 predictor(버려질 모듈)에 가두고 encoder는 visible-only 유지 → bottleneck이 encoder에 박혀 마스킹 이득 잔류.
-- Run A의 target norm(variance reg + target LayerNorm) 유지.
+
+**loss 위치 비대칭 — 마스킹이 좋은 또 다른 이유** (제4 근거):
+- MAE loss = **masked 위치** → visible latent *간접* 채점(interpreter 거쳐 "남을 복구하나").
+- 모션 loss = **visible 위치** → visible latent *직접* 채점("제 미래를 예측하나").
+- → 모션이 *배포 표현(visible patch)*을 **직접·덜 희석된** 신호로 co-shape. masking이 MAE/모션을 *같은 forward*로 묶어 인코더가 하나의 latent으로 둘 다 만족하게 함(full anchor는 masked/full 다른 forward = 분리됨).
+- **단 양날**: directness는 *증폭기*. 모션 건강하면 강한 scaffold, degenerate하면 collapse 가속. directness 이득은 non-triviality(masking+붕괴방지)와 세트로만.
+
+**검증 ablation (variance reg 필요 여부 — masking만으로 충분한가 가설)**:
+- **B-1**: masked anchor + variance reg (안전, belt-and-suspenders).
+- **B-2**: masked anchor **without** variance reg (가설: 마스킹이 상수해 basin을 자연 회피 — I-JEPA 선례).
+- B-2 안 무너지면 → variance reg 폐기(덜 왜곡된 표현, std≥1 강제 없음). 무너지면 보험 유지.
+- 주의: 마스킹은 상수 *최소점을 제거하진 못함*(teacher=EMA student라 상수도 loss=0) → basin of attraction 문제, 순수 경험적.
+- **왜 B-2가 "보장 아님"인지** (붕괴 메커니즘 정밀화): 우리가 본 붕괴는 *per-image 평균*(이미지마다 제 평균색)이 아니라 **global constant**(모든 샘플이 같은 남보라, viz 확인) = 자기참조가 만든 단일 벡터. 만약 "full 접근 → 그 이미지 평균 계산 → 출력"이 driver였다면 masking이 평균 접근을 끊어 *확실히* 고쳤겠지만, 실제는 자기참조라 masking은 상수로 가는 *추론 장벽만 높일 뿐* 최소점은 잔존 → B-2는 유망하나 시험 필요. (masking이 "평균 읽기"를 막는 효과가 정확히 맞는 곳은 MAE 픽셀 쪽 = "평균색만 맞춰도 MSE 낮음".)
+- Run A의 target norm(variance reg + target LayerNorm)은 B-1에 유지, B-2에서 variance reg만 제거(target LayerNorm은 scale 정합용이라 유지 검토).
