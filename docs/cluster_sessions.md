@@ -96,6 +96,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 35956105 | AIP_long 2×4 H100 | 18:00:00 | **B-2 continuation** (init_from ep20, +30ep, LR=1e-4 gentle, masked_anchor+L_m_jepa=0 동일, SUFFIX=runB2cont) | ⏳ PENDING. 완주 후 ep30 probing → R²>0.30이면 baseline 성숙. scaffold(routing trivial)는 별개 |
+| 35956537/540/541 | mig-1g.10gb ×3 | 00:20:00 | **B-2 viz 재생성** (ep2/11/20, `--masked-anchor`: decode_first 일치 + col5에 "masked t→라우팅→t+k 예측" 컬럼 신설) | ⏳ RUNNING |
+| 35956542 | mig-1g.10gb | 02:00:00 | **routed_tk probe** (ep20 part4 gap10 MV300). frame_t→라우팅→추론 t+k 임베딩 patch_mean(mean only). vs P_t⊕P_tk(0.30) — 라우팅이 action 정보 담나 | ⏳ RUNNING |
 
 ### 2026-06-15 Run B-2 — masked anchor (마스킹만으로 붕괴 해결 검증)
 
