@@ -89,6 +89,14 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-06-16 Run B-2 continuation — baseline 성숙 (init_from ep20 +30ep)
+
+**배경**: B-2 ep20 probing P R²=0.30/M 0.28(양수, patch healthy) → 가설 A("masked MAE concat baseline 쓸만") 지지. 더 학습 시 R² 오르는지 검증. **resume_from은 ckpt scheduler(T_max=15 이미 끝=LR≈0) 복원해 ep21+ 학습 안 됨** → `init_from`(가중치만+fresh LR)로 우회.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 35956105 | AIP_long 2×4 H100 | 18:00:00 | **B-2 continuation** (init_from ep20, +30ep, LR=1e-4 gentle, masked_anchor+L_m_jepa=0 동일, SUFFIX=runB2cont) | ⏳ PENDING. 완주 후 ep30 probing → R²>0.30이면 baseline 성숙. scaffold(routing trivial)는 별개 |
+
 ### 2026-06-15 Run B-2 — masked anchor (마스킹만으로 붕괴 해결 검증)
 
 **배경**: Run A(full anchor + variance reg λ=1.0) 붕괴(ep2 cos_intra_p→1.0). penalty가 강한 attractor에 짐 → **task-structural 해법 직행**. 가설(사용자) = anti-collapse 알고리즘 *없이* masking만으로 상수 read-off를 약화시킬 수 있나. 설계 = [v15b_retraining_status.md](v15b_retraining_status.md) §8.
@@ -100,7 +108,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 35788399 | AIP_long 2×4 H100 | 18:00:00 | **Run B-2 본학습 (20ep)** (parvo pair scratch, masked_anchor + L_m_jepa=0, reg 없음, gate=0+warmup5, batch 64, part1-5, SUFFIX=runB2) | ❌ COMPLETED 20ep 7h29m (**~60 GPU·h**) but **붕괴 — 마스킹만으론 불충분**. 궤적: **ep1-2 Run A보다 건강**(ep2 std_p=0.261/cos_intra_p=0.877, Run A는 ep2 0.039/0.999) → ep3 붕괴 → **ep4-7 부분 회복**(std_p 0.05-0.075, 진동) → ep12+ 완전 붕괴(std_p 0.006, cos_intra_p=1.0, cos(pred,tgt)=0.999). **마스킹이 basin을 *완화·지연*했으나 상수 attractor가 결국 승**(예측대로 "minimum 미제거"). M(std_m 0.18)·DDP(λ_mj=0)는 정상. **사고: ep4 abort 미설정**(21:28 야간 시작, 무감시 완주) → sbatch는 Monitor/wakeup 능동 폴링 필요. 다음 = B-1(masked + *타게팅 수정*된 reg) |
 
 | 35926031/032 | mig-1g.10gb ×2 | — | Run B-2 probing 1차 | ❌ CANCELLED. parvo probe 경로 작동 확인(embed_dim 1536, 가중치 로드 OK) but **max_videos 미설정 → part4 전체 4.2M 샘플 폭증**(MIG 2h 내 불가). probe sbatch에 MAX_VIDEOS 인자 추가 후 재제출 |
-| 35948313/314 | mig-1g.10gb ×2 | 02:00:00 | **Run B-2 probing 재제출** (MAX_VIDEOS=300, ep20 part4 gap10). 313=P(P_t⊕P_tk appearance), 314=M(ΔL motion). 판정: R² 양수·baseline급(v15 +0.39/VideoMAE +0.47)이면 → resume 추가학습 | ⏳ RUNNING (MIG, ~28K 샘플) |
+| 35948313/314 | mig-1g.10gb ×2 | 02:00:00 | **Run B-2 probing 재제출** (MAX_VIDEOS=300, ep20 part4 gap10). 313=P, 314=M | ✅ COMPLETED 2m9s/1m28s. **P R²=0.30 / M R²=0.28 (둘 다 양수)** → **patch 표현 healthy**(CLS만 붕괴, scaffold trivial). unmatched 맥락: v11 +0.29 / v15 +0.39 / VideoMAE +0.47 → v11급. 가설 A(masked MAE concat baseline) 지지 → continuation(35956105) |
 | 35924392/554/555 | normal(V100) 1×1 ×3 | 00:20:00 | **Run B-2 가시화 3시점** (collapse 진행 시각화, NO_SOBEL=1, OUT_DIR=parvo_runB2_recon_samples). 392=ep20(붕괴 std_p 0.006), 554=ep2(건강 std_p 0.26=peak, best_model.pt은 eval loss 함정이라 제외), 555=ep11(중간) | ⏳ 제출 (전부 PENDING, V100 자원 대기) |
 
 ### 2026-06-15 Run A — target 정규화 anti-collapse (붕괴 정공법 전환)
