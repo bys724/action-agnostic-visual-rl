@@ -47,6 +47,8 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--no-sobel", action="store_true",
                     help="Parvo/Paper2 no-Sobel 모델 (P=RGB 3ch, M=ΔL 1ch)")
+    ap.add_argument("--masked-anchor", action="store_true",
+                    help="Run B masked anchor 모델 (decode_first 라우팅 순서 일치 + masked 라우팅 컬럼)")
     ap.add_argument("--num-egodex-train", type=int, default=3,
                     help="EgoDex train split(part1, SEEN) sample 수 — 학습데이터 복구")
     ap.add_argument("--egodex-train-split", default="part1")
@@ -91,6 +93,7 @@ def main():
         use_sobel=not args.no_sobel,
         mask_ratio_m_jepa=args.mask_ratio_m_jepa,
         pair_mode=True,
+        masked_anchor=args.masked_anchor,
     )
     sd = ckpt["model_state_dict"]
     sd = {(k[7:] if k.startswith("module.") else k): v for k, v in sd.items()}
@@ -183,12 +186,22 @@ def main():
             )
             motion = to_pixel_from_repr(pred_motion)
 
+            # masked frame_t → 모션 라우팅 → frame_t+k 예측 → pixels (Run B 학습 경로 = masked anchor).
+            # masked 복구(col3-4) 다음에 배치 = "본 것으로 안 본 미래 예측" 흐름 일치.
+            motion_masked = None
+            if args.masked_anchor:
+                model.mask_ratio_p = 0.75
+                _, _, mask_mt, p_t_vis = model._mae_one_frame(x_t, p_t)
+                _, pred_motion_masked, _ = model._vjepa_p_masked(p_t_vis, mask_mt, p_tk, m_local)
+                motion_masked = to_pixel_from_repr(pred_motion_masked)
+
             rows.append({
                 "dataset": dataset_name,
                 "img_t": to_np_image(x_t),
                 "img_tk": to_np_image(x_tk),
                 "recon_t_masked": recon_t_masked,
                 "recon_tk_masked": recon_tk_masked,
+                "motion_masked": motion_masked,
                 "recon_t": recon_t,
                 "recon_tk": recon_tk,
                 "motion": motion,
@@ -200,16 +213,15 @@ def main():
         return
 
     N = len(rows)
-    col_titles = [
-        "GT t", "GT t+k",
-        "Recon t\n(75% masked)",
-        "Recon t+k\n(75% masked)",
-        "Recon t\n(nomask, OOD)",
-        "Recon t+k\n(nomask, OOD)",
-        "Motion t→t+k\n(V-JEPA P routing)",
-    ]
-    keys = ["img_t", "img_tk", "recon_t_masked", "recon_tk_masked",
-            "recon_t", "recon_tk", "motion"]
+    col_titles = ["GT t", "GT t+k",
+                  "Recon t\n(75% masked)", "Recon t+k\n(75% masked)"]
+    keys = ["img_t", "img_tk", "recon_t_masked", "recon_tk_masked"]
+    if args.masked_anchor:
+        col_titles.append("Masked t→routing\n(→t+k 예측)")
+        keys.append("motion_masked")
+    col_titles += ["Recon t\n(nomask, OOD)", "Recon t+k\n(nomask, OOD)",
+                   "Motion t→t+k\n(V-JEPA P routing)"]
+    keys += ["recon_t", "recon_tk", "motion"]
     ncols = len(keys)
     fig, axes = plt.subplots(N, ncols, figsize=(3 * ncols, 3.2 * N))
     if N == 1:

@@ -541,6 +541,16 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             # M encoder: frame_t,tk 조합(ΔL motion channel) patch_mean (motion)
             m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
             return encoder._encode_m_unmasked(m_chan)[:, 1:].mean(dim=1)  # [B, D]
+        elif cls_mode == "patch_mean_routed_tk":
+            # frame_t → P enc(anchor) → M routing → *추론된* frame_t+k repr의 patch_mean (mean only, NOT concat).
+            # 실제 P(t+k)가 아니라 라우팅 예측을 씀 → "라우팅이 motion/action 정보를 담나" 검증.
+            # 라우팅은 viz col7과 동일(full anchor _vjepa_p_one_segment).
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            p_tk = encoder.preprocessing.compute_p_channel(img_tk)  # 함수 시그니처용(target), 미사용
+            m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
+            m_local = encoder._encode_m_unmasked(m_chan)
+            _, pred_tk, _ = encoder._vjepa_p_one_segment(m_chan, p_t, p_tk, m_local_routing=m_local)
+            return pred_tk[:, 1:].mean(dim=1)  # [B, D] routed prediction patch_mean (768)
         else:
             raise ValueError(f"parvo: unsupported cls_mode {cls_mode}")
 
@@ -867,7 +877,7 @@ def main():
                         choices=["average", "concat", "m_only", "p_only",
                                  "patch_mean", "patch_mean_m", "patch_mean_p",
                                  "patch_mean_concat",
-                                 "patch_mean_concat_p_t_p_tk",
+                                 "patch_mean_concat_p_t_p_tk", "patch_mean_routed_tk",
                                  "cls_p_bg", "cls_p_motion", "all_cls_concat"],
                         help="Two-Stream embedding 추출 방식 (default: average). "
                              "patch_mean_concat_p_t_p_tk: videomae §C7 catalyst evidence")

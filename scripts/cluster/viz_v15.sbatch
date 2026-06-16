@@ -29,6 +29,7 @@ cd "$PROJECT_ROOT"
 
 EXTRA_ARGS=()
 [ "$NO_SOBEL" = "1" ] && EXTRA_ARGS+=(--no-sobel)
+[ "${MASKED_ANCHOR:-0}" = "1" ] && EXTRA_ARGS+=(--masked-anchor)  # Run B: decode_first + masked 라우팅 컬럼
 
 "$PY" scripts/eval/visualize_v15_no_mask.py \
     --ckpt "$CKPT" --num-egodex-train 3 --num-droid 3 --seed 42 \
