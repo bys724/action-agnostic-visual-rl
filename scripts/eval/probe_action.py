@@ -361,6 +361,23 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
             embed_dim = base_dim
         return encoder, embed_dim
 
+    elif name == "parvo":
+        # Parvo (TwoStreamV15Model, no-Sobel: P=RGB 3ch, M=ΔL 1ch). pair_mode.
+        from src.models.two_stream_v15 import TwoStreamV15Model
+        assert checkpoint and checkpoint != "random", "--checkpoint required for parvo"
+        encoder = TwoStreamV15Model(pair_mode=True, use_sobel=False, masked_anchor=True)
+        ckpt = torch.load(checkpoint, map_location="cpu")
+        sd = ckpt.get("model_state_dict", ckpt)
+        sd = {k.replace("module.", ""): v for k, v in sd.items()}
+        missing, unexpected = encoder.load_state_dict(sd, strict=False)
+        # P/M encoder 가중치가 실제로 로드됐는지 확인 (random이면 probe 무의미)
+        _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]
+        assert not _enc_missing, f"parvo: P/M encoder 가중치 미로드 {_enc_missing[:5]}"
+        encoder.to(device).eval()
+        base_dim = encoder.embed_dim  # 768
+        embed_dim = base_dim * 2 if cls_mode == "patch_mean_concat_p_t_p_tk" else base_dim
+        return encoder, embed_dim
+
     elif name == "videomae":
         from src.models.videomae import VideoMAEEncoderForVLA
         assert checkpoint, "--checkpoint required for videomae"
@@ -509,6 +526,23 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             return torch.cat([m_cls] + [p_tokens[:, i] for i in range(K)], dim=-1)
         else:
             raise ValueError(f"Unknown cls_mode: {cls_mode}")
+
+    elif name == "parvo":
+        img_t = pixel_values[:, :3]
+        img_tk = pixel_values[:, 3:]
+        if cls_mode == "patch_mean_concat_p_t_p_tk":
+            # P encoder만: frame_t, frame_tk 각자 patch_mean → concat (appearance)
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            p_tk = encoder.preprocessing.compute_p_channel(img_tk)
+            feat_t = encoder._encode_p_unmasked(p_t)[:, 1:].mean(dim=1)   # [B, D]
+            feat_tk = encoder._encode_p_unmasked(p_tk)[:, 1:].mean(dim=1)
+            return torch.cat([feat_t, feat_tk], dim=-1)                   # [B, 2D]
+        elif cls_mode == "patch_mean_m":
+            # M encoder: frame_t,tk 조합(ΔL motion channel) patch_mean (motion)
+            m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
+            return encoder._encode_m_unmasked(m_chan)[:, 1:].mean(dim=1)  # [B, D]
+        else:
+            raise ValueError(f"parvo: unsupported cls_mode {cls_mode}")
 
     elif name == "videomae":
         # tubelet_size=2가 (frame_t, frame_tk)를 시공간 patch 1개로 묶음 → 단일 frame
@@ -807,7 +841,7 @@ def main():
     parser = argparse.ArgumentParser(description="Action Probing Experiment")
 
     parser.add_argument("--encoder", type=str, required=True,
-                        choices=["two-stream", "videomae", "clip", "dinov2", "siglip", "vc1", "vjepa2", "videomae-official"])
+                        choices=["two-stream", "parvo", "videomae", "clip", "dinov2", "siglip", "vc1", "vjepa2", "videomae-official"])
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Encoder checkpoint path (required for two-stream, videomae)")
     parser.add_argument("--egodex-root", type=str, default="/mnt/data/egodex",

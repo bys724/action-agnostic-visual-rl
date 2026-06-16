@@ -97,7 +97,11 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 35788399 | AIP_long 2×4 H100 | 18:00:00 | **Run B-2 본학습 (cap 20ep)** (parvo pair scratch, masked_anchor + L_m_jepa=0, reg 없음, gate=0+warmup5, batch 64, part1-5, SUFFIX=runB2 → ckpt `parvo_runB2/`) | ⏳ 제출. **판정 ep2~4**(Run A는 ep2 붕괴) — std_p 유지·cos_intra_p<1·cos(pred,tgt)<0.99면 masking만으로 성공. 붕괴 시 B-1(variance reg 추가, 타게팅 수정)로. DDP unused-param(λ_mj=0) 첫 batch 점검 |
+| 35788399 | AIP_long 2×4 H100 | 18:00:00 | **Run B-2 본학습 (20ep)** (parvo pair scratch, masked_anchor + L_m_jepa=0, reg 없음, gate=0+warmup5, batch 64, part1-5, SUFFIX=runB2) | ❌ COMPLETED 20ep 7h29m (**~60 GPU·h**) but **붕괴 — 마스킹만으론 불충분**. 궤적: **ep1-2 Run A보다 건강**(ep2 std_p=0.261/cos_intra_p=0.877, Run A는 ep2 0.039/0.999) → ep3 붕괴 → **ep4-7 부분 회복**(std_p 0.05-0.075, 진동) → ep12+ 완전 붕괴(std_p 0.006, cos_intra_p=1.0, cos(pred,tgt)=0.999). **마스킹이 basin을 *완화·지연*했으나 상수 attractor가 결국 승**(예측대로 "minimum 미제거"). M(std_m 0.18)·DDP(λ_mj=0)는 정상. **사고: ep4 abort 미설정**(21:28 야간 시작, 무감시 완주) → sbatch는 Monitor/wakeup 능동 폴링 필요. 다음 = B-1(masked + *타게팅 수정*된 reg) |
+
+| 35926031/032 | mig-1g.10gb ×2 | — | Run B-2 probing 1차 | ❌ CANCELLED. parvo probe 경로 작동 확인(embed_dim 1536, 가중치 로드 OK) but **max_videos 미설정 → part4 전체 4.2M 샘플 폭증**(MIG 2h 내 불가). probe sbatch에 MAX_VIDEOS 인자 추가 후 재제출 |
+| 35948313/314 | mig-1g.10gb ×2 | 02:00:00 | **Run B-2 probing 재제출** (MAX_VIDEOS=300, ep20 part4 gap10). 313=P(P_t⊕P_tk appearance), 314=M(ΔL motion). 판정: R² 양수·baseline급(v15 +0.39/VideoMAE +0.47)이면 → resume 추가학습 | ⏳ RUNNING (MIG, ~28K 샘플) |
+| 35924392/554/555 | normal(V100) 1×1 ×3 | 00:20:00 | **Run B-2 가시화 3시점** (collapse 진행 시각화, NO_SOBEL=1, OUT_DIR=parvo_runB2_recon_samples). 392=ep20(붕괴 std_p 0.006), 554=ep2(건강 std_p 0.26=peak, best_model.pt은 eval loss 함정이라 제외), 555=ep11(중간) | ⏳ 제출 (전부 PENDING, V100 자원 대기) |
 
 ### 2026-06-15 Run A — target 정규화 anti-collapse (붕괴 정공법 전환)
 
