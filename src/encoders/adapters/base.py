@@ -72,6 +72,10 @@ def build_adapter(
         from .two_stream_v15_mp import TwoStreamV15MPAdapter
         return TwoStreamV15MPAdapter(checkpoint_path=checkpoint_path, **kwargs)
 
+    if encoder_type == "parvo-ptptk":
+        from .parvo_pt_ptk import ParvoPtPtkAdapter
+        return ParvoPtPtkAdapter(checkpoint_path=checkpoint_path, **kwargs)
+
     if encoder_type == "videomae-ours":
         from .videomae import VideoMAEOursAdapter
         return VideoMAEOursAdapter(checkpoint_path=checkpoint_path, **kwargs)

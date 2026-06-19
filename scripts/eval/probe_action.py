@@ -375,7 +375,8 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         assert not _enc_missing, f"parvo: P/M encoder 가중치 미로드 {_enc_missing[:5]}"
         encoder.to(device).eval()
         base_dim = encoder.embed_dim  # 768
-        embed_dim = base_dim * 2 if cls_mode == "patch_mean_concat_p_t_p_tk" else base_dim
+        embed_dim = base_dim * 2 if cls_mode in ("patch_mean_concat_p_t_p_tk",
+                                                 "patch_mean_concat_p_t_m") else base_dim
         return encoder, embed_dim
 
     elif name == "videomae":
@@ -537,6 +538,15 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
             feat_t = encoder._encode_p_unmasked(p_t)[:, 1:].mean(dim=1)   # [B, D]
             feat_tk = encoder._encode_p_unmasked(p_tk)[:, 1:].mean(dim=1)
             return torch.cat([feat_t, feat_tk], dim=-1)                   # [B, 2D]
+        elif cls_mode == "patch_mean_concat_p_t_m":
+            # P(frame_t) appearance ⊕ M(frame_t, frame_tk) motion → [B, 2D] (1536).
+            # p_t_p_tk와 달리 M(motion) stream을 직접 사용 → Parvo 양 stream 통합 readout.
+            # 주의: baseline엔 M stream 없어 matched-mode 비교 아님(best-mode-per-encoder).
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            feat_p = encoder._encode_p_unmasked(p_t)[:, 1:].mean(dim=1)       # [B, D] appearance(t)
+            m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
+            feat_m = encoder._encode_m_unmasked(m_chan)[:, 1:].mean(dim=1)    # [B, D] motion(t,tk)
+            return torch.cat([feat_p, feat_m], dim=-1)                        # [B, 2D]
         elif cls_mode == "patch_mean_m":
             # M encoder: frame_t,tk 조합(ΔL motion channel) patch_mean (motion)
             m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
@@ -877,7 +887,8 @@ def main():
                         choices=["average", "concat", "m_only", "p_only",
                                  "patch_mean", "patch_mean_m", "patch_mean_p",
                                  "patch_mean_concat",
-                                 "patch_mean_concat_p_t_p_tk", "patch_mean_routed_tk",
+                                 "patch_mean_concat_p_t_p_tk", "patch_mean_concat_p_t_m",
+                                 "patch_mean_routed_tk",
                                  "cls_p_bg", "cls_p_motion", "all_cls_concat"],
                         help="Two-Stream embedding 추출 방식 (default: average). "
                              "patch_mean_concat_p_t_p_tk: videomae §C7 catalyst evidence")

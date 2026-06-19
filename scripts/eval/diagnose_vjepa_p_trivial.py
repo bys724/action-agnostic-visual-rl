@@ -44,11 +44,14 @@ def main():
     ap.add_argument("--tag", default="sanity_3ep")
     ap.add_argument("--no-sobel", action="store_true",
                     help="Parvo/Paper2 no-Sobel 모델 (P=RGB 3ch, M=ΔL 1ch)")
+    ap.add_argument("--masked-anchor", action="store_true",
+                    help="Run B masked anchor (decode_first 라우팅 순서 일치)")
     args = ap.parse_args()
     CKPT = args.ckpt
     print(f"[ckpt] {args.tag}: {CKPT}  (no_sobel={args.no_sobel})")
 
-    model = TwoStreamV15Model(routing_mode="v_from_p", use_sobel=not args.no_sobel)
+    model = TwoStreamV15Model(routing_mode="v_from_p", use_sobel=not args.no_sobel,
+                              pair_mode=True, masked_anchor=args.masked_anchor)
     ckpt = torch.load(CKPT, map_location="cpu", weights_only=False)
     sd = ckpt.get("model_state_dict", ckpt)
     sd = {(k[7:] if k.startswith("module.") else k): v for k, v in sd.items()}
@@ -60,7 +63,7 @@ def main():
                        max_videos=10, sample_center=15, return_triple=True)
     print(f"[data] EgoDex part1: {len(ds)} samples")
 
-    cb, cn, ca = [], [], []
+    cb, cn, ca, cp = [], [], [], []  # cp = cos(pred, 현재 target=teacher_t)
     cls_list, patch_list = [], []  # 교차샘플 collapse 진단 (CLS vs patch)
     by_gap = defaultdict(list)  # gap bucket → baseline cos
     with torch.no_grad():
@@ -91,6 +94,7 @@ def main():
                 p_state = step(p_state, m_local)
             pred = model.p_motion_decoder_norm(p_state)
             cn.append(cos_tok(pred, tgt_tn))
+            cp.append(cos_tok(pred, tgt_t))   # 예측이 *현재*(t)에 가까운가 = identity 의심
 
             p_state = anchor_s
             mz = torch.zeros_like(m_local)
@@ -105,6 +109,13 @@ def main():
     print(f"3. M=0 ablt  cos(pred_M0, target)        = {np.mean(ca):+.4f}  (std {np.std(ca):.3f})")
     print(f"Δ(predictor − baseline) = {np.mean(cn) - np.mean(cb):+.4f}")
     print(f"Δ(predictor − M=0)      = {np.mean(cn) - np.mean(ca):+.4f}  (M routing 기여)")
+    print(f"\n=== trivial vs 진짜 예측 판정 (핵심) ===")
+    print(f"  baseline cos(현재 t, 미래 t+n)       = {np.mean(cb):+.4f}  ← 1에 가까우면 frame이 안 변함(애초에 trivial 쉬움)")
+    print(f"  cos(pred, 미래 t+n)                  = {np.mean(cn):+.4f}")
+    print(f"  cos(pred, 현재 t)                    = {np.mean(cp):+.4f}")
+    print(f"  Δ = cos(pred,미래) − cos(pred,현재)  = {np.mean(cn) - np.mean(cp):+.4f}")
+    print(f"  → Δ>0 & baseline 낮으면: 예측이 *미래*에 더 가까움 = 진짜 예측(non-trivial)")
+    print(f"  → cos(pred,현재)≈cos(pred,미래) & baseline 높으면: identity = trivial")
 
     # CLS vs patch collapse 진단 (교차샘플): collapse면 cross-sample std→0, cos→1.
     # recon은 patch로 됨 → patch가 healthy면 'CLS만 collapse'라 recon 모순 없음.

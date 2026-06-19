@@ -186,6 +186,16 @@ def main():
             )
             motion = to_pixel_from_repr(pred_motion)
 
+            # 동일 프레임 self-pair 라우팅: M(x,x)≈0 (zero-motion) anchor=target=p_t → 라우팅.
+            # 단일프레임 inference 모드(full pipeline 사용). ⚠️ M엔 OOD(학습은 실제 motion만 봄)
+            # → "정지 관찰을 라우팅이 어떻게 변환하나" 진단. M=0이라 pred≈P_t 예상.
+            m_chan_self = model.preprocessing.compute_m_channel(x_t, x_t)
+            m_local_self = model._encode_m_unmasked(m_chan_self)
+            _, pred_motion_self, _ = model._vjepa_p_one_segment(
+                m_chan_self, p_t, p_t, m_local_routing=m_local_self,
+            )
+            motion_self = to_pixel_from_repr(pred_motion_self)
+
             # masked frame_t → 모션 라우팅 → frame_t+k 예측 → pixels (Run B 학습 경로 = masked anchor).
             # masked 복구(col3-4) 다음에 배치 = "본 것으로 안 본 미래 예측" 흐름 일치.
             motion_masked = None
@@ -205,6 +215,7 @@ def main():
                 "recon_t": recon_t,
                 "recon_tk": recon_tk,
                 "motion": motion,
+                "motion_self": motion_self,
                 "gap": int(gap),
             })
 
@@ -220,8 +231,9 @@ def main():
         col_titles.append("Masked t→routing\n(→t+k 예측)")
         keys.append("motion_masked")
     col_titles += ["Recon t\n(nomask, OOD)", "Recon t+k\n(nomask, OOD)",
-                   "Motion t→t+k\n(V-JEPA P routing)"]
-    keys += ["recon_t", "recon_tk", "motion"]
+                   "Motion t→t+k\n(V-JEPA P routing)",
+                   "Motion x→x\n(self-pair, M≈0)"]
+    keys += ["recon_t", "recon_tk", "motion", "motion_self"]
     ncols = len(keys)
     fig, axes = plt.subplots(N, ncols, figsize=(3 * ncols, 3.2 * N))
     if N == 1:

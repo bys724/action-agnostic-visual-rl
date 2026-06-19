@@ -1,5 +1,7 @@
 # Action Probing Guide
 
+> 🔴 **2026-06-18 parity 주의**: **정규 평가 조건의 단일 출처는 [`docs/eval_protocols.md`](eval_protocols.md)** (split·샘플수·gap·전처리·probe 전수 점검본). 본 문서의 일부 표는 stale(예: EgoDex는 `test` split 180921샘플이 정규인데 `part4` 혼동 사례 발생, LIBERO "+0.660/dinov2" 표는 현재 artifact로 재현 불가). 새 모델 비교 전 eval_protocols.md 체크리스트 필독.
+>
 > 🔴 **2026-06-11 재편 주의**: 본 문서의 "v11/v15 champion", "paper main" 해석은 그 이전 시점 프레이밍. catalyst 인과 철회 + 2논문 분리 + 모델 명명(Parvo=code v15b) 이후 정규 출처는 [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조". **probing 수치·테이블 자체는 유효 기록**이나, 그 위의 결론·우열 서술은 재해석 필요. 특히 v15 P_t⊕P_tk +0.390은 motion 인과가 아니라 multi-frame concat artifact 의심 (CLAUDE.md 참조).
 
 ## 실험 개요
@@ -68,7 +70,7 @@ sbatch scripts/cluster/probe_action.sbatch  # sbatch launcher
 
 ### LIBERO Action Probing (Phase 2 보강) ✅ POSITIVE (2026-04-30 완료)
 
-DROID action probing R²~0.005 한계를 LIBERO sim 환경에서 보완. Gap-matched protocol (LIBERO 20Hz {1,13,20,40} = DROID 15Hz {1,10,15,30}). Plan: [`libero_action_probing_plan.md`](libero_action_probing_plan.md).
+DROID action probing R²~0.005 한계를 LIBERO sim 환경에서 보완. Gap-matched protocol (LIBERO 20Hz {1,13,20,40} = DROID 15Hz {1,10,15,30}). Plan: [`archive/libero_action_probing_plan.md`](archive/libero_action_probing_plan.md).
 
 **구현**: [`scripts/eval/probe_action_libero.py`](../scripts/eval/probe_action_libero.py) + [`scripts/cluster/probe_action_libero.sbatch`](../scripts/cluster/probe_action_libero.sbatch). 5 encoder × 3 suite × 4 gap = 60 cells, ~3.6 GPU·h. 한 잡 안에서 4 gaps loop (encoder forward 동일 비용, 큐 점유 줄임).
 
@@ -113,7 +115,7 @@ Phase 2 보강 LIBERO action probing 결과의 한계 (P stream specialization p
 - 가설: **B (P encoder) > A (M encoder)** — single frame 에서 P 우위 → functional differentiation 양방향 입증
 - 비용 ~2 GPU·h, 1-2일
 
-**자세한 plan + 주의사항 + pseudocode + HDF5 sanity (Step 1) + TODO checklist**: [`libero_task_classification_plan.md`](libero_task_classification_plan.md)
+**자세한 plan + 주의사항 + pseudocode + HDF5 sanity (Step 1) + TODO checklist**: [`archive/libero_task_classification_plan.md`](archive/libero_task_classification_plan.md)
 
 **4 시나리오별 후속 계획** (실험 결과 보고 paper 측 framing 결정):
 - B > A: paper §4 새 sub-section "Functional Differentiation Two Directions" 검토

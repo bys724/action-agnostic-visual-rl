@@ -287,7 +287,7 @@ Two-Stream v6/v10, VideoMAE-ours, CLIP, DINOv2, SigLIP, VC-1, V-JEPA 2.1 ViT-B (
 
 **동기**: DROID action probing 절대 R² ~0.005 한계를 LIBERO sim 환경에서 보완 — 같은 gap-matched protocol로 5 encoder 비교, 절대 R² 0.3~0.7 range 확보.
 
-**Plan/구현**: [`docs/libero_action_probing_plan.md`](libero_action_probing_plan.md) + [`scripts/eval/probe_action_libero.py`](../scripts/eval/probe_action_libero.py) + [`scripts/cluster/probe_action_libero.sbatch`](../scripts/cluster/probe_action_libero.sbatch). 5 encoder × 3 LIBERO suite × 4 gap (1, 13, 20, 40 ≈ DROID 1, 10, 15, 30 시간 매칭). 한 잡 = (encoder × suite) × 4 gaps loop → 15 잡, 누적 **~3.6 GPU·h**.
+**Plan/구현**: [`docs/archive/libero_action_probing_plan.md`](archive/libero_action_probing_plan.md) + [`scripts/eval/probe_action_libero.py`](../scripts/eval/probe_action_libero.py) + [`scripts/cluster/probe_action_libero.sbatch`](../scripts/cluster/probe_action_libero.sbatch). 5 encoder × 3 LIBERO suite × 4 gap (1, 13, 20, 40 ≈ DROID 1, 10, 15, 30 시간 매칭). 한 잡 = (encoder × suite) × 4 gaps loop → 15 잡, 누적 **~3.6 GPU·h**.
 
 **Target (plan §3)**: pose-derived 7-DoF (3 pos + 3 rotvec + 1 gripper). cumulative action sum 사용 안 함 — `eef_pos[t+k] - eef_pos[t]`, `(R.from_rotvec(ee_ori[t]).inv() * R.from_rotvec(ee_ori[t+k])).as_rotvec()`, `actions[t+k-1, 6]`. OSC scaling 영향 무관.
 
@@ -688,7 +688,7 @@ DDP: 2 nodes × 4 H100 on AIP_long partition
 
 > 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조" + "현재 Phase". 아래 Phase 1~3B 기록은 **v11-era history** (개발 narrative 보존용, 현재 상태 아님).
 
-**2026-06-11 요약**: 2논문 분리. Paper 1(ICRA) = P단독 image MAE > VideoMAE **좁게 입증** → ablation(edge vs RGB)·실로봇 남음. Paper 2(AAAI) = **Parvo(code v15b)** scaffold 설계 검증 중 (본학습 보류). 상세: [`paper1_input_prior_plan.md`](paper1_input_prior_plan.md) · [`paper_experiments_plan.md`](paper_experiments_plan.md) · [`v15b_retraining_status.md`](v15b_retraining_status.md).
+**2026-06-11 요약**: 2논문 분리. Paper 1(ICRA) = P단독 image MAE > VideoMAE **좁게 입증** → ablation(edge vs RGB)·실로봇 남음. Paper 2(AAAI) = **Parvo(code v15b)** scaffold 설계 검증 중 (본학습 보류). 상세: [`paper1_input_prior_plan.md`](paper1_input_prior_plan.md) · [`eval_protocols.md`](eval_protocols.md) · [`v15b_retraining_status.md`](v15b_retraining_status.md).
 
 **v11-era history** (보존):
 - Phase 1 ✅ 완료 (v4 설정 확정)

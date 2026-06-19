@@ -175,3 +175,106 @@ NUM_WORKERS=8 \
 - 주의: 마스킹은 상수 *최소점을 제거하진 못함*(teacher=EMA student라 상수도 loss=0) → basin of attraction 문제, 순수 경험적.
 - **왜 B-2가 "보장 아님"인지** (붕괴 메커니즘 정밀화): 우리가 본 붕괴는 *per-image 평균*(이미지마다 제 평균색)이 아니라 **global constant**(모든 샘플이 같은 남보라, viz 확인) = 자기참조가 만든 단일 벡터. 만약 "full 접근 → 그 이미지 평균 계산 → 출력"이 driver였다면 masking이 평균 접근을 끊어 *확실히* 고쳤겠지만, 실제는 자기참조라 masking은 상수로 가는 *추론 장벽만 높일 뿐* 최소점은 잔존 → B-2는 유망하나 시험 필요. (masking이 "평균 읽기"를 막는 효과가 정확히 맞는 곳은 MAE 픽셀 쪽 = "평균색만 맞춰도 MSE 낮음".)
 - Run A의 target norm(variance reg + target LayerNorm)은 B-1에 유지, B-2에서 variance reg만 제거(target LayerNorm은 scale 정합용이라 유지 검토).
+
+## 9. 설계 방향 검토 — interpreter_1 흡수 + JEPA→pixel prediction 전환 (2026-06-19)
+
+> Run B-2 self-pair 라우팅 viz(36115626)에서 출발한 설계 논의. **다음 모델 버전 후보**. 현재 Parvo BC-T(36053622~) 결과 본 뒤 채택 결정.
+
+### 출발점 — viz가 드러낸 모듈 중복
+
+self-pair 라우팅(M(x,x)≈0)을 픽셀로 그렸더니 단일프레임 복구와 ≈동일. **근인**: viz가 라우팅 latent을 `interpreter_1+recon_head`로 렌더링 → 복구 열과 같은 디코더. 학습 시엔 복구(interpreter_1→픽셀)와 라우팅(p_motion_decoder→latent)이 별 모듈이나, **완성(completion) 기능이 중복**(Run B `_vjepa_p_masked`는 이미 mask token 주입→p_motion_decoder로 완성 수행).
+
+### 단계 1 — interpreter_1을 p_motion_decoder에 흡수
+
+복구 전용 `interpreter_1` 모듈 제거. 복구 = `p_motion_decoder(P, M=null) + recon_head`, 라우팅 = `p_motion_decoder(P, M) + (head)`. **"M 없으면 복구, M 있으면 예측"이 한 메커니즘** = Run B task-format 일관성의 모듈 레벨 실현. 파라미터↓, 복구↔라우팅 결합. (단 복구 grad가 p_motion_decoder로 흐름 — 간섭 가능성은 실험.)
+
+### 단계 2 — JEPA 제거, 전부 pixel reconstruction으로 통일 (핵심 제안)
+
+세 경우를 **동일 포맷(픽셀 복구)**으로:
+- `L_t`: `motion_decoder(P_t, no-M) + recon_head` → **frame_t 픽셀**
+- `L_tk`: `motion_decoder(P_tk, no-M) + recon_head` → **frame_tk 픽셀**
+- `L_pred`: `motion_decoder(P_t, M(t,tk)) + recon_head` → **frame_tk 픽셀** (motion-conditioned 미래 픽셀 예측)
+
+→ **EMA teacher·latent target·JEPA 전면 제거.** 모델 정체성 = "V-JEPA scaffold" → **"motion-conditioned predictive (pixel) MAE"**.
+
+### 왜 강력한가 — 붕괴 문제를 *원천 소거*
+
+Run A/B 내내 싸운 붕괴 = **JEPA 자기참조**(target=EMA student → 상수해도 loss=0). 미래 **실제 픽셀**을 target으로 두면 target이 고정 실데이터 → **상수 붕괴 자체가 불가능.** 게다가 JEPA(latent)는 본 프로젝트에서 우위 미입증(scaffold 0, 오히려 VideoMAE 픽셀-MAE가 EgoDex +0.47 > v15 latent +0.39) → **JEPA 버려 잃을 게 적고, 붕괴 면역을 얻음.**
+
+### scaffold는 살아남나 — 그렇다
+
+복구는 no-M, **예측(L_pred)만 M 조건** → M이 P_t를 통해 gradient로 P를 shaping(scaffold 메커니즘 유지). 즉 latent→pixel로 target만 바꾼 것이지, M→P scaffold 가설은 그대로 검증 가능.
+
+### M-stream — zero/small motion도 처리해야 한다 (사용자 원칙, 2026-06-19)
+
+초안의 "복구는 M 끄기(no-M)" 해소는 **철회**. 사용자 지적: **M이 변화가 *매우 작은* 상태에서도 동작해야 한다. 작다고 안 되면 그건 "motion" 인코더가 아니라 "큰-motion 검출기"다.** magnocellular 비유(미세 temporal 변화까지 반응)와도 정합. → M을 *끄지 말고*, **전체 motion 스펙트럼(0→큰 변화)을 학습**시키는 게 정공법.
+
+**정확한 메커니즘** (M(0)은 "고장"이 아님):
+- M 채널 = ΔL. frame_t=frame_tk면 ΔL=0 → M 인코더가 **상수 null code** 출력(모든 샘플 동일). routing이 이 null을 **identity**로 학습 → P_t 그대로 복구. 즉 **"motion 없음 → null motion code → identity"** 가 *올바른 연속 거동*이지 퇴화가 아님.
+- 그래서 frame_t/frame_tk 복구 = motion 스펙트럼의 **zero 끝점**. 정당한 학습 케이스.
+
+**가장 깔끔한 실현 — gap으로 파라미터화**: recon vs prediction을 따로 두지 말고 **단일 task "P_a + M(a,b) → frame_b 예측"**, b를 gap=0(=복구)부터 큰 gap(=예측)까지 샘플. **motion 크기 = gap.** M이 전 스펙트럼을 *특수 케이스 없이 자연스럽게* 학습. (현 max_gap=30 분포에 gap=0 끝점 추가.)
+
+**균형 — 샘플링 말고 loss 가중치로** (사용자, 2026-06-19): gap 분포는 우리가 정함. 통일 설계는 step당 **gap=0 2개(L_t, L_tk) + real-gap 1개(L_pred)** 가 *확정적으로* 추가되는 구조(2:1). → 샘플링 파이프라인 건드릴 필요 없이 **비율이 결정적이니 λ_recon에 가중치만 조정**(importance weighting = resampling 등가). 분석적으로 계산 가능.
+
+**단 무엇을 균형 맞추나 — 정밀화**:
+- gap=0 recon 항의 *주 역할 = 픽셀 grounding(P anti-collapse)* → 너무 줄이면 붕괴 면역(이 설계의 존재 이유) 약화. 강하게 유지해야.
+- **M의 real-motion 학습은 L_pred에서 옴**. gap=0은 M에 **trivial gradient**(zero→null code)만 줌 → M의 motion feature는 recon 가중치에 *둔감*. 즉 "M zero-과노출" 우려는 **빈도가 시사하는 것보다 작음**(zero-motion이 M을 거의 안 가르침, 자기제한적).
+- 따라서 λ_recon 가중은 실제론 **"grounding(recon) ↔ prediction(motion)" loss 크기 균형**(표준 multi-task)이지, "M을 zero에서 구출"이 아님. → 과튜닝 말 것. **M의 real routing 기여를 측정**(학습-시 ablation)해서 조정하는 게 정공법, 빈도만 보고 미리 줄이지 말 것.
+- **구현 결정**: λ_t/λ_tk/λ_pred(또는 λ_recon) **변수화하되 init=1.0**. 빈도(2:1) 보고 *바로 줄이지 않음* → 1로 시작해 실험·측정 후 조정.
+
+**배포 관련성**: 실로봇은 고프레임레이트라 연속 프레임 motion이 *작음*. M이 small motion 못 다루면 배포에서 깨짐 → small/zero motion 처리는 deployment-critical. 사용자 원칙이 실용적으로도 맞음.
+
+### 잠재 문제 점검 — pixel 통일·EMA 제거 (2026-06-19, 본학습 전 필수 검토)
+
+> "EMA/JEPA 버리고 전부 픽셀로 통일"의 문제 점검. 붕괴는 죽지만 **새 실패 모드**가 생김.
+
+**~~P1 — M-leakage / trivial add shortcut~~ → 철회 (2026-06-19, 사용자 반박, 코드 확인)**
+- 초안 주장: "M=ΔL을 입력으로 주면 `P_t + ΔL = frame_tk` 더하기 shortcut" → **틀림.**
+- **근거(아키텍처)**: routing은 `v_from_p` cross-attention. `MotionRoutingBlock` ([two_stream_v11.py:124-149](../src/models/two_stream_v11.py#L124)): **Q,K = M**(`qk_m`), **V = P**(`v_p`). 출력 = `softmax(Q_M K_M^T)·V_P` + residual P. → **ΔL은 attention 가중치로만 들어가고, 출력 *내용*은 전적으로 P의 appearance remix.** "ΔL 더하기"는 구조적으로 불가능.
+- 더 나아가 attention에 ΔL을 쓰려 해도 "ΔL→대응(flow) 추정"은 non-trivial → M이 *실제 motion 추정*을 학습해야지 trivial readout 아님. **scaffold도 정상**(V=P라 P가 routing value로 shaping됨).
+- **내가 틀린 이유**: routing을 generic "frame_t + M → frame_tk"(M 내용이 additive)로 모델링했으나, 실제는 M=attention-only, V=P. pixel/latent 무관하게 같은 구조라 "pixel이 leak 증폭"도 틀림.
+- **잔여(=P3로 흡수)**: V-from-P remix는 *P_t에 있는 내용만* 재배치 가능 → frame_tk의 **새로 드러난 영역(disocclusion/신규 객체)은 생성 불가** → 그 영역 blur/오차. 단 이건 leak이 아니라 **warping 커버리지 한계 = blur 문제(P3)**. latent에도 있으나 pixel에서 더 *가시화*될 뿐.
+
+**🟠 P2 — 복구(gap=0)는 반드시 masked여야 (full copy 무의미)**
+- gap=0 + full P_t(unmasked) → frame_t 복구는 **trivial copy**(정보 다 있음) → grounding 효과 0. **masked MAE 필수**(masked 위치 추론). Run B masked anchor가 이미 처리하나, 통일 설계에서 명시 유지.
+
+**🟡 P3 — pixel blur** (아래 정직한 리스크와 동일, 가장 잘 알려진 trade).
+
+**🟡 P4 — 표현 추상도 하락 가능**: pixel 예측은 저수준 feature를 빚음(JEPA가 latent 간 이유). 단 VideoMAE 픽셀-MAE가 EgoDex +0.47이라 *경험적으론 OK 신호*. action-relevance는 본학습 probing/BC-T로 확인.
+
+**✅ 안 생기는 것**: constant collapse(고정 실픽셀 target이라 불가) · EMA 불안정 · ~~M-leak(P1 철회, V-from-P)~~. → 실패 모드가 "붕괴" → **"blur(P3)"** 로 교체. P1 철회로 새 1순위 리스크 = **blur**(disocclusion 커버리지 한계 포함), P2(masked 필수)는 유효.
+
+### 정직한 리스크
+
+1. **픽셀 예측 blur**: MSE 미래 예측은 불확실성 평균화로 흐려짐(과거 SSIM 사투의 그 문제). → SSIM/perceptual 보강 필요. JEPA(붕괴) ↔ pixel(blur) trade.
+2. **narrative pivot**: Paper 2가 "V-JEPA scaffold"→"motion-conditioned predictive MAE"로 바뀜. 단 기존 story가 미입증·붕괴 중이라 정직한 재정렬에 가까움.
+3. **미검증 가설**: 붕괴 회피·유용한 P 학습은 본학습으로 확인 필요.
+
+### 설계 철학 — information bottleneck for generalization (근본 동기, 2026-06-19)
+
+> 이 재설계(및 two-stream 분리 전체)의 *왜*. scaffold-인과보다 방어 가능한 정규 프레이밍 후보.
+
+**동기**: 최근 로봇 world-model = 미래 예측 방향. 이에 공감하나, **RGB(P)에 미래 예측 정보를 전부 담으면 학습 dynamics 의존성이 급등** → in-domain 성능보다 **새 환경 적응력**을 우선하는 입장에서 역효과. → **의도적으로 P에서 미래-예측 정보 일부를 제거**(데이터 경향성↓), 변화 정보는 **M stream(가볍게)**으로 받아 routing의 "복구지능"이 **변화 × 이미지 요소 상호작용**을 일부 사전학습. = **정보 병목으로 일반화를 산다.**
+
+**이미 있는 경험적 공명 — readout↔control dissociation**:
+- VideoMAE(한 stream에 dynamics 다 담음) = in-domain readout 최강(+0.47)인데 **control 꼴찌**(LIBERO 0.22) = 과적합 전형.
+- two-stream(병목/분리) = readout 양보, **control 압도**(0.63) = 일반화.
+- → philosophy가 *예측하는 패턴이 데이터로 이미 나타남*.
+
+**V-from-P가 구조적 실현**: M=어디(attention Q/K), P=무엇(content V) → appearance/change 명시적 factorize. ΔL은 출력 내용에 안 들어가고 routing만 함 → 분리가 아키텍처에 박힘.
+
+**🔑 긴장 ② (본학습 전 필수 명시) — 병목 이상 vs scaffold 주장**:
+- 병목: "P는 dynamics 인코딩 안 함"(과적합 방지). scaffold: "M이 P shaping"(예측 grad가 P로) → P가 dynamics 인코딩. **반대로 당김.**
+- 현 설계는 P=routing의 V라 예측 grad 받음 → 병목 *강제 안 됨*(희망).
+- **해소 가설**: M이 P를 "**warpable**(일반 변형가능) appearance"로 빚는 것이지 "**memorized dynamics**(특정 동역학)"가 아니라면 양립. P=일반 factorizable substrate, dynamics는 M+routing에. **검증 = P가 full-2-frame 인코더보다 OOD 전이 우수한가.**
+
+**caveat ①**: ΔL은 motion 저수준 proxy, 조명·대비 의존 → M도 도메인 의존 *일부* 나름("0" 아니라 "낮음", full appearance보다 훨씬 저차원).
+
+**가치 증명 ③**: "정보 많이 주면 좋다"는 자명 → 분리 이점은 **OOD/control에서 two-stream > 과거+현재 풀이미지**로만 성립. = 지금 Parvo BC-T + OOD probing이 그 테스트.
+
+**논문 프레임 함의**: scaffold-인과(증명 난이도 高) 대신 **"information bottleneck → readout 양보·control/OOD 적응력 획득"**(dissociation이 증거)이 더 정직·강함.
+
+### 판단
+
+붕괴를 원천 소거하면서 task-format 통일까지 달성하는 **유망한 단순화**. M 우려도 깔끔히 해소됨. 채택 시 다음 본학습의 핵심 변경. **현 Parvo BC-T 결과 확인 후 결정** — BC-T가 약하면 이 재설계가 더 시급, 강하면 현 구조 유지하며 점진 도입 검토. **재설계는 necessary-not-sufficient**: 붕괴 블로커는 없애나 scaffold/병목 이점은 별도 검증(with-M vs no-M 학습-시 ablation + OOD 전이)이 판정.
