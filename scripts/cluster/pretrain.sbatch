@@ -471,6 +471,9 @@ else
     MODEL_NAME_FOR_PY="$MODEL"
 fi
 
+# sanity 잡: 비디오 수 제한 (MAX_VIDEOS 설정 시). 본 학습은 미설정 → 전체.
+[ -n "${MAX_VIDEOS:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --max-videos $MAX_VIDEOS"
+
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
 # CRITICAL: srun이 새 shell을 띄우면서 PATH 전파 안 됨 → 절대 경로 사용.
 srun --kill-on-bad-exit=1 --export=ALL \
