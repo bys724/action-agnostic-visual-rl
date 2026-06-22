@@ -408,6 +408,10 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ "${V15_TARGET_LN:-0}" = "1" ] && MODEL_ARGS+=(--v15-target-ln)  # Run A: target LayerNorm
     [ "${V15_MASKED_ANCHOR:-0}" = "1" ] && MODEL_ARGS+=(--v15-masked-anchor)  # Run B: masked anchor
     [ "${V15_NO_MOTION:-0}" = "1" ] && MODEL_ARGS+=(--v15-no-motion)  # §11 no-M ablation: P=two-frame MAE only
+    [ "${V15_PIXEL_PRED:-0}" = "1" ] && MODEL_ARGS+=(--v15-pixel-pred)  # §9 motion-cond pixel MAE
+    [ -n "${V15_LAMBDA_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-recon "$V15_LAMBDA_RECON")  # §9 복구 가중치
+    [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
+    [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6
     [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)
     if [ -n "${V15_COMP_HIDDEN:-}" ]; then
         MODEL_ARGS+=(--v15-composition-hidden-dim "${V15_COMP_HIDDEN}")
@@ -442,6 +446,13 @@ elif [ "$MODEL" = "videomae" ]; then
         --depth 12
         --mask-ratio 0.5
         --max-gap 60 --sample-dist triangular --sample-center 30
+    )
+elif [ "$MODEL" = "siammae" ]; then
+    # SiamMAE baseline (asymmetric 95% + cross-self decoder). size = small(ViT-S)/base(ViT-B).
+    # 2-frame pair 샘플링 (다른 baseline과 parity 위해 MAX_GAP env override 권장).
+    MODEL_ARGS=(
+        --siammae-size "${SIAMMAE_SIZE:-base}"
+        --max-gap "${MAX_GAP:-30}" --sample-dist triangular --sample-center "${SAMPLE_CENTER:-15}"
     )
 else
     echo "Unknown MODEL=$MODEL" >&2
