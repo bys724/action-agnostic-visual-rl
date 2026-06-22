@@ -10,7 +10,7 @@
 단일프레임 **image MAE**에 hand-crafted **input prior(Sobel edge + RGB)**를 주면, 같은 스케일의 **VideoMAE를 이긴다**. → 로봇 표현 학습에 temporal/video 아키텍처가 필수가 아니며 input prior로 충분할 수 있다. 좁게 입증된 결과에서 출발해 ablation(edge vs RGB)·실로봇으로 확정. 계획: [`docs/paper1_input_prior_plan.md`](docs/paper1_input_prior_plan.md).
 
 ### Paper 2 — Action-Agnostic (AAAI)
-영장류 시각피질의 **M(magnocellular, motion) / P(parvocellular, form) 경로 분리**를 모방한 two-stream 모델 **Parvo**. M이 학습 중 P를 **scaffold**하고 배포 시 P encoder만 남는다. action label 없이도 구조적 cross-stream bias가 표현을 개선하는지 검증 중. 실험: [`docs/paper_experiments_plan.md`](docs/paper_experiments_plan.md).
+영장류 시각피질의 **M(magnocellular, motion) / P(parvocellular, form) 경로 분리**를 모방한 two-stream 모델 **Parvo**. M이 학습 중 P를 **scaffold**하고 배포 시 P encoder만 남는다. action label 없이도 구조적 cross-stream bias가 표현을 개선하는지 검증 중. 실험: [`docs/v15b_retraining_status.md`](docs/v15b_retraining_status.md).
 
 ## 핵심 모델 — Parvo
 
@@ -54,7 +54,7 @@
 - **개발 가이드 + 현재 상태**: [`CLAUDE.md`](CLAUDE.md)
 - **연구 계획 (마스터)**: [`docs/RESEARCH_PLAN.md`](docs/RESEARCH_PLAN.md)
 - **Paper 1 (ICRA)**: [`docs/paper1_input_prior_plan.md`](docs/paper1_input_prior_plan.md)
-- **Paper 2 (AAAI) 실험**: [`docs/paper_experiments_plan.md`](docs/paper_experiments_plan.md)
+- **Paper 2 (AAAI) 실험**: [`docs/v15b_retraining_status.md`](docs/v15b_retraining_status.md)
 - **Probing**: [`docs/PROBING_GUIDE.md`](docs/PROBING_GUIDE.md)
 - **LIBERO 평가**: [`docs/setup/LIBERO_TEST_GUIDE.md`](docs/setup/LIBERO_TEST_GUIDE.md)
 
@@ -63,4 +63,4 @@
 ## 상태 (2026-06)
 
 - **Paper 1**: P단독 image MAE > VideoMAE = 좁게 입증 → ablation(edge vs RGB) + 실로봇.
-- **Paper 2**: Parvo(code v15b) scaffold 설계 검증 중 (M→P gradient 연결, input-only baseline 초과 여부가 관건). 본학습 보류·재제출 준비.
+- **Paper 2**: Parvo(code v15b) scaffold 검증 중. LIBERO BC avg 0.785 ≈ v15(0.777), frozen baseline 미달 — 현상 유지. 다음 = M 기여 격리(no-M ablation) + 본학습 재제출.
