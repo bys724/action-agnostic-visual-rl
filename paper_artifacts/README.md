@@ -70,7 +70,7 @@ paper_artifacts/
 ## Provenance
 
 - 마스터 연구 계획: [`docs/RESEARCH_PLAN.md`](../docs/RESEARCH_PLAN.md)
-- 실험 list (C1-C9): [`docs/paper_experiments_plan.md`](../docs/paper_experiments_plan.md)
+- 실험 list (C-series): [`docs/eval_protocols.md`](../docs/eval_protocols.md) (구 `paper_experiments_plan.md` → 평가 단일출처로 통합)
 - 클러스터 잡 → ckpt 매핑: [`docs/cluster_sessions.md`](../docs/cluster_sessions.md)
 - Probing 결과 (raw): [`data/probing_results/`](../data/probing_results/) (gitignored)
 - BC rollout 결과 (raw): [`data/libero/results/`](../data/libero/results/) (gitignored)

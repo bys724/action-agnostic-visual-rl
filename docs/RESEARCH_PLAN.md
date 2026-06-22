@@ -371,7 +371,7 @@ Two-Stream v6/v10, VideoMAE-ours, CLIP, DINOv2, SigLIP, VC-1, V-JEPA 2.1 ViT-B (
 - §4.5 Trajectory-Level Value Alignment를 그대로 게재 + 명시적 framing: "**Action-relevance와 state-similarity는 직교에 가까운 두 능력**. Encoder 선택은 downstream task 특성에 맞춰야 한다." 분석 기여.
 - §4.4 Action Probing R² (v11 +0.288 champion) + §5 LIBERO BC main + §4.5 (v11 ρ underperform) → 두 metric, 두 story.
 - 흥미로운 supplementary: D' > B (motion routing 작동), baselines의 frac↓ 향상 패턴 (trajectory 끝부분 monotonic).
-- 데이터: [`paper_artifacts/value_alignment/`](../paper_artifacts/value_alignment/)
+- 데이터: [`paper_artifacts/_archive/value_alignment/`](../paper_artifacts/_archive/value_alignment/)
 
 ### Phase 3: LIBERO BC (메인 downstream 실험) 🔄 진행 중 (2026-04-28~)
 
