@@ -240,7 +240,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
         model_name = type(actual_model).__name__
 
         with amp_ctx:
-            if model_name == 'VideoMAEModel':
+            if model_name in ('VideoMAEModel', 'SiamMAEModel'):
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -730,7 +730,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
         model_name = type(actual_model).__name__
 
         with torch.no_grad(), torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            if model_name == 'VideoMAEModel':
+            if model_name in ('VideoMAEModel', 'SiamMAEModel'):
                 loss, img_pred = actual_model.compute_loss(img_t, img_tk)
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -955,7 +955,7 @@ def save_epoch_samples(model, eval_dataset, device, epoch, run_dir, num_samples=
                     else:
                         imgs = [img_t, img_tk, pred_t_np, pred_tk_np]
                         col_titles = ['Frame t', 'Frame t+k', 'Pred t (Ph1)', 'Pred t+k (Ph3)']
-                elif model_name == 'VideoMAEModel':
+                elif model_name in ('VideoMAEModel', 'SiamMAEModel'):
                     # 픽셀 복원이 아닌 feature/masked 예측 → 이미지 시각화 생략
                     continue
                 else:
@@ -1158,7 +1158,7 @@ def train(
     _actual = model.module if hasattr(model, 'module') else model
     _model_name = type(_actual).__name__
 
-    if _model_name == 'VideoMAEModel':
+    if _model_name in ('VideoMAEModel', 'SiamMAEModel'):
         # bias, LayerNorm γ/β, cls_token, pos_embed, mask_token → wd=0
         decay_params, no_decay_params = [], []
         for name, p in _actual.named_parameters():

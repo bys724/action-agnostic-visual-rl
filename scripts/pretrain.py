@@ -28,6 +28,7 @@ from src.models import (
     TwoStreamV14Model,
     TwoStreamV15Model,
     VideoMAEModel,
+    SiamMAEModel,
 )
 from src.datasets import EgoDexDataset
 from src.training.pretrain import train
@@ -38,14 +39,17 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'two-stream-v15', 'two-stream-v15b', 'videomae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'two-stream-v15', 'two-stream-v15b', 'videomae', 'siammae'],
                         help='Model type (default: two-stream). '
                              'two-stream-v11 = motion-guided routing + dual-target. '
                              'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
                              'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS. '
                              'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO). '
                              'two-stream-v15 = v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training. '
-                             'two-stream-v15b = v15 아키텍처 동일 (student-anchor catalyst fix 반영) + collapse 방지 재학습 레시피 (recon-first gate). 로컬 재학습용.')
+                             'two-stream-v15b = v15 아키텍처 동일 (student-anchor catalyst fix 반영) + collapse 방지 재학습 레시피 (recon-first gate). 로컬 재학습용. '
+                             'siammae = Siamese MAE baseline (asymmetric 95% + cross-self decoder).')
+    parser.add_argument('--siammae-size', type=str, default='base', choices=['small', 'base'],
+                        help='SiamMAE encoder size: small=ViT-S(논문) / base=ViT-B(baseline-matched). default base.')
 
     # Training parameters
     parser.add_argument('--epochs', type=int, default=100,
@@ -98,6 +102,10 @@ def main():
     # Architecture (Two-Stream)
     parser.add_argument('--depth', type=int, default=12,
                         help='Transformer depth per stream (default: 12)')
+    parser.add_argument('--embed-dim', type=int, default=768,
+                        help='Encoder embedding dim (default: 768=ViT-B). 384=ViT-S (§9/two-stream size).')
+    parser.add_argument('--num-heads', type=int, default=12,
+                        help='Encoder attention heads (default: 12=ViT-B). 6 for ViT-S(384).')
     parser.add_argument('--num-stages', type=int, default=3,
                         help='Number of CLS exchange stages (default: 3)')
 
@@ -260,6 +268,12 @@ def main():
                         help='[§11 no-M ablation] P = two-frame image MAE 단독. M→P scaffold 경로(L_pred)'
                              '+V-JEPA-M(L_m_jepa)을 forward에서 skip + 관련 모듈 동결(불필요 연산 제거). '
                              'pair_mode 전용. routing-off Paper1 대조군 = M 기여 격리.')
+    parser.add_argument('--v15-pixel-pred', action='store_true',
+                        help='[§9 motion-cond pixel MAE] JEPA/EMA/latent target 제거 → 전부 pixel recon. '
+                             'L_t/L_tk=self-pair(M=null) 복구, L_pred=M(t,tk) 예측. recon도 p_motion_decoder '
+                             '통과(interpreter_1 흡수). 붕괴 면역. pair_mode 전용, no_motion과 배타.')
+    parser.add_argument('--v15-lambda-recon', type=float, default=1.0,
+                        help='[§9] L_t+L_tk(복구) 가중치 (default 1.0). L_pred는 --v15-lambda-pred.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -418,6 +432,8 @@ def main():
         # - mask_token_m 활성화 (V-JEPA-M)
         v15_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
         model = TwoStreamV15Model(
+            embed_dim=args.embed_dim,
+            num_heads=args.num_heads,
             p_depth=args.depth,
             m_depth=args.v11_m_depth,
             mask_ratio_p=v15_mask_p,
@@ -436,6 +452,8 @@ def main():
             target_ln=args.v15_target_ln,
             masked_anchor=args.v15_masked_anchor,
             no_motion=args.v15_no_motion,
+            pixel_pred=args.v15_pixel_pred,
+            lambda_recon=args.v15_lambda_recon,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
@@ -462,6 +480,10 @@ def main():
         # 2-frame에서는 masking 완화 필요.
         vm_mask = args.mask_ratio if args.mask_ratio > 0 else 0.5
         model = VideoMAEModel(mask_ratio=vm_mask)
+    elif args.model == 'siammae':
+        # SiamMAE baseline: f2 95% 비대칭 마스킹 (원논문 충실). mask_ratio override 시 그 값 사용.
+        sm_mask = args.mask_ratio if args.mask_ratio > 0 else 0.95
+        model = SiamMAEModel(size=args.siammae_size, mask_ratio=sm_mask)
     else:
         raise ValueError(f"Unknown model: {args.model}")
 

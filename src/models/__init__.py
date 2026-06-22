@@ -27,6 +27,7 @@ from .two_stream_v13 import TwoStreamV13Model
 from .two_stream_v14 import TwoStreamV14Model
 from .two_stream_v15 import TwoStreamV15Model
 from .videomae import VideoMAEModel, VideoMAEEncoderForVLA as VideoMAEEncoder
+from .siammae import SiamMAEModel, SiamMAEEncoderForVLA as SiamMAEEncoder
 from .common import TwoStreamPreprocessing
 
 __all__ = [
@@ -37,8 +38,10 @@ __all__ = [
     "TwoStreamV14Model",
     "TwoStreamV15Model",
     "VideoMAEModel",
+    "SiamMAEModel",
     "TwoStreamEncoder",
     "TwoStreamV11Encoder",
     "VideoMAEEncoder",
+    "SiamMAEEncoder",
     "TwoStreamPreprocessing",
 ]

@@ -254,6 +254,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         target_ln: bool = False,
         masked_anchor: bool = False,
         no_motion: bool = False,
+        pixel_pred: bool = False,
+        lambda_recon: float = 1.0,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -354,14 +356,34 @@ class TwoStreamV15Model(TwoStreamV11Model):
                           self.dec_pos_embed_m, self.mask_token_m):
                 param.requires_grad_(False)
 
+        # §9 pixel-pred 모드 (motion-conditioned predictive pixel MAE, 2026-06-22):
+        #   JEPA/EMA/latent target 제거 → 전부 pixel reconstruction. 상수붕괴 원천 불가.
+        #   통일 task: predict(P_a_visible, mask, M_routing) = recon_head(p_motion_decoder(...))
+        #     L_t/L_tk: M=M(x,x)=null(self-pair, ΔL=0→null→identity) → frame_t/tk 복구
+        #     L_pred:   M=M(t,tk) real → frame_tk motion-conditioned 예측
+        #   복구도 interpreter_1이 아닌 **p_motion_decoder 통과**(§9 단계1 흡수) → recon↔pred 한 메커니즘.
+        #   미사용 모듈(interpreter_1·M-jepa decoder·mask_token_m·teacher) freeze/skip → DDP-safe.
+        #   teacher_p/teacher_m은 EMA(이미 no-grad)라 forward만 skip하면 됨(no_motion 선례).
+        self.pixel_pred = pixel_pred
+        self.lambda_recon = lambda_recon
+        if pixel_pred:
+            assert pair_mode, "pixel_pred은 pair_mode 전용 (2-frame)"
+            assert not no_motion, "pixel_pred과 no_motion 동시 불가 (배타적 모드)"
+            for mod in (self.interpreter_1, self.interpreter_1_norm,
+                        self.m_decoder_blocks, self.m_decoder_norm):
+                for p in mod.parameters():
+                    p.requires_grad_(False)
+            for param in (self.dec_pos_embed_m, self.mask_token_m):
+                param.requires_grad_(False)
+
     # ----------------------------------------------------------------------
     # EMA update
     # ----------------------------------------------------------------------
 
     @torch.no_grad()
     def update_teacher(self, momentum: float):
-        if self.no_motion:
-            return  # no-M: teacher(JEPA target) 미사용 → EMA 업데이트 불필요
+        if self.no_motion or self.pixel_pred:
+            return  # no-M / pixel-pred: teacher(JEPA target) 미사용 → EMA 업데이트 불필요
         self.teacher_p.update(self, momentum)
         self.teacher_m.update(self, momentum)
 
@@ -652,6 +674,94 @@ class TwoStreamV15Model(TwoStreamV11Model):
         }
 
     # ----------------------------------------------------------------------
+    # §9 pixel-pred (motion-conditioned predictive pixel MAE)
+    # ----------------------------------------------------------------------
+
+    def _predict_pixels(
+        self, p_visible: torch.Tensor, mask: torch.Tensor,
+        m_routing: torch.Tensor, target_image: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """§9 통일 메커니즘: visible → mask token 주입 → motion routing → recon_head → pixels.
+
+        masked 위치만 loss. m_routing=null → 복구(identity), real → motion-conditioned 예측.
+        포맷이 MAE와 동일(masked 추론) → P2(masked 필수) 준수.
+        """
+        full_seq = self._build_full_seq_p(p_visible, mask)   # [B, 1+N, D], mask token + dec_pos
+        p_state = full_seq
+        for step in self.p_motion_decoder:
+            p_state = step(p_state, m_routing)
+        p_state = self.p_motion_decoder_norm(p_state)
+        patch_pred = self.recon_head(p_state[:, 1:])          # [B, N, p*p*3]
+        patch_target = self._patchify(target_image)
+        err = ((patch_pred - patch_target) ** 2).mean(dim=-1)
+        denom = mask.float().sum().clamp(min=1.0)
+        loss = (err * mask.float()).sum() / denom
+        if self.lambda_ssim > 0:
+            from src.training.pretrain import ssim_loss
+            loss = loss + self.lambda_ssim * ssim_loss(self._unpatchify(patch_pred), target_image)
+        return loss, patch_pred
+
+    def _forward_pair_pixel(self, image_current: torch.Tensor, image_future: torch.Tensor) -> dict:
+        """§9 forward (2-frame): L_t/L_tk = self-pair(M=null) 복구, L_pred = M(t,tk) 예측. 전부 pixel.
+
+        Loss = λ_recon·(L_t + L_tk) + λ_pred·L_pred. teacher/JEPA/compose 없음.
+        """
+        if self.rotation_aug and self.training:
+            if torch.rand(1).item() < self.independent_rotation_prob:
+                ks = [torch.randint(0, 4, (1,)).item() for _ in range(2)]
+            else:
+                k0 = torch.randint(0, 4, (1,)).item()
+                ks = [k0, k0]
+            if ks[0] != 0:
+                image_current = torch.rot90(image_current, ks[0], dims=(2, 3))
+            if ks[1] != 0:
+                image_future = torch.rot90(image_future, ks[1], dims=(2, 3))
+
+        B = image_current.shape[0]
+        device = image_current.device
+
+        p_channel_t = self.preprocessing.compute_p_channel(image_current)
+        p_channel_tk = self.preprocessing.compute_p_channel(image_future)
+        mask_t = self._random_mask(B, device, self.mask_ratio_p)
+        mask_tk = self._random_mask(B, device, self.mask_ratio_p)
+        p_t_visible = self._student_p_encode_visible(p_channel_t, mask_t)
+        p_tk_visible = self._student_p_encode_visible(p_channel_tk, mask_tk)
+
+        # M routing source: real motion M(t,tk), null motion M(x,x)=ΔL=0 (self-pair → null code).
+        #   null은 x-독립(ΔL=0 동일)이라 1회 계산 후 L_t/L_tk 재사용.
+        m_real = self._encode_m_unmasked(self.preprocessing.compute_m_channel(image_current, image_future))
+        m_null = self._encode_m_unmasked(self.preprocessing.compute_m_channel(image_current, image_current))
+
+        # 통일 pixel 예측 ×3 (gap=0 복구 2 + real-gap 예측 1)
+        loss_t, patch_pred_t = self._predict_pixels(p_t_visible, mask_t, m_null, image_current)
+        loss_tk, patch_pred_tk = self._predict_pixels(p_tk_visible, mask_tk, m_null, image_future)
+        loss_pred, patch_pred_pred = self._predict_pixels(p_t_visible, mask_t, m_real, image_future)
+
+        loss = self.lambda_recon * (loss_t + loss_tk) + self.lambda_pred * loss_pred
+
+        zero = torch.zeros((), device=device, dtype=loss_t.dtype)
+        cls_p_repr = p_t_visible[:, 0]
+        cls_m_repr = m_real[:, 0]
+        return {
+            "loss": loss,
+            "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
+            "loss_pred": loss_pred, "loss_pred_short": loss_pred,
+            "loss_pred_step": loss_pred, "loss_pred_long": loss_pred,
+            "loss_m_jepa": zero, "loss_compose": zero, "loss_dino": zero,
+            "loss_var": zero,
+            "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_pred),
+            "mask_p": mask_t, "mask_m": mask_t,
+            "m_features": m_real[:, 1:], "p_features_t": p_t_visible[:, 1:],
+            "p_features_tk": p_tk_visible[:, 1:], "cls_m": cls_m_repr, "cls_p": cls_p_repr,
+            "predicted_tk_repr": p_tk_visible, "target_tk_repr": p_tk_visible,
+            "m_local_short": m_real, "m_local_step": m_real, "m_local_long": m_real,
+            "m_compose_target": m_real, "m_predicted": m_real,
+            "student_dino_cls": cls_p_repr,
+            "teacher_dino_cls": torch.zeros(B, self.embed_dim, device=device, dtype=loss.dtype),
+            "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),
+        }
+
+    # ----------------------------------------------------------------------
     # Forward
     # ----------------------------------------------------------------------
 
@@ -666,6 +776,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
 
         Loss tracks (옵션 B):"""
         if self.pair_mode:
+            if self.pixel_pred:
+                return self._forward_pair_pixel(image_current, image_short)  # §9 motion-cond pixel MAE
             return self._forward_pair(image_current, image_short)  # image_short = t+k
         _orig_docstring = """
           1. P MAE × 3:           L_t (frame_t), L_tn (frame_t+n), L_tm (frame_t+m)
