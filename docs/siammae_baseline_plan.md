@@ -47,13 +47,30 @@ SiamMAE = Parvo "cross-stream 예측 bias"의 **단일스트림 대조판**. Pap
 - SiamMAE는 correspondence용 설계, control(LIBERO) 검증 전례 없음 — 하지만 "action-agnostic correspondence pretraining이 control에 전이되는가"가 이 프로젝트 질문이라 informative baseline.
 - 원논문 95% 비대칭 마스킹 충실 유지 (EgoDex M-stream aggressive 금지 철학은 Parvo 전용, baseline엔 미적용).
 
-## 구현 시 작업 (착수 시)
+## 확정 spec (재현 리스크 해소, 2026-06-22)
 
-1. `src/models/siammae.py` — Siamese ViT 인코더(videomae/timm 재사용) + cross-self decoder + 비대칭 95% 마스킹 + normalized pixel L2.
+논문 §3 + 비공식 [Robiwan245/SiamMAE](https://github.com/Robiwan245/SiamMAE) `SiamMae.py` 교차검증.
+
+**Decoder block** (핵심 — 표준 MAE에 없는 부분):
+```
+# x1 = f1 인코딩(full), x2 = f2 (encoder 출력 + [MASK] token + pos embed = full set)
+x = x2 + cross_attention(norm1(x1), norm1(x2))   # q=x2, k/v=x1 (f2가 f1 참조)
+x = x  + self_attention(norm2(x))                 # f2 self-attn (ablation상 필수)
+```
+- **Decoder config**: dim 512 · depth 8 · heads 16 (`dec512d8b`, MAE 기본값 — "MAE 오픈소스 위 구축" 명시와 일치)
+- **비대칭 마스킹**: f₁ `mask_ratio=0` / f₂ `mask_ratio=0.95` (random)
+- **Loss**: normalized-pixel L2, 마스킹된 f₂ 패치만 `(loss*mask).sum()/mask.sum()`
+- **ablation 근거**: cross-self 58.1 > cross-only 52.2 J&Fm → cross+self 둘 다 구현
+
+**Backbone (확정 2026-06-22)**: **ViT-B/16** — VideoMAE-ours와 동일 capacity로 parity 확보, objective/구조만 변수화 (원논문 ViT-S→scale-up; 2000ep→matched와 같은 controlled-comparison 논리). native ViT-S reference는 후속 선택. 인코더 block은 VideoMAE-ours와 동일 `Block`(modeling_finetune) 재사용 → per-stream capacity 통제.
+
+## 구현 작업 (착수 시)
+
+1. `src/models/siammae.py` — Siamese ViT-B/16 인코더(videomae/timm 재사용) + cross-self decoder + 비대칭 95% 마스킹 + normalized pixel L2.
 2. `scripts/pretrain.py` dispatch + `--model siammae`.
-3. `src/encoders/adapters/siammae.py` — BC-T 어댑터 (single_frame/videomae 패턴).
+3. `src/encoders/adapters/siammae.py` — BC-T 어댑터 (single_frame/videomae 패턴, 프레임별 단독 인코딩).
 4. probing 모드 추가 (`scripts/eval/probe_action*.py`).
-5. EgoDex part1 matched epoch 학습 (ViT-S/16 경량 → Parvo 이하 compute).
+5. EgoDex part1 matched epoch 학습.
 
 ## Sources
 

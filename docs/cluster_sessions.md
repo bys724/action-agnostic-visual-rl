@@ -97,7 +97,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 36126892 | AIP_long 2×4 H100 | 18:00:00 | **no-M scratch (20ep, part1)** — A scratch(35788399) env 완전 동일 + `V15_NO_MOTION=1`, `PARVO_CKPT=parvo_noM`. P=two-frame image MAE 단독(M→P `L_pred` 차단). no-M은 compute~절반 → A의 7h29m보다 빠를 것(첫 ep ETA 확인). ep20 후 continuation(+30ep, init_from, lr1e-4) 예정 | 🔵 SUBMITTED |
+| 36126892 | AIP_long 2×4 H100 | 18:00:00 | **no-M scratch (20ep, part1)** — A scratch(35788399) env 완전 동일 + `V15_NO_MOTION=1`. ep20 후 continuation 예정 | ✅ COMPLETED 20ep, 5h27m (~43.7 GPU·h), 06-22 15:59. ckpt `two_stream_v15b/20260622_103242/checkpoint_epoch0020.pt` |
+| 36128321 | AIP_long 2×4 H100 | 18:00:00 | **no-M continuation (+30ep, part1)** — Parvo runB2cont(36045098) 정확 미러 + `V15_NO_MOTION=1`. init_from no-M ep20, EPOCHS=30, LR=1e-4, masked_anchor+λ_m_jepa=0+gate0+warmup5, pair, no-sobel, `CHECKPOINT_SUFFIX=noM_cont`. → Parvo와 동일 누적 50ep 매칭. 완료 후 BC-T(libero_object) 제출 예정 | 🔵 RUNNING (06-22 ~16:5x 시작, olaf-g[003-004]) |
 
 ### 2026-06-18 Parvo LIBERO BC-T (현재 모델 control 평가)
 
