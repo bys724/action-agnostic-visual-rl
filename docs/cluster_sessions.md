@@ -98,7 +98,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 36126892 | AIP_long 2×4 H100 | 18:00:00 | **no-M scratch (20ep, part1)** — A scratch(35788399) env 완전 동일 + `V15_NO_MOTION=1`. ep20 후 continuation 예정 | ✅ COMPLETED 20ep, 5h27m (~43.7 GPU·h), 06-22 15:59. ckpt `two_stream_v15b/20260622_103242/checkpoint_epoch0020.pt` |
-| 36128321 | AIP_long 2×4 H100 | 18:00:00 | **no-M continuation (+30ep, part1)** — Parvo runB2cont(36045098) 정확 미러 + `V15_NO_MOTION=1`. init_from no-M ep20, EPOCHS=30, LR=1e-4, masked_anchor+λ_m_jepa=0+gate0+warmup5, pair, no-sobel, `CHECKPOINT_SUFFIX=noM_cont`. → Parvo와 동일 누적 50ep 매칭. 완료 후 BC-T(libero_object) 제출 예정 | 🔵 RUNNING (06-22 ~16:5x 시작, olaf-g[003-004]) |
+| 36128321 | AIP_long 2×4 H100 | 18:00:00 | **no-M continuation (+30ep, part1)** — Parvo runB2cont(36045098) 정확 미러 + `V15_NO_MOTION=1`. init_from no-M ep20, EPOCHS=30, LR=1e-4, masked_anchor+λ_m_jepa=0+gate0+warmup5, pair, no-sobel, `CHECKPOINT_SUFFIX=noM_cont`. → Parvo와 동일 누적 50ep 매칭. 완료 후 BC-T(libero_object) 제출 예정 | ✅ COMPLETED 30ep, 7h55m (~63.3 GPU·h), 06-23 01:22. ckpt `two_stream_v15b_noM_cont/20260622_172841/checkpoint_epoch0030.pt`. ep30 recon 건강(L_t/tk≈0.028), P CLS std_p=0.090(Parvo 0.008보다 덜 붕괴=순수 MAE 정상). → BC-T(libero_object) 제출 대기 |
+| 36130509~511 | AIP 1×1 H100 ×3 | 2-00:00:00 | **no-M BC-T (libero_object × seed 0/1/2)** — Parvo BC-T(36053625~627) 정확 미러 + ckpt만 no-M ep30(`two_stream_v15b_noM_cont/.../epoch0030.pt`)으로 교체. ENCODER=parvo-ptptk(P_t⊕P_tk, strict=False), V3(use_joint+aug)·50ep, SUFFIX=noM. **목적**: §11 M 기여 격리 — no-M vs Parvo(object 0.885) epoch-matched 비교. Parvo 최고 suite만(연산 절감) | 🔵 PENDING (509=s0, 510=s1, 511=s2) |
 
 ### 2026-06-18 Parvo LIBERO BC-T (현재 모델 control 평가)
 
