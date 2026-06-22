@@ -27,6 +27,8 @@
 | Video SSL | V-JEPA 2.1 ViT-B | VideoMix22M (16-frame, 384px) | 86.8M | Feature prediction (최신 video SSL) | ✗ skip [^1] | ✓ main |
 | Native 세팅 reference | VideoMAE-official | Kinetics-400/SSv2 (16-frame) | ~86M | MAE (공식 세팅) | (probing only) | (조건부) |
 
+> **후보 baseline (분석 완료·구현 보류)**: **SiamMAE** (비대칭 95% 마스킹 + cross-attention 예측) = Parvo cross-stream bias의 단일스트림 대조판. 타당성·통합·parity 분석 → [`siammae_baseline_plan.md`](siammae_baseline_plan.md).
+
 [^1]: V-JEPA 2.1은 16-frame × 384² 입력 (token count 4,608, 다른 인코더 196 대비 24×). LIBERO BC 학습 환경에서 sanity 측정 결과 50ep ≈ 30-100일 (실현 불가능). DROID/EgoDex probing 결과는 paper에 포함, BC main table에선 footnote 처리. 시간 여유 시 옵션 A (사전 feature extraction → 정책 head만 학습) 시도.
 
 ### 3-축 비교 구조
