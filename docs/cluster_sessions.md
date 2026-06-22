@@ -89,6 +89,16 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-06-22 no-M ablation (§11) — motion routing 기여 격리
+
+**배경**: Parvo BC-T 0.785 ≈ v15-ptptk(현상유지). §11.4 "motion routing이 LIBERO control 표현에 load-bearing이냐" 판정 = **같은 코드에서 routing만 끈 인코더 학습 후 동일 P-only BC-T 비교**. 효율형 `--v15-no-motion` 플래그 구현(`_forward_pair`에서 M/JEPA 분기 skip + M stream·p_motion_decoder 동결 → dead branch ~절반 제거, teacher_p full forward 등 제거. DDP-safe smoke 통과: 192 trainable 전부 grad 수신). encoder A(Run B-2)와 **환경 완전 동일** + no_motion만 추가.
+
+⚠️ **part1 단독 확정**: A scratch(35788399)·continuation(36045098) 로그 확인 = **part1만**(46234 vid) 학습. 기존 doc "part1-5"는 오류(Run A·Parvo main 포함 최근 Parvo 계열 전부 part1 개발 런). B도 part1로 맞춤 = valid control. **논문용 part1-5 full 학습(full Parvo + no-M)은 별도 후속 결정**(현재는 개발 단계 비교).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36126892 | AIP_long 2×4 H100 | 18:00:00 | **no-M scratch (20ep, part1)** — A scratch(35788399) env 완전 동일 + `V15_NO_MOTION=1`, `PARVO_CKPT=parvo_noM`. P=two-frame image MAE 단독(M→P `L_pred` 차단). no-M은 compute~절반 → A의 7h29m보다 빠를 것(첫 ep ETA 확인). ep20 후 continuation(+30ep, init_from, lr1e-4) 예정 | 🔵 SUBMITTED |
+
 ### 2026-06-18 Parvo LIBERO BC-T (현재 모델 control 평가)
 
 **배경**: EgoDex 선형 probe(변화 인지)에선 VideoMAE +0.47 > Parvo +0.29지만, **control(LIBERO BC-T)에서 two-stream이 VideoMAE 압도**(legacy v15-ptptk 0.63/0.86/0.84 vs VideoMAE 0.22/0.24/0.42) = readout↔control dissociation. → 현재 Parvo(Run B-2 cont ep30)로 BC-T 직접 측정. **CLS std/cos로 붕괴 판단 안 함**(cls_p 학습압력 0, patch-level healthy = 유효 지표).
@@ -125,7 +135,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 35788399 | AIP_long 2×4 H100 | 18:00:00 | **Run B-2 본학습 (20ep)** (parvo pair scratch, masked_anchor + L_m_jepa=0, reg 없음, gate=0+warmup5, batch 64, part1-5, SUFFIX=runB2) | ❌ COMPLETED 20ep 7h29m (**~60 GPU·h**) but **붕괴 — 마스킹만으론 불충분**. 궤적: **ep1-2 Run A보다 건강**(ep2 std_p=0.261/cos_intra_p=0.877, Run A는 ep2 0.039/0.999) → ep3 붕괴 → **ep4-7 부분 회복**(std_p 0.05-0.075, 진동) → ep12+ 완전 붕괴(std_p 0.006, cos_intra_p=1.0, cos(pred,tgt)=0.999). **마스킹이 basin을 *완화·지연*했으나 상수 attractor가 결국 승**(예측대로 "minimum 미제거"). M(std_m 0.18)·DDP(λ_mj=0)는 정상. **사고: ep4 abort 미설정**(21:28 야간 시작, 무감시 완주) → sbatch는 Monitor/wakeup 능동 폴링 필요. 다음 = B-1(masked + *타게팅 수정*된 reg) |
+| 35788399 | AIP_long 2×4 H100 | 18:00:00 | **Run B-2 본학습 (20ep)** (parvo pair scratch, masked_anchor + L_m_jepa=0, reg 없음, gate=0+warmup5, batch 64, **part1**(로그 확인, 기존 "part1-5"는 오류), SUFFIX=runB2) | ❌ COMPLETED 20ep 7h29m (**~60 GPU·h**) but **붕괴 — 마스킹만으론 불충분**. 궤적: **ep1-2 Run A보다 건강**(ep2 std_p=0.261/cos_intra_p=0.877, Run A는 ep2 0.039/0.999) → ep3 붕괴 → **ep4-7 부분 회복**(std_p 0.05-0.075, 진동) → ep12+ 완전 붕괴(std_p 0.006, cos_intra_p=1.0, cos(pred,tgt)=0.999). **마스킹이 basin을 *완화·지연*했으나 상수 attractor가 결국 승**(예측대로 "minimum 미제거"). M(std_m 0.18)·DDP(λ_mj=0)는 정상. **사고: ep4 abort 미설정**(21:28 야간 시작, 무감시 완주) → sbatch는 Monitor/wakeup 능동 폴링 필요. 다음 = B-1(masked + *타게팅 수정*된 reg) |
 
 | 35926031/032 | mig-1g.10gb ×2 | — | Run B-2 probing 1차 | ❌ CANCELLED. parvo probe 경로 작동 확인(embed_dim 1536, 가중치 로드 OK) but **max_videos 미설정 → part4 전체 4.2M 샘플 폭증**(MIG 2h 내 불가). probe sbatch에 MAX_VIDEOS 인자 추가 후 재제출 |
 | 35948313/314 | mig-1g.10gb ×2 | 02:00:00 | **Run B-2 probing 재제출** (MAX_VIDEOS=300, ep20 part4 gap10). 313=P, 314=M | ✅ COMPLETED 2m9s/1m28s. **P R²=0.30 / M R²=0.28 (둘 다 양수)** → **patch 표현 healthy**(CLS만 붕괴, scaffold trivial). unmatched 맥락: v11 +0.29 / v15 +0.39 / VideoMAE +0.47 → v11급. 가설 A(masked MAE concat baseline) 지지 → continuation(35956105) |
@@ -140,7 +150,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 35763563 | AIP 1×1 H100 | 02:00:00 | **Run A sanity** (parvo pair, gate=0, V15_LAMBDA_VAR=1.0 + target_ln, 50vid×3ep, SUFFIX=runA). 체크: DDP/GPU 무크래시·NaN 없음·loss 스케일·std 회복 | ✅ COMPLETED 3m13s (~0.05 GPU·h). **붕괴 궤적 역전 확인**: std_p 0.58→**1.0**(옛 붕괴는 →0, variance reg가 target=1로 끌어올림), cos_intra_p 0.60→**0.165**(P 다양화), cos(pred,tgt) 0.57~0.84(0.99 미saturate), NaN 없음. ⚠️ std_m 0.05(M엔 reg 없음, 옛 transient 패턴). 3ep라 증명 아님 but 궤적 명백 역전 → 통과 |
-| 35764680 | AIP_long 2×4 H100 | 18:00:00 | **Run A 본학습 (cap 20ep)** (parvo pair scratch, V15_LAMBDA_VAR=1.0+target_ln, gate=0+warmup5, batch 64, lr 2e-4, part1-5, SUFFIX=runA) | ❌ CANCELLED 2h19m (~18.6 GPU·h, ep5). **붕괴 재현 — variance reg(λ=1.0) 실패**: ep2부터 cos_intra_p→1.0, std_p→0.02, cos(pred,tgt)→0.995. **sanity(35763563)의 std_p 1.0은 오판** — 18 step뿐이라 붕괴 발현 전. 본학습은 ep1에 9030 step → 강한 collapse attractor가 λ_var=1.0 압도. 진단: λ_var 과소 or directional collapse(cos_intra→1, magnitude varies라 per-dim variance reg 미발화) → λ_var↑(VICReg=25) 또는 normalize-then-var 타게팅 수정, 혹은 Run B(task-structural)로 직행 |
+| 35764680 | AIP_long 2×4 H100 | 18:00:00 | **Run A 본학습 (cap 20ep)** (parvo pair scratch, V15_LAMBDA_VAR=1.0+target_ln, gate=0+warmup5, batch 64, lr 2e-4, **part1**(로그 확인, 기존 "part1-5"는 오류), SUFFIX=runA) | ❌ CANCELLED 2h19m (~18.6 GPU·h, ep5). **붕괴 재현 — variance reg(λ=1.0) 실패**: ep2부터 cos_intra_p→1.0, std_p→0.02, cos(pred,tgt)→0.995. **sanity(35763563)의 std_p 1.0은 오판** — 18 step뿐이라 붕괴 발현 전. 본학습은 ep1에 9030 step → 강한 collapse attractor가 λ_var=1.0 압도. 진단: λ_var 과소 or directional collapse(cos_intra→1, magnitude varies라 per-dim variance reg 미발화) → λ_var↑(VICReg=25) 또는 normalize-then-var 타게팅 수정, 혹은 Run B(task-structural)로 직행 |
 
 ### 2026-06-12 Parvo 2-frame pair 재설계 (compose 제거 + ep8 init)
 
@@ -174,7 +184,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 35550604 | AIP 1×1 H100 | 02:00:00 | **Parvo no-Sobel 진단 sanity** (gate=0, 50vid×3ep, PRETRAIN_DIAG=1) | ✅ COMPLETED 5m15s (0.09 GPU·h). **입력 parity OK**(P=RGB 3ch [0,1], M=ΔL 1ch [-0.7,0.7]). loss 스케일 Sobel판과 동등(L_t 0.047→0.019). **병목 = COMPUTE-bound 99%, data-load ≤1%** (3-frame 추출 병목 아님 확정). NaN 없음 |
-| 35560151 | AIP_long 2×4 H100 | 5-00:00:00 | **Parvo 본학습** (MODEL=parvo = v15b+no-Sobel, gate=10, EMA 0.996, 50ep × part1-5, lr 2e-4). Paper 2 scaffold 검증. ckpt → checkpoints/parvo/ | PENDING. abort: ep12-18 trivial collapse(cos>0.99&L_pred<0.01)/발산 |
+| 35560151 | AIP_long 2×4 H100 | 5-00:00:00 | **Parvo 본학습** (MODEL=parvo = v15b+no-Sobel, gate=10, EMA 0.996, 50ep × **part1**(로그 확인 35560151, 기존 "part1-5"는 오류), lr 2e-4). Paper 2 scaffold 검증. ckpt → checkpoints/parvo/ | PENDING. abort: ep12-18 trivial collapse(cos>0.99&L_pred<0.01)/발산 |
 
 ### 2026-06-10 v15b student-anchor 재학습 (main 브랜치, catalyst 최종 검증)
 

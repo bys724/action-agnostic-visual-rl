@@ -256,6 +256,10 @@ def main():
     parser.add_argument('--v15-masked-anchor', action='store_true',
                         help='[Run B] V-JEPA P anchor를 full→masked(MAE p_t_visible 재사용). mask token '
                              '주입 후 routing → masked 위치에서만 teacher frame_tk 예측. MAE 포맷 통일.')
+    parser.add_argument('--v15-no-motion', action='store_true',
+                        help='[§11 no-M ablation] P = two-frame image MAE 단독. M→P scaffold 경로(L_pred)'
+                             '+V-JEPA-M(L_m_jepa)을 forward에서 skip + 관련 모듈 동결(불필요 연산 제거). '
+                             'pair_mode 전용. routing-off Paper1 대조군 = M 기여 격리.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -431,6 +435,7 @@ def main():
             lambda_var=args.v15_lambda_var,
             target_ln=args.v15_target_ln,
             masked_anchor=args.v15_masked_anchor,
+            no_motion=args.v15_no_motion,
         )
     elif args.model == 'two-stream-v12':
         # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)

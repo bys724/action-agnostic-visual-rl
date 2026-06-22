@@ -253,6 +253,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         lambda_var: float = 0.0,
         target_ln: bool = False,
         masked_anchor: bool = False,
+        no_motion: bool = False,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -335,12 +336,32 @@ class TwoStreamV15Model(TwoStreamV11Model):
         # mask_token_m 활성화 (V-JEPA-M에서 학습)
         self.mask_token_m.requires_grad_(True)
 
+        # no-M ablation (2026-06-22, §11): P = two-frame image MAE 단독. M→P scaffold의 유일
+        #   경로(L_pred)와 V-JEPA-M(L_m_jepa)을 forward에서 skip(불필요 연산 제거) + 관련 모듈
+        #   전부 동결. λ_pred=0만으론 dead branch가 매 step ×0으로 계산돼 ~절반 낭비 + teacher_p
+        #   full forward(depth12)가 student MAE보다 무거움 → 분기 자체를 제거. downstream
+        #   어댑터(parvo_pt_ptk)는 P encoder만 써서 M/routing 미학습 무해. pair_mode 전용.
+        #   동결 필수: find_unused_parameters=False라 trainable인데 backward 미도달 시 DDP hang.
+        self.no_motion = no_motion
+        if no_motion:
+            assert pair_mode, "no_motion은 pair_mode 전용 (3-frame forward 미지원)"
+            for mod in (self.patch_embed_m, self.blocks_m, self.norm_m,
+                        self.m_decoder_blocks, self.m_decoder_norm,
+                        self.p_motion_decoder, self.p_motion_decoder_norm):
+                for p in mod.parameters():
+                    p.requires_grad_(False)
+            for param in (self.cls_token_m, self.pos_embed_m,
+                          self.dec_pos_embed_m, self.mask_token_m):
+                param.requires_grad_(False)
+
     # ----------------------------------------------------------------------
     # EMA update
     # ----------------------------------------------------------------------
 
     @torch.no_grad()
     def update_teacher(self, momentum: float):
+        if self.no_motion:
+            return  # no-M: teacher(JEPA target) 미사용 → EMA 업데이트 불필요
         self.teacher_p.update(self, momentum)
         self.teacher_m.update(self, momentum)
 
@@ -543,12 +564,37 @@ class TwoStreamV15Model(TwoStreamV11Model):
 
         p_channel_t = self.preprocessing.compute_p_channel(image_current)
         p_channel_tk = self.preprocessing.compute_p_channel(image_future)
-        m_chan = self.preprocessing.compute_m_channel(image_current, image_future)  # t → t+k
 
         # 1. P MAE × 2 frame
         loss_t, patch_pred_t, mask_p_t, p_t_visible = self._mae_one_frame(image_current, p_channel_t)
         loss_tk, patch_pred_tk, mask_p_tk, p_tk_visible = self._mae_one_frame(image_future, p_channel_tk)
         cls_p_repr = p_t_visible[:, 0]
+
+        # no-M ablation (§11): P = two-frame image MAE 단독. M channel/encoder/routing/JEPA 전부
+        #   skip → loss = L_t + L_tk만. diagnostic 키는 P visible로 placeholder (logging 호환).
+        if self.no_motion:
+            zero = torch.zeros((), device=device, dtype=loss_t.dtype)
+            loss = loss_t + loss_tk
+            return {
+                "loss": loss,
+                "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
+                "loss_pred": zero, "loss_pred_short": zero,
+                "loss_pred_step": zero, "loss_pred_long": zero,
+                "loss_m_jepa": zero, "loss_compose": zero, "loss_dino": zero,
+                "loss_var": zero,
+                "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_tk),
+                "mask_p": mask_p_t, "mask_m": mask_p_t,
+                "m_features": p_t_visible[:, 1:], "p_features_t": p_t_visible[:, 1:],
+                "p_features_tk": p_tk_visible[:, 1:], "cls_m": cls_p_repr, "cls_p": cls_p_repr,
+                "predicted_tk_repr": p_tk_visible, "target_tk_repr": p_tk_visible,
+                "m_local_short": p_t_visible, "m_local_step": p_t_visible, "m_local_long": p_t_visible,
+                "m_compose_target": p_t_visible, "m_predicted": p_t_visible,
+                "student_dino_cls": cls_p_repr,
+                "teacher_dino_cls": torch.zeros(B, self.embed_dim, device=device, dtype=loss.dtype),
+                "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),
+            }
+
+        m_chan = self.preprocessing.compute_m_channel(image_current, image_future)  # t → t+k
 
         # 2. M encoder unmasked (routing source)
         m_local = self._encode_m_unmasked(m_chan)
