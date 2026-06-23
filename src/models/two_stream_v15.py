@@ -43,8 +43,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .two_stream import TransformerBlock
-from .two_stream_v11 import TwoStreamV11Model, MotionRoutingBlock
+from .common.blocks import TransformerBlock, MotionRoutingBlock
+from .two_stream_v11 import TwoStreamV11Model
 
 
 # ============================================================================

@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .common import TwoStreamPreprocessing
+from .common.blocks import build_2d_rope_freqs, apply_rope, TransformerBlock
 
 
 def patch_normalize(target: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
@@ -61,134 +62,6 @@ def patch_normalize(target: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     x = x.permute(0, 3, 1, 4, 2, 5).contiguous()         # [B, C, Hp, ps, Wp, ps]
     x = x.view(B, C, H, W)
     return x
-
-
-# ============================================================================
-# 2D Rotary Position Embedding (RoPE)
-# ============================================================================
-
-def build_2d_rope_freqs(num_patches_per_side: int, dim: int, theta: float = 10000.0):
-    """2D RoPE 주파수 테이블 생성.
-
-    패치의 (row, col) 좌표를 dim의 절반씩 나눠 인코딩.
-    Returns: [N, dim] complex frequencies (N = num_patches_per_side^2)
-    """
-    half_dim = dim // 2
-    freqs_row = 1.0 / (theta ** (torch.arange(0, half_dim // 2, dtype=torch.float32) / (half_dim // 2)))
-    freqs_col = 1.0 / (theta ** (torch.arange(0, half_dim // 2, dtype=torch.float32) / (half_dim // 2)))
-
-    rows = torch.arange(num_patches_per_side, dtype=torch.float32)
-    cols = torch.arange(num_patches_per_side, dtype=torch.float32)
-
-    # [H, W, half_dim//2] for row and col separately
-    grid_r, grid_c = torch.meshgrid(rows, cols, indexing='ij')
-    grid_r = grid_r.reshape(-1)  # [N]
-    grid_c = grid_c.reshape(-1)  # [N]
-
-    # outer product: [N, half_dim//2]
-    angles_r = torch.outer(grid_r, freqs_row)
-    angles_c = torch.outer(grid_c, freqs_col)
-
-    # concat row and col angles: [N, half_dim]
-    angles = torch.cat([angles_r, angles_c], dim=-1)
-
-    # complex form: cos + i*sin
-    freqs_cis = torch.polar(torch.ones_like(angles), angles)  # [N, half_dim]
-    return freqs_cis
-
-
-def apply_rope(x: torch.Tensor, freqs_cis: torch.Tensor, has_cls: bool = True) -> torch.Tensor:
-    """RoPE를 attention의 Q, K에 적용.
-
-    Args:
-        x: [B, N(+1), H, D_head] — CLS가 있으면 idx 0이 CLS
-        freqs_cis: [N, D_head//2] — 패치 위치별 complex frequencies
-        has_cls: True면 idx 0(CLS)은 RoPE 적용 안 함
-
-    Returns: [B, N(+1), H, D_head]
-    """
-    if has_cls:
-        cls_tok = x[:, :1]
-        patches = x[:, 1:]
-    else:
-        patches = x
-
-    B, N, H, D = patches.shape
-
-    # [B, N, H, D] → [B, N, H, D//2, 2] → complex
-    patches_c = patches.float().reshape(B, N, H, D // 2, 2)
-    patches_c = torch.view_as_complex(patches_c)  # [B, N, H, D//2]
-
-    # freqs_cis: [N, D//2] → broadcast: [1, N, 1, D//2]
-    freqs = freqs_cis[:N].unsqueeze(0).unsqueeze(2).to(patches_c.device)
-    patches_c = patches_c * freqs
-
-    # complex → real
-    patches = torch.view_as_real(patches_c).reshape(B, N, H, D).type_as(x)
-
-    if has_cls:
-        return torch.cat([cls_tok, patches], dim=1)
-    return patches
-
-
-# ============================================================================
-# Custom Transformer Block with RoPE
-# ============================================================================
-
-class TransformerBlock(nn.Module):
-    """RoPE 지원 Transformer block (Pre-norm, ViT style)."""
-
-    def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float = 4.0):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-
-        self.norm1 = nn.LayerNorm(embed_dim)
-        self.qkv = nn.Linear(embed_dim, embed_dim * 3)
-        self.proj = nn.Linear(embed_dim, embed_dim)
-
-        self.norm2 = nn.LayerNorm(embed_dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(embed_dim, int(embed_dim * mlp_ratio)),
-            nn.GELU(),
-            nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
-        )
-
-    def forward(
-        self, x: torch.Tensor,
-        freqs_cis: torch.Tensor = None,
-        attn_mask: torch.Tensor = None,
-    ) -> torch.Tensor:
-        """
-        Args:
-            x: [B, N, D]
-            freqs_cis: [N_patches, D_head//2] — None이면 RoPE 없이 동작
-            attn_mask: [N, N] or [B, N, N] additive mask (-inf로 차단)
-                        — v7-big P stream에서 CLS_P_bg ↔ CLS_P_motion 상호 attention 차단용
-        """
-        # Self-attention with RoPE
-        h = self.norm1(x)
-        B, N, D = h.shape
-        qkv = self.qkv(h).reshape(B, N, 3, self.num_heads, self.head_dim)
-        q, k, v = qkv.unbind(dim=2)  # each: [B, N, H, D_head]
-
-        if freqs_cis is not None:
-            q = apply_rope(q, freqs_cis, has_cls=True)
-            k = apply_rope(k, freqs_cis, has_cls=True)
-
-        # Scaled dot-product attention
-        q = q.transpose(1, 2)  # [B, H, N, D_head]
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-        attn = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
-        attn = attn.transpose(1, 2).reshape(B, N, D)  # [B, N, D]
-
-        x = x + self.proj(attn)
-
-        # MLP
-        x = x + self.mlp(self.norm2(x))
-        return x
 
 
 class CLSExchangeBlock(nn.Module):
