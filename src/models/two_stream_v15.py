@@ -351,6 +351,11 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.no_motion = no_motion
         if no_motion:
             assert pair_mode, "no_motion은 pair_mode 전용 (3-frame forward 미지원)"
+            # teacher(JEPA target) 미사용(forward는 zeros placeholder 반환·update_teacher early-return)
+            #   → del로 메모리 회수(~full P/M encoder copy 2개). pixel_pred과 동일 처리.
+            #   ⚠️ M encoder/decoder·p_motion_decoder는 no_motion forward도 미사용이나, 본 변경은
+            #      teacher만 del(고위험 회피). 나머지는 freeze 유지(DDP-safe) — 추가 del은 후속.
+            del self.teacher_p, self.teacher_m
             for mod in (self.patch_embed_m, self.blocks_m, self.norm_m,
                         self.m_decoder_blocks, self.m_decoder_norm,
                         self.p_motion_decoder, self.p_motion_decoder_norm):
@@ -373,12 +378,25 @@ class TwoStreamV15Model(TwoStreamV11Model):
         if pixel_pred:
             assert pair_mode, "pixel_pred은 pair_mode 전용 (2-frame)"
             assert not no_motion, "pixel_pred과 no_motion 동시 불가 (배타적 모드)"
-            for mod in (self.interpreter_1, self.interpreter_1_norm,
-                        self.m_decoder_blocks, self.m_decoder_norm):
-                for p in mod.parameters():
-                    p.requires_grad_(False)
-            for param in (self.dec_pos_embed_m, self.mask_token_m):
-                param.requires_grad_(False)
+            # §9 미사용 모듈 **완전 삭제**(freeze 아닌 del) → 메모리 회수("small이 실제 small").
+            #   teacher_p/teacher_m = full P/M encoder EMA copy(미사용 메모리 대부분),
+            #   interpreter_1 = §9가 p_motion_decoder로 흡수, M decoder(blocks/norm/pos/mask) =
+            #   pixel_pred은 M *encoder*만 사용(_encode_m_unmasked)이라 decoder 불필요.
+            #   forward(_forward_pair_pixel/_predict_pixels)·update_teacher(pixel_pred early-return)
+            #   모두 미참조 → del 안전. ckpt 로드는 adapter strict=False라 삭제 키 무해.
+            del self.teacher_p, self.teacher_m
+            del self.interpreter_1, self.interpreter_1_norm
+            del self.m_decoder_blocks, self.m_decoder_norm
+            del self.dec_pos_embed_m, self.mask_token_m
+            # SiamMAE-analog(routing_source="p"): routing이 P를 Q/K로 사용 → M encoder 미사용.
+            #   trainable-but-no-grad면 DDP(find_unused_parameters=False) hang → M encoder freeze.
+            #   forward도 skip(_forward_pair_pixel) → 불필요 연산 제거. param count 유지(param-symmetric).
+            if routing_source == "p":
+                for mod in (self.patch_embed_m, self.blocks_m, self.norm_m):
+                    for p in mod.parameters():
+                        p.requires_grad_(False)
+                self.cls_token_m.requires_grad_(False)
+                self.pos_embed_m.requires_grad_(False)
 
     # ----------------------------------------------------------------------
     # EMA update
@@ -733,8 +751,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
 
         # M routing source: real motion M(t,tk), null motion M(x,x)=ΔL=0 (self-pair → null code).
         #   null은 x-독립(ΔL=0 동일)이라 1회 계산 후 L_t/L_tk 재사용.
-        m_real = self._encode_m_unmasked(self.preprocessing.compute_m_channel(image_current, image_future))
-        m_null = self._encode_m_unmasked(self.preprocessing.compute_m_channel(image_current, image_current))
+        # analog(routing_source="p"): routing이 M을 무시(Q/K=P) → M encoder forward 생략(불필요 연산 제거).
+        #   m_routing 인자는 무시되므로 None 전달. (M encoder는 __init__에서 freeze.)
+        if self.routing_source == "p":
+            m_real = m_null = None
+        else:
+            m_real = self._encode_m_unmasked(self.preprocessing.compute_m_channel(image_current, image_future))
+            m_null = self._encode_m_unmasked(self.preprocessing.compute_m_channel(image_current, image_current))
 
         # 통일 pixel 예측 ×3 (gap=0 복구 2 + real-gap 예측 1)
         loss_t, patch_pred_t = self._predict_pixels(p_t_visible, mask_t, m_null, image_current)
@@ -745,7 +768,9 @@ class TwoStreamV15Model(TwoStreamV11Model):
 
         zero = torch.zeros((), device=device, dtype=loss_t.dtype)
         cls_p_repr = p_t_visible[:, 0]
-        cls_m_repr = m_real[:, 0]
+        # analog(M 미사용)이면 m_real=None → M 진단 출력은 zeros placeholder (std_m=0이 M 미사용 표시).
+        m_out = m_real if m_real is not None else torch.zeros_like(p_t_visible)
+        cls_m_repr = m_out[:, 0]
         return {
             "loss": loss,
             "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
@@ -755,11 +780,11 @@ class TwoStreamV15Model(TwoStreamV11Model):
             "loss_var": zero,
             "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_pred),
             "mask_p": mask_t, "mask_m": mask_t,
-            "m_features": m_real[:, 1:], "p_features_t": p_t_visible[:, 1:],
+            "m_features": m_out[:, 1:], "p_features_t": p_t_visible[:, 1:],
             "p_features_tk": p_tk_visible[:, 1:], "cls_m": cls_m_repr, "cls_p": cls_p_repr,
             "predicted_tk_repr": p_tk_visible, "target_tk_repr": p_tk_visible,
-            "m_local_short": m_real, "m_local_step": m_real, "m_local_long": m_real,
-            "m_compose_target": m_real, "m_predicted": m_real,
+            "m_local_short": m_out, "m_local_step": m_out, "m_local_long": m_out,
+            "m_compose_target": m_out, "m_predicted": m_out,
             "student_dino_cls": cls_p_repr,
             "teacher_dino_cls": torch.zeros(B, self.embed_dim, device=device, dtype=loss.dtype),
             "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),

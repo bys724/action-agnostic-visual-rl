@@ -55,7 +55,9 @@
   - **CALVIN OOD 정규 소스**(parity 가드가 오source 적발): `<enc>_training_20260526_213639_gapsweep`(§4 cross-folder, gap30) — 4인코더 §4값 정확 일치. ⚠️ `_validation_*_seg`는 within-validation(in-dist)이라 **OOD 아님**. LIBERO는 within-suite라 보조 표기만(slope 미사용).
   - **slope 절대값 해석 불가**(EgoDex 18-dim hand vs CALVIN 3-dim pos = target-space confound). **신호 = `slope_ours − slope_VideoMAE`**(동일 target → confound 상쇄). 현 baseline: VideoMAE slope **−0.083**, frozen OOD-pos floor = VC-1 +0.536 / DINOv2 +0.223 / SigLIP −0.314.
 - [x] **SiamMAE-analog routing 분기**: `MotionRoutingBlock`(blocks.py)에 `routing_source ∈ {m,p}`(default m). `v_from_p`에서 `p`면 Q/K 입력을 `m_completed`→`p_state`로 교체(V는 항상 P, qk_m·norm_m·v_p 재사용). `RoutingInterpreterStep`→`TwoStreamV15Model`(`routing_source`)→CLI `--v15-routing-source` threading. analog = `--v15-pixel-pred --v15-routing-source p`. **smoke PASS**: param/state_dict 키 동일(ckpt 무손상)·flag 동작변경 확인(loss 2.060≠2.069).
-- [ ] **MCP-MAE frozen-param del**: 본 학습 진입 전 teacher EMA/interpreter 해제.
+- [x] **MCP-MAE frozen-param del**: pixel_pred에서 미사용 모듈 **freeze→del** (teacher_p/teacher_m=full P/M encoder copy + interpreter_1 + M decoder/pos/mask). smoke: 삭제 attr·state_dict 키 제거·param 감소·forward+backward·grad 정상. **no_motion(Image MAE)도 동일 teacher del 확장**(no-M-S = STEP 1 런). 비-pixel/비-no_motion(MS-JEPA)은 teacher 유지(scope 격리).
+  - **🔴 점검 중 발견·수정한 버그**: SiamMAE-analog(routing_source="p")는 routing이 M을 무시(Q/K=P)하는데 M encoder가 **trainable+forward**돼 ① DDP `find_unused_parameters=False` hang ② 불필요 M forward ×2/step. → analog일 때 M encoder **freeze + forward skip**(param-symmetric 유지). smoke: analog trainable-no-grad=0(DDP-safe), MCP-MAE는 M 여전히 학습.
+  - ⏳ 후속(미적용): no_motion의 M encoder/decoder·p_motion_decoder도 forward 미사용 → freeze 상태(DDP-safe). 완전 P-only로 추가 del 가능(고위험 회피로 이번 보류).
 - [ ] **run config**: part1 `MAX_VIDEOS`, ViT-S(`--siammae-size small` / P=384·6heads), matched epoch, 3런 sbatch.
 - [ ] **STEP 2 subset**: part1의 10%/30% 2런(핵심 비교만).
 
