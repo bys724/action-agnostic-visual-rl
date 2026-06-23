@@ -29,8 +29,8 @@
 
 ## 3. 실행 순서 (비용 오름차순)
 
-- **STEP 0 — (학습 0) OOD slope 게이트**: `in-domain R² − OOD R²`를 **기존 인코더**(MS-JEPA·v15·VideoMAE·VC-1·DINOv2·SigLIP)로 산출. per-domain R² CSV는 이미 존재(EgoDex in-domain + CALVIN/LIBERO OOD) → **신규 학습 0, 집계 스크립트만**. 메커니즘 신호(선택성/dissociation) 없으면 **재학습 보류**.
-- **STEP 1 — subset·small·matched 3런** (~100 GPU·h each): `MCP-MAE`-S + `SiamMAE-analog`-S + `no-M`(Image MAE)-S, **part1 동일·epoch 동일·size 동일**. ← 깨끗한 matched mechanism 비교 완료점.
+- **STEP 0 — (거의 무료, 게이트 아님) baseline slope 사전계산**: `in-domain R² − OOD R²`를 **probing CSV가 이미 있는 인코더만** 집계 = **`VideoMAE-ours` + frozen baselines(`DINOv2`·`SigLIP`·`VC-1`)**. → 비교군의 도메인 취약성(dissociation headroom) 공짜 확인. ⚠️ **thesis(ours) slope는 여기서 안 나옴**: ours 계열(`MS-JEPA`(v15b)·`no-M`)은 probing 산출물 없음(`paper_artifacts/`에 BC rollout만), `v15`/`v11`(full Sobel)은 논문 제외 + motion routing no-op이라 ours 프록시 부적합(slope는 내부 sanity로만 선택). ⟹ thesis OOD slope는 STEP 1로 이동.
+- **STEP 1 — subset·small·matched 3런 → probe → OOD slope(ours 포함)** (~100 GPU·h each): `MCP-MAE`-S + `SiamMAE-analog`-S + `no-M`(Image MAE)-S, **part1 동일·epoch 동일·size 동일**. 학습+probing까지 = thesis slope **첫 진짜 신호**. **게이트 = `MCP-MAE`-S 첫 run health(collapse 없이 patch+CLS R² 정상) + slope가 `VideoMAE` 대비 우위** → 아니면 매트릭스 확장 보류.
 - **STEP 2 — 핵심 비교만 2-scale**: `MCP-MAE`-S vs `SiamMAE-analog`-S 를 part1의 10%/30%에서 재실행 → rank 안정성(scale-interaction 방어).
 - **STEP 3 — (보류·조건부) 승자만 ViT-B full 1회**: 2-size 확인 + dissociation de-confound(full `VideoMAE`-B vs ours-B)를 **한 런으로 동시 충족**. 절대 경쟁력 주장 재추구 시에만.
 - **KEEP**: `VideoMAE-ours`-B(full) + frozen baselines(VC-1/DINOv2/SigLIP) = 그대로. cross-size external reference로 표기.
@@ -44,13 +44,13 @@
 - 🔴 **3런 matched 보장**: 동일 part1(MAX_VIDEOS 동일), 동일 epoch, 동일 ViT-S. subset fraction을 로그에 명시(향후 calibration).
 - 🟠 **`VideoMAE` 재학습 금지**: cross-size external reference로만. cross-size mechanism attribution 금지(작은 ours를 큰 VideoMAE와 직접 메커니즘 비교 X).
 - 🟠 **small-only 종착 금지**: ΔL inductive-bias 이점은 데이터·크기↑서 약화 가능(bitter-lesson) → 핵심 비교는 STEP 2(2-scale) 또는 STEP 3(ViT-B)로 재확인해야 paper claim.
-- 🟢 **gate 순서**: STEP 0(무료) → 신호 있으면 STEP 1. MCP-MAE 첫 런 healthy patch+CLS R² 확인 후에야 매트릭스 확장.
+- 🟢 **gate 위치 (정정)**: STEP 0는 게이트 아님(baseline 특성화만). 실제 게이트 = **STEP 1의 MCP-MAE-S 첫 run** — collapse 없이 healthy patch+CLS R² + OOD slope가 VideoMAE 대비 우위인지 확인 후에야 매트릭스(2-scale·ViT-B) 확장. ⚠️ thesis slope는 ours 학습 전엔 산출 불가(ours probing 부재, v15 no-op 프록시 부적합).
 
 ---
 
 ## 5. 구현 TODO 체크리스트 (dev 세션)
 
-- [ ] **STEP 0 집계 스크립트** (신규, 학습 없음): 기존 per-domain R² CSV → encoder별 slope 산출. pseudocode ↓.
+- [ ] **STEP 0 집계 스크립트** (신규, 학습 없음): 기존 per-domain R² CSV → **baseline(VideoMAE+frozen)** slope 산출. ours는 STEP 1 학습+probing 후 같은 스크립트로 추가. pseudocode ↓.
 - [ ] **SiamMAE-analog routing 분기**: `blocks.py` `MotionRoutingBlock`에 `routing_source ∈ {m, p}` 옵션. `two_stream_v15.py` 쪽 wiring + CLI 플래그.
 - [ ] **MCP-MAE frozen-param del**: 본 학습 진입 전 teacher EMA/interpreter 해제.
 - [ ] **run config**: part1 `MAX_VIDEOS`, ViT-S(`--siammae-size small` / P=384·6heads), matched epoch, 3런 sbatch.
@@ -60,12 +60,15 @@
 
 ```
 # 입력: probe_action 출력의 per-domain R² CSV (이미 존재)
-for enc in [v15b(MS-JEPA), v15, VideoMAE, VC-1, DINOv2, SigLIP]:
+# STEP 0 (무료): probing CSV 보유 인코더만 = baseline + VideoMAE
+#   (MS-JEPA·no-M = probing 없음 / v15·v11 = 논문 제외·no-op → 제외)
+for enc in [VideoMAE, VC-1, DINOv2, SigLIP]:
     r_in  = mean(R2[enc, EgoDex in-domain dims])
     r_ood = mean(R2[enc, CALVIN/LIBERO OOD dims])
     slope[enc] = r_in - r_ood          # 작을수록 도메인-robust
+# STEP 1 이후: MCP-MAE-S / SiamMAE-analog-S / no-M-S 를 probe 후 같은 식으로 append
 rank(enc by slope)                      # 지표 = 절대 R²가 아니라 slope
-# 해석: ours의 slope가 monolithic(VideoMAE)보다 작으면 factorization 이득 신호
+# 해석: ours(STEP 1)의 slope가 monolithic(VideoMAE)보다 작으면 factorization 이득 신호
 ```
 
 ---
