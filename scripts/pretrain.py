@@ -23,9 +23,6 @@ sys.path.insert(0, project_root)
 from src.models import (
     TwoStreamModel,
     TwoStreamV11Model,
-    TwoStreamV12Model,
-    TwoStreamV13Model,
-    TwoStreamV14Model,
     TwoStreamV15Model,
     VideoMAEModel,
     SiamMAEModel,
@@ -39,12 +36,9 @@ def main():
 
     # Model selection
     parser.add_argument('--model', type=str, default='two-stream',
-                        choices=['two-stream', 'two-stream-v11', 'two-stream-v12', 'two-stream-v13', 'two-stream-v14', 'two-stream-v15', 'two-stream-v15b', 'videomae', 'siammae'],
+                        choices=['two-stream', 'two-stream-v11', 'two-stream-v15', 'two-stream-v15b', 'videomae', 'siammae'],
                         help='Model type (default: two-stream). '
                              'two-stream-v11 = motion-guided routing + dual-target. '
-                             'two-stream-v12 = v11 + CLS semantic residual + EMA teacher. '
-                             'two-stream-v13 = dual-frame recon + motion-routed latent + DINO global CLS. '
-                             'two-stream-v14 = stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO). '
                              'two-stream-v15 = v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training. '
                              'two-stream-v15b = v15 아키텍처 동일 (student-anchor catalyst fix 반영) + collapse 방지 재학습 레시피 (recon-first gate). 로컬 재학습용. '
                              'siammae = Siamese MAE baseline (asymmetric 95% + cross-self decoder).')
@@ -147,72 +141,6 @@ def main():
                         help='[v11] Phase 2 routing 방식. '
                              'v_from_p (기본, paper novelty): Q,K←M, V←P. '
                              'v_from_m (ablation): 표준 cross-attn (Q←P, K,V←M).')
-
-    # v12: Semantic Residual + EMA Teacher (post-CoRL follow-up)
-    parser.add_argument('--v12-residual-weight', type=float, default=0.05,
-                        help='[v12] λ_residual (default 0.05, v8 1차 0.2 scale 실패 교훈). '
-                             'ep4 sanity 후 조정.')
-    parser.add_argument('--v12-vicreg-var-weight', type=float, default=1.0,
-                        help='[v12] α (variance hinge weight, V-JEPA 1 standard).')
-    parser.add_argument('--v12-vicreg-cov-weight', type=float, default=1.0,
-                        help='[v12] β (off-diagonal covariance weight).')
-    parser.add_argument('--v12-ema-momentum-init', type=float, default=0.996,
-                        help='[v12] EMA momentum start (V-JEPA 2 schedule).')
-    parser.add_argument('--v12-ema-momentum-final', type=float, default=0.9999,
-                        help='[v12] EMA momentum final (linear warmup).')
-    parser.add_argument('--v12-predictor-heads', type=int, default=12,
-                        help='[v12] Cross-attention predictor heads.')
-
-    # v13: Dual-Frame Reconstruction + Motion-Routed Latent + Full DINO Global CLS
-    parser.add_argument('--v13-patch-pred-weight', type=float, default=1.5,
-                        help='[v13] λ_patch — per-patch SmoothL1 weight (V-JEPA-style).')
-    parser.add_argument('--v13-cls-pred-weight', type=float, default=0.3,
-                        help='[v13] λ_cls — DINO distillation weight. P encoder direct distill 후 '
-                             '신호 강화 가능 (이전 motion-routed CLS 0.01 → DINOv2 표준 0.3).')
-    parser.add_argument('--v13-dino-center-momentum', type=float, default=0.9,
-                        help='[v13] EMA momentum for DINO center buffer (DINOv2 default 0.9).')
-    parser.add_argument('--v13-mask-ratio-p-dino', type=float, default=0.4,
-                        help='[v13] DINO path mask ratio (recon mask 0.75와 분리, DINOv2 30~50% 표준).')
-    parser.add_argument('--v13-num-prototypes', type=int, default=1024,
-                        help='[v13] DINO prototype count K (cluster diversity). '
-                             'EgoDex 다양성 수준에 K=1024 적정 (DINO ImageNet 표준 65536 대비 작게).')
-    parser.add_argument('--v13-dino-teacher-temp', type=float, default=0.04,
-                        help='[v13] Teacher temperature τ_t (low → sharp distribution).')
-    parser.add_argument('--v13-dino-student-temp', type=float, default=0.1,
-                        help='[v13] Student temperature τ_s (higher than τ_t).')
-    parser.add_argument('--v13-ema-momentum-init', type=float, default=0.996,
-                        help='[v13] EMA momentum start for teacher.')
-    parser.add_argument('--v13-ema-momentum-final', type=float, default=0.9999,
-                        help='[v13] EMA momentum final (linear warmup).')
-
-    # v14: Stream-wise Paradigm Specialization (P=MAE+V-JEPA, M=DINO)
-    parser.add_argument('--v14-lambda-pred', type=float, default=1.0,
-                        help='[v14] λ_pred — V-JEPA loss weight (P stream). '
-                             'Warmup이 활성화되면 이 값이 schedule target.')
-    parser.add_argument('--v14-lambda-pred-warmup-start', type=float, default=None,
-                        help='[v14] λ_pred 시작 값. None이면 warmup 비활성 (정적 λ_pred). '
-                             '권장: 0.01 — V-JEPA target이 미숙한 학습 초기에는 미세하게만 반영.')
-    parser.add_argument('--v14-lambda-pred-warmup-epochs', type=int, default=10,
-                        help='[v14] λ_pred linear warmup 길이 (epoch). 이 값 도달 시 target. '
-                             '50ep 학습 기준 default 10 (V-JEPA 2/DINOv2 표준 첫 1/5 구간).')
-    parser.add_argument('--v14-lambda-dino', type=float, default=1.0,
-                        help='[v14] λ_dino — DINO loss weight (M stream).')
-    parser.add_argument('--v14-dino-n-crop', type=int, default=1,
-                        help='[v14] DINO student multi-crop count. '
-                             'sanity=1 (baseline), 본 학습=2 (Option B). '
-                             '추가 crop은 raw pair에서 GPU random crop으로 생성, M_encoder만 추가 forward.')
-    parser.add_argument('--v14-num-prototypes', type=int, default=1024,
-                        help='[v14] DINO prototype K (default 1024, 데이터셋 보수적).')
-    parser.add_argument('--v14-dino-teacher-temp', type=float, default=0.04,
-                        help='[v14] Teacher temperature τ_T.')
-    parser.add_argument('--v14-dino-student-temp', type=float, default=0.1,
-                        help='[v14] Student temperature τ_S.')
-    parser.add_argument('--v14-dino-center-momentum', type=float, default=0.9,
-                        help='[v14] EMA momentum for DINO center (DINOv2 default 0.9).')
-    parser.add_argument('--v14-ema-momentum-init', type=float, default=0.996,
-                        help='[v14] EMA momentum start for teachers (P + M + DINOHead).')
-    parser.add_argument('--v14-ema-momentum-final', type=float, default=0.9999,
-                        help='[v14] EMA momentum final (linear warmup).')
 
     # v15: Layered specialization with predictor-only V-JEPA + V-JEPA-M
     parser.add_argument('--v15-lambda-pred', type=float, default=1.0,
@@ -375,52 +303,6 @@ def main():
             rotation_aug=args.rotation_aug,
             routing_mode=args.v11_routing_mode,
         )
-    elif args.model == 'two-stream-v13':
-        # v13: dual-frame reconstruction + motion-routed latent + DINO global CLS
-        # - frame_t / frame_{t+k} 모두 student P encoder 통과 (각자 mask 독립)
-        # - motion-routing은 frame_t의 p_state에서 시작 → predicted_p_tk
-        # - teacher (EMA) 두 input: cropped frame_{t+k} (per-patch target) +
-        #   raw 256x256 frame_{t+k} (DINO-style global CLS target)
-        # - L_total = L_t + L_tk + λ_patch · L_pred_patch + λ_cls · L_pred_cls
-        v13_mask_m = args.mask_ratio if args.mask_ratio > 0 else 0.3
-        v13_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
-        model = TwoStreamV13Model(
-            p_depth=args.depth,
-            m_depth=args.v11_m_depth,
-            mask_ratio_m=v13_mask_m,
-            mask_ratio_p=v13_mask_p,
-            rotation_aug=args.rotation_aug,
-            routing_mode=args.v11_routing_mode,
-            patch_pred_weight=args.v13_patch_pred_weight,
-            cls_pred_weight=args.v13_cls_pred_weight,
-            dino_center_momentum=args.v13_dino_center_momentum,
-            num_prototypes=args.v13_num_prototypes,
-            dino_teacher_temp=args.v13_dino_teacher_temp,
-            dino_student_temp=args.v13_dino_student_temp,
-            mask_ratio_p_dino=args.v13_mask_ratio_p_dino,
-        )
-    elif args.model == 'two-stream-v14':
-        # v14: Stream-wise paradigm specialization
-        # - P stream: MAE (L_t + L_tk_recon) + V-JEPA (L_pred), reconstruction-anchored
-        # - M stream: DINO (L_dino) only, distillation-only
-        # - 3 EMA teachers: TeacherP (V-JEPA target) + TeacherM + TeacherDINOHead
-        # - Multi-crop N: sanity=1, 본=2 (DINO student에만, M_encoder 추가 forward)
-        # - mask_ratio_m은 v14에서 무시 (M unmasked hardcoded)
-        v14_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
-        model = TwoStreamV14Model(
-            p_depth=args.depth,
-            m_depth=args.v11_m_depth,
-            mask_ratio_p=v14_mask_p,
-            rotation_aug=args.rotation_aug,
-            routing_mode=args.v11_routing_mode,
-            lambda_pred=args.v14_lambda_pred,
-            lambda_dino=args.v14_lambda_dino,
-            dino_n_crop=args.v14_dino_n_crop,
-            num_prototypes=args.v14_num_prototypes,
-            dino_teacher_temp=args.v14_dino_teacher_temp,
-            dino_student_temp=args.v14_dino_student_temp,
-            dino_center_momentum=args.v14_dino_center_momentum,
-        )
     elif args.model in ('two-stream-v15', 'two-stream-v15b'):
         # v15 / v15b: 동일 아키텍처 (v15b = collapse 방지 재학습 레시피만 다름).
         # v15 final: docs/v15_compositional_aux_design.md 기준
@@ -455,26 +337,6 @@ def main():
             pixel_pred=args.v15_pixel_pred,
             lambda_recon=args.v15_lambda_recon,
         )
-    elif args.model == 'two-stream-v12':
-        # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
-        # - v11 모든 reconstruction path 유지 (L_t + L_tk)
-        # - 추가: M_head, P_head, CrossAttnPredictor (Q←P, K/V←M), TeacherP (EMA)
-        # - Loss: L_total = L_recon + λ·L_residual + α·L_var + β·L_cov
-        # - EMA momentum은 training loop에서 스케줄링됨 (--v12-ema-momentum-init/-final)
-        v12_mask_m = args.mask_ratio if args.mask_ratio > 0 else 0.3
-        v12_mask_p = args.mask_ratio_p if args.mask_ratio_p is not None else 0.75
-        model = TwoStreamV12Model(
-            p_depth=args.depth,
-            m_depth=args.v11_m_depth,
-            mask_ratio_m=v12_mask_m,
-            mask_ratio_p=v12_mask_p,
-            rotation_aug=args.rotation_aug,
-            routing_mode=args.v11_routing_mode,
-            residual_weight=args.v12_residual_weight,
-            vicreg_var_weight=args.v12_vicreg_var_weight,
-            vicreg_cov_weight=args.v12_vicreg_cov_weight,
-            predictor_num_heads=args.v12_predictor_heads,
-        )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
         # 2-frame에서는 masking 완화 필요.
@@ -505,8 +367,8 @@ def main():
         print(f"Loading training dataset: {args.train_data}")
         print("="*60)
 
-    # v13/v14: train dataset이 raw 256 view도 함께 반환해야 함 (DINO teacher용)
-    needs_global = args.model in ('two-stream-v13', 'two-stream-v14')
+    # global(raw 256) view는 v13/v14 DINO teacher 전용이었음 → 삭제로 항상 False
+    needs_global = False
     needs_triple = args.model in ('two-stream-v15', 'two-stream-v15b') and not args.pair_mode
 
     splits = [s.strip() for s in args.egodex_splits.split(',')]
@@ -573,25 +435,7 @@ def main():
 
     # v12/v13 EMA momentum schedule (linear warmup over training)
     v12_kwargs = {}
-    if args.model == 'two-stream-v12':
-        v12_kwargs = {
-            'v12_ema_momentum_init': args.v12_ema_momentum_init,
-            'v12_ema_momentum_final': args.v12_ema_momentum_final,
-        }
-    elif args.model == 'two-stream-v13':
-        v12_kwargs = {
-            'v12_ema_momentum_init': args.v13_ema_momentum_init,
-            'v12_ema_momentum_final': args.v13_ema_momentum_final,
-        }
-    elif args.model == 'two-stream-v14':
-        v12_kwargs = {
-            'v12_ema_momentum_init': args.v14_ema_momentum_init,
-            'v12_ema_momentum_final': args.v14_ema_momentum_final,
-            'v14_lambda_pred_warmup_start': args.v14_lambda_pred_warmup_start,
-            'v14_lambda_pred_warmup_epochs': args.v14_lambda_pred_warmup_epochs,
-            'v14_lambda_pred_target': args.v14_lambda_pred,
-        }
-    elif args.model in ('two-stream-v15', 'two-stream-v15b'):
+    if args.model in ('two-stream-v15', 'two-stream-v15b'):
         v12_kwargs = {
             'v12_ema_momentum_init': args.v15_ema_momentum_init,
             'v12_ema_momentum_final': args.v15_ema_momentum_final,
