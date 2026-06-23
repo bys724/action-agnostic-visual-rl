@@ -67,7 +67,7 @@
 - **S2 — MotionRoutingBlock 추출**: → `common/blocks.py`. v11/v15:47 import 교체.
 - **S3 — v12/13/14 string/import prune (파일 삭제 전, 1 commit)**: `__init__.py`(import 25-27, __all__ 36-38, 표 15-20), `scripts/pretrain.py`(import 26-28, instantiation 387/410/466, choices L42, --v12/13/14-* 블록), `src/training/pretrain.py`(v12/13/14 분기 + **L311/908 v14+v15 tuple split**).
 - **S4 — v12/13/14.py 삭제**: `git rm`. (importer 0 확인 후.)
-- **S5 — probe_action_v11 helper fold**: `load_v11_model`/`_p_encoder_forward`/`_m_encoder_forward`/`_full_forward_with_d_prime`/`extract_repr`/`CLS_MODES_ALL`/`_embed_dim` → shared util. **7 consumer repoint**(libero:97/154, value_alignment:108, droid_v11:38, **v15_loader:50, pca_overlay:132, grad_cam_arrow:87**). 채널 의미(5ch/3ch) 보존. consumer별 forward parity 검증. → `from scripts.eval.probe_action_v11 import` repo-grep = 0 gate.
+- **S5 — ~~probe_action_v11 fold~~ → keep-active (교정 2026-06-23)**: 실측 결과 `probe_action_v11.py`는 legacy가 아니라 **활성 공유 probe util**(legacy 의존 0, `TwoStreamV11Model`(keep)만 사용). 5개 활성 consumer(Paper-1 `v15_loader`·viz 2종·libero·value_alignment)가 공유. → **fold/삭제 안 함, keep-active.** 이름의 'v11'은 deferred 코드 rename에서 처리. 최고위험 단계 소거.
 - **S6 — 활성 eval 스크립트 legacy 분기 prune**: `probe_action.py`(v4-10 'two-stream' 345-362/482/864), libero/calvin/value_alignment/diagnose(import 출처 교체, v15-alias 분기 유지), `finetune_libero_bct.py`(choices 346-350), `base.py`(L63-73).
 - **S7 — legacy 어댑터 삭제**: `two_stream_v11.py`, `two_stream_v15_pt_ptk.py`, `two_stream_v15_mp.py`.
 - **S8 — v4-10/v11 viz·eval 삭제**: viz 5종 + `recon_quality_v11_vs_v15.py`. (PNG/JSON artifacts 보관 확인 후 co-delete.)

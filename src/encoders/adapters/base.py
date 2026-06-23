@@ -53,24 +53,12 @@ def build_adapter(
     """Encoder type → 해당 어댑터 인스턴스.
 
     Args:
-        encoder_type: 'two-stream-v11' | 'videomae-ours' | 'dinov2' | 'siglip'
+        encoder_type: 'parvo-ptptk' | 'videomae-ours' | 'dinov2' | 'siglip'
                       | 'vc1' | 'vjepa2-1'
         checkpoint_path: Encoder ckpt 경로 (필요 시)
         **kwargs: 어댑터별 추가 인자
     """
     encoder_type = encoder_type.lower().replace("_", "-")
-
-    if encoder_type == "two-stream-v11":
-        from .two_stream_v11 import TwoStreamV11Adapter
-        return TwoStreamV11Adapter(checkpoint_path=checkpoint_path, **kwargs)
-
-    if encoder_type == "two-stream-v15-ptptk":
-        from .two_stream_v15_pt_ptk import TwoStreamV15PtPtkAdapter
-        return TwoStreamV15PtPtkAdapter(checkpoint_path=checkpoint_path, **kwargs)
-
-    if encoder_type == "two-stream-v15-mp":
-        from .two_stream_v15_mp import TwoStreamV15MPAdapter
-        return TwoStreamV15MPAdapter(checkpoint_path=checkpoint_path, **kwargs)
 
     if encoder_type == "parvo-ptptk":
         from .parvo_pt_ptk import ParvoPtPtkAdapter
