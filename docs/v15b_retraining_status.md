@@ -3,6 +3,7 @@
 > **명명** (2026-06-11): 논문 핵심 모델 = **`Parvo`** (현재 구현 = code `v15b`, student-anchor). 직전 **v15**(teacher-anchor)는 버전명 유지. "catalyst" → **scaffold**로 용어 통일. 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조". 코드 식별자(`MODEL=two-stream-v15b` 등)는 rename 보류 중이라 유지.
 > **브랜치**: `main` (Parvo = 새 구조, code v15b). v15(논문 teacher-anchor)는 `paper-corl2026` 브랜치와 영구 분리.
 > **최종 업데이트**: 2026-06-22 (§10 Parvo BC-T 결과, §11 no-M ablation 계획). 이 문서는 다른 세션이 작업을 이어받기 위한 현황 메모.
+> **후속 (2026-06-23)**: Parvo/no-M 학습이 **part1 서브셋**(사고)이고 clean ckpt 부재(collapse) 확인 → **subset-matched small 재시작** 결정. 실행순서·gate·주의 = [`restart_plan.md`](restart_plan.md). §10 BC 78.5는 서브셋·붕괴 잔재라 trend용(절대·앵커 주장 불가).
 
 ## 1. 목표
 

@@ -2,6 +2,7 @@
 
 > **상태 (2026-06-22)**: 분석 완료, 구현 미착수. Paper 2(Action-Agnostic) baseline 후보. 모델 명명·2논문 구조는 [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조".
 > **작업 분담**: 코드 편집(모델·dispatch·어댑터)은 이 저장소 세션. 본 문서는 계획·근거 (문서 전용).
+> **후속 (2026-06-23)**: 실행 계획·gate·실행순서는 [`restart_plan.md`](restart_plan.md). ⚠️ claim-bearing 대조군은 vanilla SiamMAE가 아니라 **SiamMAE-analog**(routing Q/K를 P로, V=P; 단일변수 격리) — vanilla SiamMAE는 외부 reference로만.
 
 ## 결론
 
