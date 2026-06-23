@@ -202,6 +202,10 @@ def main():
                              '통과(interpreter_1 흡수). 붕괴 면역. pair_mode 전용, no_motion과 배타.')
     parser.add_argument('--v15-lambda-recon', type=float, default=1.0,
                         help='[§9] L_t+L_tk(복구) 가중치 (default 1.0). L_pred는 --v15-lambda-pred.')
+    parser.add_argument('--v15-routing-source', type=str, default='m', choices=['m', 'p'],
+                        help='routing Q/K source: m=motion(ΔL)-routed(논문 핵심) / '
+                             'p=SiamMAE-analog 대조군(RGB-routed, V는 항상 P). '
+                             'analog 비교군 = --v15-pixel-pred --v15-routing-source p (param-symmetric). v_from_p 전용.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -336,6 +340,7 @@ def main():
             no_motion=args.v15_no_motion,
             pixel_pred=args.v15_pixel_pred,
             lambda_recon=args.v15_lambda_recon,
+            routing_source=args.v15_routing_source,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

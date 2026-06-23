@@ -58,11 +58,11 @@ class RoutingInterpreterStep(nn.Module):
     """
 
     def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float, routing_mode: str,
-                 decode_first: bool = False):
+                 decode_first: bool = False, routing_source: str = "m"):
         super().__init__()
         self.routing = MotionRoutingBlock(
             embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
-            routing_mode=routing_mode,
+            routing_mode=routing_mode, routing_source=routing_source,
         )
         self.interp = TransformerBlock(
             embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
@@ -256,6 +256,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         no_motion: bool = False,
         pixel_pred: bool = False,
         lambda_recon: float = 1.0,
+        routing_source: str = "m",
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -305,10 +306,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.use_compose = use_compose and not pair_mode
 
         # ── p_motion_decoder = (routing + interp) × N (interleaved) ──────
+        # routing_source: "m"=motion(ΔL)-routed(논문 핵심) / "p"=SiamMAE-analog 대조군(RGB-routed).
+        self.routing_source = routing_source
         self.p_motion_decoder = nn.ModuleList([
             RoutingInterpreterStep(
                 embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
                 routing_mode=routing_mode, decode_first=masked_anchor,
+                routing_source=routing_source,
             )
             for _ in range(num_motion_iters)
         ])

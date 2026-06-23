@@ -158,11 +158,21 @@ class MotionRoutingBlock(nn.Module):
         num_heads: int,
         mlp_ratio: float = 4.0,
         routing_mode: str = "v_from_p",
+        routing_source: str = "m",
     ):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.routing_mode = routing_mode
+        # routing_source (v_from_p 전용): Q/K를 어디서 뽑나.
+        #   "m" (default) = M(motion/ΔL)이 routing pattern 결정 — 논문 핵심(MCP-MAE/MS-JEPA).
+        #   "p" = SiamMAE-analog 대조군. Q/K도 P(RGB)에서 → "ΔL-where vs RGB-where" 단일변수 격리.
+        #         V는 두 경우 모두 P 유지, qk_m·norm_m·v_p 모듈 동일 → param-symmetric (입력만 교체).
+        self.routing_source = routing_source
+        if routing_source not in ("m", "p"):
+            raise ValueError(f"Unknown routing_source: {routing_source}. Expected 'm' or 'p'.")
+        if routing_source == "p" and routing_mode != "v_from_p":
+            raise ValueError("routing_source='p' (SiamMAE-analog)는 routing_mode='v_from_p' 전용.")
 
         if routing_mode == "v_from_p":
             # Q, K from M; V from P
@@ -204,7 +214,9 @@ class MotionRoutingBlock(nn.Module):
         B, N, D = p_state.shape
 
         if self.routing_mode == "v_from_p":
-            qk = self.qk_m(self.norm_m(m_completed)).reshape(
+            # routing_source="p"(SiamMAE-analog): Q/K도 P에서 (V는 항상 P). 모듈 동일, 입력만 교체.
+            qk_src = p_state if self.routing_source == "p" else m_completed
+            qk = self.qk_m(self.norm_m(qk_src)).reshape(
                 B, N, 2, self.num_heads, self.head_dim,
             )
             q, k = qk.unbind(dim=2)

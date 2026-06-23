@@ -54,7 +54,7 @@
   - **in-domain(EgoDex) 데이터 현실**: canonical은 **VideoMAE-ours(+0.4705)·MS-JEPA(=Parvo v15b, +0.2884) 뿐**(eval_protocols §1). frozen(VC-1/SigLIP=0개, DINOv2=stale)은 EgoDex 학습 자체가 없어 in-domain 앵커 부재 → **slope 불가, OOD floor 참조만**. ⟹ slope는 EgoDex-trained만(VideoMAE; ours-S는 STEP 1 후 `ENCODERS`에 append).
   - **CALVIN OOD 정규 소스**(parity 가드가 오source 적발): `<enc>_training_20260526_213639_gapsweep`(§4 cross-folder, gap30) — 4인코더 §4값 정확 일치. ⚠️ `_validation_*_seg`는 within-validation(in-dist)이라 **OOD 아님**. LIBERO는 within-suite라 보조 표기만(slope 미사용).
   - **slope 절대값 해석 불가**(EgoDex 18-dim hand vs CALVIN 3-dim pos = target-space confound). **신호 = `slope_ours − slope_VideoMAE`**(동일 target → confound 상쇄). 현 baseline: VideoMAE slope **−0.083**, frozen OOD-pos floor = VC-1 +0.536 / DINOv2 +0.223 / SigLIP −0.314.
-- [ ] **SiamMAE-analog routing 분기**: `blocks.py` `MotionRoutingBlock`에 `routing_source ∈ {m, p}` 옵션. `two_stream_v15.py` 쪽 wiring + CLI 플래그.
+- [x] **SiamMAE-analog routing 분기**: `MotionRoutingBlock`(blocks.py)에 `routing_source ∈ {m,p}`(default m). `v_from_p`에서 `p`면 Q/K 입력을 `m_completed`→`p_state`로 교체(V는 항상 P, qk_m·norm_m·v_p 재사용). `RoutingInterpreterStep`→`TwoStreamV15Model`(`routing_source`)→CLI `--v15-routing-source` threading. analog = `--v15-pixel-pred --v15-routing-source p`. **smoke PASS**: param/state_dict 키 동일(ckpt 무손상)·flag 동작변경 확인(loss 2.060≠2.069).
 - [ ] **MCP-MAE frozen-param del**: 본 학습 진입 전 teacher EMA/interpreter 해제.
 - [ ] **run config**: part1 `MAX_VIDEOS`, ViT-S(`--siammae-size small` / P=384·6heads), matched epoch, 3런 sbatch.
 - [ ] **STEP 2 subset**: part1의 10%/30% 2런(핵심 비교만).
