@@ -276,6 +276,7 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ "${V15_MASKED_ANCHOR:-0}" = "1" ] && MODEL_ARGS+=(--v15-masked-anchor)  # Run B: masked anchor
     [ "${V15_NO_MOTION:-0}" = "1" ] && MODEL_ARGS+=(--v15-no-motion)  # §11 no-M ablation: P=two-frame MAE only
     [ "${V15_PIXEL_PRED:-0}" = "1" ] && MODEL_ARGS+=(--v15-pixel-pred)  # §9 motion-cond pixel MAE
+    [ "${V15_ROUTING_SOURCE:-m}" = "p" ] && MODEL_ARGS+=(--v15-routing-source p)  # SiamMAE-analog 대조군(RGB-routed)
     [ -n "${V15_LAMBDA_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-recon "$V15_LAMBDA_RECON")  # §9 복구 가중치
     [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
     [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6

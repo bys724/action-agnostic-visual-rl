@@ -58,7 +58,7 @@
 - [x] **MCP-MAE frozen-param del**: pixel_pred에서 미사용 모듈 **freeze→del** (teacher_p/teacher_m=full P/M encoder copy + interpreter_1 + M decoder/pos/mask). smoke: 삭제 attr·state_dict 키 제거·param 감소·forward+backward·grad 정상. **no_motion(Image MAE)도 동일 teacher del 확장**(no-M-S = STEP 1 런). 비-pixel/비-no_motion(MS-JEPA)은 teacher 유지(scope 격리).
   - **🔴 점검 중 발견·수정한 버그**: SiamMAE-analog(routing_source="p")는 routing이 M을 무시(Q/K=P)하는데 M encoder가 **trainable+forward**돼 ① DDP `find_unused_parameters=False` hang ② 불필요 M forward ×2/step. → analog일 때 M encoder **freeze + forward skip**(param-symmetric 유지). smoke: analog trainable-no-grad=0(DDP-safe), MCP-MAE는 M 여전히 학습.
   - ⏳ 후속(미적용): no_motion의 M encoder/decoder·p_motion_decoder도 forward 미사용 → freeze 상태(DDP-safe). 완전 P-only로 추가 del 가능(고위험 회피로 이번 보류).
-- [ ] **run config**: part1 `MAX_VIDEOS`, ViT-S(`--siammae-size small` / P=384·6heads), matched epoch, 3런 sbatch.
+- [x] **run config** = [`scripts/cluster/run_step1_matched.sh`](../scripts/cluster/run_step1_matched.sh) + `pretrain.sbatch`에 `V15_ROUTING_SOURCE` env 추가. matched 공통(part1·ViT-S `EMBED_DIM=384 NUM_HEADS=6`·`V11_M_DEPTH=6`·50ep·`NO_SOBEL=1`·`PAIR_MODE=1`·동일 batch/LR) + per-run flag만 차이: mcp_mae_s(`V15_PIXEL_PRED=1`)·analog_s(`+V15_ROUTING_SOURCE=p`)·no_m_s(`V15_NO_MOTION=1`). 3런 모두 `two-stream-v15b`(vanilla siammae 모델 아님). no-arg=usage(대량제출 가드), gate=mcp_mae_s 먼저. `bash -n` 통과. **제출은 별도**(cluster_sessions 로그 필수).
 - [ ] **STEP 2 subset**: part1의 10%/30% 2런(핵심 비교만).
 
 ### STEP 0 pseudocode (집계만 — 신규 학습 없음)
