@@ -24,6 +24,7 @@ EgoDex로 action-agnostic 시각 표현 사전학습 → LIBERO 로봇 조작으
 ## 명명 · 2논문 구조 (정규 — source of truth)
 
 > Obsidian `Projects/Action-Agnostic Paper/` + `Projects/Input-Prior Robot Representation (ICRA)/`와 1:1. 이 섹션이 명명·프레이밍의 단일 출처 — 다른 docs(eval_protocols·RESEARCH_PLAN·v15b_status)가 역참조.
+> 🔄 **기능 서술명 reorg (2026-06-23, 확정)**: Parvo→**MS-JEPA**, no-M→**Image MAE**, §9→**MCP-MAE**, Paper1→**Edge-Prior Image MAE** (2-축: Edge-Prior/no-Sobel × Image MAE/MS-JEPA/MCP-MAE). 표·근거 = [docs/REFACTOR_PLAN.md](docs/REFACTOR_PLAN.md). 본 섹션 본문의 `Parvo` 표현 전체 치환 + 코드 식별자(`v15` 등) rename은 **본학습 후 일괄**(deferred).
 
 **고유명은 논문 핵심 모델 하나에만 부여. 나머지(의도와 달랐던 버전 포함)는 버전명 유지.**
 

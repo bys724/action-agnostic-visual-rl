@@ -479,7 +479,7 @@ frozen encoder → encoder adapter → BC-Transformer policy head → action dis
 
 **로컬 작업물 (클러스터 git pull로 동기화 가능)**:
 - [`src/eval_libero.py`](../src/eval_libero.py) — 위 4가지 rollout fix
-- [`src/encoders/adapters/two_stream_v11.py`](../src/encoders/adapters/two_stream_v11.py) — checkpoint=None 허용
+- ~~`src/encoders/adapters/two_stream_v11.py`~~ — checkpoint=None 허용 (2026-06-23 삭제 → [`parvo_pt_ptk.py`](../src/encoders/adapters/parvo_pt_ptk.py))
 - [`docker/libero/Dockerfile`](../docker/libero/Dockerfile) — robomimic `--no-deps` (egl_probe build fail 회피)
 - 본 문서 + [`docs/setup/LIBERO_TEST_GUIDE.md`](setup/LIBERO_TEST_GUIDE.md) — 디버그 결과 반영
 
@@ -521,7 +521,7 @@ frozen encoder → encoder adapter → BC-Transformer policy head → action dis
 1. EgoDex action probing R² (12 mode 중 핵심 4개: A, A+B, A+D', A+B+D')
 2. DROID action probing R² (gap 1/10/15/30 × A+B / A+B+D' mode)
 
-**구현**: `MotionRoutingBlock(routing_mode='v_from_m')` — `src/models/two_stream_v11.py:55`. CLI: `--v11-routing-mode {v_from_p|v_from_m}`. sbatch: `V11_ROUTING_MODE=v_from_m`.
+**구현**: `MotionRoutingBlock(routing_mode='v_from_m')` — `src/models/common/blocks.py`. CLI: `--v11-routing-mode {v_from_p|v_from_m}`. sbatch: `V11_ROUTING_MODE=v_from_m`.
 
 **진행 상황** (2026-04-29~):
 - 33615394: sanity (1 GPU × 1 epoch × part1 × 200 vid) — PENDING

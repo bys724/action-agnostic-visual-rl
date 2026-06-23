@@ -102,3 +102,22 @@
 ## 7. 완료 후 (process ③)
 
 리팩토링 완료 시 이 문서를 정리: 실행 history는 git commit으로, 영구 가치 있는 결과(새 naming 표, 최종 구조)는 `FILE_INDEX.md`/`CLAUDE.md` "명명" 섹션으로 흡수, 본 문서는 archive 또는 삭제.
+
+## 8. 실행 현황 (2026-06-23)
+
+**✅ 완료 (gate 통과·커밋·푸시, 누적 −4841 LOC):**
+- S1/S2 — `common/blocks.py` 단일 출처 (`TransformerBlock`·`MotionRoutingBlock`).
+- S3/S4 — v12/13/14 모델 + dispatch/import prune + 파일 삭제.
+- **S5 교정** — `probe_action_v11.py` = 활성 공유 util(keep), fold/삭제 안 함.
+- S6/S7 — legacy 어댑터 3 삭제 + base.py·finetune CLI prune.
+- S8/S9 — legacy viz/eval 7 + sbatch launcher 7 삭제.
+- S11(부분) — FILE_INDEX·eval/README 재작성(새 naming), MotionRoutingBlock deep-link 정정, RESEARCH_PLAN 스트라이크.
+
+**⏳ 남은 작업 (전부 lighter·non-functional — 다음 세션):**
+1. **training loop dead-code**: `src/training/pretrain.py`의 v12/13/14 문자열 분기 14개 제거. ⚠️ v11/v15 공유 tuple(L311/406/767/908)은 **dead 항목만 제거, v11/v15 보존**(split). import 없어 무해하나 정리 가치.
+2. **in-file sbatch prune**: `pretrain.sbatch` v8~v14 MODEL 분기(L176-365, dead — 잘못된 `--model`) + 멀티인코더 sbatch(`probe_action_libero/calvin`, `value_alignment`, `run_calvin_probing_matrix.sh`)의 `V11_MODE`·`two-stream-v11` 분기·usage 주석.
+3. **전체 naming 전파**: docs 전반 `Parvo`→`MS-JEPA` 등 기능명 치환 — **deferred 코드 rename과 함께** 일괄(지금 부분 치환 시 혼란).
+
+**🔒 deferred (학습 완료 후):**
+- 코드 식별자 rename: `two_stream_v15.py`/`TwoStreamV15Model`/`--v15-*`/`--v11-*`, `probe_action_v11.py`→공유 util 새 이름. v11.py·two_stream.py 본체 삭제 재평가(S10).
+- 클러스터 ckpt rename: `parvo*`→`ms_jepa*`, `two_stream_v15b_noM_cont`→`image_mae*` 등 (인벤토리 = cluster_sessions/artifacts).
