@@ -8,9 +8,6 @@
 #   sbatch --partition=AIP_long --time=3-12:00:00 \
 #          --export=ALL,MODEL=two-stream,EPOCHS=50,USE_SCRATCH=0 \
 #          scripts/cluster/pretrain.sbatch
-#   sbatch --partition=AIP_long --time=3-12:00:00 \
-#          --export=ALL,MODEL=v-jepa,EPOCHS=50,USE_SCRATCH=0 \
-#          scripts/cluster/pretrain.sbatch
 #
 # Sanity (2 노드 8 GPU, 1 epoch):
 #   sbatch --nodes=2 --ntasks-per-node=4 --time=00:30:00 \
@@ -173,31 +170,6 @@ if [ "$MODEL" = "two-stream" ]; then
         --mask-ratio 0.3 --mask-ratio-p 0.5
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
-elif [ "$MODEL" = "two-stream-v8" ]; then
-    # v8: L_M + λ·L_P [+ α·L_var] (EMA teacher on P-stream, collapse 방어 포함)
-    # 2차 재설정 (1차 full run ep8 probing R² = -0.22, collapse 확정):
-    # [a] L_P BYOL form — L_P = 2·(1 - cos_sim) ∈ [0, 4], scale 문제 해소
-    # [b] λ_max 0.05 — λ·L_P ≈ 2~5·L_M (L_P 약간 우위, L_M anchor 유지)
-    # [c] cls_m grad ratio 0.3 — 완전 detach 대신 partial flow 허용
-    #     (L_M task 자체가 trivial하므로 L_P pull 없으면 M stream이 low-level shortcut에 수렴)
-    # [d] mask_ratio_m 0.3 → 0.5 — M task 난이도 상향으로 L_M 지나친 저점 수렴 방지
-    # 참고: docs/architecture/v8_siamsimmae.md, 조정 여지 + 실행 기록 섹션
-    MODEL_ARGS=(
-        --depth 12 --num-stages 2
-        --use-ape --rotation-aug
-        --v8-mode
-        --v8-lambda-max 0.05
-        --v8-lambda-warmup-epochs 10
-        --v8-ema-tau-base 0.996
-        --v8-pred-head-ratio 2.0
-        --v8-alpha-var 0.1
-        --v8-var-target 1.0
-        --v8-cls-m-grad-ratio 0.3
-        --mask-ratio 0.5 --mask-ratio-p 0.5
-        --max-gap 60 --sample-dist triangular --sample-center 30
-    )
-    # v8 체크포인트는 별도 디렉토리
-    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v8${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "two-stream-v9" ]; then
     # v9: v4/v6 구조 + P decoder target = frame_t (MAE 방식) + P mask 0.75
     # 설계 근거:
@@ -258,111 +230,6 @@ elif [ "$MODEL" = "two-stream-v11" ]; then
         --max-gap 60 --sample-dist triangular --sample-center 30
     )
     CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v11${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
-elif [ "$MODEL" = "two-stream-v12" ]; then
-    # v12: v11 + CLS-level semantic residual + EMA teacher (post-CoRL follow-up)
-    # 설계 근거:
-    # - v11 모든 reconstruction path 유지 (L_t + L_tk)
-    # - CLS-level semantic residual: predicted_p_tk = CrossAttn(sem_p_t, sem_m)
-    #   target = stop-grad(Teacher_P(unmasked frame_{t+k}))
-    # - L_total = L_recon + λ·SmoothL1(pred, teacher) + α·VICReg-var + β·VICReg-cov
-    # - Teacher: encoder + head 모두 EMA copy (V-JEPA 2 / BYOL 표준, moving target 방지)
-    # - 보수적 λ_residual 0.05 (v8 1차 0.2 scale failure 교훈)
-    # - 비용: v11 대비 +30~40% (teacher P forward, full token), 50ep ~4-5일 예상
-    # 환경변수:
-    #   V11_M_DEPTH (default 6), V11_ROUTING_MODE (default v_from_p) — v11과 공유
-    #   V12_RESIDUAL_WEIGHT (default 0.05), V12_VAR_WEIGHT (default 1.0), V12_COV_WEIGHT (default 1.0)
-    #   V12_EMA_INIT (default 0.996), V12_EMA_FINAL (default 0.9999)
-    MODEL_ARGS=(
-        --depth 12
-        --v11-m-depth "${V11_M_DEPTH:-6}"
-        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
-        --rotation-aug
-        --mask-ratio 0.3 --mask-ratio-p 0.75
-        --max-gap 60 --sample-dist triangular --sample-center 30
-        --v12-residual-weight "${V12_RESIDUAL_WEIGHT:-0.05}"
-        --v12-vicreg-var-weight "${V12_VAR_WEIGHT:-1.0}"
-        --v12-vicreg-cov-weight "${V12_COV_WEIGHT:-1.0}"
-        --v12-ema-momentum-init "${V12_EMA_INIT:-0.996}"
-        --v12-ema-momentum-final "${V12_EMA_FINAL:-0.9999}"
-    )
-    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v12${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
-elif [ "$MODEL" = "two-stream-v13" ]; then
-    # v13: dual-frame recon + motion-routed patches + DINOv2 multi-crop CLS distill
-    # (2026-05-04 redesign — 1차 학습 ep10+ uniform collapse 진단 후 DINO path 재구성):
-    # - frame_t / frame_{t+k} 모두 student P encoder 통과 → reconstruction (L_t, L_tk, mask 0.75)
-    # - motion-routing은 patches 수준에서만 학습 (loss_pred_patch, V-JEPA-style)
-    # - DINO path 분리: student P_enc(frame_t/tk, mask 0.4) ↔ teacher P_enc(global 256, no mask)
-    # - DINOHead MLP 보강 (D→2048→256→K, 표준 DINO/DINOv2 구조)
-    # - L_total = L_t + L_tk + λ_patch · L_pred_patch + λ_cls · L_pred_cls
-    # 환경변수:
-    #   V11_M_DEPTH (default 6), V11_ROUTING_MODE (default v_from_p) — v11과 공유
-    #   V13_PATCH_W (default 1.5), V13_CLS_W (default 0.3 — P encoder direct distill로 신호 강화)
-    #   V13_DINO_CENTER_M (default 0.9), V13_MASK_DINO (default 0.4)
-    #   V13_EMA_INIT (default 0.996), V13_EMA_FINAL (default 0.9999)
-    MODEL_ARGS=(
-        --depth 12
-        --v11-m-depth "${V11_M_DEPTH:-6}"
-        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
-        --rotation-aug
-        --mask-ratio 0.3 --mask-ratio-p 0.75
-        --max-gap 60 --sample-dist triangular --sample-center 30
-        --v13-patch-pred-weight "${V13_PATCH_W:-1.5}"
-        --v13-cls-pred-weight "${V13_CLS_W:-0.3}"
-        --v13-dino-center-momentum "${V13_DINO_CENTER_M:-0.9}"
-        --v13-mask-ratio-p-dino "${V13_MASK_DINO:-0.4}"
-        --v13-num-prototypes "${V13_NUM_PROTOS:-1024}"
-        --v13-dino-teacher-temp "${V13_T_TEMP:-0.04}"
-        --v13-dino-student-temp "${V13_S_TEMP:-0.1}"
-        --v13-ema-momentum-init "${V13_EMA_INIT:-0.996}"
-        --v13-ema-momentum-final "${V13_EMA_FINAL:-0.9999}"
-    )
-    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v13${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
-elif [ "$MODEL" = "two-stream-v14" ]; then
-    # v14: Stream-wise paradigm specialization (P=MAE+V-JEPA, M=DINO)
-    # 설계 근거 (v13 paradigm conflict 진단 후 redesign):
-    # - P stream: MAE (L_t + L_tk_recon) + V-JEPA (L_pred), 둘 다 reconstruction-anchored
-    # - M stream: DINO (L_dino) only, distillation-only — reconstruction 압력 없음
-    # - 3 EMA teachers: TeacherP (V-JEPA target) + TeacherM + TeacherDINOHead
-    # - V-JEPA path: encoder unmasked output 직접 (정통 V-JEPA pattern, encoder space 자동 정합)
-    # - DINO path: M stream CLS, raw teacher (정렬된 motion) vs cropped student (camera shift 혼합)
-    # - Multi-crop N=2 본 학습 default (DINO student에만 추가 forward, M_encoder만 추가)
-    # - 비용: v11 대비 +60~80% (forward 5~6개), 50ep 5~7일 예상 (sanity로 확정)
-    # 환경변수:
-    #   V11_M_DEPTH (default 6 — v11과 공유, M depth 변경 시 사용)
-    #   V11_ROUTING_MODE (default v_from_p — v11 novelty 유지)
-    #   MASK_P (default 0.75)
-    #   V14_LAMBDA_PRED (default 1.0), V14_LAMBDA_DINO (default 1.0)
-    #   V14_N_CROP (default 2 — 본 학습), V14_NUM_PROTOS (default 1024)
-    #   V14_T_TEMP (default 0.04), V14_S_TEMP (default 0.1)
-    #   V14_DINO_CENTER_M (default 0.9)
-    #   V14_EMA_INIT (default 0.996), V14_EMA_FINAL (default 0.9999)
-    #   V14_LAMBDA_PRED_WARMUP_START (default 비활성 — 미설정 시 정적 λ_pred)
-    #   V14_LAMBDA_PRED_WARMUP_EPOCHS (default 10 — 50ep의 첫 20%)
-    MODEL_ARGS=(
-        --depth 12
-        --v11-m-depth "${V11_M_DEPTH:-6}"
-        --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
-        --rotation-aug
-        --mask-ratio-p "${MASK_P:-0.75}"
-        --max-gap 60 --sample-dist triangular --sample-center 30
-        --v14-lambda-pred "${V14_LAMBDA_PRED:-1.0}"
-        --v14-lambda-dino "${V14_LAMBDA_DINO:-1.0}"
-        --v14-dino-n-crop "${V14_N_CROP:-2}"
-        --v14-num-prototypes "${V14_NUM_PROTOS:-1024}"
-        --v14-dino-teacher-temp "${V14_T_TEMP:-0.04}"
-        --v14-dino-student-temp "${V14_S_TEMP:-0.1}"
-        --v14-dino-center-momentum "${V14_DINO_CENTER_M:-0.9}"
-        --v14-ema-momentum-init "${V14_EMA_INIT:-0.996}"
-        --v14-ema-momentum-final "${V14_EMA_FINAL:-0.9999}"
-    )
-    # Optional λ_pred warmup (V14_LAMBDA_PRED_WARMUP_START 설정 시 활성화)
-    if [ -n "${V14_LAMBDA_PRED_WARMUP_START:-}" ]; then
-        MODEL_ARGS+=(
-            --v14-lambda-pred-warmup-start "${V14_LAMBDA_PRED_WARMUP_START}"
-            --v14-lambda-pred-warmup-epochs "${V14_LAMBDA_PRED_WARMUP_EPOCHS:-10}"
-        )
-    fi
-    CKPT_DIR="$CHECKPOINT_ROOT/two_stream_v14${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
 elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     # v15 final: predictor-only V-JEPA + V-JEPA-M (Option B) + L_compose + 3-frame triple training
     # v15b: 동일 아키텍처 (student-anchor catalyst fix 반영) + collapse 방지 재학습 레시피
@@ -435,11 +302,6 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
         )
     fi
     CKPT_DIR="$CHECKPOINT_ROOT/${PARVO_CKPT:-${MODEL//-/_}}${CHECKPOINT_SUFFIX:+_$CHECKPOINT_SUFFIX}"
-elif [ "$MODEL" = "v-jepa" ]; then
-    MODEL_ARGS=(
-        --depth 12
-        --max-gap 16 --sample-dist triangular --sample-center 8
-    )
 elif [ "$MODEL" = "videomae" ]; then
     # mask-ratio 0.5: 2-frame에 공식 0.75 과도 (V-JEPA 실패 사례 참조)
     MODEL_ARGS=(
@@ -462,10 +324,10 @@ fi
 log "Model args: ${MODEL_ARGS[*]}"
 
 # ── MODEL alias 해석 ────────────────────────────────────────────────────────
-# scripts/pretrain.py의 --model은 ['two-stream','two-stream-v11','v-jepa','videomae']만 받음.
-# v8/v9/v10은 --model two-stream + 추가 args 조합이므로 여기서 번역.
-# v11은 별도 모델 클래스 (TwoStreamV11Model) → --model two-stream-v11 그대로.
-if [ "$MODEL" = "two-stream-v8" ] || [ "$MODEL" = "two-stream-v9" ] || [ "$MODEL" = "two-stream-v10" ]; then
+# scripts/pretrain.py의 --model choices = two-stream / two-stream-v11 / two-stream-v15(b) / videomae / siammae.
+# v9/v10은 --model two-stream + 추가 args(--v9-p-target 등) 조합이므로 여기서 번역.
+# v11/v15(b)는 별도 모델 클래스 → MODEL 그대로 전달.
+if [ "$MODEL" = "two-stream-v9" ] || [ "$MODEL" = "two-stream-v10" ]; then
     MODEL_NAME_FOR_PY="two-stream"
 else
     MODEL_NAME_FOR_PY="$MODEL"
