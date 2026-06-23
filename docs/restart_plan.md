@@ -50,7 +50,10 @@
 
 ## 5. 구현 TODO 체크리스트 (dev 세션)
 
-- [ ] **STEP 0 집계 스크립트** (신규, 학습 없음): 기존 per-domain R² CSV → **baseline(VideoMAE+frozen)** slope 산출. ours는 STEP 1 학습+probing 후 같은 스크립트로 추가. pseudocode ↓.
+- [x] **STEP 0 집계 스크립트** = [`scripts/eval/aggregate_dissociation_slope.py`](../scripts/eval/aggregate_dissociation_slope.py) (학습 없음, 즉시 실행). 결과·실측 정정 ↓.
+  - **in-domain(EgoDex) 데이터 현실**: canonical은 **VideoMAE-ours(+0.4705)·MS-JEPA(=Parvo v15b, +0.2884) 뿐**(eval_protocols §1). frozen(VC-1/SigLIP=0개, DINOv2=stale)은 EgoDex 학습 자체가 없어 in-domain 앵커 부재 → **slope 불가, OOD floor 참조만**. ⟹ slope는 EgoDex-trained만(VideoMAE; ours-S는 STEP 1 후 `ENCODERS`에 append).
+  - **CALVIN OOD 정규 소스**(parity 가드가 오source 적발): `<enc>_training_20260526_213639_gapsweep`(§4 cross-folder, gap30) — 4인코더 §4값 정확 일치. ⚠️ `_validation_*_seg`는 within-validation(in-dist)이라 **OOD 아님**. LIBERO는 within-suite라 보조 표기만(slope 미사용).
+  - **slope 절대값 해석 불가**(EgoDex 18-dim hand vs CALVIN 3-dim pos = target-space confound). **신호 = `slope_ours − slope_VideoMAE`**(동일 target → confound 상쇄). 현 baseline: VideoMAE slope **−0.083**, frozen OOD-pos floor = VC-1 +0.536 / DINOv2 +0.223 / SigLIP −0.314.
 - [ ] **SiamMAE-analog routing 분기**: `blocks.py` `MotionRoutingBlock`에 `routing_source ∈ {m, p}` 옵션. `two_stream_v15.py` 쪽 wiring + CLI 플래그.
 - [ ] **MCP-MAE frozen-param del**: 본 학습 진입 전 teacher EMA/interpreter 해제.
 - [ ] **run config**: part1 `MAX_VIDEOS`, ViT-S(`--siammae-size small` / P=384·6heads), matched epoch, 3런 sbatch.
