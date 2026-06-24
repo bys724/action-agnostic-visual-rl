@@ -28,32 +28,25 @@ fig8_mp_attention/
 
 ## Current artifacts (이 폴더)
 
-`combined/`에 v11 통합본 승격 완료 (구 `docs/architecture/`에서 이동):
-- [`combined/v11_ep44_combined.png`](combined/v11_ep44_combined.png) — canonical (8-col grid)
-- [`combined/v11_ep48.png`](combined/v11_ep48.png), [`combined/v11_ep50.png`](combined/v11_ep50.png) — final champion
-- `combined/progression/v11_ep{4,8,12,16,20,24}_nomask.png` — attention progression (supplementary)
+- [`combined/v11_ep44_combined.png`](combined/v11_ep44_combined.png) — **포맷 샘플 1개** (obsolete v11, 8-col grid: input + M attn + P attn + recon).
+  v11은 paper 미사용 — 이 1장은 Parvo(v15b) attention 재생성 시 레이아웃 참조용으로만 보존. 나머지 v11 epoch/progression은 삭제(git 이력 복구 가능).
 
-M-only / P-only 분리는 미생성 — 아래 TODO.
+M-only / P-only 분리는 미생성 — Parvo로 재생성 시 아래 TODO 적용.
 
-## 기존 source (활용 가능)
+## 재생성 source
 
 | 위치 | 내용 | 비고 |
 |------|------|------|
-| [`combined/v11_ep44_combined.png`](combined/v11_ep44_combined.png) | v11 ep44 attention combined (8-col) | paper main 후보, **이미 통합본** |
-| `combined/progression/v11_ep{4,8,12,16,20,24}_nomask.png`, `combined/v11_ep{48,50}.png` | v11 attention progression | supplementary |
-| `sample_detail/` (삭제됨, 구 `docs/architecture/`) | v4용 stream-wise 분리 viz (`02_m_channel_input` / `03_p_channel_input` / `04_m_attention` / `05_p_attention`) | **git 이력 복구 가능. v11/v15 동일 패턴으로 재생성 필요** |
+| [`combined/v11_ep44_combined.png`](combined/v11_ep44_combined.png) | v11 attention combined (8-col) | **포맷 샘플** — Parvo viz 레이아웃 참조 |
+| `sample_detail/` (삭제됨, 구 `docs/architecture/`) | v4용 stream-wise 분리 viz (`02_m_channel_input` / `03_p_channel_input` / `04_m_attention` / `05_p_attention`) | **git 이력 복구 가능. Parvo 동일 패턴으로 재생성 필요** |
 
 ## TODO
 
-### v11 (method history figure에 활용 가능)
+### v11 (obsolete — 포맷 샘플만 보존)
 
-- [x] `combined/v11_ep44_combined.png` ← `attn_v11_ep44_nomask.png` 이동 완료 (current canonical)
-- [ ] `v11_ep44_m_input.png` — M 채널만 (ΔL + 2 Sobel(ΔL)) 시각화
-- [ ] `v11_ep44_p_input.png` — P 채널만 (RGB + 2 Sobel(L)) 시각화
-- [ ] `v11_ep44_m_attn.png` — M encoder attention overlay only
-- [ ] `v11_ep44_p_attn.png` — P encoder attention overlay only
+- [x] `combined/v11_ep44_combined.png` — M/P attention 포맷 샘플 1개만 유지 (paper 미사용, Parvo 재생성 레이아웃 참조). v11 분리본 생성은 불필요.
 
-### v15 (paper main qualitative)
+### Parvo (v15b) — paper main qualitative
 
 - [ ] `v15_ep32_combined.png` (또는 `_ep50_`) — 8-col grid 통합본
 - [ ] `v15_ep32_m_input.png`, `_p_input.png` — 입력 채널 분리

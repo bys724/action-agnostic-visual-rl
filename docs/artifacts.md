@@ -107,9 +107,9 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 - repo에 포함되어 있어 `git pull`로 워크스테이션 동기화 가능
 
 ### 가시화 산출물 (repo 내부, git 동기화)
-- `paper_artifacts/fig8_mp_attention/combined/v11_ep44_combined.png` — fig8 canonical (current)
-- `paper_artifacts/fig8_mp_attention/combined/v11_ep{48,50}.png` — final champion attention
-- `paper_artifacts/fig8_mp_attention/combined/progression/v11_ep{4,8,12,16,20,24}_nomask.png` — attention progression (supplementary)
+> 정책: obsolete 모델(v11/v15) viz는 포맷 샘플 1개만 보존, 나머지 삭제(git 복구 가능). 현 타깃(Parvo/baseline) viz는 정식 보관. 코드는 `scripts/eval`·`scripts/viz`에 유지.
+- `paper_artifacts/fig8_mp_attention/combined/v11_ep44_combined.png` — M/P attention 포맷 샘플 1개 (obsolete v11, Parvo 재생성 참조용)
+- `paper_artifacts/visualizations/{grad_cam_arrow,pca_overlay}/` — representation viz 포맷 샘플 (각 1세트, post-accept track / Parvo 재생성 예정)
 - iteration 덤프(per-epoch recon·sanity 등)는 gitignored `scratch/viz/` — 커밋 안 됨. 컨벤션: [`docs/viz_assets_refactor_plan.md`](viz_assets_refactor_plan.md)
 
 ### 로그

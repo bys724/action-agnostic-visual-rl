@@ -49,7 +49,3 @@
 - routing: [`src/models/common/blocks.py`](../../src/models/common/blocks.py) `MotionRoutingBlock`
 - 채널: [`src/models/common/preprocessing.py`](../../src/models/common/preprocessing.py) (no-Sobel: P=RGB 3ch, M=ΔL 1ch)
 - 설계 근거: [`docs/v15b_retraining_status.md`](../../docs/v15b_retraining_status.md) §9, [`docs/restart_plan.md`](../../docs/restart_plan.md)
-
-## Legacy (history)
-
-`v11_method_history.mmd` / `.png` — 구 v11 (motion-guided attention routing + dual-target). 현행 구조 아님, 계보 기록용.
