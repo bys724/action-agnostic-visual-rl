@@ -1,0 +1,94 @@
+%% MCP-MAE — Motion-Conditioned Predictive MAE  (code: --v15-pixel-pred)
+%% 색: M=blue(motion/where) · P=green(appearance/what) · routing=purple · head=orange · loss=red
+%% 재렌더: mmdc -i mcp_mae_architecture.mmd -o mcp_mae_architecture.png -t neutral -b white
+%% 출처: src/models/two_stream_v15.py (_forward_pair_pixel / _predict_pixels), common/blocks.py (MotionRoutingBlock)
+flowchart TB
+    Ft["Frame t"]
+    Ftk["Frame t+k"]
+
+    %% ── Preprocessing (no-Sobel default · Paper 2) ──────────────
+    subgraph PRE ["Preprocessing &nbsp;·&nbsp; no-Sobel (Paper 2)"]
+      direction LR
+      Pch["P channel · RGB 3ch<br/><i>appearance — WHAT</i>"]
+      Mch["M channel · ΔL 1ch<br/>L(t+k) − L(t)<br/><i>motion — WHERE</i>"]
+    end
+
+    %% ── Encoders ────────────────────────────────────────────────
+    subgraph ENC ["Stream-independent encoders"]
+      direction LR
+      Penc["<b>★ P Encoder</b> (ViT-S/B)<br/>depth 12 · mask 75%<br/>visible-only (student)<br/><i>downstream backbone</i>"]
+      Menc["<b>M Encoder</b> (lightweight)<br/>depth 6 · unmasked<br/><i>motion sensor</i>"]
+    end
+
+    Ptv(("p_t<br/>visible"))
+    Ptkv(("p_tk<br/>visible"))
+    Mreal(("m_real = M(t,t+k)<br/><i>real routing field</i>"))
+    Mnull(("m_null = M(t,t) ≈ 0<br/><i>null → identity routing</i>"))
+
+    %% ── Unified predictor (SHARED weights, 3 calls) ────────────
+    subgraph PRED ["Unified predictor &nbsp;·&nbsp; predict(P_visible, mask, M) &nbsp;— SHARED weights, called ×3"]
+      direction TB
+      Inj["+ mask tokens + decoder pos-embed"]
+      Route["<b>p_motion_decoder</b> = (MotionRouting + interp) × N<br/>Q, K ← M (where) &nbsp;·&nbsp; V ← P (what)<br/>out = softmax(Q_M · K_Mᵀ) · V_P &nbsp;+&nbsp; residual P<br/><i>ΔL은 attention 가중치로만 — 출력 내용은 P appearance remix</i>"]
+      Head["recon_head → pixels"]
+      Inj --> Route --> Head
+    end
+
+    %% ── 3 pixel targets / losses (masked positions only) ───────
+    Lt(["<b>L_t</b> = MSE(·, frame t)<br/><i>gap=0 recon (masked)</i>"])
+    Ltk(["<b>L_tk</b> = MSE(·, frame t+k)<br/><i>gap=0 recon (masked)</i>"])
+    Lpred(["<b>L_pred</b> = MSE(·, frame t+k)<br/><i>motion-conditioned prediction</i>"])
+    Total(["<b>L = λ_recon·(L_t + L_tk) + λ_pred·L_pred</b><br/>(λ init 1.0)"])
+
+    %% ── wiring ──────────────────────────────────────────────────
+    Ft --> Pch
+    Ft --> Mch
+    Ftk --> Pch
+    Ftk --> Mch
+
+    Pch --> Penc
+    Mch --> Menc
+
+    Penc --> Ptv
+    Penc --> Ptkv
+    Menc --> Mreal
+    Menc --> Mnull
+
+    Ptv -- "call 1 · P=p_t" --> Inj
+    Ptkv -- "call 2 · P=p_tk" --> Inj
+    Mnull -. "calls 1,2 · M=null" .-> Route
+    Mreal -. "call 3 · M=real" .-> Route
+
+    Head -- "call 1 → t" --> Lt
+    Head -- "call 2 → t+k" --> Ltk
+    Head -- "call 3 → t+k" --> Lpred
+
+    Lt --> Total
+    Ltk --> Total
+    Lpred --> Total
+
+    %% ── annotations ─────────────────────────────────────────────
+    Note1["💡 NO EMA teacher · NO JEPA · NO latent target<br/>→ target = 실제 미래 픽셀 → constant collapse 불가능"]
+    Note2["🔑 scaffold: L_pred만 M-조건 → M이 gradient로 P를 shaping<br/>(L_t/L_tk는 M=null → 순수 P MAE)"]
+    Total -.-> Note1
+    Route -.-> Note2
+
+    %% ── styles ──────────────────────────────────────────────────
+    classDef input fill:#eceff1,stroke:#455a64,color:#000
+    classDef p fill:#c8e6c9,stroke:#2E7D32,color:#000
+    classDef pds fill:#81c784,stroke:#1B5E20,color:#000,stroke-width:3px
+    classDef m fill:#bbdefb,stroke:#1565C0,color:#000
+    classDef route fill:#d1c4e9,stroke:#5E35B1,color:#000,stroke-width:2px
+    classDef head fill:#ffe0b2,stroke:#E65100,color:#000
+    classDef loss fill:#ef9a9a,stroke:#c62828,color:#000
+    classDef total fill:#e57373,stroke:#b71c1c,color:#000,stroke-width:2px
+    classDef note fill:#fff9c4,stroke:#f9a825,color:#000
+
+    class Ft,Ftk input
+    class Pch,Ptv,Ptkv p
+    class Penc pds
+    class Mch,Menc,Mreal,Mnull m
+    class Inj,Route,Head route
+    class Lt,Ltk,Lpred loss
+    class Total total
+    class Note1,Note2 note

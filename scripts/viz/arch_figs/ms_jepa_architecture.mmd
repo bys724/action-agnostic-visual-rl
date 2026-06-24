@@ -1,0 +1,84 @@
+%% MS-JEPA — Motion-Scaffolded JEPA (Parvo, code v15b, Run B-2) — predecessor of MCP-MAE
+%% 색: M=blue · P=green · routing=purple · head=orange · teacher/EMA=teal · loss=red
+%% 재렌더: mmdc -i ms_jepa_architecture.mmd -o ../../../paper_artifacts/fig1_architecture/ms_jepa_architecture.png -t neutral -b white
+%% 출처: src/models/two_stream_v15.py (_forward_pair / _vjepa_p_masked / _mae_one_frame, Run B-2)
+flowchart TB
+    Ft["Frame t"]
+    Ftk["Frame t+k"]
+
+    subgraph PRE ["Preprocessing · no-Sobel"]
+      direction LR
+      Pch["P channel · RGB 3ch<br/><i>appearance — WHAT</i>"]
+      Mch["M channel · ΔL 1ch<br/>L(t+k) − L(t)<br/><i>motion — WHERE</i>"]
+    end
+
+    subgraph ENC ["Stream-independent encoders"]
+      direction LR
+      Penc["<b>★ P Encoder (student)</b><br/>ViT-S/B · depth 12 · mask 75%<br/>visible-only<br/><i>downstream backbone</i>"]
+      Menc["<b>M Encoder</b> (lightweight)<br/>depth 6 · unmasked"]
+    end
+
+    Pvis(("p_t visible"))
+    Mloc(("m_local<br/>routing field"))
+
+    %% two decoder heads off the SAME student P encoder
+    subgraph HEADS ["Two heads off P encoder (visible → mask-token inject)"]
+      direction TB
+      Recon["<b>recon head</b><br/>interpreter_1 → recon_head<br/><i>pixel MAE (per frame)</i>"]
+      Pred["<b>Predictor</b> = p_motion_decoder<br/>routing Q,K ← M · V ← P<br/><i>→ predicted LATENT</i>"]
+    end
+
+    Teach["<b>Teacher P Encoder</b><br/>EMA (m=0.996) · stop-grad<br/><i>unmasked frame_t+k</i>"]
+    Ztgt(("target latent z<br/><i>(+ target LayerNorm)</i>"))
+
+    Lt(["<b>L_t / L_tk</b> = MSE(·, frame t / t+k)<br/><i>pixel · masked positions</i>"])
+    Lpred(["<b>L_pred</b> = smooth-L1(ẑ, z)<br/><i>LATENT · masked positions</i>"])
+    Total(["<b>L = (L_t + L_tk) + λ_pred·L_pred</b><br/>(Run B-2: λ_m_jepa = λ_var = 0)"])
+
+    Ft --> Pch
+    Ft --> Mch
+    Ftk --> Pch
+    Ftk --> Mch
+    Pch --> Penc
+    Mch --> Menc
+    Penc --> Pvis
+    Menc --> Mloc
+
+    Pvis --> Recon --> Lt
+    Pvis --> Pred
+    Mloc -. "Q,K (routing)" .-> Pred
+    Pred --> Lpred
+
+    Ftk -. "teacher input" .-> Teach
+    Teach --> Ztgt
+    Ztgt --> Lpred
+    Penc -. "EMA update" .-> Teach
+
+    Lt --> Total
+    Lpred --> Total
+
+    Note["🔑 scaffold: L_pred is M-conditioned → M shapes P via gradient<br/>⚠️ target = EMA-teacher LATENT (self-referential) → constant-collapse risk<br/>→ needs target-LN (+ variance reg). MCP-MAE replaces this with REAL pixels."]
+    Total -.-> Note
+
+    classDef input fill:#eceff1,stroke:#455a64,color:#000
+    classDef p fill:#c8e6c9,stroke:#2E7D32,color:#000
+    classDef pds fill:#81c784,stroke:#1B5E20,color:#000,stroke-width:3px
+    classDef m fill:#bbdefb,stroke:#1565C0,color:#000
+    classDef route fill:#d1c4e9,stroke:#5E35B1,color:#000,stroke-width:2px
+    classDef head fill:#ffe0b2,stroke:#E65100,color:#000
+    classDef teal fill:#b2ebf2,stroke:#00838f,color:#000,stroke-width:2px
+    classDef loss fill:#ef9a9a,stroke:#c62828,color:#000
+    classDef total fill:#e57373,stroke:#b71c1c,color:#000,stroke-width:2px
+    classDef note fill:#fff9c4,stroke:#f9a825,color:#000
+
+    class Ft,Ftk input
+    class Pch,Pvis p
+    class Penc pds
+    class Mch,Menc,Mloc m
+    class Recon head
+    class Pred route
+    class Teach,Ztgt teal
+    class Lt loss
+    class Lpred loss
+    class Total total
+    class Note note

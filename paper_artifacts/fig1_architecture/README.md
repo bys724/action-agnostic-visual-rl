@@ -1,34 +1,55 @@
-# Fig 1 — v15 Architecture Overview
+# Fig 1 — Architecture figures (MCP-MAE · MS-JEPA)
 
-**Paper position**: §3 Method (main figure)
-**Status**: 🟡 partial — v11 method-history만 보유, v15 main 미작성
+**Paper position**: Paper 2 (AAAI) §3 Method (main figure) + method-history.
+**생성 소스·코드**: [`scripts/viz/arch_figs/`](../../scripts/viz/arch_figs/) (source/artifact 분리 — 이 폴더는 렌더 결과만).
+명명·맥락 → [`CLAUDE.md`](../../CLAUDE.md) "명명 · 2논문 구조" · [`docs/REFACTOR_PLAN.md`](../../docs/REFACTOR_PLAN.md) §1.
 
-## Spec (Vault [[7. Outline § Fig 1]])
+## 모델 한 줄 정의
 
-- Top half: reconstruction track (student P encoder space) — `P_enc → interpreter_1 → recon_head`
-- Bottom half: motion track (teacher P encoder space) — `Teacher_P → motion_routing (Q,K←M / V←teacher_P) → p_motion_decoder`
-- EMA loop이 두 half 연결 (momentum 0.999→0.9999)
-- L_compose path: `composition_head(M_short, M_long) ≈ Teacher_M(target)`
-- 색 컨벤션: M=blue / P=red / motion routing=purple / loss=green / mask=gray hatched
-- 도구: TikZ 권장 (Mermaid는 draft)
+- **MCP-MAE** (현행 ours, code `--v15-pixel-pred`): appearance(P)·motion(M) 분리, M이 `where`(Q,K)로 P의 `what`(V)을 routing해 **미래 픽셀** 예측. JEPA/EMA 제거 → **collapse 불가**, scaffold 유지.
+- **MS-JEPA** (predecessor, Parvo code v15b): 동일 routing이나 **EMA-teacher LATENT** 예측(V-JEPA). self-referential target → collapse 위험(target-LN·var-reg 필요) → MCP-MAE가 픽셀 target으로 대체.
 
-## Current artifacts
+## 산출물 (현행)
 
-| File | 용도 | Paper position |
-|------|------|----------------|
-| `v11_method_history.mmd` | v11 Mermaid source | §method history paragraph (1-2 문장) |
-| `v11_method_history.png` | rendered v11 diagram | 동일, supplementary 가능 |
+| File | 모델 | 용도 | 도구 |
+|------|------|------|------|
+| **`mcp_mae_fig.png` / `.pdf`** | MCP-MAE | **메인 Fig 1** — SiamMAE 스타일 직관 도식 (실제 EgoDex 프레임) | matplotlib |
+| `mcp_mae_architecture.png` | MCP-MAE | 상세 dataflow — 통일 predict() ×3 | Mermaid |
+| **`ms_jepa_fig.png` / `.pdf`** | MS-JEPA | 동일 스타일 도식 (predecessor 비교) | matplotlib |
+| `ms_jepa_architecture.png` | MS-JEPA | 상세 dataflow — two heads + EMA teacher | Mermaid |
 
-## TODO
+- **`*_fig`** = "한눈에 이해" SiamMAE-스타일 (발표·논문 main 1순위). 두 모델이 **나란히 비교**되도록 동일 레이아웃.
+- **`*_architecture` (mermaid)** = 정확한 학습 dataflow (supplementary / 내부 검토).
+- 발표용 컨셉/hero 이미지(Nano Banana) → [`../presentation/`](../presentation/).
 
-- [ ] **v15 architecture diagram** — `.mmd` draft + `.tikz` 최종본
-  - 4 layer (P_enc / p_motion_decoder / M_enc / M_decoder) × 본인 paradigm 명시
-  - 5 loss 표시: `L_t`, `L_tk_recon`, `λ·L_pred`, `λ·L_m_jepa`, `λ·L_compose`
-  - 가장 강조해야 할 시각 메시지: **space-level paradigm separation** (두 paradigm이 서로 다른 representation space에서 작동)
-- [ ] **Channel composition mini-diagram** (§3.1 inset 또는 Fig 1 측면): M=3ch(ΔL+2Sobel), P=5ch(2Sobel+RGB)
+## 핵심 시각 메시지 (공통)
+
+1. **what / where factorization**: P=appearance(V), M=ΔL motion(Q,K). ΔL은 attention 가중치로만 — 출력은 P appearance remix (additive 아님; `MotionRoutingBlock`).
+2. **MCP-MAE vs MS-JEPA**: 유일 차이 = prediction **target**. MS-JEPA=EMA-teacher latent(붕괴 위험), MCP-MAE=실제 픽셀(붕괴 불가). 두 figure를 나란히 두면 이 한 점이 드러남.
+3. **scaffold**: 양쪽 다 L_pred만 M-조건 → M이 gradient로 P를 shaping. recon/grounding은 M-비조건.
+4. **배포**: downstream은 **P encoder만** 사용(patch-mean, P_t⊕P_tk). M 기여는 사전학습 gradient로 P에 frozen-in.
+
+## STEP 1 matched 3런과의 관계 (restart_plan §3)
+
+같은 `two_stream_v15.py` 코드, 플래그만 차이 — `mcp_mae_fig`는 **MCP-MAE(thesis)** 를 그림:
+
+| 런 | 플래그 | routing | 그림 대응 |
+|----|--------|---------|-----------|
+| **MCP-MAE** (ours) | `--v15-pixel-pred` | Q,K ← **M (ΔL)** | `mcp_mae_fig` |
+| SiamMAE-analog (대조) | `+ --v15-routing-source p` | Q,K ← **P (RGB)** | "where"를 ΔL 대신 RGB로 |
+| Image MAE / no-M | `--v15-no-motion` | routing off | two-frame image MAE (Paper 1 baseline) |
+
+## 재생성
+
+[`scripts/viz/arch_figs/README.md`](../../scripts/viz/arch_figs/README.md) 참조 (repo 루트에서 실행).
 
 ## Source
 
-- 모델 코드: [`src/models/two_stream_v15.py`](../../src/models/two_stream_v15.py)
-- v11 (참고): [`src/models/two_stream_v11.py`](../../src/models/two_stream_v11.py)
-- Mermaid 재렌더: `mmdc -i v11_method_history.mmd -o v11_method_history.png -t neutral -b transparent`
+- 모델: [`src/models/two_stream_v15.py`](../../src/models/two_stream_v15.py) — MCP-MAE `_forward_pair_pixel`/`_predict_pixels`, MS-JEPA `_forward_pair`/`_vjepa_p_masked`/`_mae_one_frame`
+- routing: [`src/models/common/blocks.py`](../../src/models/common/blocks.py) `MotionRoutingBlock`
+- 채널: [`src/models/common/preprocessing.py`](../../src/models/common/preprocessing.py) (no-Sobel: P=RGB 3ch, M=ΔL 1ch)
+- 설계 근거: [`docs/v15b_retraining_status.md`](../../docs/v15b_retraining_status.md) §9, [`docs/restart_plan.md`](../../docs/restart_plan.md)
+
+## Legacy (history)
+
+`v11_method_history.mmd` / `.png` — 구 v11 (motion-guided attention routing + dual-target). 현행 구조 아님, 계보 기록용.
