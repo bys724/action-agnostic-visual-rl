@@ -1,6 +1,6 @@
 # Fig 5 — Cross-Domain DROID Probing
 
-**Paper**: 2 (AAAI) — ❓ Paper 1(Input-Prior) 귀속 가능성, 확인 필요
+**Paper**: 공유 (Paper 1 + Paper 2) — DROID cross-domain은 양 논문 공통 평가. 공유 데이터(`*_droid_summary.csv`)를 두고 각 논문이 자기 narrative로 figure를 별도 렌더 (Paper 1=input-prior 일반화 / Paper 2=action-agnostic 일반화)
 
 **Paper position**: §4 Experiments (cross-domain probing supplementary)
 **Status**: 🟡 partial — v11 / VideoMAE-ours 보유, **v15 미실시 (C5)**

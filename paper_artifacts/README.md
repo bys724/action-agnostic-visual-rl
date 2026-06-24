@@ -30,7 +30,6 @@
 | §5 Analysis ★ | Fig 2 | `fig2_catalyst/` | 🔴 미시작 |
 | §4 Experiments ★ | Fig 3 + Tab 1 | `fig3_bc_main/` + `tables/tab1_libero_bc/` | 🟡 round1 보유, Parvo round2 미통합 |
 | §5 Analysis | Fig 4 | `fig4_recon_quality/` | 🔴 미시작 (source 메트릭만) |
-| §4 Experiments | Fig 5 | `fig5_droid/` | 🟡 v11/VideoMAE 보유 (❓ Paper 1 귀속 가능성 — 확인 필요) |
 | §5.2 Analysis ★ | Fig 6 + Tab 3 | `fig6_motion_routing_ablation/` + `tables/tab3_ablation/` | 🔴 C1 학습 대기 |
 | Appendix C | Fig 7 | `fig7_loss_curves/` | 🔴 wandb 추출 필요 |
 | Appendix D | Fig 8 | `fig8_mp_attention/` | 🟡 v11 포맷 샘플 1개, **Parvo 분리본 미생성** |
@@ -43,9 +42,13 @@
 | 보조 (rollout raw) | — | `libero_rollout/` | LIBERO BC rollout |
 | representation viz | — | `visualizations/{grad_cam_arrow, pca_overlay}/` | post-accept project-page track (Parvo 재생성), 현재 포맷 샘플 1세트만 |
 
-## 공유 / 기타
+## 공유 (양 논문 공통)
 
-- **baseline encoders** (`siglip / vc1 / dinov2 / videomae-ours`) = **양 논문 공유** 비교군.
+- **baseline encoders** (`siglip / vc1 / dinov2 / videomae-ours`) = 양 논문 공유 비교군.
+- `fig5_droid/` — **DROID cross-domain probing** (공유 평가). 공유 데이터(`*_droid_summary.csv`)를 두고 Paper 1(input-prior 일반화)·Paper 2(action-agnostic 일반화)가 각자 figure를 별도 렌더.
+
+## 기타
+
 - `presentation/` — concept/hero 이미지 (논문 무관, 발표용).
 - `_archive/` — paper main 비사용 (v13, v3 sanity, value alignment).
 - iteration 덤프는 gitignored `scratch/viz/` (커밋 안 됨) — 컨벤션 [`docs/viz_assets_refactor_plan.md`](../docs/viz_assets_refactor_plan.md).
