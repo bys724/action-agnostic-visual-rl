@@ -49,7 +49,8 @@ def main():
     ap.add_argument("--num-egodex-train", type=int, default=3)
     ap.add_argument("--egodex-train-split", default="part1")
     ap.add_argument("--num-droid", type=int, default=3)
-    ap.add_argument("--out-dir", default="paper_artifacts/videomae_recon_samples")
+    ap.add_argument("--out-dir", default="scratch/viz/videomae_recon",
+                    help="기본=gitignored scratch. 논문 승격 시 명시적으로 paper_artifacts/fig4_recon_quality/ 지정")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--egodex-data-root", default="/proj/external_group/mrg/datasets/egodex/frames")
     ap.add_argument("--droid-data-root", default="/proj/external_group/mrg/datasets/droid_frames")

@@ -1,7 +1,7 @@
 # Fig 8 — M vs P Stream Visualization (Appendix D)
 
 **Paper position**: Appendix D (qualitative attention + channel inputs)
-**Status**: 🟡 partial — v11 통합본만 `docs/architecture/`에 존재, **M-only / P-only 분리 미생성**
+**Status**: 🟡 partial — v11 통합본은 `combined/`로 승격 완료, **M-only / P-only 분리 미생성**
 
 ## 폴더 구조 (사용자 요구 반영)
 
@@ -28,21 +28,26 @@ fig8_mp_attention/
 
 ## Current artifacts (이 폴더)
 
-없음. Source data는 모두 다른 위치에 있음 — 아래 참조.
+`combined/`에 v11 통합본 승격 완료 (구 `docs/architecture/`에서 이동):
+- [`combined/v11_ep44_combined.png`](combined/v11_ep44_combined.png) — canonical (8-col grid)
+- [`combined/v11_ep48.png`](combined/v11_ep48.png), [`combined/v11_ep50.png`](combined/v11_ep50.png) — final champion
+- `combined/progression/v11_ep{4,8,12,16,20,24}_nomask.png` — attention progression (supplementary)
+
+M-only / P-only 분리는 미생성 — 아래 TODO.
 
 ## 기존 source (활용 가능)
 
 | 위치 | 내용 | 비고 |
 |------|------|------|
-| [`docs/architecture/attn_v11_ep44_nomask.png`](../../docs/architecture/attn_v11_ep44_nomask.png) | v11 ep44 attention combined (8-col) | paper main 후보, **이미 통합본** |
-| `docs/architecture/attn_v11_ep{4,8,12,16,20,24,48,50}_nomask.png` | v11 attention progression | supplementary |
-| [`docs/architecture/sample_detail/`](../../docs/architecture/sample_detail/) | v4용 stream-wise 분리 viz (`02_m_channel_input.png` / `03_p_channel_input.png` / `04_m_attention.png` / `05_p_attention.png`) | **참고용 — v11/v15 동일 패턴으로 재생성 필요** |
+| [`combined/v11_ep44_combined.png`](combined/v11_ep44_combined.png) | v11 ep44 attention combined (8-col) | paper main 후보, **이미 통합본** |
+| `combined/progression/v11_ep{4,8,12,16,20,24}_nomask.png`, `combined/v11_ep{48,50}.png` | v11 attention progression | supplementary |
+| `sample_detail/` (삭제됨, 구 `docs/architecture/`) | v4용 stream-wise 분리 viz (`02_m_channel_input` / `03_p_channel_input` / `04_m_attention` / `05_p_attention`) | **git 이력 복구 가능. v11/v15 동일 패턴으로 재생성 필요** |
 
 ## TODO
 
 ### v11 (method history figure에 활용 가능)
 
-- [ ] `v11_ep44_combined.png` ← `docs/architecture/attn_v11_ep44_nomask.png` 심볼릭/복사 (current canonical)
+- [x] `combined/v11_ep44_combined.png` ← `attn_v11_ep44_nomask.png` 이동 완료 (current canonical)
 - [ ] `v11_ep44_m_input.png` — M 채널만 (ΔL + 2 Sobel(ΔL)) 시각화
 - [ ] `v11_ep44_p_input.png` — P 채널만 (RGB + 2 Sobel(L)) 시각화
 - [ ] `v11_ep44_m_attn.png` — M encoder attention overlay only

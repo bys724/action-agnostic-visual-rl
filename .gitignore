@@ -102,6 +102,13 @@ paper_artifacts/cortexbench/summary.csv
 paper_artifacts/cortexbench/*/*/seed_*/wandb/
 paper_artifacts/cortexbench/*/*/seed_*/adroit_cortex_vil/
 paper_artifacts/cortexbench/*/*/seed_*/metaworld_cortex_vil/
+# 가시화/디버깅 iteration 덤프 (per-epoch viz 등). 저장소엔 canonical(paper_artifacts/figN)만 커밋.
+# scratch/viz/.gitkeep만 추적해 디렉토리 의도를 문서화. → docs/viz_assets_refactor_plan.md §2
+scratch/*
+!scratch/viz/
+scratch/viz/*
+!scratch/viz/.gitkeep
+
 # 임시 데이터 inspection PNG (루트 일회성 출력 — paper_artifacts/ 또는 docs/preprocessing/로)
 calvin_pairs_*.png
 libero_pairs_*.png

@@ -107,9 +107,10 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 - repo에 포함되어 있어 `git pull`로 워크스테이션 동기화 가능
 
 ### 가시화 산출물 (repo 내부, git 동기화)
-- `docs/architecture/attn_v11_ep{48,50}.png` — final champion attention
-- `docs/architecture/rotation_v10_ep{8,12,16,20,24,36,40,44,48}/` — v10 rotation viz
-- 기타 PNG는 `docs/architecture/` 하위
+- `paper_artifacts/fig8_mp_attention/combined/v11_ep44_combined.png` — fig8 canonical (current)
+- `paper_artifacts/fig8_mp_attention/combined/v11_ep{48,50}.png` — final champion attention
+- `paper_artifacts/fig8_mp_attention/combined/progression/v11_ep{4,8,12,16,20,24}_nomask.png` — attention progression (supplementary)
+- iteration 덤프(per-epoch recon·sanity 등)는 gitignored `scratch/viz/` — 커밋 안 됨. 컨벤션: [`docs/viz_assets_refactor_plan.md`](viz_assets_refactor_plan.md)
 
 ### 로그
 - Slurm sbatch logs: `/proj/external_group/mrg/logs/{<jobname>_<jobid>.out,.err}`

@@ -52,7 +52,8 @@ def main():
     ap.add_argument("--unseen-droid", action="store_true",  # cross-domain DROID (느린 스캔 — GPU 잡 권장)
                     help="unseen을 DROID(cross-domain)로. 미설정 시 EgoDex held-out split(빠름).")
     ap.add_argument("--max-videos", type=int, default=100)
-    ap.add_argument("--out", default="paper_artifacts/mcp_mae_sanity_recon/recon.png")
+    ap.add_argument("--out", default="scratch/viz/mcp_mae_sanity/recon.png",
+                    help="기본=gitignored scratch (sanity 성격). 논문 승격 시 명시적으로 paper_artifacts/figN/ 지정")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
     random.seed(args.seed)

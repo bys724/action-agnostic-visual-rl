@@ -76,7 +76,7 @@ def main():
     parser.add_argument("--num-pairs", type=int, default=500)
     parser.add_argument("--gap", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output", default="docs/architecture/delta_l_histogram.png")
+    parser.add_argument("--output", default="scratch/viz/delta_l_histogram.png")
     args = parser.parse_args()
 
     random.seed(args.seed)

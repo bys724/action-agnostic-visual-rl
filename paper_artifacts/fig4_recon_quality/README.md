@@ -22,7 +22,8 @@
 
 ## Current artifacts
 
-없음.
+figure PNG 없음 (not started). source 메트릭만 존재:
+- `v11_ep44_vs_v15_ep50_20260515_162817/summary.json` — v11 vs v15 recon 비교 run 요약 (구 `recon_quality/`에서 통합)
 
 ## TODO
 

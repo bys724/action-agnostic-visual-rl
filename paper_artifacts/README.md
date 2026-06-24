@@ -50,7 +50,7 @@ paper_artifacts/
 | §4 Experiments | Fig 5 | `fig5_droid/` | 🟡 v11/VideoMAE 보유, v15 미실시 |
 | §5.2 Analysis ★ | Fig 6 + Tab 3 | `fig6_motion_routing_ablation/` + `tables/tab3_ablation/` | 🔴 C1 학습 대기 |
 | Appendix C | Fig 7 | `fig7_loss_curves/` | 🔴 wandb 추출 필요 |
-| Appendix D | Fig 8 | `fig8_mp_attention/` | 🟡 docs/architecture에 v11 통합본, **분리본 미생성** |
+| Appendix D | Fig 8 | `fig8_mp_attention/` | 🟡 `combined/`에 v11 통합본 승격, **분리본(m_only/p_only) 미생성** |
 | §4 | Tab 2 | `tables/tab2_probing/` | 🟡 baseline+v11, v15 미통합 |
 | §5.4 | Tab 4 | `tables/tab4_12mode/` | 🔴 v15 12-mode export 대기 |
 | Appendix B | Tab 5 | `tables/tab5_hparams/` | 🔴 config 추출 필요 |
