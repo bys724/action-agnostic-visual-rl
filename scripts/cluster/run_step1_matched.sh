@@ -22,6 +22,11 @@ EPOCHS="${EPOCHS:-50}"
 EMBED_DIM="${EMBED_DIM:-384}"      # ViT-S
 NUM_HEADS="${NUM_HEADS:-6}"
 V11_M_DEPTH="${V11_M_DEPTH:-6}"    # M encoder = P depth(12)의 절반
+# 🔵 batch 튜닝 (sanity 36137148 관찰, 2026-06-23): ViT-S(40M)·batch32에서 throughput
+#   ~330 samp/s/GPU·COMPUTE-bound 99%인데 — 작은 모델/batch라 H100(80GB) GPU 저활용 추정
+#   (메모리는 batch32에서 극히 일부만 사용). full part1 50ep ≈ ~200 GPU·h(no-M 대비 ~2× = §9 3×predict).
+#   → **batch 128~256로 키워 GPU util↑·throughput↑·비용↓ 권장** (메모리 여유 충분).
+#   LR은 batch에 비례 스케일(예: batch128 → LR~4e-4 + warmup). 본학습 전 batch sweep 1회로 최적값 확정 권장.
 BATCH="${BATCH:-32}"
 LR="${LR:-2e-4}"
 MAX_GAP="${MAX_GAP:-30}"
