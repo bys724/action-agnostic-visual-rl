@@ -1,5 +1,7 @@
 # Fig 6 — Motion-Routing Source Ablation (V from P vs V from M)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §5.1 Architecture ablation (★ main paper)
 **Status**: 🟡 probing 완료 (2026-05-19), BC SR rollout 로컬 진행 후 통합
 

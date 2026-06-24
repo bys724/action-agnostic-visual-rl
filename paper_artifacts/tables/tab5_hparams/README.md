@@ -1,5 +1,7 @@
 # Tab 5 — Hyperparameters (Appendix B)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: Appendix B (reproducibility)
 **Status**: 🔴 not started — config 추출 필요
 

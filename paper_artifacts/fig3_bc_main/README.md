@@ -1,5 +1,7 @@
 # Fig 3 — LIBERO BC Main Result
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §4 Experiments (★ main result figure + Tab 1 데이터 source)
 **Status**: 🟡 partial — round1 (baseline + v11) 도착, **v15 round2 미통합**
 

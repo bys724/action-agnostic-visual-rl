@@ -1,5 +1,7 @@
 # Fig 7 — Training Loss Curves (Appendix C)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: Appendix C (training dynamics)
 **Status**: 🔴 not started — wandb 추출 필요
 

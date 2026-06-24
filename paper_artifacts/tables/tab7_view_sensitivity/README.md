@@ -1,5 +1,7 @@
 # Tab 7 — LIBERO View-Sensitivity Sub-analysis (paper §5 ¶6)
 
+**Paper**: 2 (AAAI) — ❓ paper 귀속 확인
+
 **핵심 metric**: Δ R² = R²(agentview + eye_in_hand combined) − R²(agentview only)
 → "wrist view 추가 시 representation이 얼마나 더 많은 action 정보를 인코딩하는가"
 

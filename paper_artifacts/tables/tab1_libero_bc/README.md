@@ -1,5 +1,7 @@
 # Tab 1 — LIBERO BC Main Results
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §4 Experiments (★ main table)
 **Status**: source는 [`../../fig3_bc_main/summary.csv`](../../fig3_bc_main/summary.csv) — round1 보유, **v15 round2 미통합**
 

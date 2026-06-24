@@ -1,5 +1,7 @@
 # Fig 1 — Architecture figures (MCP-MAE · MS-JEPA)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: Paper 2 (AAAI) §3 Method (main figure) + method-history.
 **생성 소스·코드**: [`scripts/viz/arch_figs/`](../../scripts/viz/arch_figs/) (source/artifact 분리 — 이 폴더는 렌더 결과만).
 명명·맥락 → [`CLAUDE.md`](../../CLAUDE.md) "명명 · 2논문 구조" · [`docs/REFACTOR_PLAN.md`](../../docs/REFACTOR_PLAN.md) §1.

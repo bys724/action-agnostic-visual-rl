@@ -1,5 +1,7 @@
 # Fig 2 — Catalyst Mechanism Evidence (★ signature)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §5 Analysis (★ key finding figure)
 **Status**: 🔴 not started — schematic + bar chart 모두 생성 필요
 

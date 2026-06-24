@@ -1,5 +1,7 @@
 # Tab 3 — Architecture Ablation
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §5.1 / §5.2 (motion-routing source + BC adapter ablation)
 **Status**: 🔴 not started — C1 결과 + v15 BC round2 대기
 

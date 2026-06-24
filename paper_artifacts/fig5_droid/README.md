@@ -1,5 +1,7 @@
 # Fig 5 — Cross-Domain DROID Probing
 
+**Paper**: 2 (AAAI) — ❓ Paper 1(Input-Prior) 귀속 가능성, 확인 필요
+
 **Paper position**: §4 Experiments (cross-domain probing supplementary)
 **Status**: 🟡 partial — v11 / VideoMAE-ours 보유, **v15 미실시 (C5)**
 

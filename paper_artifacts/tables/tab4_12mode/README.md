@@ -1,5 +1,7 @@
 # Tab 4 — 12-Mode Probing Breakdown (v15 ep32)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §5.4 Analysis (catalyst mechanism quantitative breakdown)
 **Status**: 🔴 source CSV 별도 없음 — [`../tab2_probing/v11_egodex_summary.csv`](../tab2_probing/v11_egodex_summary.csv) 패턴으로 v15 export 필요
 

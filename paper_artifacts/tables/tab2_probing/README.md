@@ -1,5 +1,7 @@
 # Tab 2 — Probing Results (EgoDex + LIBERO)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §4 Experiments (probing table)
 **Status**: 🟡 partial — v11 / baseline + **v15 EgoDex 8-mode export 완료 (2026-05-19)**. LIBERO 12-cell v15 통합 진행 중.
 

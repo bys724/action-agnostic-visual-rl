@@ -1,5 +1,7 @@
 # Fig 8 — M vs P Stream Visualization (Appendix D)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: Appendix D (qualitative attention + channel inputs)
 **Status**: 🟡 partial — v11 통합본은 `combined/`로 승격 완료, **M-only / P-only 분리 미생성**
 

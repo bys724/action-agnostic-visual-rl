@@ -1,5 +1,7 @@
 # Fig 4 — Reconstruction Quality Symmetry (v11 vs v15)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §5 Analysis (design intent realization)
 **Status**: 🔴 not started — ckpt forward 필요
 

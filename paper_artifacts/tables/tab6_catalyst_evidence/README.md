@@ -1,5 +1,7 @@
 # Tab 6 — Catalyst Mechanism Evidence (Appendix or §5 supplementary)
 
+**Paper**: 2 (AAAI, Action-Agnostic)
+
 **Paper position**: §5 Analysis (signature 보강) 또는 Appendix
 **Status**: 🔴 not started — VideoMAE-ours C7 결과 + v15 ep32 P_t+P_tk 추출 대기
 
