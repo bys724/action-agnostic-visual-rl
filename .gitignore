@@ -37,9 +37,8 @@ data/*
 /bridge_v2/
 /openx/
 /trajectories/
-/results/
 
-# 모델 체크포인트  
+# 모델 체크포인트
 checkpoints/
 *.safetensors
 *.bin

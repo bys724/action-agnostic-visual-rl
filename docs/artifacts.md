@@ -179,12 +179,15 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
   | `/mnt/data` | `/mnt/data` |
   | `/home/etri/.cache/huggingface` | `/workspace/.cache/huggingface` |
 
-### Repo 내부 산출물 (git 동기화)
+### Repo 산출물 폴더 역할 (정규)
 
-- `data/probing_results/` — probe JSON (CLIP/DINOv2/two-stream/videomae 등)
-- `data/eval_results/` — 평가 결과
-- `data/logs/` — 로컬 학습 로그
-- `data/datasets/` — 메타데이터 / 인덱스
+| 폴더 | git | 역할 |
+|------|-----|------|
+| `paper_artifacts/` | **tracked** | 논문 hand-off 큐레이션 산출물(figure/table/data). **저장소에 커밋되는 유일한 산출물.** |
+| `data/` | gitignored (로컬) | `probing_results/`(probe JSON), `eval_results/`, `logs/`, `datasets/`(메타/인덱스) |
+| `scratch/viz/` | gitignored (로컬) | viz iteration 덤프 (per-epoch recon·sanity). canonical은 `paper_artifacts/figN`로 명시 승격 |
+
+- 구 `results/` (checkpoints·logs·viz 로컬 덤프)는 **제거** — 역할이 `data/`(결과)·`scratch/`(viz)로 흡수됨. ckpt는 `/mnt/data`(로컬)·`/proj/external_group/mrg`(클러스터)에 저장(저장소 밖).
 
 ---
 
