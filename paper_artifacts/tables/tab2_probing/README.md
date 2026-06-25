@@ -17,11 +17,11 @@
 | File | Section | 내용 |
 |------|---------|------|
 | `v11_egodex_summary.csv` | A | v11 11 epoch × 12 mode (probing JSON 집계) |
-| `../../probing/v15_egodex_summary.csv` | A | **v15 main ep32/ep50 + v15-vfromm ep28~44** × {patch_mean_m_enc, p_enc, p_enc_tk, concat_p_t_p_tk, concat_enc_only, concat_p_tk_m, concat_all, concat_p_t_p_tk_m} (26 rows, target_mode=same/future 모두 포함) |
+| `../../egodex_action_probing/v15_egodex_summary.csv` | A | **v15 main ep32/ep50 + v15-vfromm ep28~44** × {patch_mean_m_enc, p_enc, p_enc_tk, concat_p_t_p_tk, concat_enc_only, concat_p_tk_m, concat_all, concat_p_t_p_tk_m} (26 rows, target_mode=same/future 모두 포함) |
 | `libero_all_gaps_summary.csv` | B | baseline + v11 LIBERO 12-cell (gap × suite) |
 | `libero_per_cell/` | B raw | per-cell JSON / summary, _archive/ 포함 |
 
-## v15 EgoDex 핵심 결과 (`../../probing/v15_egodex_summary.csv` 발췌, target_mode=same, gap=10)
+## v15 EgoDex 핵심 결과 (`../../egodex_action_probing/v15_egodex_summary.csv` 발췌, target_mode=same, gap=10)
 
 | mode | composition | v15 main ep32 | v15 main ep50 (paper main) | v15-vfromm ep28~44 |
 |------|-------------|---------------|-----------------------|---------------------|
@@ -70,7 +70,7 @@
 
 ### Section A (EgoDex)
 
-- [x] **v15 ep32 EgoDex 8-mode** export → `../../probing/v15_egodex_summary.csv` (2026-05-19 완료)
+- [x] **v15 ep32 EgoDex 8-mode** export → `../../egodex_action_probing/v15_egodex_summary.csv` (2026-05-19 완료)
 - [x] **v15 ep50 EgoDex** 동일 (`latest.pt`) — 8 mode 모두 포함
 - [x] **v15-vfromm ep28~44** P_t+P_tk sweep — 동일 CSV에 통합
 - [ ] **VideoMAE-ours EgoDex P_t+P_tk** (C7 — controlled comparison) — `data/probing_results/probe_videomae-ours_*.json` export

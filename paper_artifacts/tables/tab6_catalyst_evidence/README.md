@@ -23,7 +23,7 @@
 | Cell | Source |
 |------|--------|
 | v15 P_t+P_tk | [`../tab2_probing/`](../tab2_probing/) — TODO |
-| v15 BC goal | [`../../fig3_bc_main/summary.csv`](../../fig3_bc_main/summary.csv) — TODO (round2) |
+| v15 BC goal | [`../../libero_rollout/summary.csv`](../../libero_rollout/summary.csv) — TODO (round2) |
 | VideoMAE-ours P_t+P_tk | C7 probing — 미실시 |
 | DINOv2 P_t+P_tk | DINOv2 controlled — 결과 위치 확인 필요 |
 | DINOv2 BC goal | fig3_bc_main round1 — ✅ 보유 (83.8%) |

@@ -28,7 +28,7 @@
 |----------|------|------|--------|
 | §3 Method | Fig 1 | `fig1_architecture/` (ms_jepa·mcp_mae) | 🟡 신규 아키텍처 figure 보유 |
 | §5 Analysis ★ | Fig 2 | `fig2_catalyst/` | 🔴 미시작 |
-| §4 Experiments ★ | Fig 3 + Tab 1 | `fig3_bc_main/` + `tables/tab1_libero_bc/` | 🟡 round1 보유, Parvo round2 미통합 |
+| §4 Experiments ★ | Fig 3 + Tab 1 | `fig3_bc_main/`(figure spec) + `tables/tab1_libero_bc/` · 데이터=`libero_rollout/` | 🟡 데이터 최신(parvo 포함), bar chart 미생성 |
 | §5 Analysis | Fig 4 | `fig4_recon_quality/` | 🔴 미시작 (source 메트릭만) |
 | §5.2 Analysis ★ | Fig 6 + Tab 3 | `fig6_motion_routing_ablation/` + `tables/tab3_ablation/` | 🔴 C1 학습 대기 |
 | Appendix C | Fig 7 | `fig7_loss_curves/` | 🔴 wandb 추출 필요 |
@@ -39,7 +39,7 @@
 | Appendix or §5 | Tab 6 | `tables/tab6_catalyst_evidence/` | 🔴 fig2와 동일 dependency |
 | §4 (❓) | Tab 7 | `tables/tab7_view_sensitivity/` | view robustness (❓ paper 귀속 확인) |
 | 보조 (probing raw) | — | `calvin_action_probing/`, `libero_action_probing/`, `egodex_action_probing/` | baseline + obsolete v11/v15 기록 (Parvo 재실행 예정) |
-| 보조 (rollout raw) | — | `libero_rollout/` | LIBERO BC rollout |
+| LIBERO BC rollout (canonical) | Fig 3 / Tab 1 데이터 | `libero_rollout/` | **단일 출처** `{summary,per_task,episodes}.csv` (전 encoder×suite×seed, parvo 포함) |
 | representation viz | — | `visualizations/{grad_cam_arrow, pca_overlay}/` | post-accept project-page track (Parvo 재생성), 현재 포맷 샘플 1세트만 |
 
 ## 공유 (양 논문 공통)

@@ -3,7 +3,7 @@
 **Paper**: 2 (AAAI, Action-Agnostic)
 
 **Paper position**: §4 Experiments (★ main table)
-**Status**: source는 [`../../fig3_bc_main/summary.csv`](../../fig3_bc_main/summary.csv) — round1 보유, **v15 round2 미통합**
+**Status**: source = [`../../libero_rollout/summary.csv`](../../libero_rollout/summary.csv) — parvo + v15 variants 포함 최신 (구 fig3 round1 CSV는 통합·제거)
 
 ## Spec (Vault [[7. Outline § Tab 1]])
 
@@ -19,11 +19,11 @@
 
 ## Source
 
-[`../../fig3_bc_main/summary.csv`](../../fig3_bc_main/summary.csv) — single source of truth.
+[`../../libero_rollout/summary.csv`](../../libero_rollout/summary.csv) — single source of truth (LIBERO BC rollout 집계).
 
 ## TODO
 
-[`../../fig3_bc_main/README.md`](../../fig3_bc_main/README.md) TODO 와 동일 (v15 round2 통합 후 자동 반영).
+[`../../fig3_bc_main/README.md`](../../fig3_bc_main/README.md) TODO 와 동일 (data = `libero_rollout/`).
 
 추가:
 - [ ] **LaTeX 표 생성 스크립트** — `summary.csv` → booktabs 형식

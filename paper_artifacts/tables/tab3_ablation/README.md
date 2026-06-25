@@ -18,7 +18,7 @@
 | Cell | 어디서 옴 |
 |------|----------|
 | v15 V-from-P probing | [`../tab2_probing/`](../tab2_probing/) — TODO |
-| v15 V-from-P BC | [`../../fig3_bc_main/summary.csv`](../../fig3_bc_main/summary.csv) — TODO (round2) |
+| v15 V-from-P BC | [`../../libero_rollout/summary.csv`](../../libero_rollout/summary.csv) — TODO (round2) |
 | v15 V-from-M (C1) | [`../../fig6_motion_routing_ablation/`](../../fig6_motion_routing_ablation/) — C1 학습 대기 |
 | v11 reference | tab2/fig3 round1 |
 

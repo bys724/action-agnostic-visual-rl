@@ -81,7 +81,7 @@ BC-T 18잡 (ptptk × 9 + mp × 9, ep32 fair pair):
 - vfromm mp 9잡 ✅ COMPLETED 22h02m~22h18m (2026-05-19)
 - vfromm ptptk 9잡 🔄 RUNNING 26h+ (2026-05-19 19:28 기준)
 
-BC ckpt → 로컬 워크스테이션 전송 후 LIBERO rollout (각 ckpt × 500 episodes) → SR per (encoder, suite, seed) → [`../fig3_bc_main/summary.csv`](../fig3_bc_main/summary.csv)에 추가.
+BC ckpt → 로컬 워크스테이션 전송 후 LIBERO rollout (각 ckpt × 500 episodes) → SR per (encoder, suite, seed) → [`../libero_rollout/summary.csv`](../libero_rollout/summary.csv)에 추가.
 
 **Hypothesis**: probing에서 fair pair −0.01~−0.02였으니 BC SR도 비슷한 작은 격차 예상.
 
@@ -93,12 +93,12 @@ BC ckpt → 로컬 워크스테이션 전송 후 LIBERO rollout (각 ckpt × 500
   - vfromm 5 ckpt DROID p_t_p_tk gap=15: 34592055~060 (5/18, ~2분 each)
   - vfromm 5 ckpt LIBERO spatial 4 gap: 34592050~054 (5/18, 17m each)
   - vfromm BC-T 18잡: 34595206~227 (5/18 제출, 5/19 진행)
-- v15 main reference: cluster_sessions §2026-05-12 (34367238/34367577/34367612) + [`../probing/v15_egodex_summary.csv`](../probing/v15_egodex_summary.csv)
+- v15 main reference: cluster_sessions §2026-05-12 (34367238/34367577/34367612) + [`../egodex_action_probing/v15_egodex_summary.csv`](../egodex_action_probing/v15_egodex_summary.csv)
 - v15-vfromm 학습 잡: cluster_sessions §2026-05-15 (34464714 sanity, 34464715 본 학습 52.55h × 8 GPU = 420 GPU·h)
 
 ## TODO
 
-- [ ] **vfromm BC-T 18잡 완료 → 로컬 rollout → SR 통합** (`fig3_bc_main/summary.csv`에 `two-stream-v15-vfromm-{ptptk,mp}` row 추가)
+- [ ] **vfromm BC-T 18잡 완료 → 로컬 rollout → SR 통합** (`libero_rollout/summary.csv`에 `two-stream-v15-vfromm-{ptptk,mp}` row 추가)
 - [ ] **fig6 schematic** — v15 vs vfromm architecture 비교 diagram (paper repo TikZ)
 - [ ] **fig6 bar chart** — probing Δ + BC SR Δ 3-row × 3-dataset
 - [ ] **LaTeX 표** — `tab3_ablation`에 통합
