@@ -1,10 +1,12 @@
-# Dual Cross-Reconstruction Plan — M-recon 대칭 분기 추가 (2026-06-26)
+# CoMP-MAE — 대칭 Cross-Reconstruction Plan (M-recon 분기, code v16) (2026-06-26)
+
+> **이름**: CoMP-MAE = **Co**-reconstructive **M**agno-**P**arvo **MAE**. Co=상호 cross-reconstruction(이번 본질), MP=magno(ΔL)/parvo(RGB) 두 stream(불변 골격), MAE=pixel objective. 코드 버전 = **v16** (개념 이름과 분리). 선행: MS-JEPA(v15) → MCP-MAE → **CoMP-MAE(v16)**.
 
 > 설계 출처: Vault `Projects/Action-Agnostic Paper/1. Core Idea.md` §대칭 Cross-Reconstruction 설계 (MotionMAE 읽기 + 대화로 정련).
 > 본 문서는 **구현 참고(계획·주의·pseudocode)** 다. 실제 코드는 dev 세션에서 작성.
 > 기존 MCP-MAE 노선(JEPA 제거·pixel 통일)의 연장 — `docs/v15b_retraining_status.md §9` 위에 쌓는다.
 
-> **버전 결정 (2026-06-26)**: 이 설계가 **MCP-MAE를 대체하는 현재 ours 축** (replace). ⚠️ MCP-MAE도 미학습이라 "미학습 위에 미학습" stack → plain MCP-MAE를 별도 baseline으로 학습하지 **않음**. **attribution은 본 문서 §6 내부 ablation**(routing on/off · no-M · V-source `V_M` vs `V_P`)으로 보존 — 별도 plain baseline 없이도 "M-recon 기여"를 격리. restart_plan STEP 1의 ours arm = dual-cross-recon-S (MCP-MAE-S 대체), 나머지 STEP·대조군·게이트 불변.
+> **버전 결정 (2026-06-26)**: 이 설계(**CoMP-MAE**, code v16)가 **MCP-MAE를 대체하는 현재 ours 축** (replace). ⚠️ MCP-MAE도 미학습이라 "미학습 위에 미학습" stack → plain MCP-MAE를 별도 baseline으로 학습하지 **않음**. **attribution은 본 문서 §6 내부 ablation**(routing on/off · no-M · V-source `V_M` vs `V_P`)으로 보존 — 별도 plain baseline 없이도 "M-recon 기여"를 격리. restart_plan STEP 1의 ours arm = dual-cross-recon-S (MCP-MAE-S 대체), 나머지 STEP·대조군·게이트 불변.
 
 ---
 
