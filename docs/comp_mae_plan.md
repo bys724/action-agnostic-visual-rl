@@ -33,9 +33,30 @@
   - P-recon (기존): `V_P / Q_M·K_M` — attention M→M(correspondence), gather P.
   - M-recon (신규): `V_M / Q_P·K_P` — attention P→P(grouping), gather M.
   - 출력은 V 공간에 산다 → M-recon은 출력=ΔL이므로 V_M 필연. helper(P)는 패턴(Q·K)만.
-- **복구 대상**: P는 **static(gap=0) + future(gap=k)**. **M은 최소 gap≥1(순간 motion) + future** — M의 literal gap=0은 ΔL≡0(definitionally null)이라 제외. 정지 장면의 저-ΔL은 §4 guard 7 floor 가중으로 처리. (multi-gap, MCP-MAE 정신)
+- **복구 대상** (구체 프레임 배치 = **§3.1**): P는 in-place 복구(×2, constant-M routing) + future 예측(t→tk). M은 **Case A(ΔL≡0, calibration·floor 가중)** + **Case B(실제 ΔL, P-helper=frame_t만)**. (multi-gap은 tk 샘플링, MCP-MAE 정신)
 - **디코더 step**: mask token 주입 → **self-attn(완성) → routing**(complete-first) interleave. M-recon은 M-self-attn 완성 + P-grouping routing 미러.
 - **deliverable**: 전이 인코더는 P-encoder(기존). M-recon은 M-encoder를 grounding + (mutual coupling으로) P-encoder도 간접 개선.
+
+## 3.1 데이터·프레임 배치 (guard 2 leakage 해소 — 2026-06-26 확정)
+
+**데이터**: 모든 샘플 = `(frame_t, frame_tk)` **pair**. (v15 triple(t,t+n,t+m) → CoMP-MAE는 pair. multi-gap은 tk 샘플링으로 유지. L_compose는 pair 기준 재검토/생략.)
+
+**P stream (3 task)**:
+1. **in-place 복구 ×2** (frame_t, frame_tk 각각): masked → 복구. **routing 항상 켬, M = constant(null-motion)** 으로 진입 — 무모션 calibration(always-on routing, 추론 gate 없음).
+2. **future 예측 ×1**: masked frame_t → 실제 ΔL(t→tk) routing → frame_tk 예측.
+
+**M stream (2 case) — P-helper = `frame_t`만** (★ leakage 해소 핵심):
+- M-recon의 P-helper에 **frame_t 하나만** 줌(frame_tk 금지). ΔL(t→tk)는 frame_tk가 있어야 빼는데 없음 → **trivial 빼기 불가** ✓. mutual gradient는 frame_t 인코딩 통해 P-encoder로 흐름(guard 4 OK).
+- **Case A (zero/정지)**: `(frame_t, frame_t)` → ΔL≡0. **zero-floor calibration**(정지→0 출력 학습).
+- **Case B (motion)**: `(frame_t, frame_tk)` → 실제 ΔL. visible ΔL patch + frame_t로 masked ΔL 복구/예측 (form이 motion grouping).
+- 두 case 모두 **per-patch |ΔL| 가중**(guard 7): Case A=floor만(0 매몰 방지), Case B=motion patch 주도.
+
+**helper 비대칭**: M→P helper = **full ΔL**, P→M helper = **frame_t만** — ΔL이 frame 파생이라 방향성(역은 leak).
+
+**⚠️ 미세 주의** (구현 시 점검):
+- (a) Case A(전부 0)는 Case B의 저-ΔL patch와 일부 중복 → 비용 대비 clean calibration. 빈도는 floor로 상계(가중 충분히 작게).
+- (b) constant-M routing: positional embedding 덕에 uniform-blur 아님(position-structured) → in-place recon에 무해~약유용. literal 0보다 **learned null-motion token** 권장(behavior 명확).
+- (c) **compute**: 샘플당 P 3 + M 2 = **5 recon task × helper full-pass** → 비용 큼. batch/throughput 재조정 필요(restart_plan 비용 레버 참고).
 
 ## 4. Critical guards (구현 시 실수 방지)
 
@@ -45,7 +66,7 @@
      - `v_from_p`+`src='m'`, 인자=(P, M): V=P / Q,K=M → **M→M attention, gather P** (P-recon)
      - `v_from_m`: Q=P / K,V=M → **P→M attention, gather M** ← 우리가 원하는 게 **아님**
    - M-recon이 원하는 **Q,K=P / V=M (P→P grouping, gather M)** = 같은 `v_from_p`+`src='m'`을 **인자만 swap**(`v_owner=M, qk_helper=P`)하면 그대로 나옴 → **새 routing_mode 추가 불필요.** 필요한 것: ① forward 인자명 generic화(`p_state,m_completed` → `v_owner_state,qk_helper_state`), ② M-recon용 **별도 인스턴스**(자기 qk/v projection = param-symmetry, P-recon과 weight 공유 금지).
-2. **leakage 비대칭 (trivial 방지)**: ΔL = |F(t+1)−F(t)| 는 P 프레임의 결정론적 함수. P-full이 타깃 ΔL의 **양쪽 프레임을 bracket하면 빼기로 trivial** → 특히 **작은 gap**(P visible이 ΔL 양 프레임을 포함하기 쉬움). M-recon 타깃 ΔL을 **P visible이 bracket하지 않게** 시간 offset 구성. M bottleneck 타이트 유지, M target=ΔL 고정.
+2. **leakage 비대칭 (trivial 방지) — 해소됨 → §3.1**: ΔL은 frame의 결정론적 함수라 P-full이 ΔL 양 프레임을 bracket하면 빼기로 trivial. **해법: M-recon의 P-helper = `frame_t` 하나만**(frame_tk 부재 → 빼기 불가). M bottleneck 타이트 유지, M target=ΔL 고정.
 3. **complete-first ↔ routing no-op trade-off**: interpreter(self-attn)가 너무 강하면 routing 없이도 복구돼 M 기여 redundant. interpreter depth 과다 금지 + **routing ablation 필수**(§6).
 4. **mutual coupling용 gradient**: M-recon의 `Q_P·K_P`는 **P-encoder full-pass에서 grad 흐르게** (raw patch 아님). 그래야 L_M이 P-encoder도 빚음(=진짜 mutual). 단 guard 2와 동시 만족.
 5. **M recon head**: ΔL은 1채널(`[ΔL]`, Sobel-free 확정) → P recon head(RGB 3ch) 재사용 금지, **1채널 head 별도**.
@@ -63,8 +84,8 @@
 - [ ] `MotionRoutingBlock` forward 인자명 generic화(`v_owner_state, qk_helper_state`) + M-recon용 **별도 인스턴스**(`v_owner=M, qk_helper=P`로 호출 → P→P grouping, gather M). **새 routing_mode 아님** — guard 1 참고. param-symmetric(별도 projection) 유지.
 - [ ] M-recon용 `RoutingInterpreterStep` 미러: M-self-attn `interp` + P-grouping `routing`, `decode_first=True`.
 - [ ] M decoder를 pixel-recon 분기로: mask_token_m 주입(이미 존재) → APE → interleave step × N → **1채널 ΔL recon head**.
-- [ ] P-encoder full-pass 경로 추가 (M-recon helper용 Q_P,K_P, grad on) + guard 2/6 만족하는 마스킹/시간 구성.
-- [ ] Loss에 `L_M_recon` 추가: gap≥1+future, λ_M 가중. **per-patch 가중(guard 7)**: M-recon=`floor+scale·|ΔL|`, P-future=`floor+scale·|RGB변화|`, **P-static 균일**.
+- [ ] P-encoder 경로: M-recon helper용 **frame_t만** 인코딩(§3.1 — leakage 해소, Q_P,K_P, grad on). guard 6(M은 masked 별도 pass) 만족.
+- [ ] Loss에 `L_M_recon` 추가: Case A(ΔL=0)+Case B(실제 ΔL), **P-helper=frame_t만**(§3.1), λ_M. **per-patch 가중(guard 7)**: M=`floor+scale·|ΔL|`, P-future=`floor+scale·|RGB변화|`, **P-in-place 균일**.
 - [ ] flag/config: `--comp-mae` (또는 `--v16-*`; 기존 `--v15-pixel-pred` 계열과 정합), λ_M·interpreter depth·routing on/off·가중 floor/scale 노출.
 - [ ] DDP-safe: 미사용 모듈 freeze/skip 패턴 기존(v15:373-388) 따름.
 
@@ -84,9 +105,10 @@
 
 # loss
 #   weight = floor + scale·|dL_target|                       # guard 7 (정지=floor만)
-#   L_M = sum_gap weighted_MSE(m_recon[gap], dL_target[gap], weight)[masked]  # M: gap∈{≥1,k} (gap=0=ΔL≡0 제외)
-#   L_total = L_P(기존: P-static 균일 + P-future는 gated 가중) + lambda_M * L_M
-#   # guard 2: dL_target[작은 gap]의 양쪽 프레임이 P visible에 동시 존재하지 않게
+#   # M: Case A (frame_t,frame_t)->dL≡0 + Case B (frame_t,frame_tk)->real dL ; P-helper=frame_t만 (§3.1)
+#   L_M = (caseA + caseB) weighted_MSE(m_recon, dL_target, weight)[masked]
+#   L_total = L_P(in-place×2 균일 + future는 gated 가중) + lambda_M * L_M
+#   # leakage 해소: M-recon helper는 frame_t만 → frame_tk 없어 dL 빼기 불가 (§3.1)
 ```
 
 ## 6. 검증 체크리스트 (hand-off 전)
