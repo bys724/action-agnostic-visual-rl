@@ -6,7 +6,7 @@
 > 본 문서는 **구현 참고(계획·주의·pseudocode)** 다. 실제 코드는 dev 세션에서 작성.
 > 기존 MCP-MAE 노선(JEPA 제거·pixel 통일)의 연장 — `docs/v15b_retraining_status.md §9` 위에 쌓는다.
 
-> **버전 결정 (2026-06-26)**: 이 설계(**CoMP-MAE**, code v16)가 **MCP-MAE를 대체하는 현재 ours 축** (replace). ⚠️ MCP-MAE도 미학습이라 "미학습 위에 미학습" stack → plain MCP-MAE를 별도 baseline으로 학습하지 **않음**. **attribution은 본 문서 §6 내부 ablation**(routing on/off · no-M · V-source `V_M` vs `V_P`)으로 보존 — 별도 plain baseline 없이도 "M-recon 기여"를 격리. restart_plan STEP 1의 ours arm = dual-cross-recon-S (MCP-MAE-S 대체), 나머지 STEP·대조군·게이트 불변.
+> **버전 결정 (2026-06-26)**: 이 설계(**CoMP-MAE**, code v16)가 **MCP-MAE를 대체하는 현재 ours 축** (replace). ⚠️ MCP-MAE도 미학습이라 "미학습 위에 미학습" stack → plain MCP-MAE를 별도 baseline으로 학습하지 **않음**. **attribution은 본 문서 §6 내부 ablation**(routing on/off · no-M · V-source `V_M` vs `V_P`)으로 보존 — 별도 plain baseline 없이도 "M-recon 기여"를 격리. restart_plan STEP 1의 ours arm = **CoMP-MAE-S** (MCP-MAE-S 대체), 나머지 STEP·대조군·게이트 불변.
 
 ---
 
@@ -33,7 +33,7 @@
   - P-recon (기존): `V_P / Q_M·K_M` — attention M→M(correspondence), gather P.
   - M-recon (신규): `V_M / Q_P·K_P` — attention P→P(grouping), gather M.
   - 출력은 V 공간에 산다 → M-recon은 출력=ΔL이므로 V_M 필연. helper(P)는 패턴(Q·K)만.
-- **복구 대상: static(gap=0) + future(gap=k)** 둘 다 (multi-gap, MCP-MAE 정신).
+- **복구 대상**: P는 **static(gap=0) + future(gap=k)**. **M은 최소 gap≥1(순간 motion) + future** — M의 literal gap=0은 ΔL≡0(definitionally null)이라 제외. 정지 장면의 저-ΔL은 §4 guard 7 floor 가중으로 처리. (multi-gap, MCP-MAE 정신)
 - **디코더 step**: mask token 주입 → **self-attn(완성) → routing**(complete-first) interleave. M-recon은 M-self-attn 완성 + P-grouping routing 미러.
 - **deliverable**: 전이 인코더는 P-encoder(기존). M-recon은 M-encoder를 grounding + (mutual coupling으로) P-encoder도 간접 개선.
 
@@ -45,11 +45,18 @@
      - `v_from_p`+`src='m'`, 인자=(P, M): V=P / Q,K=M → **M→M attention, gather P** (P-recon)
      - `v_from_m`: Q=P / K,V=M → **P→M attention, gather M** ← 우리가 원하는 게 **아님**
    - M-recon이 원하는 **Q,K=P / V=M (P→P grouping, gather M)** = 같은 `v_from_p`+`src='m'`을 **인자만 swap**(`v_owner=M, qk_helper=P`)하면 그대로 나옴 → **새 routing_mode 추가 불필요.** 필요한 것: ① forward 인자명 generic화(`p_state,m_completed` → `v_owner_state,qk_helper_state`), ② M-recon용 **별도 인스턴스**(자기 qk/v projection = param-symmetry, P-recon과 weight 공유 금지).
-2. **leakage 비대칭 (trivial 방지)**: ΔL = |F(t+1)−F(t)| 는 P 프레임의 결정론적 함수. P-full이 타깃 ΔL의 **양쪽 프레임을 bracket하면 빼기로 trivial** → 특히 static(gap=0). M-recon 타깃 ΔL을 **P visible이 bracket하지 않게** 시간 offset 구성. M bottleneck 타이트 유지, M target=ΔL 고정.
+2. **leakage 비대칭 (trivial 방지)**: ΔL = |F(t+1)−F(t)| 는 P 프레임의 결정론적 함수. P-full이 타깃 ΔL의 **양쪽 프레임을 bracket하면 빼기로 trivial** → 특히 **작은 gap**(P visible이 ΔL 양 프레임을 포함하기 쉬움). M-recon 타깃 ΔL을 **P visible이 bracket하지 않게** 시간 offset 구성. M bottleneck 타이트 유지, M target=ΔL 고정.
 3. **complete-first ↔ routing no-op trade-off**: interpreter(self-attn)가 너무 강하면 routing 없이도 복구돼 M 기여 redundant. interpreter depth 과다 금지 + **routing ablation 필수**(§6).
 4. **mutual coupling용 gradient**: M-recon의 `Q_P·K_P`는 **P-encoder full-pass에서 grad 흐르게** (raw patch 아님). 그래야 L_M이 P-encoder도 빚음(=진짜 mutual). 단 guard 2와 동시 만족.
 5. **M recon head**: ΔL은 1채널(`[ΔL]`, Sobel-free 확정) → P recon head(RGB 3ch) 재사용 금지, **1채널 head 별도**.
 6. **helper full-pass 비용**: P-recon은 M-full, M-recon은 P-full 필요 → 각 encoder가 masked 1회 + full 1회. M을 full 인코딩하면 M-recon 타깃 leak → **M-recon의 M은 반드시 masked 별도 pass** (full pass 재사용 금지).
+7. **per-patch loss weighting — "변화 있는 곳으로 학습을 모은다"** (zero/copy-collapse 방지, 2026-06-26 대화):
+   - **거는 곳**: M-recon = `floor + scale·|ΔL|`, P-**future** 예측 = `floor + scale·|P_{t+k}−P_t|`(RGB 변화). **P-static(현재 복원)은 균일 = 가중 X** — RGB 타깃이 풍부해 퇴화 없음. 변화로 가중하면 정지 외형 복원을 망침(단일 현재 프레임엔 비교할 변화 기준도 없음).
+   - **floor 필수**: 순수 `|변화|` 곱 금지 — 정지 patch weight=0이면 "정지→0 출력" calibration 소멸 → 추론 때 motion hallucinate(후속 factored-surprise도 깨짐). floor가 정지에 calibration 신호만 남김.
+   - **routing(입력)과 중복 아님**: M routing은 변화를 *공급*(forward), weighting은 *그걸 쓰도록 gradient를 기울임*(training). 가중 없으면 unweighted loss가 안 변한 다수 patch에 지배 → copy로 도망 → **routing no-op**. 즉 weighting은 routing을 load-bearing으로 만드는 지렛대(중복 아님).
+   - **추론 gate 없음**: weighting은 training-only. 추론 forward는 균일(정지 판정 장치 불필요) — always-on routing.
+   - **P-future는 gated(YAGNI)**: 일단 무가중 학습 → copy-collapse 징후(미래예측이 현재 copy로 수렴 / P routing ablation 무효) 보이면 가중 투입. M-recon은 sparse-zero가 acute라 가중 기본.
+   - **⚠️ photometric 노이즈**: raw `|변화|` 가중은 조명·노출 변동을 up-weight(ΔL photometric-sensitive 약점 증폭) → normalize/denoise된 변화로 가중하거나 상호작용 모니터.
 
 ## 5. 구현 TODO 체크리스트 (dev 세션)
 
@@ -57,8 +64,8 @@
 - [ ] M-recon용 `RoutingInterpreterStep` 미러: M-self-attn `interp` + P-grouping `routing`, `decode_first=True`.
 - [ ] M decoder를 pixel-recon 분기로: mask_token_m 주입(이미 존재) → APE → interleave step × N → **1채널 ΔL recon head**.
 - [ ] P-encoder full-pass 경로 추가 (M-recon helper용 Q_P,K_P, grad on) + guard 2/6 만족하는 마스킹/시간 구성.
-- [ ] Loss에 `L_M_recon` 추가: static(gap=0)+future(gap=k), λ_M 가중. moving-region 가중 옵션(sparse-ΔL zero collapse 방지).
-- [ ] flag/config: `--dual-cross-recon` (기존 `--v15-pixel-pred` 계열과 정합), λ_M·interpreter depth·routing on/off 노출.
+- [ ] Loss에 `L_M_recon` 추가: gap≥1+future, λ_M 가중. **per-patch 가중(guard 7)**: M-recon=`floor+scale·|ΔL|`, P-future=`floor+scale·|RGB변화|`, **P-static 균일**.
+- [ ] flag/config: `--comp-mae` (또는 `--v16-*`; 기존 `--v15-pixel-pred` 계열과 정합), λ_M·interpreter depth·routing on/off·가중 floor/scale 노출.
 - [ ] DDP-safe: 미사용 모듈 freeze/skip 패턴 기존(v15:373-388) 따름.
 
 ### pseudocode skeleton (구조만 — 실제 구현은 dev 세션)
@@ -76,9 +83,10 @@
 #   m_recon = head_dL(m_state[:, 1:])                     # 1채널 ΔL
 
 # loss
-#   L_M = sum_gap MSE(m_recon[gap], dL_target[gap])[masked]   # gap∈{0,k}
-#   L_total = L_P(기존) + lambda_M * L_M
-#   # guard 2: dL_target[gap=0] 의 양쪽 프레임이 P visible에 동시 존재하지 않게
+#   weight = floor + scale·|dL_target|                       # guard 7 (정지=floor만)
+#   L_M = sum_gap weighted_MSE(m_recon[gap], dL_target[gap], weight)[masked]  # M: gap∈{≥1,k} (gap=0=ΔL≡0 제외)
+#   L_total = L_P(기존: P-static 균일 + P-future는 gated 가중) + lambda_M * L_M
+#   # guard 2: dL_target[작은 gap]의 양쪽 프레임이 P visible에 동시 존재하지 않게
 ```
 
 ## 6. 검증 체크리스트 (hand-off 전)
@@ -89,6 +97,7 @@
 - [ ] **V-source ablation**: M-recon `V_M` vs `V_P` 비교 → V_P일 때 M-encoder 표상 빈약(probe 하락) 확인.
 - [ ] **trivial 체크**: gap=0 M-recon loss가 비정상적으로 0에 근접하지 않는지(=빼기 leak) 모니터.
 - [ ] **transfer**: held-out domain probing/BC로 M-recon on/off 비교 (factorization OOD 이득 — Vault §일반화 프레임).
+- [ ] **per-patch 가중 효과(guard 7)**: (a) M-recon이 0-collapse 안 빠지나(정지=floor만, 모션 patch 학습됨), (b) 정지 입력서 M이 ~0 출력(calibration) 확인, (c) P-future는 무가중 먼저 → copy-collapse 보이면 가중.
 
 ## 7. Cross-refs
 
