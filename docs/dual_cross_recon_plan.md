@@ -4,6 +4,8 @@
 > 본 문서는 **구현 참고(계획·주의·pseudocode)** 다. 실제 코드는 dev 세션에서 작성.
 > 기존 MCP-MAE 노선(JEPA 제거·pixel 통일)의 연장 — `docs/v15b_retraining_status.md §9` 위에 쌓는다.
 
+> **버전 결정 (2026-06-26)**: 이 설계가 **MCP-MAE를 대체하는 현재 ours 축** (replace). ⚠️ MCP-MAE도 미학습이라 "미학습 위에 미학습" stack → plain MCP-MAE를 별도 baseline으로 학습하지 **않음**. **attribution은 본 문서 §6 내부 ablation**(routing on/off · no-M · V-source `V_M` vs `V_P`)으로 보존 — 별도 plain baseline 없이도 "M-recon 기여"를 격리. restart_plan STEP 1의 ours arm = dual-cross-recon-S (MCP-MAE-S 대체), 나머지 STEP·대조군·게이트 불변.
+
 ---
 
 ## 1. 목표
