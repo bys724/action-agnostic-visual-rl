@@ -39,11 +39,12 @@
 
 ## 4. Critical guards (구현 시 실수 방지)
 
-1. **신규 routing variant ≠ 기존 `v_from_m`** ⚠️ (가장 흔할 실수)
+1. **grouping = `v_from_p` 입력 swap (새 mode 아님) ≠ `v_from_m`** ⚠️ (가장 흔할 실수)
+   - 핵심: `MotionRoutingBlock`의 `v_from_p`는 이미 **역할 대칭** — 메커니즘은 `softmax(QK←둘째 인자) @ V(←첫째 인자)`. V는 항상 첫 인자(`p_state`)에서, QK는 `src='m'`일 때 둘째 인자에서 (blocks.py:216-225, residual도 owner=첫 인자에 붙음).
    - 기존 `MotionRoutingBlock` (common/blocks.py:141-248):
-     - `v_from_p`+`src='m'`: Q,K=M / V=P → **M→M attention, gather P**
-     - `v_from_m`: Q=P / K,V=M → **P→M attention, gather M** ← 이건 우리가 원하는 게 **아님**
-   - M-recon이 원하는 것: **Q,K=P / V=M → P→P attention, gather M** (grouping). 셋 다와 다름 → **새 variant 추가** 필요. (구조는 `v_from_p`+`src='m'`의 M↔P 역할 swap.)
+     - `v_from_p`+`src='m'`, 인자=(P, M): V=P / Q,K=M → **M→M attention, gather P** (P-recon)
+     - `v_from_m`: Q=P / K,V=M → **P→M attention, gather M** ← 우리가 원하는 게 **아님**
+   - M-recon이 원하는 **Q,K=P / V=M (P→P grouping, gather M)** = 같은 `v_from_p`+`src='m'`을 **인자만 swap**(`v_owner=M, qk_helper=P`)하면 그대로 나옴 → **새 routing_mode 추가 불필요.** 필요한 것: ① forward 인자명 generic화(`p_state,m_completed` → `v_owner_state,qk_helper_state`), ② M-recon용 **별도 인스턴스**(자기 qk/v projection = param-symmetry, P-recon과 weight 공유 금지).
 2. **leakage 비대칭 (trivial 방지)**: ΔL = |F(t+1)−F(t)| 는 P 프레임의 결정론적 함수. P-full이 타깃 ΔL의 **양쪽 프레임을 bracket하면 빼기로 trivial** → 특히 static(gap=0). M-recon 타깃 ΔL을 **P visible이 bracket하지 않게** 시간 offset 구성. M bottleneck 타이트 유지, M target=ΔL 고정.
 3. **complete-first ↔ routing no-op trade-off**: interpreter(self-attn)가 너무 강하면 routing 없이도 복구돼 M 기여 redundant. interpreter depth 과다 금지 + **routing ablation 필수**(§6).
 4. **mutual coupling용 gradient**: M-recon의 `Q_P·K_P`는 **P-encoder full-pass에서 grad 흐르게** (raw patch 아님). 그래야 L_M이 P-encoder도 빚음(=진짜 mutual). 단 guard 2와 동시 만족.
@@ -52,7 +53,7 @@
 
 ## 5. 구현 TODO 체크리스트 (dev 세션)
 
-- [ ] `MotionRoutingBlock`에 신규 variant 추가: V=M / Q,K=P (P→P attention, gather M). guard 1 참고. param-symmetric 유지.
+- [ ] `MotionRoutingBlock` forward 인자명 generic화(`v_owner_state, qk_helper_state`) + M-recon용 **별도 인스턴스**(`v_owner=M, qk_helper=P`로 호출 → P→P grouping, gather M). **새 routing_mode 아님** — guard 1 참고. param-symmetric(별도 projection) 유지.
 - [ ] M-recon용 `RoutingInterpreterStep` 미러: M-self-attn `interp` + P-grouping `routing`, `decode_first=True`.
 - [ ] M decoder를 pixel-recon 분기로: mask_token_m 주입(이미 존재) → APE → interleave step × N → **1채널 ΔL recon head**.
 - [ ] P-encoder full-pass 경로 추가 (M-recon helper용 Q_P,K_P, grad on) + guard 2/6 만족하는 마스킹/시간 구성.
@@ -63,10 +64,11 @@
 ### pseudocode skeleton (구조만 — 실제 구현은 dev 세션)
 
 ```
-# 신규 routing variant (common/blocks.py MotionRoutingBlock 확장)
-# mode = "grouping":  Q,K <- norm_q(P);  V <- norm_v(M)
-#   attn = softmax(Q_P @ K_P^T) @ V_M     # P→P grouping, gather motion
-#   (기존 v_from_p+src='m' 의 M↔P swap. v_from_m 과 혼동 금지 — 그건 P→M)
+# grouping = 기존 v_from_p 인자 swap (새 mode 아님; forward 인자명만 generic화)
+#   routing_M = MotionRoutingBlock(routing_mode="v_from_p", routing_source="m")  # 별도 인스턴스
+#   m_state   = routing_M(v_owner=m_state, qk_helper=p_full)
+#   → softmax(Q_P @ K_P^T) @ V_M          # P→P grouping, gather motion (residual on M)
+#   (v_from_m 과 혼동 금지 — 그건 P→M, gather M 으로 우리가 원하는 게 아님)
 
 # M-recon step (RoutingInterpreterStep 미러)
 #   if decode_first:  m_state = interp_M(m_state)         # self-attn 완성 먼저

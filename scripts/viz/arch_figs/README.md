@@ -11,7 +11,8 @@
 | 파일 | 역할 |
 |------|------|
 | `_common.py` | 공유 모듈 — 색 컨벤션·EgoDex 프레임 추출·matplotlib 드로잉 프리미티브. **단일 출처** |
-| `make_mcp_mae_fig.py` | **MCP-MAE** SiamMAE-스타일 메인 figure (matplotlib) |
+| `make_comp_mae_fig.py` | **CoMP-MAE (현행 ours, code v16)** — 대칭 cross-recon mirrored 2-branch (matplotlib) |
+| `make_mcp_mae_fig.py` | MCP-MAE SiamMAE-스타일 figure (predecessor — P-recon만) |
 | `make_ms_jepa_fig.py` | **MS-JEPA** 동일 스타일 figure (predecessor 비교용) |
 | `mcp_mae_architecture.mmd` | MCP-MAE 상세 dataflow (Mermaid 소스) |
 | `ms_jepa_architecture.mmd` | MS-JEPA 상세 dataflow (Mermaid 소스) |
@@ -25,6 +26,8 @@ head/output = orange · teacher/EMA = teal (MS-JEPA 전용) · loss = red · mas
 
 ```bash
 # matplotlib figures (실제 EgoDex 프레임 추출 포함)
+python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/fig1_architecture/comp_mae_fig.png   # 현행 메인
+python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/fig1_architecture/comp_mae_fig.pdf
 python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/fig1_architecture/mcp_mae_fig.png
 python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/fig1_architecture/mcp_mae_fig.pdf
 python3 scripts/viz/arch_figs/make_ms_jepa_fig.py  paper_artifacts/fig1_architecture/ms_jepa_fig.png

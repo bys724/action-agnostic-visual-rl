@@ -1,23 +1,25 @@
-# Fig 1 — Architecture figures (MCP-MAE · MS-JEPA)
+# Fig 1 — Architecture figures (CoMP-MAE · MCP-MAE · MS-JEPA)
 
 **Paper**: 2 (AAAI, Action-Agnostic)
 
 **Paper position**: Paper 2 (AAAI) §3 Method (main figure) + method-history.
 **생성 소스·코드**: [`scripts/viz/arch_figs/`](../../scripts/viz/arch_figs/) (source/artifact 분리 — 이 폴더는 렌더 결과만).
-명명·맥락 → [`CLAUDE.md`](../../CLAUDE.md) "명명 · 2논문 구조" · [`docs/REFACTOR_PLAN.md`](../../docs/REFACTOR_PLAN.md) §1.
+명명·맥락 → [`CLAUDE.md`](../../CLAUDE.md) "명명 · 2논문 구조" · [`docs/comp_mae_plan.md`](../../docs/comp_mae_plan.md) (CoMP-MAE 설계) · [`docs/REFACTOR_PLAN.md`](../../docs/REFACTOR_PLAN.md) §1.
 
-## 모델 한 줄 정의
+## 모델 한 줄 정의 (계보: MS-JEPA(v15) → MCP-MAE → CoMP-MAE(v16))
 
-- **MCP-MAE** (현행 ours, code `--v15-pixel-pred`): appearance(P)·motion(M) 분리, M이 `where`(Q,K)로 P의 `what`(V)을 routing해 **미래 픽셀** 예측. JEPA/EMA 제거 → **collapse 불가**, scaffold 유지.
-- **MS-JEPA** (predecessor, Parvo code v15b): 동일 routing이나 **EMA-teacher LATENT** 예측(V-JEPA). self-referential target → collapse 위험(target-LN·var-reg 필요) → MCP-MAE가 픽셀 target으로 대체.
+- **CoMP-MAE** (현행 ours, code v16): MCP-MAE를 **대칭 cross-reconstruction**으로 확장 — P-recon(masked RGB / M-full helper)에 더해 **M-recon(masked ΔL / P-full helper)** 추가. 원칙 = `V`=복구 대상(내용 생산→학습 보장)·`Q,K`=helper. M에 grounded pixel 목적을 직접 줘 **M no-op 정면 대응**.
+- **MCP-MAE** (predecessor): P-recon만 — M이 `where`(Q,K)로 P의 `what`(V)을 routing해 **미래 픽셀** 예측. JEPA/EMA 제거 → collapse 불가. → M이 router로만 학습돼 no-op 위험.
+- **MS-JEPA** (predecessor, code v15b): 동일 routing이나 **EMA-teacher LATENT** 예측(V-JEPA). self-referential target → collapse 위험 → MCP-MAE가 픽셀 target으로 대체.
 
 ## 산출물 (현행)
 
 | File | 모델 | 용도 | 도구 |
 |------|------|------|------|
-| **`mcp_mae_fig.png` / `.pdf`** | MCP-MAE | **메인 Fig 1** — SiamMAE 스타일 직관 도식 (실제 EgoDex 프레임) | matplotlib |
+| **`comp_mae_fig.png` / `.pdf`** | **CoMP-MAE** | **메인 Fig 1** — 대칭 cross-recon mirrored 2-branch (실제 EgoDex 프레임) | matplotlib |
+| `mcp_mae_fig.png` / `.pdf` | MCP-MAE | predecessor 도식 (P-recon만 — history 비교) | matplotlib |
 | `mcp_mae_architecture.png` | MCP-MAE | 상세 dataflow — 통일 predict() ×3 | Mermaid |
-| **`ms_jepa_fig.png` / `.pdf`** | MS-JEPA | 동일 스타일 도식 (predecessor 비교) | matplotlib |
+| `ms_jepa_fig.png` / `.pdf` | MS-JEPA | predecessor 도식 (EMA-teacher 비교) | matplotlib |
 | `ms_jepa_architecture.png` | MS-JEPA | 상세 dataflow — two heads + EMA teacher | Mermaid |
 
 - **`*_fig`** = "한눈에 이해" SiamMAE-스타일 (발표·논문 main 1순위). 두 모델이 **나란히 비교**되도록 동일 레이아웃.
