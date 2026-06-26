@@ -78,6 +78,10 @@
    - **추론 gate 없음**: weighting은 training-only. 추론 forward는 균일(정지 판정 장치 불필요) — always-on routing.
    - **P-future는 gated(YAGNI)**: 일단 무가중 학습 → copy-collapse 징후(미래예측이 현재 copy로 수렴 / P routing ablation 무효) 보이면 가중 투입. M-recon은 sparse-zero가 acute라 가중 기본.
    - **⚠️ photometric 노이즈**: raw `|변화|` 가중은 조명·노출 변동을 up-weight(ΔL photometric-sensitive 약점 증폭) → normalize/denoise된 변화로 가중하거나 상호작용 모니터.
+8. **M 마스킹 비율 = P보다 낮게 (비대칭)** ⚠️ — P 비율 그대로 쓰지 말 것 (흔한 실수, 2026-06-26 대화):
+   - M(ΔL)은 정보가 **소수 motion patch에 집중**(대부분 0). P처럼 75~90% 마스킹하면 **움직이는 patch가 통째로 가려져** visible 전부 0 → (i) **ill-posed**: 같은 all-0 visible이 Case A(정지, target 0)·Case B(움직이는데 motion만 가려짐, target≠0)에 둘 다 매핑 → 평균밖에 못 냄, (ii) **guard 7과 악상호작용**: 가려진 motion patch는 |ΔL| 가중이 높은데 cue 없어 unlearnable → **high-weight·unlearnable = toxic gradient**. P-helper(frame_t)는 "어디가 움직이나" 못 알려줘서 구제 안 됨.
+   - → **M 마스킹 < P (예: M~50% 이하, motion 비율 f 따라 visible에 moving patch 안정적으로 남게)**. ⚠️ 너무 낮으면 M-recon trivial → 학습 압력 약화, sweet spot 튜닝.
+   - 더 robust(필요 시): **motion-aware masking**(moving patch 일부 visible 보장; 선례 「MGMAE」 flow-guided) — 비율 의존↓·cue 보장, 단 복잡도↑·약leak. 우선 낮은 uniform → 불안정 시 전환.
 
 ## 5. 구현 TODO 체크리스트 (dev 세션)
 
@@ -120,6 +124,7 @@
 - [ ] **trivial 체크**: gap=0 M-recon loss가 비정상적으로 0에 근접하지 않는지(=빼기 leak) 모니터.
 - [ ] **transfer**: held-out domain probing/BC로 M-recon on/off 비교 (factorization OOD 이득 — Vault §일반화 프레임).
 - [ ] **per-patch 가중 효과(guard 7)**: (a) M-recon이 0-collapse 안 빠지나(정지=floor만, 모션 patch 학습됨), (b) 정지 입력서 M이 ~0 출력(calibration) 확인, (c) P-future는 무가중 먼저 → copy-collapse 보이면 가중.
+- [ ] **M 마스킹 sanity(guard 8)**: visible ΔL에 motion patch가 충분히 남나(전부-0 visible 빈도 모니터) + M-recon loss가 ill-posed로 불안정하지 않나. 불안정 시 M 비율↓ 또는 motion-aware masking 전환.
 
 ## 7. Cross-refs
 
