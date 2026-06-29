@@ -206,6 +206,25 @@ def main():
                         help='routing Q/K source: m=motion(ΔL)-routed(논문 핵심) / '
                              'p=SiamMAE-analog 대조군(RGB-routed, V는 항상 P). '
                              'analog 비교군 = --v15-pixel-pred --v15-routing-source p (param-symmetric). v_from_p 전용.')
+    # ── CoMP-MAE (code v16): 대칭 cross-reconstruction (M-recon 분기) ──
+    parser.add_argument('--v15-comp-mae', action='store_true',
+                        help='[CoMP-MAE/v16] pixel_pred(P-recon) 위에 M-recon 미러 추가. M(ΔL)이 자기 픽셀 '
+                             '복구 → M-encoder grounding. no-Sobel·pair_mode·routing_source=m 전용. '
+                             'pixel_pred/no_motion과 배타. 설계=docs/comp_mae_plan.md.')
+    parser.add_argument('--v15-lambda-m-recon', type=float, default=1.0,
+                        help='[CoMP-MAE] L_M(M-recon) 가중치 λ_M (default 1.0).')
+    parser.add_argument('--v15-mask-ratio-m-recon', type=float, default=0.5,
+                        help='[CoMP-MAE] M-recon 마스킹 비율 (guard 8: P(0.75)보다 낮게, default 0.5).')
+    parser.add_argument('--v15-m-recon-iters', type=int, default=None,
+                        help='[CoMP-MAE] M-recon decoder step 수 (None=num_motion_iters와 동일).')
+    parser.add_argument('--v15-m-recon-floor', type=float, default=0.1,
+                        help='[CoMP-MAE] per-patch 가중 floor (guard 7: 정지 calibration, default 0.1).')
+    parser.add_argument('--v15-m-recon-scale', type=float, default=1.0,
+                        help='[CoMP-MAE] per-patch |ΔL| 가중 scale (guard 7, default 1.0).')
+    parser.add_argument('--v15-caseA-weight', type=float, default=1.0,
+                        help='[CoMP-MAE] Case A(정지 ΔL=0 calibration) 상대 loss 가중 (default 1.0).')
+    parser.add_argument('--v15-caseA-prob', type=float, default=1.0,
+                        help='[CoMP-MAE] Case A 실행 확률 (효율: <1이면 step별 확률 skip → 연산 절감, default 1.0).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -341,6 +360,14 @@ def main():
             pixel_pred=args.v15_pixel_pred,
             lambda_recon=args.v15_lambda_recon,
             routing_source=args.v15_routing_source,
+            comp_mae=args.v15_comp_mae,
+            lambda_m_recon=args.v15_lambda_m_recon,
+            mask_ratio_m_recon=args.v15_mask_ratio_m_recon,
+            m_recon_iters=args.v15_m_recon_iters,
+            m_recon_weight_floor=args.v15_m_recon_floor,
+            m_recon_weight_scale=args.v15_m_recon_scale,
+            caseA_weight=args.v15_caseA_weight,
+            caseA_prob=args.v15_caseA_prob,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

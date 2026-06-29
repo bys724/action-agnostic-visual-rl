@@ -141,10 +141,14 @@ class TransformerBlock(nn.Module):
 class MotionRoutingBlock(nn.Module):
     """Motion-guided attention routing.
 
+    forward(v_owner_state, qk_helper_state): V·residual은 owner, Q/K는 helper(=routing
+    pattern 공급). owner/helper에 P/M 중 무엇을 넣을지는 호출부가 결정 (CoMP-MAE 미러링).
+
     routing_mode == "v_from_p" (v11 default, paper novelty):
-        Q, K from M (motion field), V from P (current state).
-        "M의 self-attention 그래프를 P의 value에 적용" —
-        M이 정의하는 spatial routing pattern으로 P 내용물을 재조합.
+        Q, K from helper, V from owner (residual=owner).
+        "helper의 attention 그래프를 owner의 value에 적용" — helper가 정의하는 spatial
+        routing pattern으로 owner 내용물을 재조합. P-recon: owner=P/helper=M (M→M attn,
+        gather P). M-recon(CoMP-MAE): owner=M/helper=P (P→P attn, gather M).
 
     routing_mode == "v_from_m" (ablation, 표준 cross-attention):
         Q from P (queries), K, V from M (memory).
@@ -203,31 +207,39 @@ class MotionRoutingBlock(nn.Module):
             nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
         )
 
-    def forward(self, p_state: torch.Tensor, m_completed: torch.Tensor) -> torch.Tensor:
-        """
+    def forward(self, v_owner_state: torch.Tensor, qk_helper_state: torch.Tensor) -> torch.Tensor:
+        """Routing/cross-attn: V는 owner에서, residual도 owner에 붙음 (V는 복구 대상).
+
+        인자명 generic화 (CoMP-MAE guard 1): 메커니즘은 owner/helper 역할만 결정하고
+        P/M 의미는 호출부가 부여한다. v_from_p + source='m' 인스턴스를:
+          - P-recon: forward(v_owner=P_state, qk_helper=M_completed) → M→M attn, gather P
+          - M-recon: forward(v_owner=M_state, qk_helper=P_full)      → P→P attn, gather M
+        같은 모듈을 **인자만 swap**해 미러링 (별도 인스턴스 = param-symmetry). `v_from_m`
+        ablation은 V를 helper에서 뽑는 표준 cross-attn (owner=residual target은 동일).
+
         Args:
-            p_state: [B, N+1, D] — P stream state (CLS + patches)
-            m_completed: [B, N+1, D] — M stream completed (CLS + patches)
+            v_owner_state:  [B, N+1, D] — V 소유 stream (residual 대상)
+            qk_helper_state:[B, N+1, D] — Q/K helper stream
         Returns:
-            p_state_updated: [B, N+1, D]
+            owner_state_updated: [B, N+1, D]
         """
-        B, N, D = p_state.shape
+        B, N, D = v_owner_state.shape
 
         if self.routing_mode == "v_from_p":
-            # routing_source="p"(SiamMAE-analog): Q/K도 P에서 (V는 항상 P). 모듈 동일, 입력만 교체.
-            qk_src = p_state if self.routing_source == "p" else m_completed
+            # routing_source="p"(SiamMAE-analog): Q/K도 owner에서 (V는 항상 owner). 모듈 동일, 입력만 교체.
+            qk_src = v_owner_state if self.routing_source == "p" else qk_helper_state
             qk = self.qk_m(self.norm_m(qk_src)).reshape(
                 B, N, 2, self.num_heads, self.head_dim,
             )
             q, k = qk.unbind(dim=2)
-            v = self.v_p(self.norm_p(p_state)).reshape(
+            v = self.v_p(self.norm_p(v_owner_state)).reshape(
                 B, N, self.num_heads, self.head_dim,
             )
-        else:  # v_from_m
-            q = self.q_p(self.norm_p(p_state)).reshape(
+        else:  # v_from_m — 표준 cross-attn: Q=owner, K/V=helper (ablation, M-recon 미사용)
+            q = self.q_p(self.norm_p(v_owner_state)).reshape(
                 B, N, self.num_heads, self.head_dim,
             )
-            kv = self.kv_m(self.norm_m(m_completed)).reshape(
+            kv = self.kv_m(self.norm_m(qk_helper_state)).reshape(
                 B, N, 2, self.num_heads, self.head_dim,
             )
             k, v = kv.unbind(dim=2)
@@ -239,10 +251,10 @@ class MotionRoutingBlock(nn.Module):
         attn = F.scaled_dot_product_attention(q, k, v)
         attn = attn.transpose(1, 2).reshape(B, N, D)
 
-        # Residual + projection
-        p_state = p_state + self.proj_out(attn)
+        # Residual + projection (owner에 붙음)
+        out = v_owner_state + self.proj_out(attn)
 
         # FFN + residual
-        p_state = p_state + self.ffn(self.norm_ffn(p_state))
+        out = out + self.ffn(self.norm_ffn(out))
 
-        return p_state
+        return out

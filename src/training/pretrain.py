@@ -260,6 +260,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 loss_dino = out['loss_dino'].mean()
                 loss_m_jepa = out.get('loss_m_jepa', torch.tensor(0.0, device=loss.device)).mean()
                 loss_compose = out.get('loss_compose', torch.tensor(0.0, device=loss.device)).mean()
+                # CoMP-MAE(v16): M-recon Case A(정지 calibration)/Case B(동적 ΔL) 분리 모니터링
+                #   (정적/동적 균형 판단 → λ·caseA 조정 근거). 비-comp_mae는 키 없음 → 0.
+                loss_m_caseA = out.get('loss_m_caseA', torch.tensor(0.0, device=loss.device)).mean()
+                loss_m_caseB = out.get('loss_m_caseB', torch.tensor(0.0, device=loss.device)).mean()
                 img_pred = out['pred_tk']
                 weighted_loss = loss
                 unweighted_loss = loss
@@ -321,6 +325,9 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 buf['loss_m_jepa'] = buf.get('loss_m_jepa', 0.0) + loss_m_jepa.item()
                 # v15 final: L_compose (v14에서는 0)
                 buf['loss_compose'] = buf.get('loss_compose', 0.0) + loss_compose.item()
+                # CoMP-MAE(v16): M-recon Case A/B
+                buf['loss_m_caseA'] = buf.get('loss_m_caseA', 0.0) + loss_m_caseA.item()
+                buf['loss_m_caseB'] = buf.get('loss_m_caseB', 0.0) + loss_m_caseB.item()
                 buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
                 buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
                 buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
@@ -508,9 +515,18 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
             gap_counts[int(g)] = gap_counts.get(int(g), 0) + 1
 
         if batch_idx % 10 == 0 and _is_master():
-            print(f"  Batch {batch_idx}/{len(dataloader)}, "
-                  f"Loss: {unweighted_loss.item():.4f}, "
-                  f"Weighted: {weighted_loss.item():.4f}")
+            _line = (f"  Batch {batch_idx}/{len(dataloader)}, "
+                     f"Loss: {unweighted_loss.item():.4f}, Weighted: {weighted_loss.item():.4f}")
+            if model_name == 'TwoStreamV15Model':
+                if getattr(actual_model, 'comp_mae', False):
+                    # CoMP-MAE: 정적(L_t/L_tk/L_mA) vs 동적(L_pred/L_mB) live 분해
+                    _line += (f" | L_t={loss_t.item():.4f} L_tk={loss_tk.item():.4f}"
+                              f" L_pred={loss_pred.item():.4f} L_mA={loss_m_caseA.item():.4f}"
+                              f" L_mB={loss_m_caseB.item():.4f}")
+                else:
+                    _line += (f" | L_t={loss_t.item():.4f} L_pred={loss_pred.item():.4f}"
+                              f" L_mj={loss_m_jepa.item():.4f} L_cp={loss_compose.item():.4f}")
+            print(_line)
 
     avg_loss = total_loss / num_batches
     avg_weighted = total_weighted_loss / num_batches
@@ -1311,8 +1327,12 @@ def train(
                                           getattr(_sched_model, 'lambda_pred', v14_lambda_pred_target),
                                           epoch)
                     # v15: V-JEPA-M loss + lambda_m_jepa schedule (v14에서는 0)
+                    #   CoMP-MAE(v16): loss_m_jepa 슬롯 = L_M_recon(=caseA_w·A + B) 합.
                     lmj = v14buf.get('loss_m_jepa', 0.0) / n
                     writer.add_scalar('v14/loss_m_jepa', lmj, epoch)
+                    # CoMP-MAE(v16): M-recon Case A(정지)/Case B(동적) 분리 scalar
+                    writer.add_scalar('v14/loss_m_caseA', v14buf.get('loss_m_caseA', 0.0) / n, epoch)
+                    writer.add_scalar('v14/loss_m_caseB', v14buf.get('loss_m_caseB', 0.0) / n, epoch)
                     if v15_lambda_m_jepa_target is not None and v15_lambda_m_jepa_warmup_start is not None:
                         writer.add_scalar('v14/lambda_m_jepa_schedule',
                                           getattr(_sched_model, 'lambda_m_jepa', v15_lambda_m_jepa_target),

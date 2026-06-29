@@ -72,14 +72,21 @@ class RoutingInterpreterStep(nn.Module):
         #   ("구멍 채운 뒤 이동"). False(기존 full anchor): routing→interp.
         self.decode_first = decode_first
 
-    def forward(self, p_state: torch.Tensor, m_local: torch.Tensor) -> torch.Tensor:
+    def forward(self, owner_state: torch.Tensor, helper_state: torch.Tensor) -> torch.Tensor:
+        """owner = V 소유(=복구 대상, residual·self-attn 대상), helper = Q/K 공급(routing pattern).
+
+        인자명 generic화 (CoMP-MAE 미러링):
+          - P-recon: forward(owner=P_state, helper=M_routing) → M→M attn, gather P (기존)
+          - M-recon: forward(owner=M_state, helper=P_full)    → P→P attn, gather M (신규)
+        같은 클래스를 인자만 swap해 미러 (단, 호출부는 **별도 인스턴스** 사용 = param-symmetry).
+        """
         if self.decode_first:
-            p_state = self.interp(p_state, freqs_cis=None)   # 완성(self-attn) 먼저
-            p_state = self.routing(p_state, m_local)          # 모션 routing 나중
+            owner_state = self.interp(owner_state, freqs_cis=None)    # 완성(self-attn) 먼저
+            owner_state = self.routing(owner_state, helper_state)     # routing 나중
         else:
-            p_state = self.routing(p_state, m_local)
-            p_state = self.interp(p_state, freqs_cis=None)
-        return p_state
+            owner_state = self.routing(owner_state, helper_state)
+            owner_state = self.interp(owner_state, freqs_cis=None)
+        return owner_state
 
 
 # ============================================================================
@@ -257,6 +264,15 @@ class TwoStreamV15Model(TwoStreamV11Model):
         pixel_pred: bool = False,
         lambda_recon: float = 1.0,
         routing_source: str = "m",
+        # ── CoMP-MAE (code v16): 대칭 cross-reconstruction (M-recon 분기) ──
+        comp_mae: bool = False,
+        lambda_m_recon: float = 1.0,
+        mask_ratio_m_recon: float = 0.5,   # guard 8: P(0.75)보다 낮게 (motion patch visible 보장)
+        m_recon_iters: Optional[int] = None,  # None=num_motion_iters와 동일
+        m_recon_weight_floor: float = 0.1,    # guard 7: 정지 patch calibration floor (0 매몰 방지)
+        m_recon_weight_scale: float = 1.0,    # guard 7: |ΔL| 비례 가중 스케일
+        caseA_weight: float = 1.0,            # Case A(정지 calibration) 상대 loss 가중
+        caseA_prob: float = 1.0,              # Case A 실행 확률 (효율: <1이면 step별 확률 skip)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -298,6 +314,11 @@ class TwoStreamV15Model(TwoStreamV11Model):
         #   "본 것(visible)으로 안 본 것(masked)의 미래를 예측" = MAE와 동일 포맷 →
         #   상수 read-off trivial 해 약화 + 추론 강제. target=teacher frame_tk full의 masked 위치.
         #   pair_mode 전용. anti-collapse 알고리즘(variance reg/target_ln)과 독립 토글.
+        # CoMP-MAE(v16): P-recon decoder도 complete-first(decode_first=True)로 강제 — M-recon
+        #   미러(decode_first=True)와 대칭 (plan §3 "self-attn 완성 → routing", guard 3 "구멍 채운
+        #   뒤 이동"). MCP-MAE(pixel_pred)는 masked_anchor 미설정=routing-first였음 → comp_mae는 통일.
+        if comp_mae:
+            masked_anchor = True
         self.masked_anchor = masked_anchor
         # pair_mode=True: 2-frame (t, t+k), L_compose 제거, V-JEPA P/M 단일 segment.
         #   compose 미입증 → 배제하고 motion routing만 검증. composition_head 미생성
@@ -398,14 +419,59 @@ class TwoStreamV15Model(TwoStreamV11Model):
                 self.cls_token_m.requires_grad_(False)
                 self.pos_embed_m.requires_grad_(False)
 
+        # ── CoMP-MAE (code v16): 대칭 cross-reconstruction ────────────────
+        #   pixel_pred(P-recon만) 위에 **M-recon 미러 분기**를 추가. M(ΔL)이 자기 픽셀
+        #   목적을 직접 복구 → M-encoder grounding(v15 no-op 해소). P-side는 pixel_pred과 동일.
+        #   M-recon 메커니즘: masked ΔL → mask_token_m + APE → (M self-attn → P-grouping
+        #   routing) × N → 1ch ΔL head. V=M(owner)/Q·K=P_full(helper) = P→P grouping, gather M.
+        #   설계·guard 단일 출처: docs/comp_mae_plan.md.
+        self.comp_mae = comp_mae
+        self.lambda_m_recon = lambda_m_recon
+        self.mask_ratio_m_recon = mask_ratio_m_recon
+        self.m_recon_weight_floor = m_recon_weight_floor
+        self.m_recon_weight_scale = m_recon_weight_scale
+        self.caseA_weight = caseA_weight
+        self.caseA_prob = caseA_prob
+        if comp_mae:
+            assert pair_mode, "comp_mae는 pair_mode 전용 (2-frame)"
+            assert not no_motion and not pixel_pred, "comp_mae는 no_motion/pixel_pred과 배타적"
+            assert not use_sobel, "comp_mae는 no-Sobel 전용 (M=ΔL 1ch, P=RGB 3ch) — guard 5"
+            assert routing_source == "m", "comp_mae는 routing_source='m'(motion-routed) 전용"
+            m_in_ch = 1  # no-Sobel ΔL
+            # 미사용 모듈 삭제 (pixel_pred과 동일) — 단 mask_token_m·dec_pos_embed_m는 **보존**
+            #   (M-recon이 mask token 주입 + APE에 사용). JEPA M-decoder(m_decoder_*)는 M-recon이
+            #   자체 디코더(m_recon_decoder)를 쓰므로 삭제.
+            del self.teacher_p, self.teacher_m
+            del self.interpreter_1, self.interpreter_1_norm
+            del self.m_decoder_blocks, self.m_decoder_norm
+            # ── M-recon decoder: (M self-attn → P-grouping routing) × N (미러, decode_first) ──
+            #   routing_source="m" 고정 = Q/K를 helper(P_full)에서 → P→P grouping, gather M.
+            #   p_motion_decoder(P-recon)와 별도 인스턴스 = param-symmetry (guard 1).
+            n_iters = m_recon_iters if m_recon_iters is not None else num_motion_iters
+            self.m_recon_decoder = nn.ModuleList([
+                RoutingInterpreterStep(
+                    embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
+                    routing_mode=routing_mode, decode_first=True, routing_source="m",
+                )
+                for _ in range(n_iters)
+            ])
+            self.m_recon_decoder_norm = nn.LayerNorm(embed_dim)
+            # 1채널 ΔL recon head (guard 5: P recon_head(RGB 3ch) 재사용 금지)
+            self.m_recon_head = nn.Linear(embed_dim, patch_size * patch_size * m_in_ch)
+            # learned null-motion token (plan §3.1b): P-side 정적 routing helper(m_null)를
+            #   M_encoder(ΔL=0) full forward 대신 학습 token+APE로 대체 → M full forward 1회 제거
+            #   (효율) + always-on routing 의미 명확(정지 판정 장치 불필요) + t/tk 비대칭 해소.
+            self.null_motion_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+            nn.init.trunc_normal_(self.null_motion_token, std=0.02)
+
     # ----------------------------------------------------------------------
     # EMA update
     # ----------------------------------------------------------------------
 
     @torch.no_grad()
     def update_teacher(self, momentum: float):
-        if self.no_motion or self.pixel_pred:
-            return  # no-M / pixel-pred: teacher(JEPA target) 미사용 → EMA 업데이트 불필요
+        if self.no_motion or self.pixel_pred or self.comp_mae:
+            return  # no-M / pixel-pred / comp-mae: teacher(JEPA target) 미사용 → EMA 불필요
         self.teacher_p.update(self, momentum)
         self.teacher_m.update(self, momentum)
 
@@ -790,6 +856,127 @@ class TwoStreamV15Model(TwoStreamV11Model):
             "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),
         }
 
+    def _null_routing(self, B: int, device: torch.device) -> torch.Tensor:
+        """Learned null-motion routing helper (M_encoder(ΔL=0) full forward 대체).
+
+        position-structured (pos_embed_m) → uniform-blur 아님 (plan §3.1b). routing block이
+        norm_m으로 다시 정규화하므로 raw token+APE로 충분. P-side 정적 복구(L_t/L_tk)용.
+        """
+        tok = self.null_motion_token.expand(B, self.num_patches + 1, -1).to(device)
+        return tok + self.pos_embed_m
+
+    def _recon_dL(
+        self, m_channel: torch.Tensor, p_helper_full: torch.Tensor, device: torch.device,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """CoMP-MAE M-recon: masked ΔL → P-grouping routing → 1ch ΔL 복구. masked 위치만 loss.
+
+        guard 6: M은 **masked 별도 pass**(full-pass 재사용 금지 — 타깃 leak 방지).
+        guard 7: per-patch 가중 w = floor + scale·|ΔL_patch| (정지=floor calibration, 모션 patch 주도).
+        guard 8: mask_ratio_m_recon < P (motion patch가 visible에 남도록).
+
+        Args:
+            m_channel:     [B, 1, H, W] — ΔL target (Case A=ΔL(t,t)≈0 / Case B=ΔL(t,tk))
+            p_helper_full: [B, 1+N, D]  — P-encoder full-pass of frame_t (grad on → mutual, guard 4)
+        Returns (loss, patch_pred, mask_m).
+        """
+        B = m_channel.shape[0]
+        mask_m = self._random_mask(B, device, self.mask_ratio_m_recon)
+        m_visible = self._encode_m_masked(m_channel, mask_m)              # masked 별도 pass (guard 6)
+        m_full = self._inject_mask_tokens(m_visible, mask_m, self.mask_token_m)
+        m_state = m_full + self.dec_pos_embed_m                           # mask token 주입 + APE
+        for step in self.m_recon_decoder:
+            m_state = step(m_state, p_helper_full)   # owner=M(V), helper=P_full(Q/K) → P→P, gather M
+        m_state = self.m_recon_decoder_norm(m_state)
+        patch_pred = self.m_recon_head(m_state[:, 1:])                    # [B, N, ps²·1]
+        patch_target = self._patchify(m_channel)                         # [B, N, ps²·1]
+        err = ((patch_pred - patch_target) ** 2).mean(dim=-1)            # [B, N]
+        # per-patch |ΔL| 가중 (guard 7). floor>0 → 정지 patch도 calibration 신호 유지.
+        weight = self.m_recon_weight_floor + self.m_recon_weight_scale * patch_target.abs().mean(dim=-1)
+        wm = weight * mask_m.float()
+        loss = (err * wm).sum() / wm.sum().clamp(min=1e-6)
+        return loss, patch_pred, mask_m
+
+    def _forward_pair_comp(self, image_current: torch.Tensor, image_future: torch.Tensor) -> dict:
+        """CoMP-MAE forward (2-frame): P-recon(pixel_pred과 동일) + **M-recon 미러**.
+
+        P-side (deliverable encoder): L_t/L_tk = in-place 복구(M=null routing) + L_pred = future(M=real).
+        M-side (grounding):           L_M = Case A(ΔL(t,t)=0) + Case B(ΔL(t,tk)), P-helper=frame_t만(§3.1).
+        Loss = λ_recon·(L_t+L_tk) + λ_pred·L_pred + λ_M·(caseA_w·L_M_A + L_M_B).
+        """
+        if self.rotation_aug and self.training:
+            if torch.rand(1).item() < self.independent_rotation_prob:
+                ks = [torch.randint(0, 4, (1,)).item() for _ in range(2)]
+            else:
+                k0 = torch.randint(0, 4, (1,)).item()
+                ks = [k0, k0]
+            if ks[0] != 0:
+                image_current = torch.rot90(image_current, ks[0], dims=(2, 3))
+            if ks[1] != 0:
+                image_future = torch.rot90(image_future, ks[1], dims=(2, 3))
+
+        B = image_current.shape[0]
+        device = image_current.device
+
+        # ── P channels (RGB) + M channels (ΔL) ───────────────────────────
+        p_channel_t = self.preprocessing.compute_p_channel(image_current)
+        p_channel_tk = self.preprocessing.compute_p_channel(image_future)
+        m_chan_real = self.preprocessing.compute_m_channel(image_current, image_future)   # ΔL(t,tk)
+        m_chan_null = self.preprocessing.compute_m_channel(image_current, image_current)  # ΔL(t,t)=0
+
+        # ── P-recon (pixel_pred과 동일): in-place ×2(null routing) + future ×1(real routing) ─
+        mask_t = self._random_mask(B, device, self.mask_ratio_p)
+        mask_tk = self._random_mask(B, device, self.mask_ratio_p)
+        p_t_visible = self._student_p_encode_visible(p_channel_t, mask_t)
+        p_tk_visible = self._student_p_encode_visible(p_channel_tk, mask_tk)
+        m_real = self._encode_m_unmasked(m_chan_real)   # full M (P-side routing helper)
+        m_null = self._null_routing(B, device)          # learned null-motion token (M full forward 제거)
+        loss_t, patch_pred_t = self._predict_pixels(p_t_visible, mask_t, m_null, image_current)
+        loss_tk, patch_pred_tk = self._predict_pixels(p_tk_visible, mask_tk, m_null, image_future)
+        loss_pred, patch_pred_pred = self._predict_pixels(p_t_visible, mask_t, m_real, image_future)
+
+        # ── M-recon 미러: P-helper = frame_t full-pass만 (§3.1 leakage 해소, guard 4 grad on) ─
+        #   Case B(real ΔL)가 핵심 — 항상 실행 (m_recon 모듈에 grad 보장 → DDP-safe).
+        #   Case A(정지 calibration)는 caseA_prob로 확률 skip (효율: 정적 과다 → 연산 절감).
+        p_helper_t = self._encode_p_unmasked(p_channel_t)
+        loss_m_B, patch_pred_dL, mask_m = self._recon_dL(m_chan_real, p_helper_t, device)  # Case B: real ΔL
+        run_caseA = self.caseA_prob >= 1.0 or torch.rand(1).item() < self.caseA_prob
+        if run_caseA:
+            loss_m_A, _, _ = self._recon_dL(m_chan_null, p_helper_t, device)    # Case A: 정지 calibration
+        else:
+            loss_m_A = torch.zeros((), device=device, dtype=loss_m_B.dtype)
+        loss_m_recon = self.caseA_weight * loss_m_A + loss_m_B
+
+        # ── Total ─────────────────────────────────────────────────────────
+        loss = (
+            self.lambda_recon * (loss_t + loss_tk)
+            + self.lambda_pred * loss_pred
+            + self.lambda_m_recon * loss_m_recon
+        )
+
+        zero = torch.zeros((), device=device, dtype=loss_t.dtype)
+        cls_p_repr = p_t_visible[:, 0]
+        cls_m_repr = m_real[:, 0]
+        return {
+            "loss": loss,
+            "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
+            "loss_pred": loss_pred, "loss_pred_short": loss_pred,
+            "loss_pred_step": loss_pred, "loss_pred_long": loss_pred,
+            # M-recon 진단 (loss_m_jepa 슬롯 재사용 → 기존 로거가 surface)
+            "loss_m_jepa": loss_m_recon, "loss_m_recon": loss_m_recon,
+            "loss_m_caseA": loss_m_A, "loss_m_caseB": loss_m_B,
+            "loss_compose": zero, "loss_dino": zero, "loss_var": zero,
+            "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_pred),
+            "mask_p": mask_t, "mask_m": mask_m,
+            "m_features": m_real[:, 1:], "p_features_t": p_t_visible[:, 1:],
+            "p_features_tk": p_tk_visible[:, 1:], "cls_m": cls_m_repr, "cls_p": cls_p_repr,
+            "predicted_tk_repr": p_tk_visible, "target_tk_repr": p_tk_visible,
+            "m_local_short": m_real, "m_local_step": m_real, "m_local_long": m_real,
+            "m_compose_target": m_real, "m_predicted": m_real,
+            "student_dino_cls": cls_p_repr,
+            "teacher_dino_cls": torch.zeros(B, self.embed_dim, device=device, dtype=loss.dtype),
+            "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),
+        }
+
     # ----------------------------------------------------------------------
     # Forward
     # ----------------------------------------------------------------------
@@ -805,6 +992,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
 
         Loss tracks (옵션 B):"""
         if self.pair_mode:
+            if self.comp_mae:
+                return self._forward_pair_comp(image_current, image_short)   # v16 대칭 cross-recon
             if self.pixel_pred:
                 return self._forward_pair_pixel(image_current, image_short)  # §9 motion-cond pixel MAE
             return self._forward_pair(image_current, image_short)  # image_short = t+k
