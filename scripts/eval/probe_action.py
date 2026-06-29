@@ -365,16 +365,24 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         # Parvo (TwoStreamV15Model, no-Sobel: P=RGB 3ch, M=ΔL 1ch). pair_mode.
         from src.models.two_stream_v15 import TwoStreamV15Model
         assert checkpoint and checkpoint != "random", "--checkpoint required for parvo"
-        encoder = TwoStreamV15Model(pair_mode=True, use_sobel=False, masked_anchor=True)
         ckpt = torch.load(checkpoint, map_location="cpu")
         sd = ckpt.get("model_state_dict", ckpt)
         sd = {k.replace("module.", ""): v for k, v in sd.items()}
+        # arch(dim/head/depth)는 ckpt에서 추론 — ViT-B(768) vs ViT-S(384/6, CoMP-MAE-S) 자동 대응
+        # (siammae 경로와 동일 원칙: shape mismatch silent-skip 방지). head_dim=64 표준.
+        _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
+        _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
+        _comp = any("m_recon" in k for k in sd)  # CoMP-MAE = M-recon 분기 보유
+        encoder = TwoStreamV15Model(
+            embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
+            pair_mode=True, use_sobel=False, masked_anchor=True,
+        )
         missing, unexpected = encoder.load_state_dict(sd, strict=False)
         # P/M encoder 가중치가 실제로 로드됐는지 확인 (random이면 probe 무의미)
         _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]
         assert not _enc_missing, f"parvo: P/M encoder 가중치 미로드 {_enc_missing[:5]}"
         encoder.to(device).eval()
-        base_dim = encoder.embed_dim  # 768
+        base_dim = encoder.embed_dim
         embed_dim = base_dim * 2 if cls_mode in ("patch_mean_concat_p_t_p_tk",
                                                  "patch_mean_concat_p_t_m") else base_dim
         return encoder, embed_dim
@@ -544,7 +552,12 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
     elif name == "parvo":
         img_t = pixel_values[:, :3]
         img_tk = pixel_values[:, 3:]
-        if cls_mode == "patch_mean_concat_p_t_p_tk":
+        if cls_mode == "patch_mean_p_t":
+            # P encoder만, frame_t 단독 patch_mean (단일프레임 appearance) → [B, D].
+            # Paper 1 single-frame image MAE readout과 직접 대응되는 baseline.
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            return encoder._encode_p_unmasked(p_t)[:, 1:].mean(dim=1)
+        elif cls_mode == "patch_mean_concat_p_t_p_tk":
             # P encoder만: frame_t, frame_tk 각자 patch_mean → concat (appearance)
             p_t = encoder.preprocessing.compute_p_channel(img_t)
             p_tk = encoder.preprocessing.compute_p_channel(img_tk)
@@ -911,6 +924,7 @@ def main():
                         choices=["average", "concat", "m_only", "p_only",
                                  "patch_mean", "patch_mean_m", "patch_mean_p",
                                  "patch_mean_concat",
+                                 "patch_mean_p_t",
                                  "patch_mean_concat_p_t_p_tk", "patch_mean_concat_p_t_m",
                                  "patch_mean_routed_tk",
                                  "cls_p_bg", "cls_p_motion", "all_cls_concat"],
