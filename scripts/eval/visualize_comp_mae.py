@@ -23,6 +23,7 @@ cross-domain)으로 일반화 비교. comp_mae_plan §6 검증용.
 import argparse
 import os
 import random
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
@@ -32,6 +33,22 @@ import torch
 
 from src.datasets import EgoDexDataset, DROIDDataset
 from src.models import TwoStreamV15Model
+
+
+class _FixedEpDataset(DROIDDataset):
+    """DROIDDataset의 _scan_frame_dirs만 고정 ep 리스트로 대체 (viz 전용).
+
+    DROID 프레임은 부분 추출 상태(다수 ep가 action.npy만 보유) → 전수 glob+is_dir stat이
+    매우 느림(GPFS metadata). 프레임 보유 ep 경로를 직접 주면 스캔을 건너뛰고, 샘플링·crop·
+    정규화(/255 [0,1])는 DROIDDataset/VideoFrameDataset에서 그대로 상속 = train parity 유지.
+    """
+
+    def __init__(self, fixed_dirs, **kw):
+        self._fixed_dirs = list(fixed_dirs)
+        super().__init__(**kw)
+
+    def _scan_frame_dirs(self):
+        return self._fixed_dirs
 
 
 def to_np_rgb(t):
@@ -60,7 +77,10 @@ def main():
     ap.add_argument("--droid-root", default="/proj/external_group/mrg/datasets/droid_frames")
     ap.add_argument("--droid-cameras", default="ext1")
     ap.add_argument("--add-droid", action="store_true",
-                    help="DROID(cross-domain) 행 추가 (part4 held-out과 함께). ⚠️ ep_* ~95k 스캔(GPFS) 느림.")
+                    help="DROID(cross-domain) 행 추가 (part4 held-out과 함께). 고정 ep만 사용 → 전수 스캔 없음.")
+    ap.add_argument("--droid-eps", nargs="+",
+                    default=["ext1/ep_000002", "ext1/ep_000004", "ext1/ep_000006"],
+                    help="DROID ep 디렉터리(droid-root 기준 상대경로) 고정. 프레임 보유 ep만 — 95k 전수 스캔 회피.")
     ap.add_argument("--max-videos", type=int, default=100)
     ap.add_argument("--out", default="scratch/viz/comp_mae_sanity/recon.png",
                     help="기본=gitignored scratch. 논문 승격 시 paper_artifacts/figN/ 명시")
@@ -136,9 +156,10 @@ def main():
     sources = [(f"SEEN (EgoDex {args.seen_split})", ds_seen),
                (f"UNSEEN (EgoDex {args.unseen_split})", ds_unseen)]
     if args.add_droid:
-        # cross-domain DROID 행 추가 (ep_* ~95k 스캔 = GPFS metadata 느림 — 인내/별도 잡 권장)
-        ds_droid = DROIDDataset(
-            data_root=args.droid_root, cameras=args.droid_cameras.split(","), max_gap=15,
+        # cross-domain DROID 행. 고정 ep만 로드(전수 스캔 회피, _FixedEpDataset 참고).
+        fixed = [Path(args.droid_root) / e for e in args.droid_eps]
+        ds_droid = _FixedEpDataset(
+            fixed, data_root=args.droid_root, cameras=args.droid_cameras.split(","), max_gap=15,
             sample_dist="triangular", sample_center=8, train=False,
             return_triple=False, max_videos=args.max_videos,
         )
