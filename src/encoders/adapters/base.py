@@ -68,6 +68,10 @@ def build_adapter(
         from .videomae import VideoMAEOursAdapter
         return VideoMAEOursAdapter(checkpoint_path=checkpoint_path, **kwargs)
 
+    if encoder_type == "siammae":
+        from .siammae import SiamMAEAdapter
+        return SiamMAEAdapter(checkpoint_path=checkpoint_path, **kwargs)
+
     if encoder_type in ("dinov2", "siglip", "vc1"):
         from .single_frame import SingleFrameAdapter
         return SingleFrameAdapter(

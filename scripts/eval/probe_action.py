@@ -389,6 +389,19 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         embed_dim = encoder.embed_dim * (2 if cls_mode == "patch_mean_concat_p_t_p_tk" else 1)
         return encoder, embed_dim
 
+    elif name == "siammae":
+        # SiamMAE (external reference). 프레임별 단독 인코딩 → frame_t/tk 각자 patch mean → concat.
+        from src.models.siammae import SiamMAEEncoderForVLA
+        assert checkpoint, "--checkpoint required for siammae"
+        # size(small=384/base=768)는 체크포인트 embed_dim에서 추론 (mismatch silent-skip 방지)
+        _sd = torch.load(checkpoint, map_location="cpu")
+        _sd = _sd.get("model_state_dict", _sd)
+        _ed = next((v.shape[0] for k, v in _sd.items() if k.endswith("patch_embed.projection.weight")), 768)
+        encoder = SiamMAEEncoderForVLA(checkpoint_path=checkpoint, size="small" if _ed == 384 else "base")
+        encoder.to(device).eval()
+        embed_dim = encoder.embed_dim * (2 if cls_mode == "patch_mean_concat_p_t_p_tk" else 1)
+        return encoder, embed_dim
+
     elif name == "clip":
         from transformers import CLIPVisionModel
         model_id = "openai/clip-vit-base-patch16"
@@ -578,6 +591,17 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
         # VideoMAE는 CLS 토큰 없음 → patch mean pooling (default: paired forward)
         patch_emb = encoder(pixel_values)  # [B, N, D]
         return patch_emb.mean(dim=1)  # [B, D]
+
+    elif name == "siammae":
+        # SiamMAE 인코더는 [B,6] 중 current(뒤 3ch)만 인코딩 → frame replica로 단일 프레임 추출.
+        img_t = pixel_values[:, :3]
+        img_tk = pixel_values[:, 3:]
+        if cls_mode == "patch_mean_concat_p_t_p_tk":
+            feat_t = encoder(torch.cat([img_t, img_t], dim=1)).mean(dim=1)     # [B, D]
+            feat_tk = encoder(torch.cat([img_tk, img_tk], dim=1)).mean(dim=1)
+            return torch.cat([feat_t, feat_tk], dim=-1)                        # [B, 2D]
+        # default: anchor frame_t patch mean
+        return encoder(torch.cat([img_t, img_t], dim=1)).mean(dim=1)          # [B, D]
 
     elif name == "clip":
         img_t = pixel_values[:, :3]   # [B, 3, H, W]

@@ -43,6 +43,7 @@ LIBERO_SUITES = ("libero_spatial", "libero_object", "libero_goal")
 SUPPORTED_ENCODERS = (
     "two-stream-v11",
     "videomae-ours",
+    "siammae",
     "dinov2",
     "siglip",
     "vc1",
