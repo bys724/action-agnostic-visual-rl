@@ -169,13 +169,14 @@ def train_probe(probe, train_emb, train_act, eval_emb, eval_act, epochs=20, batc
 def main():
     parser = argparse.ArgumentParser(description="DROID Action Probing")
     parser.add_argument("--encoder", type=str, required=True,
-                        choices=["two-stream", "videomae", "clip", "dinov2", "siglip", "vc1", "vjepa2", "videomae-official"])
+                        choices=["two-stream", "parvo", "videomae", "clip", "dinov2", "siglip", "vc1", "vjepa2", "videomae-official"])
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--num-stages", type=int, default=3)
     parser.add_argument("--cls-mode", type=str, default="patch_mean_concat",
                         choices=["average", "concat", "m_only", "p_only",
-                                 "patch_mean", "patch_mean_concat", "patch_mean_m", "patch_mean_p"])
+                                 "patch_mean", "patch_mean_concat", "patch_mean_m", "patch_mean_p",
+                                 "patch_mean_p_t", "patch_mean_concat_p_t_p_tk", "patch_mean_concat_p_t_m"])
     parser.add_argument("--droid-root", type=str, default="/mnt/data/droid_frames/ext1")
     parser.add_argument("--gap", type=int, default=1)
     parser.add_argument("--max-episodes", type=int, default=None)
