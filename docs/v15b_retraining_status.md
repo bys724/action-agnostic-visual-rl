@@ -380,3 +380,9 @@ forward 추적 결과 **M→P gradient의 유일한 경로 = `L_pred`** (`_vjepa
 
 - **"광범위 벤치 우수" ≠ "motion 학습 증거."** breadth는 "쓸모 있는 표현"만 강화. motion 인과는 ablation(11.2) + motion-selective 우위(축별 분해, 예: CALVIN continuous-motion pos-dim)로만 licensing.
 - confounded 비교로 "M 좋다"도 "M 무용"도 단정 금지 (v15 오귀속 철회의 대칭 오류 방지). 현재 정직한 문장 = **"M 기여는 현 증거상 작아 보이며 load-bearing 근거 없음, 미입증"** → 11.2가 확정.
+
+### 11.7 실행 현황 (2026-06-29)
+
+- **인코더 B 학습 완료**: no-M scratch 20ep(36126892) → cont +30ep(36128321) = 누적 50ep. ckpt `two_stream_v15b_noM_cont/20260622_172841/checkpoint_epoch0030.pt`. ep30 recon 건강(L_t/tk≈0.028, P CLS std_p=0.090).
+- **BC-T policy 학습 완료** (job 36130509~511, libero_object × seed 0/1/2, ✅ 06-24, ~102.1 GPU·h). best.pt = `libero_bct/parvo-ptptk_libero_object_seed{0,1,2}_20260623_084816_noM/best.pt`.
+- ⏳ **rollout(SR) 미실행** — 클러스터는 학습만(역할 분담). **로컬 rollout 후** no-M object SR vs Parvo(0.885) 기입 예정. 그전까지 §11 판정(M load-bearing 여부)은 **데이터 미수집** 상태.

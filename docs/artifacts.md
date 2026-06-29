@@ -203,11 +203,26 @@ rsync -avzP --inplace \
   /mnt/data/checkpoints/two_stream_v11/20260426_014333/
 ```
 
-**옵션 2 (3-hop, 맥북 경유)** — 워크스테이션이 클러스터 직접 접근 불가, 맥북에서 stream pipe (맥북 디스크 사용 X):
+**옵션 2 (3-hop, 맥북 경유)** — 워크스테이션이 클러스터 직접 접근 불가, 맥북에서 stream pipe (맥북 디스크 사용 X). 호스트: cluster=`bys724@olaf.ibs.re.kr`, 워크스테이션(H100)=`etri@10.254.39.136`.
+
+- **2a. 다중 파일 / 디렉터리 보존** — `tar` stream (이름 유지):
 ```bash
-ssh bys724@<cluster> "cd /proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333 && tar c best_model.pt checkpoint_epoch00{44,48}.pt latest.pt config.json history.json" \
-  | ssh user@<workstation> "tar x -C /mnt/data/checkpoints/two_stream_v11/"
+ssh bys724@olaf.ibs.re.kr "cd /proj/external_group/mrg/checkpoints/two_stream_v11/20260426_014333 && tar c best_model.pt checkpoint_epoch00{44,48}.pt latest.pt config.json history.json" \
+  | ssh etri@10.254.39.136 "tar x -C /mnt/data/checkpoints/two_stream_v11/"
 ```
+
+- **2b. 단일 파일 + 도착 시 rename + 진행률** — `cat | pv | ssh "cat >"` (BC-T best.pt 등 권장):
+```bash
+CL=bys724@olaf.ibs.re.kr
+WS=etri@10.254.39.136
+SRC=/proj/external_group/mrg/checkpoints/libero_bct/<run_dir>/best.pt
+DST=/mnt/data/checkpoints/libero_bct/bct_<encoder>_<suite>_seed<N>_best.pt
+SZ=$(ssh $CL "stat -c%s $SRC")
+ssh $CL "cat $SRC" | pv -s "$SZ" | ssh $WS "cat > $DST"
+```
+무결성: `ssh $CL "stat -c%s $SRC"` 와 `ssh $WS "stat -c%s $DST"` 바이트 일치 확인.
+
+> ⚠️ **zsh 함정 (맥북 기본 셸)**: ① zsh 대화모드는 `interactivecomments` 기본 OFF → 줄 끝 `# 주석`이 명령으로 해석되어 **그 줄 변수 할당이 실제 셸에 안 남음**(`VAR=val # ...` = val을 `#` 명령의 임시 환경변수로만 설정). 붙여넣을 블록엔 **인라인 `#` 주석 금지**, 변수는 각자 한 줄. ② 변수가 비면 경로가 조용히 틀어져 `No such file` → 실행 전 `echo "$SRC"` 한 줄로 확인. ③ SSH 배너(`IBS RSC HPC …`)는 stderr라 전송 무해. 인증 반복 줄이려면 `~/.ssh/config`에 두 호스트 등록(또는 `ControlMaster auto`). ④ 압축 `ssh -C` 안 씀 — `.pt`/jpg는 incompressible, CPU만 낭비.
 
 **inference만 필요한 경우**: cluster에서 `model_state_dict`만 추출 → optimizer/scheduler 제외 → 약 60% 용량 절약
 
@@ -225,6 +240,7 @@ rsync -avzP \
   bys724@<cluster>:/proj/external_group/mrg/checkpoints/libero_bct/<run_dir>/best.pt \
   /mnt/data/checkpoints/libero_bct/bct_<encoder>_<suite>_seed<N>_best.pt
 ```
+워크스테이션이 cluster 직접 접근 불가(맥북 경유) 시 → **옵션 2b** (`cat | pv | ssh "cat >"`). 다중 seed는 `for s in 0 1 2; do … seed${s} … ; done` 루프.
 
 ### 클러스터 → 워크스테이션 (대용량 데이터셋)
 
