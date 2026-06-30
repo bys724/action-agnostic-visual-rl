@@ -110,10 +110,22 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 |-------|------|------|------|
 | 36189071 | AIP 1×1 H100 | smoke: CoMP-MAE-S **attentive** P-only (TASK0·10batch·1ep) | ✅ COMPLETED 1m15s. trainable 2.9M(pool_q 포함), loss 5.94→4.11/eval0.57. **AMP 없이 11s/ep** |
 | 36190397 | AIP 1×1 H100 | smoke: **full-stack**(attentive+use_m+AMP) | ✅ COMPLETED 22s. trainable 3.0M, loss 5.56→3.65/eval0.65, NaN無. **6s/ep = AMP로 ~1.8×↑**(M 추가에도). 전 기능 검증 통과 |
-| 36190933/935/937 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P-only attentive** (libero_object **task0 단일**·50ep·AMP·aug off). seed 0/1/2. SUFFIX=ponly_attn | 🔵 PENDING |
-| 36190934/936/938 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P+M attentive** (`use_m`, 동일 조건). seed 0/1/2. SUFFIX=pm_attn | 🔵 PENDING |
+| 36190933/935/937 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P-only attentive** (libero_object **task0 단일**·50ep·AMP·aug off). seed 0/1/2. SUFFIX=ponly_attn | ✅ COMPLETED ~18분/seed. ep50 eval: s0 −19.95·s1 −19.03·s2 −20.09 → **mean −19.69** |
+| 36190934/936/938 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P+M attentive** (`use_m`, 동일 조건). seed 0/1/2. SUFFIX=pm_attn | ✅ COMPLETED ~23분/seed. ep50 eval: s0 −20.81·s1 −21.83·s2 −20.94 → **mean −21.19** |
 
-**비교 목적**: P-only vs P+M attentive (eval loss). 단일 task·aug off = 빠른 탐색. ⚠️ **SR은 로컬 rollout 필요**(클러스터 eval loss만). 최종 reportable = aug-on full-suite 별도.
+**결과 (eval NLL)**: **P+M −21.19 < P-only −19.69 (−1.50, 전 seed 완전 분리** — 최악 P+M −20.81 > 최선 P-only −20.09, 겹침 0). → M stream이 LIBERO control 표현에 robust하게 기여(gap=1 OOD인데도). ⚠️ **eval NLL ≠ SR** — 확정은 로컬 rollout. 단일 task·aug off = 탐색. 최종 reportable = aug-on full-suite 별도.
+
+**다음: 로컬 워크스테이션 rollout (SR 산출)** — 클러스터는 학습만, SR은 로컬 docker `libero-eval`.
+1. 반출: 6× best.pt(각 226MB) → `/mnt/data/checkpoints/libero_bct/<run_dir>/best.pt` (3-hop = `docs/artifacts.md` §2a).
+2. rollout: ⚠️ **단일 task 학습이라 `--task-ids 0` 필수**(suite 전체 rollout 시 미학습 task 실패). `run_libero_rollouts.sh`는 task-ids 미지원 → `src/eval_libero.py` 직접:
+   ```
+   for d in /mnt/data/checkpoints/libero_bct/parvo-ptptk_libero_object_seed*_*attn; do
+     docker exec -e CUDA_VISIBLE_DEVICES=0 libero-eval python src/eval_libero.py \
+       --checkpoint "$d/best.pt" --task-suite libero_object --task-ids 0 --num-trials 50 \
+       --output-dir data/libero/results/comp_mae_s_attn --video-dir data/libero/videos/comp_mae_s_attn/$(basename $d)
+   done
+   ```
+3. 집계: `scripts/eval/aggregate_libero_rollouts.py` → P-only vs P+M SR(seed3 평균) 비교 = eval NLL 우위가 SR로 이어지는지 판정.
 
 **다음**: 실제 run(P-only vs P+M, suite, aug on/캐싱) + 테스트하며 #1 feature캐싱·#4 중복forward제거 → 최종 리팩토링. ⚠️ 클러스터는 학습만, **SR은 로컬 rollout**.
 
