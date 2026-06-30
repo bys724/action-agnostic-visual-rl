@@ -38,6 +38,9 @@ SEED="${SEED:-0}"
 SUFFIX="${SUFFIX:-}"
 TASK_IDS="${TASK_IDS:-}"               # sanity용 (e.g., "0")
 MAX_TRAIN_BATCHES="${MAX_TRAIN_BATCHES:-}"  # sanity용
+POOLING="${POOLING:-mean}"             # parvo-ptptk: mean(기존) | attentive(stream별 learnable query)
+USE_M="${USE_M:-}"                     # parvo-ptptk: 값 있으면 M encoder(ΔL motion) stream 추가
+AMP="${AMP:-1}"                        # 값 있으면 bf16 autocast (frozen ViT 가속). default 켜짐
 # V3 augmentation
 IMG_SIZE="${IMG_SIZE:-224}"            # V-JEPA은 384
 NO_AUGMENTATION="${NO_AUGMENTATION:-}" # V2 호환 (값 있으면 aug 끔). default V3 켜짐
@@ -76,7 +79,14 @@ ARGS=(
     --seed "$SEED"
     --output-dir "$OUTPUT_DIR"
     --img-size "$IMG_SIZE"
+    --pooling "$POOLING"
 )
+if [[ -n "$USE_M" ]]; then
+    ARGS+=(--use-m)
+fi
+if [[ -n "$AMP" ]]; then
+    ARGS+=(--amp)
+fi
 if [[ -n "$CHECKPOINT" ]]; then
     ARGS+=(--checkpoint "$CHECKPOINT")
 fi

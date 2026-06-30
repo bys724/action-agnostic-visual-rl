@@ -58,7 +58,9 @@ def build_cfg(args, shape_meta) -> OmegaConf:
         "encoder": {
             "type": args.encoder,
             "checkpoint": args.checkpoint,
-            "adapter_kwargs": {},
+            # pooling/use_m은 parvo-ptptk 전용 — 타 어댑터에 잉여 kwarg 전달 방지
+            "adapter_kwargs": ({"pooling": args.pooling, "use_m": args.use_m}
+                               if args.encoder == "parvo-ptptk" else {}),
         },
         "train": {"use_augmentation": args.use_augmentation},
         "policy": {
@@ -270,7 +272,7 @@ def _log_first_batch_stats(batch, image_keys):
 
 
 def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
-                     log_every=50, max_batches=None, debug_first_batch=False):
+                     log_every=50, max_batches=None, debug_first_batch=False, amp=False):
     policy.train()
     total = 0.0
     n = 0
@@ -293,11 +295,13 @@ def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
         if debug_first_batch and i == 0:
             _log_first_batch_stats(batch, image_keys)
 
-        # Forward (returns GMM dist via policy_head)
-        dist = policy(batch)
-        # GMM negative log-likelihood (V-JEPA은 T_out < T_act → causal trim)
-        actions_aligned = _align_actions(dist, batch["actions"])
-        loss = -dist.log_prob(actions_aligned).mean()
+        # Forward (returns GMM dist via policy_head). AMP bf16: frozen ViT forward 가속
+        # (autocast가 logsumexp 등 민감 op는 fp32 자동 승격 → GMM log_prob 안전). bf16=GradScaler 불필요.
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp):
+            dist = policy(batch)
+            # GMM negative log-likelihood (V-JEPA은 T_out < T_act → causal trim)
+            actions_aligned = _align_actions(dist, batch["actions"])
+            loss = -dist.log_prob(actions_aligned).mean()
 
         optimizer.zero_grad()
         loss.backward()
@@ -315,7 +319,7 @@ def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
 
 
 @torch.no_grad()
-def evaluate(policy, loader, device, image_keys, img_size):
+def evaluate(policy, loader, device, image_keys, img_size, amp=False):
     policy.eval()
     total = 0.0
     n = 0
@@ -326,9 +330,10 @@ def evaluate(policy, loader, device, image_keys, img_size):
         if "task_emb" in batch:
             batch["task_emb"] = batch["task_emb"].to(device, non_blocking=True)
         resize_obs_inplace(batch, image_keys, img_size)
-        dist = policy(batch)
-        actions_aligned = _align_actions(dist, batch["actions"])
-        loss = -dist.log_prob(actions_aligned).mean()
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp):
+            dist = policy(batch)
+            actions_aligned = _align_actions(dist, batch["actions"])
+            loss = -dist.log_prob(actions_aligned).mean()
         total += loss.item()
         n += 1
     return total / max(n, 1)
@@ -348,6 +353,12 @@ def main():
                                  "dinov2", "siglip", "vc1", "vjepa2-1"])
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Encoder ckpt (V-JEPA/SigLIP/DINOv2은 None 가능)")
+    parser.add_argument("--pooling", type=str, default="mean", choices=["mean", "attentive"],
+                        help="parvo-ptptk spatial pooling: mean(기존) | attentive(stream별 learnable query, encoder frozen·query만 학습)")
+    parser.add_argument("--use-m", action="store_true",
+                        help="parvo-ptptk: M encoder(ΔL 현재−직전 motion) stream 추가 → P_t⊕P_tk⊕M. M encoder frozen, pooler만 학습")
+    parser.add_argument("--amp", action="store_true",
+                        help="bf16 autocast (frozen ViT forward 가속, ~1.5-2×). encoder frozen이라 정확도 영향 미미")
     parser.add_argument("--p-depth", type=int, default=12)
     parser.add_argument("--m-depth", type=int, default=6)
 
@@ -524,8 +535,9 @@ def main():
             policy, train_loader, optimizer, device, image_keys, img_size,
             max_batches=args.max_train_batches,
             debug_first_batch=(epoch == 1),
+            amp=args.amp,
         )
-        eval_loss = evaluate(policy, eval_loader, device, image_keys, img_size)
+        eval_loss = evaluate(policy, eval_loader, device, image_keys, img_size, amp=args.amp)
         scheduler.step()
 
         history["train"].append(train_loss)
