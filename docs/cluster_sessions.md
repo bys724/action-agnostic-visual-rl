@@ -102,6 +102,71 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36186236 | AIP 1×1 H100 | 03:00:00 | **probe M(t,t+k)** (`patch_mean_m`, 384d) — motion(ΔL) 단독 | ✅ COMPLETED 14m33s. **R²=+0.094** — motion 단독은 양수(>0=motion 인코딩 有)이나 2프레임 appearance(+0.236)보다 낮음. 3잡 합 ~0.63 GPU·h. |
 | 36186442 | AIP 1×1 H100 | 03:00:00 | **probe P(t)⊕M** (`patch_mean_concat_p_t_m`, 768d=384×2) — appearance(t)+motion(t,tk) 통합 readout | ✅ COMPLETED 15m44s. **R²=+0.099** ≈ M 단독(+0.094) → **M이 combo 지배**(P(t)≈0이라 가산 효과 ~0). 과거 붕괴본 +0.1051과 동급. 결론: ΔL(M)에 raw 2번째 프레임보다 action 정보 적음(P(t)⊕P(t+k) +0.236 ≫ P(t)⊕M +0.099). |
 
+### 2026-06-30 LIBERO BC-T: CoMP-MAE-S attentive + M-stream + AMP 배선
+
+**구현**(어댑터 `parvo_pt_ptk.py` + `finetune_libero_bct.py` + sbatch): ① **arch 추론**(ckpt→384/768, CoMP-MAE-S 대응) ② **attentive pooling**(`--pooling attentive`, stream별 learnable query, encoder frozen·query만 학습) ③ **M-stream**(`--use-m`, ΔL 현재−직전 motion → P_t⊕P_tk⊕M, M도 frozen·별도 query) ④ **속도개선 즉시2개**: AMP bf16(`--amp`, autocast)·frozen encoder no_grad. baseline 공정성 기확보(모든 image enc가 prev+curr 2프레임). ⚠️ M rollout gap=1 vs 학습 gap~15 분포차(성능 미지수, parity는 BC train/rollout 일관).
+
+| JobID | 자원 | 목적 | 결과 |
+|-------|------|------|------|
+| 36189071 | AIP 1×1 H100 | smoke: CoMP-MAE-S **attentive** P-only (TASK0·10batch·1ep) | ✅ COMPLETED 1m15s. trainable 2.9M(pool_q 포함), loss 5.94→4.11/eval0.57. **AMP 없이 11s/ep** |
+| 36190397 | AIP 1×1 H100 | smoke: **full-stack**(attentive+use_m+AMP) | ✅ COMPLETED 22s. trainable 3.0M, loss 5.56→3.65/eval0.65, NaN無. **6s/ep = AMP로 ~1.8×↑**(M 추가에도). 전 기능 검증 통과 |
+| 36190933/935/937 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P-only attentive** (libero_object **task0 단일**·50ep·AMP·aug off). seed 0/1/2. SUFFIX=ponly_attn | 🔵 PENDING |
+| 36190934/936/938 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P+M attentive** (`use_m`, 동일 조건). seed 0/1/2. SUFFIX=pm_attn | 🔵 PENDING |
+
+**비교 목적**: P-only vs P+M attentive (eval loss). 단일 task·aug off = 빠른 탐색. ⚠️ **SR은 로컬 rollout 필요**(클러스터 eval loss만). 최종 reportable = aug-on full-suite 별도.
+
+**다음**: 실제 run(P-only vs P+M, suite, aug on/캐싱) + 테스트하며 #1 feature캐싱·#4 중복forward제거 → 최종 리팩토링. ⚠️ 클러스터는 학습만, **SR은 로컬 rollout**.
+
+### 2026-06-30 Attentive-pooling probing (readout 축 — mean vs attentive)
+
+**배경**: mean-pool은 중립 readout 아님(holistic 유리·분산 MAE 불리). attentive pooling을 **모든 비교군 uniform** 적용해 readout 강도를 *축*으로 보고, mean→attentive **crossover**로 "정보가 분산 공간구조에 있다"를 입증. capacity는 linear와 맞춤(`AttentivePoolProbe` = stream별 query 1개, **attentive/linear param 1.055×**)해 structure vs capacity 혼동 차단. M/P 별도 query(구조적 분리). input-only(P_t 단독)=null anchor. 구현: `probe_action.py` `encode_batch_tokens`+`AttentivePoolProbe`(단위검증 통과). 비교 대상 mean baseline(split=test·gap=10): P_t **−0.009** / P_t⊕P_tk **+0.236**★ / M **+0.094** / P_t⊕M **+0.099**.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36188581 | AIP 1×1 H100 | 03:00:00 | **attentive probe sanity** (CoMP-MAE-S, `attentive_concat_p_t_p_tk`, MAX_VIDEOS=40·5ep) | ❌ FAILED 11s — argparse `choices`에 attentive 모드 누락. choices 추가 후 재제출(36188590). |
+| 36188590 | AIP 1×1 H100 | 03:00:00 | **attentive sanity 재실행** (동일 config) | ✅ COMPLETED — **파이프라인 PASS**. 토큰 `[2765,392,384]`(2stream×196×384) 정확, AttentivePoolProbe(D384/n_streams2/params14.6k), R² −0.59→−0.10 단조상승(학습 정상). R²<0은 MAX_VIDEOS=40·5ep underfit(threshold 0.7 무관). 토큰 추출 20.5s. |
+| 36188593~596 | AIP 1×1 H100 ×4 | 03:00:00 | **attentive gate 매트릭스** (CoMP-MAE-S, split=test·gap=10·full·**40ep**). 593=`attentive_p_t`(null) / 594=`attentive_concat_p_t_p_tk`(배포P★) / 595=`attentive_m` / 596=`attentive_concat_p_m`. **mean→attentive crossover 판독**(mean baseline: −0.009/+0.236/+0.094/+0.099). | ⚠️ single-stream만 완료: **593 R²=0.0007**(null, mean −0.009 → flat=capacity 아님 ✅) · **595 R²=0.2393**(M, mean +0.094 → **+0.145 점프**=M motion이 mean에 under-read). **594·596 concat(392토큰) OUT_OF_MEMORY** — 토큰캐시 fp32 ~134GB>노드 126GB. fp16 수정 후 재제출(33/34). |
+| 36188633/634 | AIP 1×1 H100 ×2 | 03:00:00 | **concat 모드 재제출** (fp16 토큰캐시 + eval 배치화). 633=`attentive_concat_p_t_p_tk`(배포P★ vs mean +0.236) / 634=`attentive_concat_p_m`(P⊕M vs mean +0.099) | ✅ COMPLETED. **633 R²=0.2924**(배포P, mean +0.236 → +0.056) · **634 R²=0.2418**(P⊕M, mean +0.099 → +0.143). ⚠️ **MaxRSS 279GB**(fp16인데도 — `torch.cat` 리스트+결과 2× 스파이크). B(768d, 캐시 2×)·SiamMAE attentive 전 캐시 누적 pre-alloc/disk-backed 수정 필수. |
+
+### 2026-06-30 size 격리 — CoMP-MAE-S vs B (둘 다 attentive, 동일 데이터)
+
+**배경**: VideoMAE(ViT-B)를 ViT-S와 비교는 size confound(readout 맞춰도 무의미) → 깨끗한 size 테스트 = **같은 모델 S vs B, 같은 attentive readout**. B는 학습 중(ep28 ckpt, ep50 아님) → epoch-mismatch. "B-now ≥ S-ep50"이면 강한 신호. 메모리: pre-alloc(`torch.cat` 2× 제거)+**MAX_VIDEOS=1500 캡**(B 768d concat full이면 134GB>126GB). S도 같은 캡 재측정(데이터량 confound 차단).
+
+| JobID | 자원 | 목적 | 결과 |
+|-------|------|------|------|
+| 36188929/930 | AIP 1×1 H100 ×2 | **deployed-P** (`attentive_concat_p_t_p_tk`) — 929=S / 930=B(ep28). MAX_VIDEOS=1500·40ep | **929 S R²=0.329** ✅(full 0.292보다↑=캡 효과). **930 B R²=−0.028 ❌ 무효**: arch 추론 정상(768d/h12) but **probe overfit/발산**(Train MSE↓ but Eval R² ep1 −0.028→ep40 **−1.92**). best=ep1(거의 untrained). "size 나쁨" 아니라 B feature에서 일반화 해 못 찾음. 의심: fp16×B outlier dim / attentive 불안정. |
+| 36188931/932 | AIP 1×1 H100 ×2 | **M** (`attentive_m`) — 931=S / 932=B(ep28). 동일 캡 | **931 S R²=0.293** ✅ · **932 B R²=0.320** ✅. → **B-M > S-M = M stream이 size로 개선**(ep28 미완인데 S-ep50 상회). **attentive-on-B 정상**(fp16/attentive 일반 버그 아님) → 930 B-deployed-P 발산은 **B의 P-stream 특정 문제**(ep28 미수렴 P feature outlier 추정). |
+| 36188970 | AIP 1×1 H100 | **진단1: B mean-pool(fp32)** `patch_mean_concat_p_t_p_tk` — B P feature가 informative한가 격리(안정 readout) | 🔵 PENDING |
+
+**Gate 결론 (CoMP-MAE-S, mean→attentive crossover)**: null anchor flat(−0.009→0.0007)=capacity 아님 ✅ · M 대폭(+0.094→0.239, +0.145)=mean이 M motion under-read · 배포P modest(+0.236→0.292) · P⊕M(0.242)≈M(0.239)=P_t 기여 0. **배포P 0.292 > 과거붕괴 ViT-B(+0.288) 넘었으나 VideoMAE +0.47(mean)엔 미달** → readout이냐 size냐는 **baseline도 attentive 재측정 필요**(uniform readout). Gate=통과 → SiamMAE-S 학습+baseline attentive+LIBERO BC attentive GO. 추천 순서: 메모리픽스→VideoMAE attentive(즉시)→SiamMAE-S 결정.
+
+### 2026-06-30 CoMP-MAE-**B** scale-up (size confound 해소) — ViT-B 768
+
+**배경**: CoMP-MAE-S(ViT-S 384) in-domain probing이 VideoMAE +0.47·과거 Parvo +0.29(둘 다 **ViT-B 768**)에 미달 → size confound. **인코더 ViT-B(768/d12)로 키워 동일 학습·테스트 재측정**. M-stream은 비대칭 강화(**m_depth 6→4**) + 마스킹 0.5→**0.6**(사용자 결정: M-recon이 OOD도 잘 복구=추론 쉬움). caseA_prob 1.0→**0.25**(연산 점검: Case A 정지 calibration이 매 step 돌지만 L_mA→0 trivial → skip 효율). floor 0.02 유지.
+
+**연산 점검 결과**(forward 추적): init은 이미 최적(comp_mae가 teacher_p/m·interpreter_1·M-jepa decoder del, null_motion_token이 M full-forward 1회 대체). 유일 절감 = caseA_prob↓. 3× predict·P-helper full-pass는 중복 아님(각자 다른 routing/target).
+
+**비용 추정**: ViT-S 110 GPU·h(50ep) → 폭 2× → ~4× → **50ep ≈ 440 GPU·h**(40ep ~350 + 나머지 10ep ~88). 8 GPU max(2노드×4) → 40ep ~44h(48h 캡 내). 월누적 ceil ~1.1M원 상당.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36186567/568 | AIP 1×1 H100 ×2 | 00:20:00 | **CoMP-MAE-B batch sweep** (embed768/h12/m_depth4/mask_m0.6/caseA0.25, 1ep MV200 part1). 567=batch128·568=batch64. ViT-B OOM 확인 + throughput → 본학습 batch·LR 확정 | ✅ COMPLETED ~2분 each. **OOM 없음**. throughput/GPU: **batch128=418.9 > batch64=371** → **batch128 채택**(eff1024). ⚠️ **비용 추정 정정**: ViT-S 578→ViT-B 418.9 = **1.38×만 느림**(추정 4× 오류 — 이 규모는 compute가 d²-bound 아님 + m_depth4·caseA0.25 절감). **50ep ≈ 19h ≈ ~154 GPU·h**(추정 440 대폭 하향), 48h 캡 내 단일잡 충분. |
+| 36186569 | AIP_long 2×4 H100 | 1-06:00:00 | **CoMP-MAE-B 본학습 (size-matched, 50ep)** — embed**768**/h12/**m_depth4**(비대칭↑)·no-Sobel·pair·part1·**mask_m0.6**·**caseA_prob0.25**·floor0.02·batch128(eff1024)·LR2.8e-4. SUFFIX=step1_comp_mae_b. ~19h 예상(~154 GPU·h). **목적**: ViT-S size confound 해소 → VideoMAE/Parvo(둘 다 ViT-B)와 epoch-matched 비교. 완료 후 동일 EgoDex test 4모드 probing 재측정 | 🟢 RUNNING (06-30 ~10:40 기준 ep8 진행 중, batch loss ~0.018, L_mA→0 정상). ep4/ep8 ckpt 저장 확인. |
+| 36188199 | normal V100 1×1 | 00:20:00 | **CoMP-MAE-B ep8 중간 가시화** (`checkpoint_epoch0008.pt`, 학습 중 progress 점검). `visualize_comp_mae.py` B arch(embed768/h12/m_depth4/mask_m0.6) + DROID 행. OUT=`scratch/viz/comp_mae_b/recon_ep0008_droid.png` | ✅ COMPLETED ~1분(~0.02 GPU·h), 06-30 11:00. **붕괴 없음**(중간 ep): P-recon 형상 coherent(rec_t/pred_tk std≈0.12), ΔL_recon(B)가 target motion edge 추종(DROID x-domain 포함). 단 **미성숙**: M-recon(B) std 0.027~0.062 ≪ target 0.048~0.232(undershoots), Case-A static 0.026(ep50 S=0.0001 대비 calibration 미수렴). ep50 향해 sharpening 예상. |
+| 36188942 | normal V100 1×1 | 00:20:00 | **CoMP-MAE-B ep28 중간 가시화** (`checkpoint_epoch0028.pt`). 동일 B arch + DROID 행. OUT=`scratch/viz/comp_mae_b/recon_ep0028_droid.png` | ✅ COMPLETED ~1분. **순항 지속**: Case-A static **0.0016(ep16)→0.0005**(ep50 S=0.0001 향해 수렴) · M-recon(B) in-domain target의 ~90-95%(SEEN 0.075/0.079·0.059/0.065)·**DROID gap8 0.032/0.034=94%**(ep16 undershoot 해소). P rec_t std 0.11~0.23 성숙. 붕괴 無. |
+| 36188300 | normal V100 1×1 | 00:20:00 | **CoMP-MAE-B ep16 중간 가시화** (`checkpoint_epoch0016.pt`, ep8 대비 sharpening 점검). 동일 B arch + DROID 행. OUT=`scratch/viz/comp_mae_b/recon_ep0016_droid.png` | ✅ COMPLETED ~1분, 06-30 ~11:30. **ep8 대비 뚜렷한 sharpening 확인**(중간 ep 미성숙 = 단순 학습부족 재확인). ① **Case-A static 0.026→0.0016**(16× 감소, ep50 S=0.0001 향해 수렴). ② M-recon(B)가 target 근접: SEEN 0.086/0.093·UNSEEN 0.119/0.133·0.135/0.153(ep8 undershoot ~40% → ~90%). ③ P rec_t std 0.11~0.226(ep50 S 0.11~0.23 범위 도달). DROID x-domain은 아직 undershoot 잔존(0.052/0.092). 붕괴 無, 순항. |
+
+### 2026-06-30 CoMP-MAE-S OOD probing (DROID cross-domain, gap=15)
+
+**목적**: in-domain 조합 sweep(위) → cross-domain 일반화. DROID 15Hz **gap=15(1초=EgoDex 학습 분포 일치, 변별 최대)**, max_ep200, 20ep. 비교: VideoMAE DROID gap=15 **−0.035**(전 gap 음수), 과거 v11 best +0.005. ⚠️ DROID 절대 R²~0.005 noise 수준([[feedback_droid_image_only_limitation]]).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36186541 | AIP 1×1 H100 | 03:00:00 | **DROID probe P(t) only** (`patch_mean_p_t`) | ✅ COMPLETED 1m11s. **R²=−0.0035** |
+| 36186542 | AIP 1×1 H100 | 03:00:00 | **DROID probe P(t)⊕P(t+k)** | ✅ COMPLETED 1m11s. **R²=−0.0039** |
+| 36186543 | AIP 1×1 H100 | 03:00:00 | **DROID probe M(t,t+k)** | ✅ COMPLETED 1m11s. **R²=+0.0099** (4개 중 유일 양수, VideoMAE −0.035 상회) |
+| 36186544 | AIP 1×1 H100 | 03:00:00 | **DROID probe P(t)⊕M** | ✅ COMPLETED 1m34s. **R²=+0.0012**. 합 ~0.08 GPU·h. **종합: 4개 모두 ±0.01 noise 수준(DROID 한계)** — in-domain 순위(P_t⊕P_tk 우위)와 달리 OOD에선 M이 미세 우위지만 변별 불가. cross-domain은 LIBERO BC-T로 판정 권장. |
+
 ### 2026-06-22 no-M ablation (§11) — motion routing 기여 격리
 
 **배경**: Parvo BC-T 0.785 ≈ v15-ptptk(현상유지). §11.4 "motion routing이 LIBERO control 표현에 load-bearing이냐" 판정 = **같은 코드에서 routing만 끈 인코더 학습 후 동일 P-only BC-T 비교**. 효율형 `--v15-no-motion` 플래그 구현(`_forward_pair`에서 M/JEPA 분기 skip + M stream·p_motion_decoder 동결 → dead branch ~절반 제거, teacher_p full forward 등 제거. DDP-safe smoke 통과: 192 trainable 전부 grad 수신). encoder A(Run B-2)와 **환경 완전 동일** + no_motion만 추가.
