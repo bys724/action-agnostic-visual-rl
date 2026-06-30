@@ -732,6 +732,67 @@ def encode_batch(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str =
         raise ValueError(f"Unknown encoder: {name}")
 
 
+def encode_batch_tokens(encoder, name: str, pixel_values: torch.Tensor, cls_mode: str) -> torch.Tensor:
+    """Attentive-pooling 경로: mean pool 없이 patch 토큰을 그대로 반환.
+
+    반환: [B, n_streams * n_patch, D]  (stream 순서대로 token-dim concat)
+      · 단일 stream (attentive_p_t / attentive_m / attentive): [B, n_patch, D]
+      · 2 stream  (attentive_concat_*):                       [B, 2*n_patch, D]
+    AttentivePoolProbe가 stream별 learnable query로 pool. 인코더는 frozen → 토큰 1회 캐싱.
+    encode_batch의 mean-pool 모드와 1:1 대응 (matched 비교용).
+    """
+    if name == "parvo":
+        img_t = pixel_values[:, :3]
+        img_tk = pixel_values[:, 3:]
+        if cls_mode == "attentive_p_t":                       # 1 stream: P(t) 단독 (input-only null anchor)
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            return encoder._encode_p_unmasked(p_t)[:, 1:]
+        elif cls_mode == "attentive_concat_p_t_p_tk":         # 2 stream: P(t), P(t+k) (배포 P readout)
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            p_tk = encoder.preprocessing.compute_p_channel(img_tk)
+            tok_t = encoder._encode_p_unmasked(p_t)[:, 1:]
+            tok_tk = encoder._encode_p_unmasked(p_tk)[:, 1:]
+            return torch.cat([tok_t, tok_tk], dim=1)
+        elif cls_mode == "attentive_m":                       # 1 stream: M(t,t+k) motion 진단
+            m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
+            return encoder._encode_m_unmasked(m_chan)[:, 1:]
+        elif cls_mode == "attentive_concat_p_m":              # 2 stream: P(t) ⊕ M(t,t+k) — M 기여 판정자
+            p_t = encoder.preprocessing.compute_p_channel(img_t)
+            tok_p = encoder._encode_p_unmasked(p_t)[:, 1:]
+            m_chan = encoder.preprocessing.compute_m_channel(img_t, img_tk)
+            tok_m = encoder._encode_m_unmasked(m_chan)[:, 1:]
+            return torch.cat([tok_p, tok_m], dim=1)
+        else:
+            raise ValueError(f"parvo: unsupported attentive cls_mode {cls_mode}")
+
+    elif name == "siammae":
+        img_t = pixel_values[:, :3]
+        img_tk = pixel_values[:, 3:]
+        if cls_mode == "attentive":                           # 1 stream: anchor frame_t
+            return encoder(torch.cat([img_t, img_t], dim=1))
+        elif cls_mode == "attentive_concat_p_t_p_tk":         # 2 stream: frame_t, frame_t+k (matched to parvo P)
+            tok_t = encoder(torch.cat([img_t, img_t], dim=1))
+            tok_tk = encoder(torch.cat([img_tk, img_tk], dim=1))
+            return torch.cat([tok_t, tok_tk], dim=1)
+        else:
+            raise ValueError(f"siammae: unsupported attentive cls_mode {cls_mode}")
+
+    elif name == "videomae":
+        if cls_mode == "attentive_concat_p_t_p_tk":           # 2 stream: same-frame replica forward
+            img_t = pixel_values[:, :3]
+            img_tk = pixel_values[:, 3:]
+            tok_t = encoder(torch.cat([img_t, img_t], dim=1))
+            tok_tk = encoder(torch.cat([img_tk, img_tk], dim=1))
+            return torch.cat([tok_t, tok_tk], dim=1)
+        elif cls_mode == "attentive":                         # 1 stream: paired forward
+            return encoder(pixel_values)
+        else:
+            raise ValueError(f"videomae: unsupported attentive cls_mode {cls_mode}")
+
+    else:
+        raise ValueError(f"encode_batch_tokens: encoder '{name}' not wired for attentive modes")
+
+
 # ============================================================================
 # 3. Probe definitions
 # ============================================================================
@@ -756,6 +817,36 @@ class MLPProbe(nn.Module):
 
     def forward(self, x):
         return self.mlp(x)
+
+
+class AttentivePoolProbe(nn.Module):
+    """Minimal attentive-pooling probe (capacity ≈ linear probe + per-stream query).
+
+    stream별 learnable query 1개(single-head)로 patch 토큰을 softmax-weighted pool →
+    stream pooled vector concat → linear head. M/P는 별도 stream = 별도 query (구조적 분리).
+    큰 MLP를 피해 capacity를 linear와 맞춰 'structure vs probe capacity' 혼동을 차단
+    (input-only null anchor 비교가 깨끗해짐).
+
+    입력 x: [B, n_streams * n_patch, D]  (encode_batch_tokens 출력)
+    """
+    def __init__(self, embed_dim: int, n_streams: int = 1, n_patch: int = 196,
+                 action_dim: int = ACTION_DIM):
+        super().__init__()
+        self.n_streams = n_streams
+        self.n_patch = n_patch
+        self.embed_dim = embed_dim
+        self.query = nn.Parameter(torch.randn(n_streams, embed_dim) * 0.02)
+        self.head = nn.Linear(n_streams * embed_dim, action_dim)
+        self.scale = embed_dim ** -0.5
+
+    def forward(self, x):
+        B = x.shape[0]
+        x = x.view(B, self.n_streams, self.n_patch, self.embed_dim)
+        attn = torch.einsum("bsnd,sd->bsn", x, self.query) * self.scale  # [B, S, N]
+        attn = attn.softmax(dim=-1)
+        pooled = torch.einsum("bsn,bsnd->bsd", attn, x)                  # [B, S, D]
+        pooled = pooled.reshape(B, self.n_streams * self.embed_dim)
+        return self.head(pooled)
 
 
 # ============================================================================
@@ -805,20 +896,39 @@ def compute_metrics(predictions: np.ndarray, targets: np.ndarray) -> dict:
 # ============================================================================
 
 def extract_embeddings(encoder, encoder_name, dataloader, device, cls_mode="average"):
-    """Extract frozen embeddings for the entire dataset."""
-    all_embeddings = []
+    """Extract frozen embeddings for the entire dataset.
+
+    attentive_* 모드: mean-pool 대신 patch 토큰 [N, n_streams*n_patch, D]를 1회 캐싱
+    (frozen 인코더라 deterministic → probe epoch마다 재forward 불필요).
+    그 외: 기존 pooled 벡터 [N, D].
+    """
+    is_attentive = cls_mode.startswith("attentive")
+    # pre-allocation: 토큰 캐시는 거대(예: 180k×392×384). torch.cat은 list+결과를 동시
+    # 보유해 peak ~2× (실측 MaxRSS 279GB) → OOM. 전체 텐서를 1회 할당해 index로 채워
+    # peak = 텐서 크기로 고정. attentive는 fp16(frozen feature라 무손실).
+    n_total = len(dataloader.dataset)
+    embeddings = None
     all_actions = []
+    idx = 0
 
     encoder.eval()
     for batch in dataloader:
         pixel_values = batch["pixel_values"].to(device)
         actions = batch["action"]
 
-        emb = encode_batch(encoder, encoder_name, pixel_values, cls_mode=cls_mode)
-        all_embeddings.append(emb.cpu())
+        if is_attentive:
+            emb = encode_batch_tokens(encoder, encoder_name, pixel_values, cls_mode=cls_mode).half().cpu()
+        else:
+            emb = encode_batch(encoder, encoder_name, pixel_values, cls_mode=cls_mode).cpu()
+
+        if embeddings is None:
+            embeddings = torch.empty((n_total, *emb.shape[1:]), dtype=emb.dtype)
+        b = emb.shape[0]
+        embeddings[idx:idx + b] = emb
+        idx += b
         all_actions.append(actions)
 
-    embeddings = torch.cat(all_embeddings, dim=0)  # [N, D]
+    embeddings = embeddings[:idx]  # drop_last 미사용이라 보통 n_total과 일치
     actions = torch.cat(all_actions, dim=0)  # [N, 18]
     return embeddings, actions
 
@@ -851,7 +961,7 @@ def train_probe(
         epoch_loss = 0
         n_batches = 0
         for emb_batch, act_batch in train_loader:
-            emb_batch = emb_batch.to(device)
+            emb_batch = emb_batch.to(device).float()  # fp16 캐시면 GPU에서 float 복원
             act_batch = act_batch.to(device)
 
             pred = probe(emb_batch)
@@ -866,11 +976,15 @@ def train_probe(
 
         avg_train_loss = epoch_loss / n_batches
 
-        # Evaluate
+        # Evaluate (배치 처리 — attentive 토큰 eval 전체를 GPU에 한 번에 올리면 OOM)
         probe.eval()
+        eval_preds = []
         with torch.no_grad():
-            eval_pred = probe(eval_emb.to(device)).cpu().numpy()
-            eval_targets = eval_act.numpy()
+            for i in range(0, len(eval_emb), batch_size):
+                chunk = eval_emb[i:i + batch_size].to(device).float()
+                eval_preds.append(probe(chunk).cpu())
+        eval_pred = torch.cat(eval_preds, dim=0).numpy()
+        eval_targets = eval_act.numpy()
 
         metrics = compute_metrics(eval_pred, eval_targets)
         metrics["train_mse"] = avg_train_loss
@@ -927,9 +1041,13 @@ def main():
                                  "patch_mean_p_t",
                                  "patch_mean_concat_p_t_p_tk", "patch_mean_concat_p_t_m",
                                  "patch_mean_routed_tk",
-                                 "cls_p_bg", "cls_p_motion", "all_cls_concat"],
+                                 "cls_p_bg", "cls_p_motion", "all_cls_concat",
+                                 # attentive-pooling (readout 축): mean 모드와 1:1, AttentivePoolProbe 경로
+                                 "attentive_p_t", "attentive_concat_p_t_p_tk",
+                                 "attentive_m", "attentive_concat_p_m", "attentive"],
                         help="Two-Stream embedding 추출 방식 (default: average). "
-                             "patch_mean_concat_p_t_p_tk: videomae §C7 catalyst evidence")
+                             "patch_mean_concat_p_t_p_tk: videomae §C7 catalyst evidence. "
+                             "attentive_*: mean 대신 stream별 learnable query pool (AttentivePoolProbe)")
     parser.add_argument("--depth", type=int, default=12,
                         help="Two-Stream transformer depth (default: 12)")
     parser.add_argument("--num-stages", type=int, default=3,
@@ -1002,7 +1120,14 @@ def main():
     print(f"Training {args.probe} probe...")
     print("=" * 60)
 
-    if args.probe == "linear":
+    if args.cls_mode.startswith("attentive"):
+        # 캐시된 토큰 [N, S*n_patch, D] → stream 수는 cls_mode로 결정 (concat=2, 그외=1)
+        n_streams = 2 if "concat" in args.cls_mode else 1
+        base_dim = train_emb.shape[-1]
+        n_patch = train_emb.shape[1] // n_streams
+        probe = AttentivePoolProbe(base_dim, n_streams=n_streams, n_patch=n_patch)
+        print(f"AttentivePoolProbe: D={base_dim}, n_streams={n_streams}, n_patch={n_patch}")
+    elif args.probe == "linear":
         probe = LinearProbe(embed_dim)
     else:
         probe = MLPProbe(embed_dim)
