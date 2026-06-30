@@ -82,8 +82,8 @@ def main():
                     default=["ext1/ep_000002", "ext1/ep_000004", "ext1/ep_000006"],
                     help="DROID ep 디렉터리(droid-root 기준 상대경로) 고정. 프레임 보유 ep만 — 95k 전수 스캔 회피.")
     ap.add_argument("--max-videos", type=int, default=100)
-    ap.add_argument("--out", default="scratch/viz/comp_mae_sanity/recon.png",
-                    help="기본=gitignored scratch. 논문 승격 시 paper_artifacts/figN/ 명시")
+    ap.add_argument("--out", default="scratch/viz/comp_mae_s/recon.png",
+                    help="기본=gitignored scratch. 모델별 폴더(comp_mae_{s|b}) + 파일명 recon_ep{NNNN}_{domain}.png. 논문 승격 시 paper_artifacts/figN/ 명시")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
     random.seed(args.seed)
