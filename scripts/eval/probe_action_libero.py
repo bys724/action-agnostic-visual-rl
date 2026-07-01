@@ -42,6 +42,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 LIBERO_SUITES = ("libero_spatial", "libero_object", "libero_goal")
 SUPPORTED_ENCODERS = (
     "two-stream-v11",
+    "parvo",           # CoMP-MAE / Parvo (TwoStreamV15Model, no-Sobel) — STEP 0 게이트
     "videomae-ours",
     "siammae",
     "dinov2",
@@ -167,6 +168,110 @@ def encode_pairs_v11(
     return torch.cat(out, dim=0)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# CoMP-MAE / Parvo (TwoStreamV15Model, no-Sobel) — STEP 0 게이트 (restart_plan §3.1)
+# probe_action.py 의 `parvo` 로더와 동일 규약: ckpt-arch 추론 + comp_mae 감지.
+# ⚠️ no-Sobel: P=RGB[0,1] 3ch, M=ΔL 1ch. 입력은 preprocess_frames의 [0,1] raw (ImageNet norm 금지).
+# ─────────────────────────────────────────────────────────────────────────
+
+def build_parvo_encoder(checkpoint: str, device: torch.device):
+    from src.models.two_stream_v15 import TwoStreamV15Model
+    assert checkpoint and checkpoint != "random", "parvo encoder requires --checkpoint"
+    ckpt = torch.load(checkpoint, map_location="cpu")
+    sd = ckpt.get("model_state_dict", ckpt)
+    sd = {k.replace("module.", ""): v for k, v in sd.items()}
+    _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
+    _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
+    _comp = any("m_recon" in k for k in sd)  # CoMP-MAE = M-recon 분기 보유
+    model = TwoStreamV15Model(
+        embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
+        pair_mode=True, use_sobel=False, masked_anchor=True,
+    )
+    missing, _ = model.load_state_dict(sd, strict=False)
+    _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]
+    assert not _enc_missing, f"parvo: P/M encoder 가중치 미로드 {_enc_missing[:5]}"
+    for p in model.parameters():
+        p.requires_grad = False
+    model.to(device).eval()
+    return model
+
+
+@torch.no_grad()
+def encode_pairs_parvo(
+    model, frames_prev: torch.Tensor, frames_curr: torch.Tensor,
+    device: torch.device, mode: str = "p_t_p_tk", readout: str = "mean", batch: int = 64,
+) -> torch.Tensor:
+    """CoMP-MAE 2-stream readout. stream 순서 = [P(t), P(tk)] 또는 [P(t), M(t,tk)].
+
+    mode:    p_t_p_tk = 배포 P readout (appearance) / p_t_m = P(t) ⊕ M(t,tk) (motion 포함)
+    readout: mean      = stream별 patch_mean → concat → (N, 2D)
+             attentive = stream별 patch 토큰 → token-dim concat → (N, 2*n_patch, D) [fp16 캐시]
+    (probe_action.py encode_batch/encode_batch_tokens 의 parvo 경로와 1:1 대응)
+    """
+    out = []
+    for s in range(0, frames_prev.shape[0], batch):
+        p = frames_prev[s:s + batch].to(device, non_blocking=True)  # (n, 3, H, W) [0,1]
+        c = frames_curr[s:s + batch].to(device, non_blocking=True)
+        p_t = model.preprocessing.compute_p_channel(p)
+        tok_a = model._encode_p_unmasked(p_t)[:, 1:]                 # (n, n_patch, D) = P(t)
+        if mode == "p_t_p_tk":
+            p_tk = model.preprocessing.compute_p_channel(c)
+            tok_b = model._encode_p_unmasked(p_tk)[:, 1:]
+        elif mode == "p_t_m":
+            m_chan = model.preprocessing.compute_m_channel(p, c)
+            tok_b = model._encode_m_unmasked(m_chan)[:, 1:]
+        else:
+            raise ValueError(f"parvo mode: {mode}")
+        if readout == "mean":
+            tok = torch.cat([tok_a.mean(dim=1), tok_b.mean(dim=1)], dim=-1)  # (n, 2D)
+        elif readout == "attentive":
+            tok = torch.cat([tok_a, tok_b], dim=1).half()                    # (n, 2*n_patch, D)
+        else:
+            raise ValueError(f"readout: {readout}")
+        out.append(tok.cpu())
+    return torch.cat(out, dim=0)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VideoMAE (VLA encoder, token-level) — attentive/mean self-consistent 경로.
+# 기존 videomae-ours adapter(patch_mean, 213639 legacy)와 별개: 같은 forward로 두 readout을
+# 뽑아 attentive↔mean parity를 보장 (--videomae-encoder vla 로 선택).
+# ─────────────────────────────────────────────────────────────────────────
+
+def build_videomae_token_encoder(checkpoint: str, device: torch.device):
+    from src.models.videomae import VideoMAEEncoderForVLA
+    assert checkpoint, "videomae vla encoder requires --checkpoint"
+    encoder = VideoMAEEncoderForVLA(checkpoint_path=checkpoint)
+    encoder.to(device).eval()
+    return encoder
+
+
+@torch.no_grad()
+def encode_pairs_videomae_vla(
+    encoder, frames_prev: torch.Tensor, frames_curr: torch.Tensor,
+    device: torch.device, readout: str = "mean", batch: int = 64,
+) -> torch.Tensor:
+    """VideoMAE 2-stream = frame_t / frame_tk (same-frame replica forward, §C7).
+
+    tubelet_size=2가 2프레임을 시공간 patch로 묶으므로 단일 프레임 repr은 복제 forward.
+    readout mean → (N, 2D) / attentive → (N, 2*n_patch, D). parvo와 동일 규약.
+    """
+    out = []
+    for s in range(0, frames_prev.shape[0], batch):
+        p = frames_prev[s:s + batch].to(device, non_blocking=True)
+        c = frames_curr[s:s + batch].to(device, non_blocking=True)
+        tok_t = encoder(torch.cat([p, p], dim=1))    # (n, n_patch, D)
+        tok_tk = encoder(torch.cat([c, c], dim=1))
+        if readout == "mean":
+            tok = torch.cat([tok_t.mean(dim=1), tok_tk.mean(dim=1)], dim=-1)
+        elif readout == "attentive":
+            tok = torch.cat([tok_t, tok_tk], dim=1).half()
+        else:
+            raise ValueError(f"readout: {readout}")
+        out.append(tok.cpu())
+    return torch.cat(out, dim=0)
+
+
 def preprocess_frames(frames_uint8: np.ndarray, img_size: int) -> torch.Tensor:
     """(N, H, W, 3) uint8 → (N, 3, img_size, img_size) [0,1] float."""
     x = torch.from_numpy(frames_uint8).permute(0, 3, 1, 2).float().div_(255.0)
@@ -188,14 +293,49 @@ class LinearProbe(nn.Module):
         return self.linear(x)
 
 
+class AttentivePoolProbe(nn.Module):
+    """Attentive-pooling probe (probe_action.py와 동일). stream별 learnable query 1개로
+    patch 토큰을 softmax-weighted pool → stream pooled concat → linear head.
+    capacity를 linear와 맞춰 'structure vs probe capacity' 혼동 차단.
+    입력 x: [B, n_streams * n_patch, D] (encode_pairs_*의 attentive 출력)."""
+    def __init__(self, embed_dim: int, n_streams: int = 1, n_patch: int = 196,
+                 action_dim: int = ACTION_DIM):
+        super().__init__()
+        self.n_streams = n_streams
+        self.n_patch = n_patch
+        self.embed_dim = embed_dim
+        self.query = nn.Parameter(torch.randn(n_streams, embed_dim) * 0.02)
+        self.head = nn.Linear(n_streams * embed_dim, action_dim)
+        self.scale = embed_dim ** -0.5
+
+    def forward(self, x):
+        B = x.shape[0]
+        x = x.view(B, self.n_streams, self.n_patch, self.embed_dim)
+        attn = torch.einsum("bsnd,sd->bsn", x, self.query) * self.scale
+        attn = attn.softmax(dim=-1)
+        pooled = torch.einsum("bsn,bsnd->bsd", attn, x)
+        pooled = pooled.reshape(B, self.n_streams * self.embed_dim)
+        return self.head(pooled)
+
+
 def train_probe(
     train_emb, train_tgt, eval_emb, eval_tgt,
     epochs: int = 20, batch_size: int = 256, lr: float = 1e-3,
     device: str = "cuda",
+    readout: str = "mean", n_streams: int = 1, weight_decay: float = 0.0,
 ):
-    embed_dim = train_emb.shape[1]
-    probe = LinearProbe(embed_dim).to(device)
-    optimizer = torch.optim.Adam(probe.parameters(), lr=lr)
+    """readout="mean": LinearProbe([N, D]) / readout="attentive": AttentivePoolProbe([N, S*n_patch, D]).
+
+    attentive 캐시는 fp16 3D 토큰 → 학습·eval 시 GPU에서 float 복원 + eval을 배치 처리(OOM 방지).
+    weight_decay: attentive P-appearance overfit 억제용 (AdamW). default 0 = 기존 동작.
+    """
+    if readout == "attentive":
+        n_patch = eval_emb.shape[1] // n_streams
+        base_dim = eval_emb.shape[2]
+        probe = AttentivePoolProbe(base_dim, n_streams=n_streams, n_patch=n_patch).to(device)
+    else:
+        probe = LinearProbe(train_emb.shape[1]).to(device)
+    optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)
     train_loader = DataLoader(
         TensorDataset(train_emb, train_tgt),
         batch_size=batch_size, shuffle=True,
@@ -204,14 +344,18 @@ def train_probe(
     for ep in range(epochs):
         probe.train()
         for x, y in train_loader:
-            x = x.to(device)
+            x = x.to(device).float()  # fp16 캐시면 GPU에서 float 복원
             y = y.to(device)
             pred = probe(x)
             loss = F.mse_loss(pred, y)
             optimizer.zero_grad(); loss.backward(); optimizer.step()
         probe.eval()
+        preds = []
         with torch.no_grad():
-            pred = probe(eval_emb.to(device)).cpu().numpy()
+            for i in range(0, len(eval_emb), batch_size):
+                chunk = eval_emb[i:i + batch_size].to(device).float()
+                preds.append(probe(chunk).cpu())
+        pred = torch.cat(preds, dim=0).numpy()
         m = compute_metrics(pred, eval_tgt.numpy())
         if m["r2_aggregate"] > best["r2"]:
             best = {"r2": m["r2_aggregate"], "epoch": ep + 1, "metrics": m}
@@ -273,7 +417,19 @@ def main():
                         help="paired = BC-T 표준 paired forward, p_t_p_tk = §C7 catalyst evidence")
     parser.add_argument("--v11-mode", default="abd_prime",
                         choices=["abd_prime", "b_only", "d_prime_only", "p_t_p_tk"])
+    # STEP 0 게이트 (restart_plan §3.1): CoMP-MAE / VideoMAE readout 축
+    parser.add_argument("--readout", default="mean", choices=["mean", "attentive"],
+                        help="mean = patch_mean concat (LinearProbe) / attentive = stream별 query pool (AttentivePoolProbe)")
+    parser.add_argument("--parvo-mode", default="p_t_p_tk", choices=["p_t_p_tk", "p_t_m"],
+                        help="parvo 2-stream: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion)")
+    parser.add_argument("--videomae-encoder", default="adapter", choices=["adapter", "vla"],
+                        help="adapter = legacy BC-T adapter(mean 전용) / vla = VideoMAEEncoderForVLA(mean+attentive self-consistent)")
+    parser.add_argument("--probe-weight-decay", type=float, default=0.0,
+                        help="AdamW weight decay (attentive P-appearance overfit 억제). default 0")
     args = parser.parse_args()
+
+    if args.readout == "attentive" and args.view == "both":
+        raise ValueError("attentive readout은 단일 view만 지원 (both = feature-concat이 토큰 레이아웃 파괴)")
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -308,6 +464,7 @@ def main():
           f"P99={np.percentile(lens,99):.0f}  cutoff={cutoff:.0f} → kept {n_kept}/{len(lens)}")
 
     # ── Build encoder ────────────────────────────────────────────────────
+    n_streams = 1
     if args.encoder == "two-stream-v11":
         if args.checkpoint is None:
             raise ValueError("v11 encoder requires --checkpoint")
@@ -321,7 +478,26 @@ def main():
                 model, fwd, prev, curr, device,
                 mode=args.v11_mode, batch=args.encode_batch,
             )
+    elif args.encoder == "parvo":
+        model = build_parvo_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo(model, prev, curr, device,
+                                      mode=args.parvo_mode, readout=args.readout,
+                                      batch=args.encode_batch)
+    elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
+        model = build_videomae_token_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_videomae_vla(model, prev, curr, device,
+                                             readout=args.readout, batch=args.encode_batch)
     else:
+        if args.readout == "attentive":
+            raise ValueError(f"attentive readout은 parvo/videomae(vla)만 지원 (encoder={args.encoder})")
         adapter_kwargs = {}
         if args.encoder == "videomae-ours":
             adapter_kwargs["mode"] = args.videomae_mode
@@ -331,7 +507,7 @@ def main():
         def encode_fn(prev, curr):
             return encode_pairs_via_adapter(adapter, prev, curr, device, batch=args.encode_batch)
 
-    print(f"  img_size={img_size}")
+    print(f"  img_size={img_size}  readout={args.readout}  n_streams={n_streams}")
 
     # ── Demo-level train/test split ─────────────────────────────────────
     all_demo_keys = []  # list of (hdf5_path, demo_key, task_id)
@@ -418,6 +594,8 @@ def main():
             emb_tr, tgt_tr, emb_ev, tgt_ev,
             epochs=args.probe_epochs, batch_size=args.probe_batch,
             lr=args.probe_lr, device=str(device),
+            readout=args.readout, n_streams=n_streams,
+            weight_decay=args.probe_weight_decay,
         )
         m = best["metrics"]
         elapsed = time.time() - t0
@@ -451,6 +629,8 @@ def main():
                 "view": args.view,
                 "gap": gap,
                 "gap_seconds": gap / 20.0,
+                "readout": args.readout,
+                "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
                 "n_train_demos": len(train_demos),
                 "n_eval_demos": len(eval_demos),

@@ -1,0 +1,28 @@
+{
+  "encoder": "videomae-ours",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt",
+  "split": "training",
+  "view": "rgb_static",
+  "gap": 10,
+  "gap_seconds": 0.3333333333333333,
+  "readout": "mean",
+  "parvo_mode": null,
+  "v11_mode": null,
+  "n_train_episodes": 200,
+  "n_eval_episodes": 1087,
+  "n_train_pairs": 10114,
+  "n_eval_pairs": 53923,
+  "best_epoch": 16,
+  "r2_aggregate": 0.06939931044810632,
+  "r2_per_dim": [
+    0.47120918665776657,
+    0.21263959100959529,
+    0.5196345409575978,
+    0.12963574723570792,
+    0.22434702804471107,
+    -0.0015782158431105753,
+    0.06936989405949723
+  ],
+  "mse": 0.13134834170341492,
+  "cosine_sim": 0.2771630883216858
+}

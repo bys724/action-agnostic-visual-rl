@@ -89,6 +89,36 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-07-01 STEP 0 value 게이트 — CoMP-MAE-S/VideoMAE OOD probing (CALVIN·LIBERO)
+
+**목적**(restart_plan §3.1): CoMP-MAE-S를 STEP 1(대규모 학습) 전에 OOD probe → same-corpus slope(ours vs VideoMAE −0.083) + OOD-motion 절대값으로 value 현상 판정. **신규 배선**: `probe_action_libero.py`(공유 base)에 parvo(CoMP-MAE) 로더 + VideoMAE-VLA 토큰 로더 + `AttentivePoolProbe` + `--readout {mean,attentive}`·`--parvo-mode {p_t_p_tk,p_t_m}`·`--videomae-encoder {adapter,vla}` (CALVIN/LIBERO 상속). CPU smoke 통과(mean 768·attentive (392,384) fp16). readout parity: EgoDex in-domain = patch_mean concat P_t⊕P_tk **+0.236**/M patch_mean **+0.094**. attentive는 comp+videomae 2개만 배선(frozen baseline 후속). CALVIN eval=32,183 pairs(ViT-S 384d attentive ~10GB fp16 → 노드 안전, EgoDex 180k OOM과 무관).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36222791 | AIP 1×1 H100 | 00:40:00 | **CALVIN sanity** (comp attentive `p_t_m`, cross-folder, MAX_EPISODES=10·gap30) — 데이터 로더·preprocess parity·attentive 메모리 검증 | ✅ COMPLETED 4m04s, MaxRSS 23.3GB. R²=−0.10(10ep train 언더핏, 파이프라인 PASS). readout=attentive n_streams=2 정확. |
+| 36222792 | AIP 1×1 H100 | 00:40:00 | **LIBERO sanity** (comp attentive `p_t_m`, libero_spatial·task0·5demos·gap20) | ✅ COMPLETED 38s. R²=+0.12(5demo). 파이프라인 PASS. |
+
+**본 매트릭스 12잡** (sanity PASS 후 제출) — comp{mean,attentive}×{p_t_p_tk,p_t_m} + videomae-vla{mean,attentive}, GAPS default(CALVIN 10/20/30/45·MAX_EPISODES=200 xfolder, LIBERO_spatial 1/13/20/40). 게이트 판독 = slope_comp − slope_VideoMAE(mean, gap30/20) + mean→attentive crossover.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36224980/981 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN comp mean** — 980=`p_t_p_tk` / 981=`p_t_m` | ✅ 13m. CALVIN pos R²(gap30): ptptk **0.257** / ptm **0.405** |
+| 36224982/983 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN comp attentive** — 982=`p_t_p_tk` / 983=`p_t_m` | ✅ 14m. CALVIN pos: ptptk **0.175** / ptm **0.486**(attn>mean=M국소) |
+| 36224984/985 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN videomae-vla** — 984=mean / 985=attentive (self-consistent) | 984 ✅ pos **0.529**. 985 ❌ **OOM**(768d 토큰 `torch.cat` 스파이크>63GB) → mem=120G 재제출 **36225602** |
+| 36224986/987 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_spatial comp mean** — 986=`p_t_p_tk` / 987=`p_t_m` | ✅ 5m. LIBERO pos R²(gap20): ptptk **0.741** / ptm **0.809** |
+| 36224988/989 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_spatial comp attentive** — 988=`p_t_p_tk` / 989=`p_t_m` | ✅ 7m. LIBERO pos: ptptk **0.766** / ptm **0.814** |
+| 36224990/991 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_spatial videomae-vla** — 990=mean / 991=attentive | ✅ 11/21m. LIBERO pos: mean **0.853** / attn **0.879** |
+| 36225602 | AIP 1×1 H100 (mem120G) | 02:00:00 | **CALVIN vmae attentive 재제출**(985 OOM 수정) | ✅ COMPLETED 21m35s. CALVIN pos **0.610**(mean 0.529). mem120G로 해결. |
+| 36225603 | AIP 1×1 H100 | 03:00:00 | **VideoMAE attentive in-domain EgoDex**(`attentive_concat_p_t_p_tk`) — attentive slope-diff에 필요 | ❌ **OUT_OF_MEMORY** MaxRSS **545GB**(768d × full EgoDex 180k 토큰). = 문서화된 "B(768d) disk-backed 필요" 케이스. → **attentive slope-diff 유보**(comp 384d는 통과, VideoMAE in-domain attentive만 blocked). 후속 = pre-alloc/disk-backed 캐시. |
+
+**STEP 0 게이트 판독 (mean slope-diff 완결 / attentive slope-diff 유보=vmae in-domain OOM)**:
+- attentive OOD 절대값(참고): CALVIN pos comp ptm **0.486** vs vmae **0.610** / LIBERO comp ptm **0.814** vs vmae **0.879** (comp 40M < vmae 86M, 효율 신호 유지). attentive slope-diff는 VideoMAE in-domain EgoDex attentive(545GB OOM)가 막혀 미완 — comp crossover(아래)만 확정.
+- **slope-diff = slope_comp − slope_VideoMAE** (in=EgoDex 18d − OOD=CALVIN pos; diff-in-diff로 target-space confound 상쇄): **p_t_m −0.247**(comp가 M 통해 OOD서 gap 좁힘=factorization 신호) vs **p_t_p_tk +0.038**(appearance 단독=이득 없음, 정상 null). → **M stream이 OOD robustness 원천** = Paper 2 가설 정합.
+- **B(OOD-motion 효율)**: comp p_t_m ≈ VideoMAE 양 벤치(LIBERO attn 0.814 vs 0.879 / CALVIN attn 0.486 vs 0.529), comp ViT-S 40M < ViT-B 86M → 효율 신호 有.
+- **attentive crossover**: p_t_m서 attn>mean(CALVIN +0.081) = M 공간국소(mean under-read) 확증 / p_t_p_tk는 attn<mean = appearance holistic. 사용자 attentive 직관 검증.
+- ⚠️ caveat(추정): comp p_t_m in-domain 낮음(0.099)→OOD서 회복 = regression-to-mean 일부 가능. slope-diff가 부분 통제하나 완전치 않음. attentive slope-diff(pending)로 재확인.
+- **잠정 판정**: value 신호(A·B) 존재, 단 **M 경유 only**(appearance null) → **STEP 1(small matched 3런) 진행 지지**.
+
 ### 2026-06-30 CoMP-MAE-S STEP 1 gate — EgoDex action probing (조합 sweep)
 
 **목적**: CoMP-MAE-S(step1 ep50)가 action 정보를 인코딩하는지 + 어떤 표현 조합이 best인지. 게이트 R² readout. **EgoDex `test` split 정규 프로토콜**(gap=10, 20ep, batch256, 180921/40914 샘플 = 과거 baseline parity). 비교: VideoMAE input-only **+0.4705** / 과거 Parvo(붕괴본) P_t⊕P_tk **+0.2884**·P_t⊕M **+0.1051**.

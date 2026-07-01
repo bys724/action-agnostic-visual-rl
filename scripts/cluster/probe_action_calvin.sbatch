@@ -43,6 +43,10 @@ V11_MODE="${V11_MODE:-p_t_p_tk}"
 VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
 CROSS_FOLDER="${CROSS_FOLDER:-}"           # 0이 아닌 임의 값이면 --cross-folder flag 추가
+READOUT="${READOUT:-mean}"                 # mean | attentive (STEP 0 게이트)
+PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m
+VIDEOMAE_ENCODER="${VIDEOMAE_ENCODER:-adapter}"  # videomae-ours: adapter(legacy) | vla
+PROBE_WEIGHT_DECAY="${PROBE_WEIGHT_DECAY:-0.0}"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT_DIR="$OUT_BASE/${ENCODER}_${SPLIT}_${TIMESTAMP}${SUFFIX:+_$SUFFIX}"
@@ -74,9 +78,11 @@ ARGS=(
     --frame-stride "$FRAME_STRIDE"
     --output-dir "$OUT_DIR"
 )
+ARGS+=(--readout "$READOUT" --probe-weight-decay "$PROBE_WEIGHT_DECAY")
 if [[ -n "$CHECKPOINT" ]]; then ARGS+=(--checkpoint "$CHECKPOINT"); fi
 if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
-if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE"); fi
+if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
+if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi
 if [[ -n "$CROSS_FOLDER" ]]; then ARGS+=(--cross-folder); fi
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"

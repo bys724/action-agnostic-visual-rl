@@ -1,0 +1,29 @@
+{
+  "encoder": "videomae-ours",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt",
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "gap": 40,
+  "gap_seconds": 2.0,
+  "readout": "mean",
+  "parvo_mode": null,
+  "v11_mode": null,
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 33780,
+  "n_eval_pairs": 7710,
+  "best_epoch": 20,
+  "r2_aggregate": 0.31094261544825574,
+  "r2_per_dim": [
+    0.812593383964711,
+    0.9399525235882844,
+    0.9206780855509564,
+    0.5271304970384628,
+    0.7093688960002468,
+    0.5738028925733938,
+    0.245741975032305
+  ],
+  "mse": 0.07742802798748016,
+  "cosine_sim": 0.6842941641807556,
+  "elapsed_seconds": 118.70786476135254
+}

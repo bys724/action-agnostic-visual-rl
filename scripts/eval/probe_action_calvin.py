@@ -39,11 +39,15 @@ from src.datasets.calvin import (
 # probe_action_libero에서 재사용 (DRY)
 from scripts.eval.probe_action_libero import (
     SUPPORTED_ENCODERS,
+    build_parvo_encoder,
     build_standard_encoder,
     build_v11_encoder,
+    build_videomae_token_encoder,
     compute_metrics,
+    encode_pairs_parvo,
     encode_pairs_v11,
     encode_pairs_via_adapter,
+    encode_pairs_videomae_vla,
     preprocess_frames,
     train_probe,
 )
@@ -92,6 +96,15 @@ def main():
                         choices=["paired", "p_t_p_tk"])
     parser.add_argument("--v11-mode", default="p_t_p_tk",
                         choices=["abd_prime", "b_only", "d_prime_only", "p_t_p_tk"])
+    # STEP 0 게이트 (restart_plan §3.1): CoMP-MAE / VideoMAE readout 축
+    parser.add_argument("--readout", default="mean", choices=["mean", "attentive"],
+                        help="mean = patch_mean concat (LinearProbe) / attentive = stream별 query pool (AttentivePoolProbe)")
+    parser.add_argument("--parvo-mode", default="p_t_p_tk", choices=["p_t_p_tk", "p_t_m"],
+                        help="parvo 2-stream: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion)")
+    parser.add_argument("--videomae-encoder", default="adapter", choices=["adapter", "vla"],
+                        help="adapter = legacy(mean 전용) / vla = VideoMAEEncoderForVLA(mean+attentive self-consistent)")
+    parser.add_argument("--probe-weight-decay", type=float, default=0.0,
+                        help="AdamW weight decay (attentive P-appearance overfit 억제). default 0")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -132,6 +145,7 @@ def main():
             print(f"  subsampled to {len(segments)} segments")
 
     # ── Build encoder ────────────────────────────────────────────────────
+    n_streams = 1
     if args.encoder == "two-stream-v11":
         if args.checkpoint is None:
             raise ValueError("v11 encoder requires --checkpoint")
@@ -143,7 +157,26 @@ def main():
         def encode_fn(prev, curr):
             return encode_pairs_v11(model, fwd, prev, curr, device,
                                     mode=args.v11_mode, batch=args.encode_batch)
+    elif args.encoder == "parvo":
+        model = build_parvo_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo(model, prev, curr, device,
+                                      mode=args.parvo_mode, readout=args.readout,
+                                      batch=args.encode_batch)
+    elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
+        model = build_videomae_token_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_videomae_vla(model, prev, curr, device,
+                                             readout=args.readout, batch=args.encode_batch)
     else:
+        if args.readout == "attentive":
+            raise ValueError(f"attentive readout은 parvo/videomae(vla)만 지원 (encoder={args.encoder})")
         adapter_kwargs = {}
         if args.encoder == "videomae-ours":
             adapter_kwargs["mode"] = args.videomae_mode
@@ -153,7 +186,7 @@ def main():
         def encode_fn(prev, curr):
             return encode_pairs_via_adapter(adapter, prev, curr, device, batch=args.encode_batch)
 
-    print(f"  img_size={img_size}")
+    print(f"  img_size={img_size}  readout={args.readout}  n_streams={n_streams}")
 
     # ── Segment-level train/eval split ───────────────────────────────────
     if args.cross_folder:
@@ -217,7 +250,9 @@ def main():
         print(f"  training probe (epoch={args.probe_epochs}, lr={args.probe_lr}) ...")
         best = train_probe(emb_tr, tgt_tr, emb_ev, tgt_ev,
                            epochs=args.probe_epochs, batch_size=args.probe_batch,
-                           lr=args.probe_lr, device=str(device))
+                           lr=args.probe_lr, device=str(device),
+                           readout=args.readout, n_streams=n_streams,
+                           weight_decay=args.probe_weight_decay)
         m = best["metrics"]
         elapsed = time.time() - t0
         print(f"  R² agg = {m['r2_aggregate']:+.4f}  per-dim = " +
@@ -234,6 +269,8 @@ def main():
                 "view": args.view,
                 "gap": gap,
                 "gap_seconds": gap / 30.0,
+                "readout": args.readout,
+                "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
                 "n_train_episodes": len(train_segs),
                 "n_eval_episodes": len(eval_segs),
