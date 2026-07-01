@@ -65,6 +65,26 @@
 
 ---
 
+## 3.2 평가 축 probing-primary + BC 재배치 (2026-07-01)
+
+> Vault 대화로 재정렬. **BC를 인코더 품질 주 지표에서 강등.** probing(정보 존재)과 control(closed-loop 안전 사용)은 다른 질문 — P+M NLL↔SR 역전이 증명. 출처: Vault `README.md §평가 축`, `2. Experiments.md §5`, `History.md`(2026-07-01).
+
+**평가 축 재편 (클러스터/로컬 작업 함의)**:
+- **주 축 = probing** (클러스터, 학습 후 frozen probe):
+  - action probing(motion 디코딩) — 기존 `probe_action.py`.
+  - **correspondence/tracking** (DAVIS/JHMDB류) — SiamMAE·MotionMAE 홈그라운드. **신규 eval 배선 필요**(현재 없음).
+  - OOD 선택성(§3.1), equivariance probe(입력 known transform → 표현 구조 변화 측정 — 신규), spatial task(seg/depth — "holistic RGB는 공간정보 날림" 직접 시험, 신규·조건부).
+  - ⚠️ raw R² 부족(concat-probe artifact 2회 철회) → 선택성·ablation 민감도·readout 불변성·probe OOD 전이로 방어(타협 불가).
+- **BC = dissociation의 control 반쪽** (로컬 rollout, 주 지표 아님): "probing↑ but control↓(VideoMAE 78 vs 29)"를 *드러내는* 축. NLL↔SR 역전 = causal-confusion 사례(기여). **M→0 ablation 리포팅 권고**(rollout서 M feature 상수 치환 → SR이 P-only 회복하면 copycat 확정 = NLL 이득 spurious 증명). comp_mae_plan §6.1 결정적 후속 테스트와 동일.
+
+**서술 규율 (P-only 격차)**:
+- efficiency reframe: "작아도 근접"(S 40M < baseline 86M) ✅ / "키우면 이긴다" ❌(B가 오히려 나빴음). 깨끗한 주장은 **matched(VideoMAE)**, internet-scale은 unmatched 참조. bitter-lesson: 저데이터 특화라 격차 안 닫혀도 thesis 정합.
+- P+M 붕괴(causal confusion, M-특정)로 **P-only 절대 격차를 덮지 말 것**(별도 정직 인정).
+
+**tiering 재확인**: **STEP 0 = 주 value(A/B), SiamMAE 불필요·무료** → **STEP 1 = SiamMAE-analog(보조 mechanism), 조건부.** SiamMAE 비교는 LIBERO 단일 아니라 OOD-slope 전체 + correspondence.
+
+---
+
 ## 4. Critical guards (구현 시 실수 방지)
 
 - 🔴 **`MCP-MAE` ~207M FROZEN param 삭제**: §9 경로가 teacher EMA + interpreter(미사용)를 들고 있어 메모리 낭비 → **본 학습 전 `del`** (sanity서 확인됨). 안 지우면 "small"이 메모리상 small 아님.
