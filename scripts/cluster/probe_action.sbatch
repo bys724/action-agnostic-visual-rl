@@ -36,6 +36,7 @@ SPLIT="${SPLIT:-test}"
 CLS_MODE="${CLS_MODE:-patch_mean_concat}"
 GAP="${GAP:-10}"
 EPOCHS="${EPOCHS:-20}"
+WEIGHT_DECAY="${WEIGHT_DECAY:-0.0}"
 BATCH_SIZE="${BATCH_SIZE:-256}"
 # MAX_VIDEOS: 비디오 수 제한 (part4 전체 44k는 4.2M 샘플 → 폭증). 미설정=전체.
 MV_ARG=""; [ -n "${MAX_VIDEOS:-}" ] && MV_ARG="--max-videos ${MAX_VIDEOS}"
@@ -66,6 +67,7 @@ cd "$PROJECT_ROOT"
     --gap "$GAP" \
     --epochs "$EPOCHS" \
     --batch-size "$BATCH_SIZE" \
+    --weight-decay "$WEIGHT_DECAY" \
     $MV_ARG \
     --depth 12 --num-stages 2
 

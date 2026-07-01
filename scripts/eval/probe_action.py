@@ -943,10 +943,12 @@ def train_probe(
     batch_size: int = 256,
     lr: float = 1e-3,
     device: str = "cuda",
+    weight_decay: float = 0.0,
 ):
     """Train the linear/MLP probe on pre-extracted embeddings."""
     probe = probe.to(device)
-    optimizer = torch.optim.Adam(probe.parameters(), lr=lr)
+    # weight_decay: attentive probe의 P-appearance overfit 억제용 (AdamW). default 0=기존 동작.
+    optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Create simple tensor datasets
     train_dataset = torch.utils.data.TensorDataset(train_emb, train_act)
@@ -1027,6 +1029,8 @@ def main():
                         help="Probing epochs (default: 20)")
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Batch size (default: 64)")
+    parser.add_argument("--weight-decay", type=float, default=0.0,
+                        help="AdamW weight decay (attentive probe P-appearance overfit 억제). default 0")
     parser.add_argument("--lr", type=float, default=1e-3,
                         help="Probe learning rate (default: 1e-3)")
     parser.add_argument("--probe", type=str, default="linear",
@@ -1144,6 +1148,7 @@ def main():
         batch_size=min(256, len(train_ds)),
         lr=args.lr,
         device=device,
+        weight_decay=args.weight_decay,
     )
 
     # ---- 5. Report ----
