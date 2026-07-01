@@ -165,6 +165,10 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 **결론**: ① **M stream이 size·학습으로 단조 증가**(S 0.293→B28 0.320→B50 0.352) — 깨끗한 size 효과. **B-M(0.352) > S deployed-P(0.329)** = 작은 motion 인코더가 큰 2프레임 P readout을 능가(efficiency 가설 강화). ② **deployed-P는 B에서 overfit**(ep28·ep50 둘 다) — 원인=**P_t⊕P_tk redundancy**(concat_p_m 1536은 안정 → 차원 아님; ep50도 발산 → 수렴 아님). B의 풍부한 appearance 두 장을 attentive probe가 memorize. ③ concat_p_m에서 B(0.236)<S(0.286): B의 P_t가 M readout을 끌어내림(부분 overfit 오염). ⚠️ **P+M(0.236) < M단독(0.352)은 red flag** — 건강하면 무용 스트림은 무시되어야 하는데 P_t가 *적극적으로 해를 끼침*(overfit-유발 appearance 주입). → **deployed-P size 비교는 weight decay로 P-appearance overfit 억제 후 재측정 필요.**
 
+| 36198128/130 (B), 36198129/131 (S) | AIP 1×1 H100 ×4 | **WD probe disambiguate** — deployed-P(`attentive_concat_p_t_p_tk`, 1500·40ep) + weight decay. {S,B}×WD{0.1,1.0} matched. **판정**: B가 WD로 회복+S급 → readout overfit(데이터 OK) / WD에도 B<S → 데이터·feature 부족(full-EgoDex 정당) | 🔵 PENDING |
+
+**EgoDex 데이터**: part1~5 + test 전부 추출됨(`/proj/external_group/mrg/datasets/egodex/frames/`) — 현재 part1만 학습. full-data 본학습은 데이터측 준비 완료.
+
 **가설(다음 방향)**: B(ViT-B)의 P-appearance overfit-proneness = **데이터(EgoDex part1) 대비 모델 규모 과대** 정황. part1은 appearance 다양성 제한 → 큰 모델이 part1-특정 appearance를 고밀도 memorize → probe overfit. **EgoDex 전체 학습**이 appearance 일반화로 완화 기대(M은 이미 part1로도 clean·scale). 검증: WD probe로 readout-overfit vs data-부족 먼저 disambiguate 후 full-data 본학습 결정.
 
 **Gate 결론 (CoMP-MAE-S, mean→attentive crossover)**: null anchor flat(−0.009→0.0007)=capacity 아님 ✅ · M 대폭(+0.094→0.239, +0.145)=mean이 M motion under-read · 배포P modest(+0.236→0.292) · P⊕M(0.242)≈M(0.239)=P_t 기여 0. **배포P 0.292 > 과거붕괴 ViT-B(+0.288) 넘었으나 VideoMAE +0.47(mean)엔 미달** → readout이냐 size냐는 **baseline도 attentive 재측정 필요**(uniform readout). Gate=통과 → SiamMAE-S 학습+baseline attentive+LIBERO BC attentive GO. 추천 순서: 메모리픽스→VideoMAE attentive(즉시)→SiamMAE-S 결정.
