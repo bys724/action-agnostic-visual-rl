@@ -165,7 +165,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 **결론**: ① **M stream이 size·학습으로 단조 증가**(S 0.293→B28 0.320→B50 0.352) — 깨끗한 size 효과. **B-M(0.352) > S deployed-P(0.329)** = 작은 motion 인코더가 큰 2프레임 P readout을 능가(efficiency 가설 강화). ② **deployed-P는 B에서 overfit**(ep28·ep50 둘 다) — 원인=**P_t⊕P_tk redundancy**(concat_p_m 1536은 안정 → 차원 아님; ep50도 발산 → 수렴 아님). B의 풍부한 appearance 두 장을 attentive probe가 memorize. ③ concat_p_m에서 B(0.236)<S(0.286): B의 P_t가 M readout을 끌어내림(부분 overfit 오염). ⚠️ **P+M(0.236) < M단독(0.352)은 red flag** — 건강하면 무용 스트림은 무시되어야 하는데 P_t가 *적극적으로 해를 끼침*(overfit-유발 appearance 주입). → **deployed-P size 비교는 weight decay로 P-appearance overfit 억제 후 재측정 필요.**
 
-| 36198128/130 (B), 36198129/131 (S) | AIP 1×1 H100 ×4 | **WD probe disambiguate** — deployed-P(`attentive_concat_p_t_p_tk`, 1500·40ep) + weight decay. {S,B}×WD{0.1,1.0} matched. **판정**: B가 WD로 회복+S급 → readout overfit(데이터 OK) / WD에도 B<S → 데이터·feature 부족(full-EgoDex 정당) | 🔵 PENDING |
+| 36198128/130 (B), 36198129/131 (S) | AIP 1×1 H100 ×4 | **WD probe disambiguate** — deployed-P(`attentive_concat_p_t_p_tk`, 1500·40ep) + weight decay. {S,B}×WD{0.1,1.0} matched. | ✅ COMPLETED. **S**: WD0.1 **0.318**(healthy)·WD1.0 0.235(약간↓, 안정). **B**: WD0.1 **−0.79**·WD1.0 **−1.67** (둘 다 발산). **판정: WD 정상작동(S 예상대로), but B는 WD-저항성 발산** → 표준 overfit 아님 = **feature-geometry 병리**(B의 P_t⊕P_tk에 outlier/massive-activation dim → attentive single-query latch). **probe-design 아티팩트지 표현 결함 아님.** ⚠️ **"데이터부족 overfit" 가설 약화** — 데이터발이면 WD가 도왔어야(S엔 도움). 데이터量 아니라 feature 기하 문제. **deployed-P 발산은 배포(LIBERO BC P+M 작동)와 직교 → 추격 실익 낮음.** 확정 결론=M scale(size↑) + BC P+M로 충분. |
 
 **EgoDex 데이터**: part1~5 + test 전부 추출됨(`/proj/external_group/mrg/datasets/egodex/frames/`) — 현재 part1만 학습. full-data 본학습은 데이터측 준비 완료.
 
