@@ -138,6 +138,18 @@ class BCTransformerClient:
         # Encoder ckpt path가 cluster-only일 수 있음 → random init 후 덮어씀
         cfg.encoder.checkpoint = None
 
+        # parvo-ptptk 어댑터는 arch를 pretrain ckpt에서 추론하는데 rollout엔 없음
+        # → policy_state_dict(encoder 포함, self-contained)에서 arch 추론해 주입
+        if str(cfg.encoder.type).lower().replace("_", "-") == "parvo-ptptk":
+            psd = ckpt["policy_state_dict"]
+            ak = dict(cfg.encoder.get("adapter_kwargs", {}))
+            ak["embed_dim"] = int(psd["adapter.model.pos_embed_p"].shape[-1])
+            ak["m_depth"] = len({k.split("blocks_m.")[1].split(".")[0]
+                                 for k in psd if "adapter.model.blocks_m." in k})
+            ak["comp_mae"] = any(k.startswith("adapter.model.") and "m_recon" in k
+                                 for k in psd)
+            cfg.encoder.adapter_kwargs = ak
+
         self.policy = AdaptedBCTransformerPolicy(cfg, libero_shape_meta()).to(device)
         missing, unexpected = self.policy.load_state_dict(
             ckpt["policy_state_dict"], strict=False,

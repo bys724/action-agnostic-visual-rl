@@ -40,19 +40,32 @@ class ParvoPtPtkAdapter(EncoderAdapter):
         device: str = "cpu",
         pooling: str = "mean",
         use_m: bool = False,
+        embed_dim: Optional[int] = None,
+        m_depth: Optional[int] = None,
+        comp_mae: Optional[bool] = None,
         **kwargs,  # build_adapter가 넘기는 잉여 인자 무시
     ):
         super().__init__(freeze=freeze)
         from src.models.two_stream_v15 import TwoStreamV15Model
 
-        assert checkpoint_path is not None, "ParvoPtPtkAdapter requires checkpoint"
-        ckpt = torch.load(checkpoint_path, map_location="cpu")
-        sd = ckpt.get("model_state_dict", ckpt)
-        sd = {k.replace("module.", ""): v for k, v in sd.items()}
-        # arch 추론 (probe_action.py parvo 경로와 동일). head_dim=64 표준.
-        _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
-        _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
-        _comp = any("m_recon" in k for k in sd)
+        if checkpoint_path is not None:
+            # finetune 경로: pretrain ckpt에서 arch 추론 + encoder 가중치 로드.
+            ckpt = torch.load(checkpoint_path, map_location="cpu")
+            sd = ckpt.get("model_state_dict", ckpt)
+            sd = {k.replace("module.", ""): v for k, v in sd.items()}
+            # arch 추론 (probe_action.py parvo 경로와 동일). head_dim=64 표준.
+            _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
+            _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
+            _comp = any("m_recon" in k for k in sd)
+        else:
+            # rollout 등 self-contained 경로: arch를 명시 kwargs로 받고 가중치는
+            # 외부(policy_state_dict)에서 덮어씀. 추론 규약은 finetune과 동일.
+            assert None not in (embed_dim, m_depth, comp_mae), (
+                "checkpoint_path=None이면 embed_dim/m_depth/comp_mae 필수 "
+                "(policy_state_dict에서 추론해 전달)"
+            )
+            sd = None
+            _ed, _md, _comp = embed_dim, m_depth, comp_mae
         self.base_dim = _ed
         self.use_m = use_m
         # P_t ⊕ P_tk (⊕ M) — use_m 시 M(ΔL 현재−직전) stream 추가. instance(ckpt별 384/768)
@@ -64,10 +77,11 @@ class ParvoPtPtkAdapter(EncoderAdapter):
             embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
             pair_mode=True, use_sobel=False, masked_anchor=True,
         ).to(device)
-        missing, _ = self.model.load_state_dict(sd, strict=False)
-        enc_missing = [k for k in missing
-                       if k.startswith(("blocks_p", "patch_embed_p", "cls_token_p", "pos_embed_p"))]
-        assert not enc_missing, f"Parvo: P encoder 가중치 미로드 {enc_missing[:5]}"
+        if sd is not None:
+            missing, _ = self.model.load_state_dict(sd, strict=False)
+            enc_missing = [k for k in missing
+                           if k.startswith(("blocks_p", "patch_embed_p", "cls_token_p", "pos_embed_p"))]
+            assert not enc_missing, f"Parvo: P encoder 가중치 미로드 {enc_missing[:5]}"
         self.model.eval()
 
         # attentive pooling: stream별(P_t, P_tk[, M]) learnable query 1개씩 (single-head, 최소 capacity)

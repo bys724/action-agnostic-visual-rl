@@ -113,9 +113,12 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36190933/935/937 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P-only attentive** (libero_object **task0 단일**·50ep·AMP·aug off). seed 0/1/2. SUFFIX=ponly_attn | ✅ COMPLETED ~18분/seed. ep50 eval: s0 −19.95·s1 −19.03·s2 −20.09 → **mean −19.69** |
 | 36190934/936/938 | AIP 1×1 H100 ×3 | **CoMP-MAE-S BC-T P+M attentive** (`use_m`, 동일 조건). seed 0/1/2. SUFFIX=pm_attn | ✅ COMPLETED ~23분/seed. ep50 eval: s0 −20.81·s1 −21.83·s2 −20.94 → **mean −21.19** |
 
-**결과 (eval NLL)**: **P+M −21.19 < P-only −19.69 (−1.50, 전 seed 완전 분리** — 최악 P+M −20.81 > 최선 P-only −20.09, 겹침 0). → M stream이 LIBERO control 표현에 robust하게 기여(gap=1 OOD인데도). ⚠️ **eval NLL ≠ SR** — 확정은 로컬 rollout. 단일 task·aug off = 탐색. 최종 reportable = aug-on full-suite 별도.
+**결과 (eval NLL)**: **P+M −21.19 < P-only −19.69 (−1.50, 전 seed 완전 분리** — 최악 P+M −20.81 > 최선 P-only −20.09, 겹침 0). ⚠️ **eval NLL ≠ SR** — 확정은 로컬 rollout. 단일 task·aug off = 탐색. 최종 reportable = aug-on full-suite 별도. ~~M stream robust 기여~~ → **아래 SR로 철회**.
 
-**다음: 로컬 워크스테이션 rollout (SR 산출)** — 클러스터는 학습만, SR은 로컬 docker `libero-eval`.
+**✅ 로컬 rollout SR (2026-07-01, task0 × 50 trials, seed=7)**: **P-only 68.7%**(s0 80·s1 62·s2 64) vs **P+M 2.0%**(s0 6·s1 0·s2 0) — **eval NLL 완전 역전**. NLL 우위 P+M이 SR **붕괴**. 원인: M=ΔL(직전프레임 변화)=직전행동 효과 → open-loop teacher-forced NLL은 컨닝으로 낮추나, closed-loop선 자기 오차 강화 피드백(**causal confusion/copycat**) + M-encoder gap OOD로 발산. baseline task0 대조: VC-1 94.0·Parvo(붕괴본) 90.0·SigLIP 86.0·DINOv2 85.3 ≫ **CoMP P-only 68.7** > VideoMAE 13.3 ≫ **CoMP P+M 2.0**. ⚠️ CoMP=aug-off·단일task vs baseline=aug-on·full-suite → 경향 지표. 상세·원인·문헌 = [comp_mae_plan.md](comp_mae_plan.md) §6.
+> 🔧 rollout 배선 수정(commit): `ParvoPtPtkAdapter`가 arch를 별도 pretrain ckpt에서만 추론 → rollout(cfg.encoder.checkpoint=None)서 assert 실패. **policy_state_dict(encoder self-contained)에서 arch 추론**하도록 수정 → pretrain ckpt 없이 rollout 가능. + docker `libero-eval` 드라이버 desync(NVML) 재시작 복구.
+
+**로컬 rollout 절차 (참고, ✅ 완료됨)** — 클러스터는 학습만, SR은 로컬 docker `libero-eval`.
 1. 반출: 6× best.pt(각 226MB) → `/mnt/data/checkpoints/libero_bct/<run_dir>/best.pt` (3-hop = `docs/artifacts.md` §2a).
 2. rollout: ⚠️ **단일 task 학습이라 `--task-ids 0` 필수**(suite 전체 rollout 시 미학습 task 실패). `run_libero_rollouts.sh`는 task-ids 미지원 → `src/eval_libero.py` 직접:
    ```
@@ -127,7 +130,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
    ```
 3. 집계: `scripts/eval/aggregate_libero_rollouts.py` → P-only vs P+M SR(seed3 평균) 비교 = eval NLL 우위가 SR로 이어지는지 판정.
 
-**다음**: 실제 run(P-only vs P+M, suite, aug on/캐싱) + 테스트하며 #1 feature캐싱·#4 중복forward제거 → 최종 리팩토링. ⚠️ 클러스터는 학습만, **SR은 로컬 rollout**.
+**다음**: reportable = **P-only** full-suite·aug-on 매트릭스(P+M은 rollout 붕괴로 배포 제외 — comp_mae_plan §6). pretrain ckpt 로컬 전송 선결. LIBERO finetune+rollout 모두 **로컬**(역할 분담 정정 — 탐색만 클러스터였음).
 
 ### 2026-06-30 Attentive-pooling probing (readout 축 — mean vs attentive)
 

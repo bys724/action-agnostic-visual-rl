@@ -126,6 +126,30 @@
 - [ ] **per-patch 가중 효과(guard 7)**: (a) M-recon이 0-collapse 안 빠지나(정지=floor만, 모션 patch 학습됨), (b) 정지 입력서 M이 ~0 출력(calibration) 확인, (c) P-future는 무가중 먼저 → copy-collapse 보이면 가중.
 - [ ] **M 마스킹 sanity(guard 8)**: visible ΔL에 motion patch가 충분히 남나(전부-0 visible 빈도 모니터) + M-recon loss가 ill-posed로 불안정하지 않나. 불안정 시 M 비율↓ 또는 motion-aware masking 전환.
 
+## 6.1 BC-T rollout 결과 (2026-07-01, task0 proxy) — M-stream 배포 무효 확인
+
+CoMP-MAE-S(step1 ep50) → libero_object **task0 단일학습**(50ep·attentive·aug-off·seed0/1/2) → 로컬 rollout(50 trials, seed=7).
+
+| config | task0 SR (per-seed) | mean |
+|---|---|---:|
+| **P-only** (P_t⊕P_tk) | 80·62·64 | **68.7** |
+| **P+M** (⊕ ΔL) | 6·0·0 | **2.0** |
+| baseline task0 대조 | VC-1 94.0 · Parvo(붕괴본) 90.0 · SigLIP 86.0 · DINOv2 85.3 · VideoMAE 13.3 | — |
+
+**핵심: eval NLL(P+M −21.19 < P-only −19.69)과 SR이 완전 역전.** NLL 우위 P+M이 closed-loop서 붕괴.
+
+**원인** (확실/추정 구분):
+- **eval NLL 정의**: GMM `−log p(a_expert|obs)`, **open-loop·teacher-forced**, task0 demo 10% held-out ([finetune_libero_bct.py:304,336](../scripts/eval/finetune_libero_bct.py#L304)). 관측이 항상 전문가 궤적 위 → 궤적이탈 無.
+- **[확실] causal confusion / copycat**: M = ΔL(현재−직전 프레임 휘도차, [preprocessing.py:90](../src/models/common/preprocessing.py#L90)) = **직전행동의 화면효과**. open-loop선 다음행동의 강한 예측자(NLL↓, 사실상 컨닝). closed-loop선 관측 ΔL이 정책 자신의 (틀린) 운동을 반영 → 강화 → 발산. (de Haan 2019 *Causal Confusion in IL*; Codevilla 2019 *Limitations of BC*.)
+- **[추정] M-encoder gap OOD 증폭**: M-encoder pretrain gap~15 vs BC/rollout gap=1 미세 ΔL → 미학습 영역 → feature 불안정, 고정 demo에 과적합.
+- **P-only 강건 이유**: 외형(정적 장면)만 → 행동 leaking 無 → NLL 높아도 closed-loop grounding 안정.
+
+**함의**:
+- 현 배포형태(gap=1)의 M-stream은 LIBERO 제어에 **유해**. §6 transfer 검증의 "M-recon on/off BC 비교"는 **M을 rollout 입력에 넣는 방식으론 무효** — M 기여는 (i) probing(측정됨, attentive M +0.239) 또는 (ii) M-recon이 P-encoder를 shaping한 **간접 효과를 P-only 배포로** 봐야 함.
+- **정식 reportable = P-only · full-suite · aug-on 매트릭스**(pretrain ckpt 로컬 전송 선결). P+M은 배포 제외.
+- **결정적 후속 테스트**(추정 (b) 분리): rollout서 M feature=0/상수 치환 → SR이 P-only 수준 회복하면 copycat(a) 확정·NLL 이득 spurious 증명.
+- ⚠️ **조건 불일치**: CoMP-MAE-S=aug-off·단일task vs baseline=aug-on·full-suite → 위 표는 **경향 지표**(최종 비교 아님). P-only 68.7이 강한 frozen baseline(85~94)에 미달·VideoMAE(13.3) 상회 = probing size confound와 일관.
+
 ## 7. Cross-refs
 
 - 설계 source: Vault `1. Core Idea.md` §대칭 Cross-Reconstruction 설계, §Motion-Routing 설계 근거
