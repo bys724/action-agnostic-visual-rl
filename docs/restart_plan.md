@@ -61,7 +61,32 @@
 
 **photometric-shift 축 (신규, ②)**:
 - clean-probing 셋(EgoDex/LIBERO)에 **corrupt-in-place**. 🔴 **가드**: 전역 상수 밝기 offset은 ΔL서 상쇄 + per-image z-score 정규화로 지워짐 → **프레임 간 비대칭·공간 국소**(이동 그림자·국소 노출) 섭동이라야 ΔL 취약성 드러남. 취약성은 **M-stream readout 별도 측정**(P appearance가 가림).
-- **예측 = ΔL 약세**(취약함이 곧 selectivity 증거, pre-registered). semantic-shift robust + photometric fragile **교차**가 mechanism 증거. → 우선순위 **낮음**(value 확인 후).
+- **예측 = ΔL 약세**(취약함이 곧 selectivity 증거, pre-registered). semantic-shift robust + photometric fragile **교차**가 mechanism 증거.
+
+---
+
+## 3.1.1 STEP 0.5 — de-confound (STEP 1 전 선결, 2026-07-01)
+
+> STEP 0 결과(cluster_sessions 2026-07-01)가 **잠정 green이나 confound**됨 → STEP 1(3M원) 올리기 전 반드시 선결. **핵심 규율: 절대 성능 낮음 = size/data efficiency reframe로 방어 가능. 하지만 slope robust 신호는 측정 confound라 size/data와 무관 — de-confound로만 풀림.**
+
+**STEP 0 결과 요약 (slope = in−OOD, mean, CALVIN pos)**:
+| readout | comp in(EgoDex 18d) | comp OOD(CALVIN pos) | comp slope | slope-diff(vs vmae) |
+|---|---|---|---|---|
+| comp p_t_m (motion) | **0.099** ← 최저 | 0.405 | −0.306 | **−0.247** |
+| comp p_t_p_tk (appearance) | 0.236 | 0.257 | −0.021 | +0.038 |
+| VideoMAE | 0.470 | 0.529 | −0.059 | (기준) |
+
+**🔴 confound**: comp p_t_m의 robust해 보이는 slope(−0.247)는 **in-domain이 0.099로 바닥 출발**한 탓일 수 있음. p_t_m(−0.247) vs p_t_p_tk(+0.038) 대조는 content(motion/appearance)뿐 아니라 **in-domain baseline(0.099 vs 0.236)도 다름** → "M robust"와 "M baseline 낮음"이 안 갈림. diff-in-diff는 target-space offset만 상쇄, baseline 효과는 못 잡음.
+
+**작업 (비용 오름차순 — 클러스터)**:
+- [ ] **① [공짜] dim-matched in-domain 재계산**: 현재 in=EgoDex **18-dim** vs OOD=CALVIN **3-dim pos** = target 불일치. EgoDex in-domain을 **pos(translational) dim만**으로 재계산(기존 probe 데이터/코드 재분석, 신규 학습 0). 판정: comp p_t_m in-domain-pos가 **여전히 낮으면** → M이 pos-motion엔 원래 약함=genuine 쪽 / **확 오르면** → 0.099는 18-dim이 깎은 아티팩트=slope 부풀림. **−0.247의 운명이 여기서 갈림.**
+- [ ] **② [공짜] LIBERO slope-diff**: CALVIN 외 LIBERO에서도 slope-diff 계산(데이터 이미 있음: comp p_t_m 0.814 / vmae 0.879) → 두 도메인 replication. 둘 다 −방향이면 single-domain 우연 아님.
+- [ ] **③ [배선] controlled-shift corrupt-in-place** (진짜 해결책): 공통 셋(CALVIN)에 통제 섭동 → **각 모델이 자기 clean baseline에서 얼마나 떨어지나(ΔR²=clean−perturbed)**. 같은 셋·같은 target·상대 낙폭이라 **dim·baseline·도메인 confound 원천 회피**. 두 종류: **semantic-ish**(texture/배경/distractor 랜덤화, ours robust 예상) + **photometric**(프레임 간 비대칭, ours fragile 예상). 교차=selectivity 증거.
+- [ ] ④ (유보) attentive slope-diff — VideoMAE in-domain EgoDex attentive 545GB OOM(disk-backed 캐시 필요). 우선순위 낮음(③이 더 깨끗).
+
+**게이트**: ①+② 통과(−0.247 살아남음) → ③으로 확정 → **STEP 1**(no-M·SiamMAE-analog로 M 인과·ΔL-where 격리). ①②서 죽으면 → slope(3a) 접고 **3b(efficiency 절대값, size/data reframe) 단독 + Claim 2**로 후퇴.
+
+**STEP 1이 보이려는 것 (참고)**: STEP 0=상관("M 경유 신호"), STEP 1=인과. no-M(M 빼면 robustness 사라지나) + SiamMAE-analog(ΔL-where가 RGB-where 이기나). 단 confound된 STEP 0 위에 올리면 그대로 상속 → 위 de-confound가 선결.
 
 ---
 
