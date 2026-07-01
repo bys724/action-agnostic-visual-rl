@@ -29,11 +29,39 @@
 
 ## 3. 실행 순서 (비용 오름차순)
 
-- **STEP 0 — (거의 무료, 게이트 아님) baseline slope 사전계산**: `in-domain R² − OOD R²`를 **probing CSV가 이미 있는 인코더만** 집계 = **`VideoMAE-ours` + frozen baselines(`DINOv2`·`SigLIP`·`VC-1`)**. → 비교군의 도메인 취약성(dissociation headroom) 공짜 확인. ⚠️ **thesis(ours) slope는 여기서 안 나옴**: ours 계열(`MS-JEPA`(v15b)·`no-M`)은 probing 산출물 없음(`paper_artifacts/`에 BC rollout만), `v15`/`v11`(full Sobel)은 논문 제외 + motion routing no-op이라 ours 프록시 부적합(slope는 내부 sanity로만 선택). ⟹ thesis OOD slope는 STEP 1로 이동.
+- **STEP 0 — value 게이트 (거의 무료, ~1 GPU·h)**: **🔼 2026-07-01 정련으로 승격 → §3.1 참조.** CoMP-MAE-S가 학습 완료라 이제 ours를 STEP 1 전에 probe 가능 → same-corpus slope(ours vs VideoMAE) + OOD-motion 절대값으로 **value 현상 유무 판정 → 규모 결정**. (옛 버전: ours probing 부재로 baseline 특성화만 = STEP 1 이후로 미뤘음. CoMP-MAE-S 완료로 무효.)
 - **STEP 1 — subset·small·matched 3런 → probe → OOD slope(ours 포함)** (~100 GPU·h each): `MCP-MAE`-S + `SiamMAE-analog`-S + `no-M`(Image MAE)-S, **part1 동일·epoch 동일·size 동일**. 학습+probing까지 = thesis slope **첫 진짜 신호**. **게이트 = `MCP-MAE`-S 첫 run health(collapse 없이 patch+CLS R² 정상) + slope가 `VideoMAE` 대비 우위** → 아니면 매트릭스 확장 보류.
 - **STEP 2 — 핵심 비교만 2-scale**: `MCP-MAE`-S vs `SiamMAE-analog`-S 를 part1의 10%/30%에서 재실행 → rank 안정성(scale-interaction 방어).
 - **STEP 3 — (보류·조건부) 승자만 ViT-B full 1회**: 2-size 확인 + dissociation de-confound(full `VideoMAE`-B vs ours-B)를 **한 런으로 동시 충족**. 절대 경쟁력 주장 재추구 시에만.
 - **KEEP**: `VideoMAE-ours`-B(full) + frozen baselines(VC-1/DINOv2/SigLIP) = 그대로. cross-size external reference로 표기.
+
+---
+
+## 3.1 🔼 STEP 0 정련 + value-first (2026-07-01)
+
+> Vault 대화로 재정렬. **STEP 0가 "baseline 특성화"에서 "value 게이트"로 승격** — CoMP-MAE-S가 학습 완료(2026-06-30)라 이제 ours를 STEP 1 전에 probe 가능. 큰 학습(≈3M원+) 지르기 전 value 현상 유무를 공짜로 판정. 출처: Vault `2. Experiments.md §4` / `History.md`(2026-07-01).
+
+**value 축 (무엇을 입증하나 — SOTA 아님)**:
+- **(A) same-corpus readout↔control dissociation**: 동일 EgoDex에서 VideoMAE는 probing 최강인데 control 파탄 → "probing≠control". 현 데이터 방어 가능.
+- **(B) OOD-motion 효율**: 좁은 라벨없는 데이터가 도메인 shift·motion 축서 internet-scale과 경합. 미입증 → STEP 0에서 확인.
+- mechanism(analog·photometric)은 value 확인 **후** 착수(보조).
+
+**클러스터에서 할 일 (STEP 0, 학습 0, ~1 GPU·h)**:
+1. **CoMP-MAE-S를 CALVIN(ABC→D)·LIBERO motion-dim probe** — `probe_action.py`로 per-domain R² CSV 산출(BC rollout만 있고 probing 없던 gap 메움). in-domain=EgoDex 이미 있음(P_t⊕P_tk +0.236 / M +0.239). ⚠️ CALVIN 정규 소스 = `<enc>_training_*_gapsweep` gap30(§5 parity 가드), `_validation_*_seg`는 in-dist라 OOD 아님.
+2. **same-corpus slope 집계** = `aggregate_dissociation_slope.py`에 CoMP-MAE-S append → **가족 내부만**(CoMP-S · VideoMAE · no-M). 신호 = `slope_ours − slope_VideoMAE`(음수=factorization 이득). 현 baseline VideoMAE slope −0.083.
+3. **OOD-motion 절대값** = internet-scale 포함 전원, motion-dim 분해(gripper 섞지 말 것). "CoMP-S가 DINOv2와 경합?"(옛 CALVIN: +0.263 vs +0.223).
+
+**게이트 판정 → 규모 결정**: (A)/(B) 신호 보이면 STEP 1(작은+matched)만. 안 보이면 (A) 단독 성립·scope·venue 재고(큰 학습 전).
+
+**변경점 (옛 STEP 0 대비)**:
+- ✅ **DROID 폐기**: action-probing R²≈0 floor = 변별 0 → OOD 축 제외(uninformative 명시). OOD = **CALVIN per-dim + LIBERO motion-dim(semantic-shift) + photometric corrupt-in-place**.
+- ✅ **slope는 same-corpus 가족만**(전부 EgoDex home). internet-scale은 home 도메인 달라 slope 무의미(평평=robust 아니라 "떨어질 home 없음") → **난이도 calibration + OOD 절대참조로만**. (doc §5 "frozen slope 불가"와 정합.)
+- ⚠️ **ours 축 = CoMP-MAE(v16)**, 옛 "MCP-MAE" 표기 대체(comp_mae_plan.md 정본). STEP 1 arm = CoMP-MAE-S.
+- ⚠️ **SiamMAE-analog 재정의 필요 — dev 세션 확인 요망**: 이번 대화 결정 = **faithful rig-matched**(ΔL→**RGB helper** 교체 + **helper-recon 생략**, rig 고정). 현 구현 `--v15-routing-source p`(Q/K만 P로, V=P, M encoder frozen)는 *single-variable routing swap*이라 **다른 대조군**. 역할 분담: faithful analog=외부 헤드라인 대조 / routing-swap·no-M·V-source=내부 mechanism attribution. **어느 것을 STEP 1 외부 대조로 쓸지 dev 세션에서 확정**(구현 변경은 dev 세션).
+
+**photometric-shift 축 (신규, ②)**:
+- clean-probing 셋(EgoDex/LIBERO)에 **corrupt-in-place**. 🔴 **가드**: 전역 상수 밝기 offset은 ΔL서 상쇄 + per-image z-score 정규화로 지워짐 → **프레임 간 비대칭·공간 국소**(이동 그림자·국소 노출) 섭동이라야 ΔL 취약성 드러남. 취약성은 **M-stream readout 별도 측정**(P appearance가 가림).
+- **예측 = ΔL 약세**(취약함이 곧 selectivity 증거, pre-registered). semantic-shift robust + photometric fragile **교차**가 mechanism 증거. → 우선순위 **낮음**(value 확인 후).
 
 ---
 
