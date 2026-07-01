@@ -85,6 +85,30 @@
 
 ---
 
+## 3.3 평가 구현 TODO — 3-claim spine (2026-07-01)
+
+> 논문 = 주장 3개(① Factorization ② 표현 품질≠벤치 dissociation ③ 도메인-robust 효율). 각 방법을 in-domain·OOD 두 모드로. Vault `README §논문 spine` / `2. Experiments §4`. **핵심: readout-free(②correspondence·k-NN) + cross-leakage(③)가 probing artifact·BC 교란 두 약점의 면역 축.**
+
+**즉시 (STEP 0, 학습 0, 클러스터) — 주장 2·3 첫 신호**:
+- [ ] **action probing OOD** — CoMP-MAE-S를 CALVIN(gap30)·LIBERO motion-dim probe(`probe_action.py`), **per-dim 분해**(선택성). 기존 코드, config만.
+- [ ] **same-corpus slope 집계** — `aggregate_dissociation_slope.py`에 CoMP-MAE-S append(§3.1).
+
+**신규 배선 (claim별, 우선순위 순)**:
+- [ ] **correspondence label-propagation** (주장 2·3, 면역 축) — 🔴 신규. frozen patch feature nearest-neighbor affinity로 첫 프레임 라벨 전파. DAVIS-2017(J&F)·JHMDB(PCK). 프로토콜 = Jabri 2020(Contrastive Random Walk) 표준. **학습된 probe 없음 = concat-probe artifact 면역.** EgoDex→DAVIS = OOD 전이 겸함. baseline(DINOv2·SigLIP·VideoMAE) 동일 프로토콜.
+- [ ] **cross-leakage disentanglement** (주장 1, factorization *측정*) — 🟡 신규(대부분 probe config). predictor 계열: M-stream을 motion(pose Δ)으로 probe(↑ 기대)·**object-identity로 probe(chance 기대)**, P-stream은 역. identity 라벨 소스 필요(EgoDex object/hand 라벨 또는 proxy). = comp_mae §6 dissociation probe에 cross-leakage 정량 부여.
+- [ ] **k-NN retrieval** (주장 2, 면역 축) — 🟢 신규·저비용. frozen feature 최근접. readout-free 보강.
+- [ ] **manipulation-centricity** (주장 2, 로봇 지표) — 🟡 신규. 2410.22325 지표 구현(rollout 없이 조작-관련성 정량).
+- [ ] **action probing 변형** (주장 2) — 🟢 기존 확장: velocity/acceleration(2-frame primitive 시험), gap-sweep(sampling-time), cross-embodiment.
+
+**기존·재배치**:
+- [x] action probing in-domain (EgoDex) — 완료.
+- [ ] **BC = dissociation foil**(강등, 로컬 rollout) — 주 지표 아님. **M→0 ablation 추가**(rollout서 M feature 상수 치환 → SR이 P-only 회복하면 copycat 확정, comp_mae §6.1). P-only full-suite aug-on = credibility floor 확인용(≈78 예상).
+- [ ] **equivariance probe** (주장 1 보조, Tier 3) — custom(입력 known transform → 표현 변화). off-the-shelf 지표 없음, 후순위.
+
+**주의**: 신규 배선은 전부 dev 세션(runnable code). 본 문서는 계획만. baseline 공정성 = 모든 인코더 동일 프로토콜·frozen.
+
+---
+
 ## 4. Critical guards (구현 시 실수 방지)
 
 - 🔴 **`MCP-MAE` ~207M FROZEN param 삭제**: §9 경로가 teacher EMA + interpreter(미사용)를 들고 있어 메모리 낭비 → **본 학습 전 `del`** (sanity서 확인됨). 안 지우면 "small"이 메모리상 small 아님.
