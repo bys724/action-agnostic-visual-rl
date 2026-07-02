@@ -79,12 +79,13 @@
 **🔴 confound**: comp p_t_m의 robust해 보이는 slope(−0.247)는 **in-domain이 0.099로 바닥 출발**한 탓일 수 있음. p_t_m(−0.247) vs p_t_p_tk(+0.038) 대조는 content(motion/appearance)뿐 아니라 **in-domain baseline(0.099 vs 0.236)도 다름** → "M robust"와 "M baseline 낮음"이 안 갈림. diff-in-diff는 target-space offset만 상쇄, baseline 효과는 못 잡음.
 
 **작업 (비용 오름차순 — 클러스터)**:
-- [ ] **① [공짜] dim-matched in-domain 재계산**: 현재 in=EgoDex **18-dim** vs OOD=CALVIN **3-dim pos** = target 불일치. EgoDex in-domain을 **pos(translational) dim만**으로 재계산(기존 probe 데이터/코드 재분석, 신규 학습 0). 판정: comp p_t_m in-domain-pos가 **여전히 낮으면** → M이 pos-motion엔 원래 약함=genuine 쪽 / **확 오르면** → 0.099는 18-dim이 깎은 아티팩트=slope 부풀림. **−0.247의 운명이 여기서 갈림.**
-- [ ] **② [공짜] LIBERO slope-diff**: CALVIN 외 LIBERO에서도 slope-diff 계산(데이터 이미 있음: comp p_t_m 0.814 / vmae 0.879) → 두 도메인 replication. 둘 다 −방향이면 single-domain 우연 아님.
-- [ ] **③ [배선] controlled-shift corrupt-in-place** (진짜 해결책): 공통 셋(CALVIN)에 통제 섭동 → **각 모델이 자기 clean baseline에서 얼마나 떨어지나(ΔR²=clean−perturbed)**. 같은 셋·같은 target·상대 낙폭이라 **dim·baseline·도메인 confound 원천 회피**. 두 종류: **semantic-ish**(texture/배경/distractor 랜덤화, ours robust 예상) + **photometric**(프레임 간 비대칭, ours fragile 예상). 교차=selectivity 증거.
-- [ ] ④ (유보) attentive slope-diff — VideoMAE in-domain EgoDex attentive 545GB OOM(disk-backed 캐시 필요). 우선순위 낮음(③이 더 깨끗).
+- [x] **① [공짜] dim-matched in-domain 재계산**: EgoDex in-domain을 **rightHand(3D, end-effector 대응)**로 재계산 → 18d 집계와 거의 동일(손 joint 균일 이동): comp p_t_m 0.095≈0.099, p_t_p_tk 0.244≈0.236, vmae 0.466≈0.470. slope-diff **p_t_m −0.248≈−0.247** 유지 → **18d 아티팩트 아님**. rightHand가 여전히 낮음 = 저 baseline은 genuine.
+- [x] **② [공짜] LIBERO slope-diff**: p_t_m CALVIN −0.247 / LIBERO −0.327 (둘 다 −, replication) **BUT** p_t_p_tk CALVIN +0.05(null) / LIBERO −0.11(불일치) → **confound 노출**. LIBERO는 in-suite(OOD saturate 0.74~0.85)라 baseline 낮은 모델이 기계적으로 −slope.
+- [x] **🔴 결정타 (로그 스캔, 2026-07-02)**: **EgoDex in-domain은 300개 probe 전부 ~0.47 천장**(최고 VideoMAE 0.470). in-domain(어려움 0.47) vs OOD(쉬움 0.85)는 **target 난이도 비대칭** → 전 인코더가 OOD서 상승. slope는 이 난이도차가 지배 = **regression-to-ceiling, motion robustness 아님**. → **3a(slope) 폐기 확정**.
+- [ ] **③ [배선] controlled-shift corrupt-in-place** (유일한 클린 mechanism 테스트): 공통 셋에 통제 섭동 → **각 모델 자기 clean baseline 대비 ΔR²**. dim·baseline·도메인 confound 원천 회피. semantic(ours robust 예상) + photometric(프레임 간 비대칭, ours fragile 예상) **교차 = selectivity**. ⚠️ 약한 feature는 잃을 게 적어 trivially robust — baseline R² 충분한 셋(CALVIN comp p_t_m 0.41) + **교차**로 판정.
+- [ ] ④ (유보) attentive slope-diff — 폐기(3a와 함께). VideoMAE in-domain EgoDex attentive 545GB OOM.
 
-**게이트**: ①+② 통과(−0.247 살아남음) → ③으로 확정 → **STEP 1**(no-M·SiamMAE-analog로 M 인과·ΔL-where 격리). ①②서 죽으면 → slope(3a) 접고 **3b(efficiency 절대값, size/data reframe) 단독 + Claim 2**로 후퇴.
+**결론 (STEP 0.5 종료)**: **3a(slope/dissociation) 폐기** — dataset 난이도 천장 confound. **살아남은 주장 = 3b(efficiency 절대값)**: CoMP-MAE-S(~32M P+M, 좁은 unlabeled home-video)가 internet-scale ViT-B(DINOv2/SigLIP) 이기고 same-data VideoMAE(86M)에 근접. **검증된 표·방법론·provenance = [`paper_artifacts/tables/step0_ood_efficiency/`](../paper_artifacts/tables/step0_ood_efficiency/README.md)** (parity: CALVIN n_eval=32183 / LIBERO_spatial 9690, 전 인코더 일치). **다음 = ③ mechanism(selectivity)** → 그 후 STEP 1(no-M·SiamMAE-analog 인과).
 
 **STEP 1이 보이려는 것 (참고)**: STEP 0=상관("M 경유 신호"), STEP 1=인과. no-M(M 빼면 robustness 사라지나) + SiamMAE-analog(ΔL-where가 RGB-where 이기나). 단 confound된 STEP 0 위에 올리면 그대로 상속 → 위 de-confound가 선결.
 

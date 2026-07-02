@@ -1,0 +1,10 @@
+encoder,params_M,pretrain_data,calvin_pos_r2_gap30_xfold,libero_spatial_pos_r2_gap20
+CoMP-MAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",0.4054,0.8090
+CoMP-MAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",0.4868,0.8140
+CoMP-MAE-S  P_t⊕P_tk (mean),21.6,"EgoDex part1 subset (~46k, unlabeled)",0.2571,0.7409
+CoMP-MAE-S  P_t⊕P_tk (attn),21.6,"EgoDex part1 subset (~46k, unlabeled)",0.1747,0.7656
+"VideoMAE-ours (mean, vla)",86.0,EgoDex full (~314k),0.5290,0.8532
+"VideoMAE-ours (attn, vla)",86.0,EgoDex full (~314k),0.6104,0.8786
+VC-1 (frozen),86.0,Ego4D+ (internet),0.5356,0.8913
+DINOv2 (frozen),86.0,LVD-142M (internet),0.2231,0.7660
+SigLIP (frozen),86.0,WebLI (internet),-0.3143,0.7869

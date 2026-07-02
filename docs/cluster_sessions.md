@@ -117,7 +117,12 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 - **B(OOD-motion 효율)**: comp p_t_m ≈ VideoMAE 양 벤치(LIBERO attn 0.814 vs 0.879 / CALVIN attn 0.486 vs 0.529), comp ViT-S 40M < ViT-B 86M → 효율 신호 有.
 - **attentive crossover**: p_t_m서 attn>mean(CALVIN +0.081) = M 공간국소(mean under-read) 확증 / p_t_p_tk는 attn<mean = appearance holistic. 사용자 attentive 직관 검증.
 - ⚠️ caveat(추정): comp p_t_m in-domain 낮음(0.099)→OOD서 회복 = regression-to-mean 일부 가능. slope-diff가 부분 통제하나 완전치 않음. attentive slope-diff(pending)로 재확인.
-- **잠정 판정**: value 신호(A·B) 존재, 단 **M 경유 only**(appearance null) → **STEP 1(small matched 3런) 진행 지지**.
+- **잠정 판정(2026-07-01, 후속 철회)**: value 신호(A·B) 존재로 STEP 1 지지 판단했으나 ↓서 정정.
+
+**🔴 최종 판정 (STEP 0.5 de-confound, 2026-07-02)**:
+- **slope(3a) 폐기**: ① dim-match(rightHand≈18d, −0.248 유지) + ② LIBERO(p_t_p_tk null 깨짐) + **로그 스캔 결정타**(EgoDex in-domain 300 probe 전부 ~0.47 천장) → slope는 in(0.47 어려움)/OOD(0.85 쉬움) **난이도 비대칭이 지배 = regression-to-ceiling**, motion robustness 아님. diff-in-diff도 이 스케일링 못 잡음.
+- **살아남은 주장 = 3b efficiency(절대값)**: 검증·parity 통과 표 → [`paper_artifacts/tables/step0_ood_efficiency/`](../paper_artifacts/tables/step0_ood_efficiency/README.md). comp `P_t⊕M`(~32M P+M) > DINOv2/SigLIP(86M), VC-1/VideoMAE(86M)에 근접. ⚠️ **LIBERO baseline은 spatial-only여야**(3-suite 평균 금지 — 초안 오류 정정: dinov2 0.766≠0.644, siglip 0.787≠0.694).
+- **다음 = ③ controlled-shift corrupt-in-place**(selectivity mechanism, 유일한 클린 테스트) → 그 후 STEP 1.
 
 ### 2026-06-30 CoMP-MAE-S STEP 1 gate — EgoDex action probing (조합 sweep)
 
