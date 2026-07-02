@@ -111,9 +111,11 @@
 
 ---
 
-## 3.3 평가 구현 TODO — 3-claim spine (2026-07-01)
+## 3.3 평가 구현 TODO — 3-claim spine (2026-07-01, 무게중심 갱신 2026-07-02)
 
 > 논문 = 주장 3개(① Factorization ② 표현 품질≠벤치 dissociation ③ 도메인-robust 효율). 각 방법을 in-domain·OOD 두 모드로. Vault `README §논문 spine` / `2. Experiments §4`. **핵심: readout-free(②correspondence·k-NN) + cross-leakage(③)가 probing artifact·BC 교란 두 약점의 면역 축.**
+>
+> **🔼 2026-07-02 무게중심 재확정**: 3a(slope) 폐기 후 논문 핵심 = **주장 1(factorization)**, 2a(dissociation-방법론)·3b(efficiency)는 그 아래 증거. 다음 최우선 = **factorization 이중분리(2×2 crossover) 게이트** — 아래 cross-leakage TODO를 저비용 probe→readout-free 순으로 operationalize. **정본 계획 = [`factorization_crossover_plan.md`](factorization_crossover_plan.md).**
 
 **즉시 (STEP 0, 학습 0, 클러스터) — 주장 2·3 첫 신호**:
 - [ ] **action probing OOD** — CoMP-MAE-S를 CALVIN(gap30)·LIBERO motion-dim probe(`probe_action.py`), **per-dim 분해**(선택성). 기존 코드, config만.
@@ -121,7 +123,7 @@
 
 **신규 배선 (claim별, 우선순위 순)**:
 - [ ] **correspondence label-propagation** (주장 2·3, 면역 축) — 🔴 신규. frozen patch feature nearest-neighbor affinity로 첫 프레임 라벨 전파. DAVIS-2017(J&F)·JHMDB(PCK). 프로토콜 = Jabri 2020(Contrastive Random Walk) 표준. **학습된 probe 없음 = concat-probe artifact 면역.** EgoDex→DAVIS = OOD 전이 겸함. baseline(DINOv2·SigLIP·VideoMAE) 동일 프로토콜.
-- [ ] **cross-leakage disentanglement** (주장 1, factorization *측정*) — 🟡 신규(대부분 probe config). predictor 계열: M-stream을 motion(pose Δ)으로 probe(↑ 기대)·**object-identity로 probe(chance 기대)**, P-stream은 역. identity 라벨 소스 필요(EgoDex object/hand 라벨 또는 proxy). = comp_mae §6 dissociation probe에 cross-leakage 정량 부여.
+- [ ] **cross-leakage disentanglement** (주장 1, factorization *측정*) — 🔴 **최우선(무게중심)**, 정본 = [`factorization_crossover_plan.md`](factorization_crossover_plan.md). 2×2 crossover(M→motion↑/identity chance, P는 역). **motion 열 이미 有**(P_t −0.009 / M +0.239) → **블로커=identity 열**. Phase A 저비용 probe(LIBERO/CALVIN object·task 분류, 학습 0)로 crossover 신호 먼저 → 서면 Phase B readout-free(k-NN). 🔴 진짜 interaction(대각선)이어야 3a 재confound 회피. = comp_mae §6 dissociation probe에 cross-leakage 정량 부여.
 - [ ] **k-NN retrieval** (주장 2, 면역 축) — 🟢 신규·저비용. frozen feature 최근접. readout-free 보강.
 - [ ] **manipulation-centricity** (주장 2, 로봇 지표) — 🟡 신규. 2410.22325 지표 구현(rollout 없이 조작-관련성 정량).
 - [ ] **action probing 변형** (주장 2) — 🟢 기존 확장: velocity/acceleration(2-frame primitive 시험), gap-sweep(sampling-time), cross-embodiment.
