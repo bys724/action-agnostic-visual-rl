@@ -214,18 +214,26 @@ def encode_pairs_parvo(
         c = frames_curr[s:s + batch].to(device, non_blocking=True)
         p_t = model.preprocessing.compute_p_channel(p)
         tok_a = model._encode_p_unmasked(p_t)[:, 1:]                 # (n, n_patch, D) = P(t)
-        if mode == "p_t_p_tk":
-            p_tk = model.preprocessing.compute_p_channel(c)
-            tok_b = model._encode_p_unmasked(p_tk)[:, 1:]
-        elif mode == "p_t_m":
+        # 순수 stream (factorization crossover) — 단일 stream 반환
+        if mode == "p_t_only":
+            toks = [tok_a]
+        elif mode == "m_only":
             m_chan = model.preprocessing.compute_m_channel(p, c)
-            tok_b = model._encode_m_unmasked(m_chan)[:, 1:]
+            toks = [model._encode_m_unmasked(m_chan)[:, 1:]]         # (n, n_patch, D) = M(t,tk)
         else:
-            raise ValueError(f"parvo mode: {mode}")
+            if mode == "p_t_p_tk":
+                p_tk = model.preprocessing.compute_p_channel(c)
+                tok_b = model._encode_p_unmasked(p_tk)[:, 1:]
+            elif mode == "p_t_m":
+                m_chan = model.preprocessing.compute_m_channel(p, c)
+                tok_b = model._encode_m_unmasked(m_chan)[:, 1:]
+            else:
+                raise ValueError(f"parvo mode: {mode}")
+            toks = [tok_a, tok_b]
         if readout == "mean":
-            tok = torch.cat([tok_a.mean(dim=1), tok_b.mean(dim=1)], dim=-1)  # (n, 2D)
+            tok = torch.cat([t.mean(dim=1) for t in toks], dim=-1)   # (n, len(toks)*D)
         elif readout == "attentive":
-            tok = torch.cat([tok_a, tok_b], dim=1).half()                    # (n, 2*n_patch, D)
+            tok = torch.cat(toks, dim=1).half()                      # (n, len(toks)*n_patch, D)
         else:
             raise ValueError(f"readout: {readout}")
         out.append(tok.cpu())
@@ -280,6 +288,29 @@ def preprocess_frames(frames_uint8: np.ndarray, img_size: int) -> torch.Tensor:
     return x
 
 
+def rotate_pair(prev: torch.Tensor, curr: torch.Tensor, device, seed_rng,
+                max_shift: float = 0.2) -> tuple:
+    """factorization de-confound (crossover): pair마다 랜덤 회전+평행이동을 prev·curr에 **동일하게** 적용.
+    위치↔identity 상관을 깸 — appearance는 보존(P 유지 기대), 절대 위치/reach 방향은 무작위화
+    (M identity → chance 기대). 🔴 pair 내 같은 변환 필수(다르면 motion ΔL 오염).
+    회전(각도) + 평행이동(반경) 둘 다 무작위화 — 중심회전만으론 radial distance 보존돼 불충분(관측).
+    max_shift: normalized 좌표(±1) 기준 평행이동 폭. 너무 크면 물체가 프레임 밖으로(P도 붕괴) → 0.2."""
+    n = prev.shape[0]
+    ang = torch.from_numpy(seed_rng.uniform(0, 2 * np.pi, size=n).astype(np.float32)).to(device)
+    tx = torch.from_numpy(seed_rng.uniform(-max_shift, max_shift, size=n).astype(np.float32)).to(device)
+    ty = torch.from_numpy(seed_rng.uniform(-max_shift, max_shift, size=n).astype(np.float32)).to(device)
+    cos, sin = torch.cos(ang), torch.sin(ang)
+    theta = torch.zeros(n, 2, 3, device=device)
+    theta[:, 0, 0] = cos; theta[:, 0, 1] = -sin; theta[:, 0, 2] = tx
+    theta[:, 1, 0] = sin; theta[:, 1, 1] = cos;  theta[:, 1, 2] = ty
+    out = []
+    for x in (prev, curr):
+        xd = x.to(device)
+        grid = F.affine_grid(theta, xd.shape, align_corners=False)
+        out.append(F.grid_sample(xd, grid, align_corners=False, padding_mode="zeros").cpu())
+    return out[0], out[1]
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Linear probe
 # ─────────────────────────────────────────────────────────────────────────
@@ -323,31 +354,37 @@ def train_probe(
     epochs: int = 20, batch_size: int = 256, lr: float = 1e-3,
     device: str = "cuda",
     readout: str = "mean", n_streams: int = 1, weight_decay: float = 0.0,
+    task: str = "regression", out_dim: int = ACTION_DIM,
 ):
     """readout="mean": LinearProbe([N, D]) / readout="attentive": AttentivePoolProbe([N, S*n_patch, D]).
 
+    task="regression": MSE loss, best = max r2_aggregate (기존).
+    task="classification": CE loss, out_dim=n_classes, best = max accuracy (factorization identity 축).
+    probe capacity(linear/attentive)는 두 task 동일 — structure vs capacity 혼동 차단.
     attentive 캐시는 fp16 3D 토큰 → 학습·eval 시 GPU에서 float 복원 + eval을 배치 처리(OOM 방지).
-    weight_decay: attentive P-appearance overfit 억제용 (AdamW). default 0 = 기존 동작.
     """
+    is_cls = task == "classification"
     if readout == "attentive":
         n_patch = eval_emb.shape[1] // n_streams
         base_dim = eval_emb.shape[2]
-        probe = AttentivePoolProbe(base_dim, n_streams=n_streams, n_patch=n_patch).to(device)
+        probe = AttentivePoolProbe(base_dim, n_streams=n_streams, n_patch=n_patch,
+                                   action_dim=out_dim).to(device)
     else:
-        probe = LinearProbe(train_emb.shape[1]).to(device)
+        probe = LinearProbe(train_emb.shape[1], action_dim=out_dim).to(device)
     optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)
     train_loader = DataLoader(
         TensorDataset(train_emb, train_tgt),
         batch_size=batch_size, shuffle=True,
     )
-    best = {"r2": -float("inf"), "epoch": 0}
+    key = "accuracy" if is_cls else "r2"
+    best = {key: -float("inf"), "epoch": 0}
     for ep in range(epochs):
         probe.train()
         for x, y in train_loader:
             x = x.to(device).float()  # fp16 캐시면 GPU에서 float 복원
             y = y.to(device)
             pred = probe(x)
-            loss = F.mse_loss(pred, y)
+            loss = F.cross_entropy(pred, y) if is_cls else F.mse_loss(pred, y)
             optimizer.zero_grad(); loss.backward(); optimizer.step()
         probe.eval()
         preds = []
@@ -355,10 +392,16 @@ def train_probe(
             for i in range(0, len(eval_emb), batch_size):
                 chunk = eval_emb[i:i + batch_size].to(device).float()
                 preds.append(probe(chunk).cpu())
-        pred = torch.cat(preds, dim=0).numpy()
-        m = compute_metrics(pred, eval_tgt.numpy())
-        if m["r2_aggregate"] > best["r2"]:
-            best = {"r2": m["r2_aggregate"], "epoch": ep + 1, "metrics": m}
+        pred = torch.cat(preds, dim=0)
+        if is_cls:
+            acc = float((pred.argmax(dim=1) == eval_tgt).float().mean())
+            m = {"accuracy": acc, "n_classes": out_dim}
+            if acc > best["accuracy"]:
+                best = {"accuracy": acc, "epoch": ep + 1, "metrics": m}
+        else:
+            m = compute_metrics(pred.numpy(), eval_tgt.numpy())
+            if m["r2_aggregate"] > best["r2"]:
+                best = {"r2": m["r2_aggregate"], "epoch": ep + 1, "metrics": m}
     return best
 
 
@@ -420,12 +463,20 @@ def main():
     # STEP 0 게이트 (restart_plan §3.1): CoMP-MAE / VideoMAE readout 축
     parser.add_argument("--readout", default="mean", choices=["mean", "attentive"],
                         help="mean = patch_mean concat (LinearProbe) / attentive = stream별 query pool (AttentivePoolProbe)")
-    parser.add_argument("--parvo-mode", default="p_t_p_tk", choices=["p_t_p_tk", "p_t_m"],
-                        help="parvo 2-stream: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion)")
+    parser.add_argument("--parvo-mode", default="p_t_p_tk",
+                        choices=["p_t_p_tk", "p_t_m", "m_only", "p_t_only"],
+                        help="parvo readout: p_t_p_tk(appearance)/p_t_m(P⊕M) 조합 | "
+                             "m_only(M 단독)/p_t_only(P(t) 단독) = factorization crossover용 순수 stream")
     parser.add_argument("--videomae-encoder", default="adapter", choices=["adapter", "vla"],
                         help="adapter = legacy BC-T adapter(mean 전용) / vla = VideoMAEEncoderForVLA(mean+attentive self-consistent)")
     parser.add_argument("--probe-weight-decay", type=float, default=0.0,
                         help="AdamW weight decay (attentive P-appearance overfit 억제). default 0")
+    parser.add_argument("--target", default="action", choices=["action", "identity"],
+                        help="action = pose-Δ 회귀(R²) | identity = task-id 분류(top-1 acc, chance=1/n_task). "
+                             "factorization crossover: M→motion↑/identity chance, P→motion 0/identity↑")
+    parser.add_argument("--rotate-aug", action="store_true",
+                        help="de-confound: pair마다 랜덤 회전(동일각) → 위치↔identity 상관 제거. "
+                             "예측: object에서 P identity 유지·M→chance / spatial에선 둘 다 붕괴(위치만 단서).")
     args = parser.parse_args()
 
     if args.readout == "attentive" and args.view == "both":
@@ -481,7 +532,7 @@ def main():
     elif args.encoder == "parvo":
         model = build_parvo_encoder(args.checkpoint, device)
         img_size = 224
-        n_streams = 2
+        n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
 
         def encode_fn(prev, curr):
             return encode_pairs_parvo(model, prev, curr, device,
@@ -528,6 +579,20 @@ def main():
     eval_demos = [all_demo_keys[i] for i in perm[n_train:]]
     print(f"  demos: train={len(train_demos)} / eval={len(eval_demos)}")
 
+    # ── Target 모드 (action 회귀 / identity 분류) ──────────────────────────
+    is_cls = args.target == "identity"
+    n_classes = len(task_ids)
+    if args.rotate_aug:
+        if args.view == "both":
+            raise ValueError("--rotate-aug은 단일 view만 지원 (both = 뷰별 회전 처리 미배선)")
+        rot_rng = np.random.default_rng(args.seed + 1)  # demo-split rng와 분리
+        print("  rotate-aug ON: pair 동일각 랜덤 회전 (위치↔identity de-confound)")
+    if is_cls:
+        # tid → 0..n_classes-1 dense 인덱스 (task_ids가 연속 아닐 수 있음)
+        tid2cls = {tid: i for i, tid in enumerate(task_ids)}
+        chance = 1.0 / n_classes
+        print(f"  target=identity: {n_classes}-way task-id 분류, chance={chance:.4f}")
+
     # ── Per-gap loop ─────────────────────────────────────────────────────
     cell_summaries = []
     os.makedirs(args.output_dir, exist_ok=True)
@@ -551,10 +616,13 @@ def main():
                     T = frames.shape[0]
                 if T <= gap + 1:
                     continue
-                tgts = np.stack([
-                    libero_action_target(eef_pos, ee_ori, actions, t, gap)
-                    for t in range(T - gap)
-                ])
+                if is_cls:
+                    tgts = np.full(T - gap, tid2cls[tid], dtype=np.int64)  # identity: task-id label
+                else:
+                    tgts = np.stack([
+                        libero_action_target(eef_pos, ee_ori, actions, t, gap)
+                        for t in range(T - gap)
+                    ])
                 if args.view == "both":
                     prev_av = preprocess_frames(frames_av[:T - gap], img_size)
                     curr_av = preprocess_frames(frames_av[gap:], img_size)
@@ -567,6 +635,8 @@ def main():
                 else:
                     prev = preprocess_frames(frames[:T - gap], img_size)
                     curr = preprocess_frames(frames[gap:], img_size)
+                    if args.rotate_aug:
+                        prev, curr = rotate_pair(prev, curr, device, rot_rng)
                     emb = encode_fn(prev, curr)  # (T-gap, D), already on CPU
                     del frames, prev, curr
                 embed_chunks.append(emb)
@@ -596,13 +666,24 @@ def main():
             lr=args.probe_lr, device=str(device),
             readout=args.readout, n_streams=n_streams,
             weight_decay=args.probe_weight_decay,
+            task=("classification" if is_cls else "regression"),
+            out_dim=(n_classes if is_cls else ACTION_DIM),
         )
         m = best["metrics"]
         elapsed = time.time() - t0
 
-        print(f"  R² agg = {m['r2_aggregate']:+.4f}  per-dim = " +
-              " ".join(f"{r:+.3f}" for r in m["r2_per_dim"]) +
-              f"  cos = {m['cosine_sim']:+.3f}  best_ep={best['epoch']}  ({elapsed:.0f}s)")
+        if is_cls:
+            # majority-class baseline: train 최빈 클래스를 eval에 적용한 acc.
+            # class 불균형 시 uniform chance(1/K)보다 엄밀한 "무정보" 기준 (#2 review).
+            _tr, _ev = tgt_tr.numpy(), tgt_ev.numpy()
+            maj_class = int(np.bincount(_tr, minlength=n_classes).argmax())
+            majority_acc = float((_ev == maj_class).mean())
+            print(f"  acc = {m['accuracy']:.4f} (chance={chance:.4f} / majority={majority_acc:.4f}, "
+                  f"{n_classes}-way)  best_ep={best['epoch']}  ({elapsed:.0f}s)")
+        else:
+            print(f"  R² agg = {m['r2_aggregate']:+.4f}  per-dim = " +
+                  " ".join(f"{r:+.3f}" for r in m["r2_per_dim"]) +
+                  f"  cos = {m['cosine_sim']:+.3f}  best_ep={best['epoch']}  ({elapsed:.0f}s)")
 
         # Per-demo R² on eval set
         per_demo = []
@@ -621,51 +702,66 @@ def main():
 
         cell_dir = Path(args.output_dir) / f"gap{gap}"
         cell_dir.mkdir(parents=True, exist_ok=True)
-        with open(cell_dir / "summary.json", "w") as f:
-            json.dump({
-                "encoder": args.encoder,
-                "checkpoint": args.checkpoint,
-                "task_suite": args.task_suite,
-                "view": args.view,
-                "gap": gap,
-                "gap_seconds": gap / 20.0,
-                "readout": args.readout,
-                "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
-                "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
-                "n_train_demos": len(train_demos),
-                "n_eval_demos": len(eval_demos),
-                "n_train_pairs": int(len(tgt_tr)),
-                "n_eval_pairs": int(len(tgt_ev)),
-                "best_epoch": best["epoch"],
-                "r2_aggregate": m["r2_aggregate"],
-                "r2_per_dim": m["r2_per_dim"],
-                "mse": m["mse"],
-                "cosine_sim": m["cosine_sim"],
-                "elapsed_seconds": float(elapsed),
-            }, f, indent=2)
-        cell_summaries.append({
+        summary = {
+            "encoder": args.encoder,
+            "checkpoint": args.checkpoint,
+            "task_suite": args.task_suite,
+            "view": args.view,
             "gap": gap,
-            "r2_aggregate": m["r2_aggregate"],
-            "r2_per_dim": m["r2_per_dim"],
-        })
+            "gap_seconds": gap / 20.0,
+            "readout": args.readout,
+            "target": args.target,
+            "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
+            "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
+            "n_train_demos": len(train_demos),
+            "n_eval_demos": len(eval_demos),
+            "n_train_pairs": int(len(tgt_tr)),
+            "n_eval_pairs": int(len(tgt_ev)),
+            "best_epoch": best["epoch"],
+            "elapsed_seconds": float(elapsed),
+        }
+        if is_cls:
+            summary.update({"accuracy": m["accuracy"], "chance": chance,
+                            "majority_acc": majority_acc, "n_classes": n_classes})
+        else:
+            summary.update({"r2_aggregate": m["r2_aggregate"], "r2_per_dim": m["r2_per_dim"],
+                            "mse": m["mse"], "cosine_sim": m["cosine_sim"]})
+        with open(cell_dir / "summary.json", "w") as f:
+            json.dump(summary, f, indent=2)
+        cell_summaries.append({"gap": gap, **({"accuracy": m["accuracy"], "majority_acc": majority_acc}
+                                              if is_cls
+                                              else {"r2_aggregate": m["r2_aggregate"],
+                                                    "r2_per_dim": m["r2_per_dim"]})})
         del emb_tr, emb_ev, tgt_tr, tgt_ev
 
     # ── Aggregate CSV across gaps ────────────────────────────────────────
     csv_path = Path(args.output_dir) / "all_gaps.csv"
     with open(csv_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["gap", "r2_aggregate"] + [f"r2_dim{i}" for i in range(ACTION_DIM)])
-        w.writeheader()
-        for c in cell_summaries:
-            row = {"gap": c["gap"], "r2_aggregate": c["r2_aggregate"]}
-            for i, r in enumerate(c["r2_per_dim"]):
-                row[f"r2_dim{i}"] = r
-            w.writerow(row)
+        if is_cls:
+            w = csv.DictWriter(f, fieldnames=["gap", "accuracy", "majority_acc", "chance", "n_classes"])
+            w.writeheader()
+            for c in cell_summaries:
+                w.writerow({"gap": c["gap"], "accuracy": c["accuracy"],
+                            "majority_acc": c["majority_acc"], "chance": chance, "n_classes": n_classes})
+        else:
+            w = csv.DictWriter(f, fieldnames=["gap", "r2_aggregate"] + [f"r2_dim{i}" for i in range(ACTION_DIM)])
+            w.writeheader()
+            for c in cell_summaries:
+                row = {"gap": c["gap"], "r2_aggregate": c["r2_aggregate"]}
+                for i, r in enumerate(c["r2_per_dim"]):
+                    row[f"r2_dim{i}"] = r
+                w.writerow(row)
     print(f"\nAll gaps CSV: {csv_path}")
-    print(f"\n=== Final summary ===")
-    print(f"{'gap':>4}  {'r2_agg':>8}  per-dim r²")
-    for c in cell_summaries:
-        per = " ".join(f"{r:+.3f}" for r in c["r2_per_dim"])
-        print(f"{c['gap']:>4d}  {c['r2_aggregate']:>+8.4f}  {per}")
+    print(f"\n=== Final summary (target={args.target}) ===")
+    if is_cls:
+        print(f"{'gap':>4}  {'acc':>8}  (chance={chance:.4f})")
+        for c in cell_summaries:
+            print(f"{c['gap']:>4d}  {c['accuracy']:>8.4f}")
+    else:
+        print(f"{'gap':>4}  {'r2_agg':>8}  per-dim r²")
+        for c in cell_summaries:
+            per = " ".join(f"{r:+.3f}" for r in c["r2_per_dim"])
+            print(f"{c['gap']:>4d}  {c['r2_aggregate']:>+8.4f}  {per}")
 
 
 if __name__ == "__main__":

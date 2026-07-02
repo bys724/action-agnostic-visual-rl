@@ -1,0 +1,30 @@
+{
+  "encoder": "parvo",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt",
+  "task_suite": "libero_object",
+  "view": "agentview_rgb",
+  "gap": 20,
+  "gap_seconds": 1.0,
+  "readout": "attentive",
+  "target": "action",
+  "parvo_mode": "m_only",
+  "v11_mode": null,
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 50679,
+  "n_eval_pairs": 12710,
+  "best_epoch": 20,
+  "elapsed_seconds": 97.87435245513916,
+  "r2_aggregate": 0.7337577098414163,
+  "r2_per_dim": [
+    0.7037874421954056,
+    0.9211729244370068,
+    0.880569388716569,
+    0.1597718458002998,
+    0.521049873359946,
+    0.31138007488743735,
+    0.7368423710740637
+  ],
+  "mse": 0.03728405386209488,
+  "cosine_sim": 0.8437902331352234
+}

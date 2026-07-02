@@ -123,6 +123,31 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36300661/662 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_goal videomae-vla** — 661 mean / 662 attn | ✅ 10/16m. goal pos: mean **0.791** / attn **0.830** |
 | 36303903 | AIP 1×1 H100 (mem120G) | 01:30:00 | **LIBERO_object vmae attentive 재제출**(656 OOM 수정) | ✅ COMPLETED 19m43s. object attn pos **0.903**(mean 0.867). mem120G로 해결(CALVIN 985→602와 동일 패턴). |
 
+### 2026-07-02 Factorization crossover Phase A — identity probe (신규)
+
+**목적**: [factorization_crossover_plan.md](factorization_crossover_plan.md) 주장1 이중분리 2×2. probe_action_libero.py 확장(순수 stream `m_only`/`p_t_only` + `--target identity` task-id 분류, majority-baseline 병기). libero_object(10-obj, motion 매칭). **smoke·gate·code-review 후 제출.** ⚠️ identity는 GAPS=20 단일(review #1: p_t_only feature gap-무관).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36452844 | AIP 1×1 H100 | 00:20:00 | **smoke** (parvo m_only identity, obj 10-task×3demo) — 분류 파이프라인 end-to-end | ✅ 42s. 파이프라인 정상. acc=0.0=MAX_DEMOS=3 split 아티팩트(클래스 미커버), 코드버그 아님 |
+| 36466299 | AIP 1×1 H100 | 00:40:00 | **유효성 게이트** (dinov2 identity, 전 demo) — appearance 모델이 object 분류하나 | ✅ COMPLETED. **acc=1.0000**(chance 0.10, n_eval 12710) → 축 유효·파이프라인 확정. ⚠️1.0=too-easy(배경 spurious 가능) → majority-baseline로 방어 |
+| 36526242~245 | AIP 1×1 H100 ×4 | 00:40:00 | **CoMP-MAE-S crossover 2×2** (attentive, gap20): 242 m×action / 243 m×identity / 244 p_t×action / 245 p_t×identity | ✅ ~2m. **2×2**: M motion **0.835**/identity **0.526** ‖ P_t motion **0.547**/identity **0.999** (chance 0.10) |
+| 36526246~248 | AIP 1×1 H100 ×3 | 00:40:00 | **baseline identity sanity** (mean, gap20): 246 siglip / 247 vc1 / 248 vmae-vla | ✅ 3~5m. identity acc: siglip **1.000**/vc1 **0.9998**/vmae **1.000** (전부 appearance로 trivial) |
+
+| 36526571~573 | AIP 1×1 H100 ×3 | 00:40:00 | **spatial disambiguation** (identity=순수 위치, 같은 bowl): 571 comp m / 572 comp p_t / 573 dinov2 | ✅ ~2~5m. spatial identity acc: **M 0.846** / P_t 0.674 / DINOv2 0.980 (chance 0.10) |
+
+**🟢 disambiguation 판정 (2026-07-02)**: spatial(전 클래스 동일 물체→appearance 차이 0, 위치만 단서)에서 **M=0.846** → **M은 위치/reach를 강하게 인코딩**. ⟹ object의 M-identity 0.526은 **appearance 누수 아닌 위치 누수** → "M은 appearance 버린다" **반증 안 됨**(factorization 생존). 단 clean 양성 증명은 여전히 없음(appearance⊥위치 arena 필요: object-centric crop 등). EgoDex P_t motion −0.009(clean)는 P-side 유효.
+
+| 36526817~820 | AIP 1×1 H100 ×4 | 00:40:00 | **rotation de-confound** (pair 동일각 랜덤회전, identity): 817 obj m / 818 obj p_t / 819 sp m / 820 sp p_t | ✅ ~2m. identity acc: obj **M 0.347·P_t 0.913** / sp **M 0.713·P_t 0.545** (no-rot 대비 obj M −34%·P_t −9%) |
+
+**🟡 rotation de-confound 판정 (2026-07-02)**: ❌ 방법 부분실패 — spatial이 chance 안 됨(0.71/0.55): **중심회전은 radial distance 보존** → 위치 단서 완전제거 실패. ✅ 상대패턴은 factorization 지지: object에서 **P_t 회전강건(−9%) ↔ M 민감(−34%)** = P=appearance(회전불변)·M=geometry. spatial은 appearance 無라 둘 다 위치의존(둘 다 하락). ⟹ **clean 방법 = 회전+translation**(radial까지 무작위화, rotate_pair에 shift 추가)으로 재검증 필요.
+
+| 36526910~913 | AIP 1×1 H100 ×4 | 00:40:00 | **rotation+translation de-confound** (radial까지 무작위화, ±0.2 shift): 910 obj m / 911 obj p_t / 912 sp m / 913 sp p_t | ✅ ~2m. identity acc: obj **M 0.278·P_t 0.851** / sp M 0.608·P_t 0.503 |
+
+**🟢 factorization Phase A 최종 (2026-07-02, object arena robust)**: de-confound 강도별(none→rot→rot+trans) object: **P_t 0.999→0.913→0.851**(appearance ceiling 유지) vs **M 0.526→0.347→0.278**(chance로 단조수렴). appearance 보존·geometry 무작위화 변환에서 **P는 object-identity 유지·M은 붕괴** = **이중분리 = factorization 지지**(directional). ⚠️ caveat: ① **spatial은 clean 위치통제 아님**(task별 anchor 물체 다름→scene appearance 단서 포함 가능, 앞선 "spatial=순수위치" 전제 정정) → object arena만으로 결론 ② M 잔여 0.278(정확 chance 아님, aug 불완전) 단 단조감소로 수렴 정합 ③ 더 강한 aug는 물체 프레임이탈로 P도 붕괴위험(현 실용한계). **다음(선택)**: Phase B readout-free(k-NN/correspondence) bulletproof, 또는 EgoDex clean arena.
+
+**🔴 crossover 판정 (2026-07-02, 잠정=confound)**: 대각선 방향은 성립(M이 motion 상대우위 0.835>0.547, P_t가 identity 상대우위 0.999>0.526)이나 **off-diagonal이 높아 clean factorization 아님**. **핵심 confound**: libero_object는 물체가 **서로 다른 위치**에 있어 identity↔motion이 **위치를 매개로 상관** → ① M identity 0.526은 appearance 누수가 아니라 **reach 방향(위치)으로 분류** 가능(순수 motion이어도 高) ② P_t motion 0.547은 P가 motion 인코딩이 아니라 **scene이 궤적을 결정**(EgoDex P_t motion −0.009와 대조). 두 축이 독립이 아니라 2×2 분리 불가 → **libero_object는 crossover arena로 부적합**(§2/§5 가드 적중). de-confound 필요.
+
 **STEP 0 게이트 판독 (mean slope-diff 완결 / attentive slope-diff 유보=vmae in-domain OOM)**:
 - attentive OOD 절대값(참고): CALVIN pos comp ptm **0.486** vs vmae **0.610** / LIBERO comp ptm **0.814** vs vmae **0.879** (comp 40M < vmae 86M, 효율 신호 유지). attentive slope-diff는 VideoMAE in-domain EgoDex attentive(545GB OOM)가 막혀 미완 — comp crossover(아래)만 확정.
 - **slope-diff = slope_comp − slope_VideoMAE** (in=EgoDex 18d − OOD=CALVIN pos; diff-in-diff로 target-space confound 상쇄): **p_t_m −0.247**(comp가 M 통해 OOD서 gap 좁힘=factorization 신호) vs **p_t_p_tk +0.038**(appearance 단독=이득 없음, 정상 null). → **M stream이 OOD robustness 원천** = Paper 2 가설 정합.

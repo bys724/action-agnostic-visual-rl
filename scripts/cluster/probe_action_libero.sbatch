@@ -45,7 +45,9 @@ V11_MODE="${V11_MODE:-abd_prime}"
 VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
 READOUT="${READOUT:-mean}"                 # mean | attentive (STEP 0 게이트)
-PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m
+PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m | m_only | p_t_only(crossover)
+TARGET="${TARGET:-action}"                 # action(pose-Δ R²) | identity(task-id acc, factorization)
+ROTATE="${ROTATE:-0}"                       # 1 = --rotate-aug (위치↔identity de-confound)
 VIDEOMAE_ENCODER="${VIDEOMAE_ENCODER:-adapter}"  # videomae-ours: adapter(legacy) | vla
 PROBE_WEIGHT_DECAY="${PROBE_WEIGHT_DECAY:-0.0}"
 
@@ -80,7 +82,8 @@ ARGS=(
     --output-dir "$OUT_DIR"
     --gaps $GAPS
 )
-ARGS+=(--readout "$READOUT" --probe-weight-decay "$PROBE_WEIGHT_DECAY")
+ARGS+=(--readout "$READOUT" --probe-weight-decay "$PROBE_WEIGHT_DECAY" --target "$TARGET")
+if [[ "$ROTATE" == "1" ]]; then ARGS+=(--rotate-aug); fi
 if [[ -n "$CHECKPOINT" ]]; then ARGS+=(--checkpoint "$CHECKPOINT"); fi
 if [[ -n "$TASK_IDS" ]]; then ARGS+=(--task-ids $TASK_IDS); fi
 if [[ -n "$MAX_DEMOS" ]]; then ARGS+=(--max-demos-per-task "$MAX_DEMOS"); fi
