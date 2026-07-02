@@ -161,6 +161,21 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 - **살아남은 주장 = 3b efficiency(절대값)**: 검증·parity 통과 표 → [`paper_artifacts/tables/step0_ood_efficiency/`](../paper_artifacts/tables/step0_ood_efficiency/README.md). comp `P_t⊕M`(~32M P+M) > DINOv2/SigLIP(86M), VC-1/VideoMAE(86M)에 근접. ⚠️ **LIBERO baseline은 spatial-only여야**(3-suite 평균 금지 — 초안 오류 정정: dinov2 0.766≠0.644, siglip 0.787≠0.694).
 - **다음 = ③ controlled-shift corrupt-in-place**(selectivity mechanism, 유일한 클린 테스트) → 그 후 STEP 1.
 
+### 2026-07-02 Factorization 통계적 de-confound — 위치 partial-out (plan §진행요약 ①)
+
+**목적**: off-diagonal 두 셀(M-identity 0.526, P_t-motion 0.547)이 **위치로 설명되는지** aug 아닌 통계로 분리. `--position-control {only,concat}` 신규 — `only` = ee_pos(t) z-score→**RFF 128d**(linear head가 3d에서 identity 비선형 경계 못 읽는 underfit 방지, smoke 0.13→0.21) 단독 probe = 위치 ceiling / `concat` = feature⊕RFF(pos) → Δ(concat−only) = 위치 너머 기여. ⚠️ 공변량 = ee_pos(**t만**) — t+k는 pose-Δ 타깃 직접 누수. 판정: off-diagonal Δ≈0(위치 매개) + M-motion Δ≫0 유지 → beyond-position crossover. 로컬 CPU smoke: identity ctrl 0.21 / action ctrl pos-R² 0.550(≈P_t 0.547, 예비 신호).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36527863 | AIP 1×1 H100 | 01:30:00 | **concat 경로 sanity** (m_only⊕pos, attentive, identity, obj MAX_DEMOS=10) — AttentivePoolProbe extra covariate 배선 검증 | ✅ 40s. acc 0.396 (subset) — 배선 정상 |
+| 36527884~885 | AIP 1×1 H100 ×2 | 01:30:00 | **위치 control** (pos-RFF 단독, full obj, gap20): 884 identity / 885 action — 위치 ceiling | ✅ ~1m. ctrl identity **0.314** / ctrl action posR² **0.579** (P_t 단독 0.547보다 높음!) |
+| 36527886~889 | AIP 1×1 H100 ×4 | 01:30:00 | **partial-out 2×2** (feature⊕pos, attentive, full obj, gap20): 886 m⊕pos ident / 887 p_t⊕pos ident / 888 m⊕pos act / 889 p_t⊕pos act | ✅ ~3m. identity: m⊕pos **0.621**(Δ+0.307)·p_t⊕pos 0.999(ceiling) / action posR²: m⊕pos **0.917**(Δ+0.338)·p_t⊕pos **0.705**(Δ+0.126) |
+| 36527920~922 | AIP 1×1 H100 ×3 | 01:30:00 | **pos+Δ 공변량 정제** (identity 전용, [ee_pos(t),Δpos] 6d RFF — M의 정당한 실현운동까지 통제 → 잔여=appearance 누수): 920 ctrl / 921 m⊕posd / 922 p_t⊕posd | ✅ ~2m. ctrl(pos+Δ) **0.469** / m⊕posd **0.649**(Δ**+0.180**) / p_t⊕posd 0.999(ceiling) |
+
+**🟢 통계적 de-confound 최종 판독 (2026-07-02)**: 공변량 강화에 따라 M-identity 잔여 단조수축 **0.526(raw) → +0.307(pos 너머) → +0.180(pos+실현운동 너머)**. ① **motion 행 해결** — P_t 0.547 < pos ctrl 0.579(arena 예측가능성 이하) vs M Δ+0.338 ≫ P Δ+0.126 → M만 위치 너머 실현운동 보유. ② **identity 행** — P ceiling(0.999) vs M 잔여 +0.180: ΔL이 담는 **mover silhouette**(움직인 물체의 형상 = appearance-인접 정보) 매개 가능성이 남은 후보 — "M은 scene appearance를 광범위하게는 안 담지만 mover 형상 흔적은 0 아님"이 정직한 서술. aug 경로(rot+trans: P 0.851 vs M 0.278)와 통계 경로가 **독립적으로 같은 방향** → Phase A = directional 이중분리 + off-diagonal 잔여는 기전 귀속 가능(공변량 불완전·mover silhouette) 수준. beyond-position Δ 2×2 = STEP 1 same-probe 기준 signature로 사용 가능.
+
+**🟢 위치 partial-out 1차 판독 (2026-07-02)**: ① **P_t-motion 셀 해체** — P_t 단독 0.547 < 위치 ctrl 0.579: P의 motion 예측은 arena 예측가능성 이하(EgoDex −0.009와 정합). 잔여 Δ+0.126은 ee_pos가 못 담는 object 배치 매개 가능(공변량 불완전 한계). ② **M-motion Δ+0.338 ≫ 0** = M은 위치 너머 실현운동 보유(대각선 생존). ③ M-identity Δ+0.307은 아직 애매 — M은 두 프레임을 봐 reach 방향(운동)을 정당 보유하고 이 arena에선 운동→identity 예측이 됨 → **pos+Δ 공변량**(identity 타깃은 Δpos 누수 아님)으로 운동까지 통제한 잔여 = appearance 누수만 격리 (920~922).
+
 ### 2026-06-30 CoMP-MAE-S STEP 1 gate — EgoDex action probing (조합 sweep)
 
 **목적**: CoMP-MAE-S(step1 ep50)가 action 정보를 인코딩하는지 + 어떤 표현 조합이 best인지. 게이트 R² readout. **EgoDex `test` split 정규 프로토콜**(gap=10, 20ep, batch256, 180921/40914 샘플 = 과거 baseline parity). 비교: VideoMAE input-only **+0.4705** / 과거 Parvo(붕괴본) P_t⊕P_tk **+0.2884**·P_t⊕M **+0.1051**.

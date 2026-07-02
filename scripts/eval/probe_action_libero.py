@@ -311,6 +311,27 @@ def rotate_pair(prev: torch.Tensor, curr: torch.Tensor, device, seed_rng,
     return out[0], out[1]
 
 
+def pos_covariate(eef_pos: np.ndarray, gap: int, kind: str) -> torch.Tensor:
+    """위치 공변량: pos = ee_pos(t) 3d / pos_delta = [ee_pos(t), Δpos] 6d (identity 전용)."""
+    p_t = eef_pos[:len(eef_pos) - gap].astype(np.float32)
+    if kind == "pos_delta":
+        p_t = np.concatenate([p_t, eef_pos[gap:].astype(np.float32) - p_t], axis=1)
+    return torch.from_numpy(p_t)
+
+
+def rff_expand(pos_z: torch.Tensor, seed: int, n_feat: int = 128) -> torch.Tensor:
+    """z-scored ee_pos(t) → random Fourier features (RBF kernel 근사, 고정 seed).
+    위치 partial-out 공정성: linear head가 3d 좌표에서 identity(비선형 영역 경계)를 못 읽어
+    control ceiling이 underfit되는 것을 방지. lengthscale {0.5,1,2} multi-scale (z-단위)."""
+    rng = np.random.default_rng(seed)
+    d = pos_z.shape[1]
+    scales = np.repeat([0.5, 1.0, 2.0], n_feat // 3 + 1)[:n_feat]
+    W = rng.normal(size=(d, n_feat)).astype(np.float32) / scales.astype(np.float32)
+    b = rng.uniform(0, 2 * np.pi, size=n_feat).astype(np.float32)
+    proj = pos_z @ torch.from_numpy(W) + torch.from_numpy(b)
+    return np.sqrt(2.0 / n_feat) * torch.cos(proj)
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Linear probe
 # ─────────────────────────────────────────────────────────────────────────
@@ -328,24 +349,28 @@ class AttentivePoolProbe(nn.Module):
     """Attentive-pooling probe (probe_action.py와 동일). stream별 learnable query 1개로
     patch 토큰을 softmax-weighted pool → stream pooled concat → linear head.
     capacity를 linear와 맞춰 'structure vs probe capacity' 혼동 차단.
-    입력 x: [B, n_streams * n_patch, D] (encode_pairs_*의 attentive 출력)."""
+    입력 x: [B, n_streams * n_patch, D] (encode_pairs_*의 attentive 출력).
+    extra_dim > 0 이면 pooled 뒤에 covariate(예: ee_pos(t) z-score)를 concat — 위치 partial-out."""
     def __init__(self, embed_dim: int, n_streams: int = 1, n_patch: int = 196,
-                 action_dim: int = ACTION_DIM):
+                 action_dim: int = ACTION_DIM, extra_dim: int = 0):
         super().__init__()
         self.n_streams = n_streams
         self.n_patch = n_patch
         self.embed_dim = embed_dim
+        self.extra_dim = extra_dim
         self.query = nn.Parameter(torch.randn(n_streams, embed_dim) * 0.02)
-        self.head = nn.Linear(n_streams * embed_dim, action_dim)
+        self.head = nn.Linear(n_streams * embed_dim + extra_dim, action_dim)
         self.scale = embed_dim ** -0.5
 
-    def forward(self, x):
+    def forward(self, x, extra=None):
         B = x.shape[0]
         x = x.view(B, self.n_streams, self.n_patch, self.embed_dim)
         attn = torch.einsum("bsnd,sd->bsn", x, self.query) * self.scale
         attn = attn.softmax(dim=-1)
         pooled = torch.einsum("bsn,bsnd->bsd", attn, x)
         pooled = pooled.reshape(B, self.n_streams * self.embed_dim)
+        if self.extra_dim:
+            pooled = torch.cat([pooled, extra], dim=-1)
         return self.head(pooled)
 
 
@@ -355,6 +380,7 @@ def train_probe(
     device: str = "cuda",
     readout: str = "mean", n_streams: int = 1, weight_decay: float = 0.0,
     task: str = "regression", out_dim: int = ACTION_DIM,
+    extra_train=None, extra_eval=None,
 ):
     """readout="mean": LinearProbe([N, D]) / readout="attentive": AttentivePoolProbe([N, S*n_patch, D]).
 
@@ -362,28 +388,33 @@ def train_probe(
     task="classification": CE loss, out_dim=n_classes, best = max accuracy (factorization identity 축).
     probe capacity(linear/attentive)는 두 task 동일 — structure vs capacity 혼동 차단.
     attentive 캐시는 fp16 3D 토큰 → 학습·eval 시 GPU에서 float 복원 + eval을 배치 처리(OOM 방지).
+    extra_*: attentive 전용 covariate([N, E], 위치 partial-out concat). mean은 호출부 입력 concat.
     """
     is_cls = task == "classification"
+    has_extra = extra_train is not None
     if readout == "attentive":
         n_patch = eval_emb.shape[1] // n_streams
         base_dim = eval_emb.shape[2]
         probe = AttentivePoolProbe(base_dim, n_streams=n_streams, n_patch=n_patch,
-                                   action_dim=out_dim).to(device)
+                                   action_dim=out_dim,
+                                   extra_dim=(int(extra_train.shape[1]) if has_extra else 0)).to(device)
     else:
+        assert not has_extra, "mean readout의 covariate는 호출부에서 입력 concat으로 처리"
         probe = LinearProbe(train_emb.shape[1], action_dim=out_dim).to(device)
     optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)
     train_loader = DataLoader(
-        TensorDataset(train_emb, train_tgt),
+        TensorDataset(*((train_emb, extra_train, train_tgt) if has_extra
+                        else (train_emb, train_tgt))),
         batch_size=batch_size, shuffle=True,
     )
     key = "accuracy" if is_cls else "r2"
     best = {key: -float("inf"), "epoch": 0}
     for ep in range(epochs):
         probe.train()
-        for x, y in train_loader:
-            x = x.to(device).float()  # fp16 캐시면 GPU에서 float 복원
-            y = y.to(device)
-            pred = probe(x)
+        for batch in train_loader:
+            x = batch[0].to(device).float()  # fp16 캐시면 GPU에서 float 복원
+            y = batch[-1].to(device)
+            pred = probe(x, batch[1].to(device).float()) if has_extra else probe(x)
             loss = F.cross_entropy(pred, y) if is_cls else F.mse_loss(pred, y)
             optimizer.zero_grad(); loss.backward(); optimizer.step()
         probe.eval()
@@ -391,7 +422,10 @@ def train_probe(
         with torch.no_grad():
             for i in range(0, len(eval_emb), batch_size):
                 chunk = eval_emb[i:i + batch_size].to(device).float()
-                preds.append(probe(chunk).cpu())
+                if has_extra:
+                    preds.append(probe(chunk, extra_eval[i:i + batch_size].to(device).float()).cpu())
+                else:
+                    preds.append(probe(chunk).cpu())
         pred = torch.cat(preds, dim=0)
         if is_cls:
             acc = float((pred.argmax(dim=1) == eval_tgt).float().mean())
@@ -477,10 +511,29 @@ def main():
     parser.add_argument("--rotate-aug", action="store_true",
                         help="de-confound: pair마다 랜덤 회전(동일각) → 위치↔identity 상관 제거. "
                              "예측: object에서 P identity 유지·M→chance / spatial에선 둘 다 붕괴(위치만 단서).")
+    parser.add_argument("--position-control", default="none", choices=["none", "only", "concat"],
+                        help="위치 partial-out (factorization 통계적 de-confound): "
+                             "only = ee_pos(t) 3d만으로 probe(위치 단독 ceiling, 인코더/프레임 미사용) / "
+                             "concat = encoder feature ⊕ ee_pos(t) → Δ(concat−only) = 위치 너머 기여. "
+                             "⚠️ 공변량은 t 시점만 — ee_pos(t+k)는 pose-Δ 타깃 직접 누수")
+    parser.add_argument("--pos-covariate", default="pos", choices=["pos", "pos_delta"],
+                        help="pos = ee_pos(t) 3d | pos_delta = [ee_pos(t), Δpos(t→t+k)] 6d — "
+                             "M-identity가 기하+실현운동 너머(=appearance 누수)인지 격리. "
+                             "🔴 identity 타깃 전용 (action 타깃엔 Δpos=타깃 그 자체 → 누수)")
     args = parser.parse_args()
 
     if args.readout == "attentive" and args.view == "both":
         raise ValueError("attentive readout은 단일 view만 지원 (both = feature-concat이 토큰 레이아웃 파괴)")
+    if args.position_control != "none" and args.view == "both":
+        raise ValueError("--position-control은 단일 view만 지원")
+    if args.position_control == "only":
+        if args.rotate_aug:
+            raise ValueError("--position-control only는 프레임 미사용 — --rotate-aug 조합 무의미")
+        if args.readout == "attentive":
+            print("[probe_libero] position-control=only → readout=mean 강제 (3d 공변량엔 LinearProbe)")
+            args.readout = "mean"
+    if args.pos_covariate == "pos_delta" and args.target != "identity":
+        raise ValueError("--pos-covariate pos_delta는 identity 타깃 전용 (action 타깃엔 Δpos 누수)")
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -516,7 +569,9 @@ def main():
 
     # ── Build encoder ────────────────────────────────────────────────────
     n_streams = 1
-    if args.encoder == "two-stream-v11":
+    if args.position_control == "only":
+        encode_fn, img_size = None, None  # 위치 control: ee_pos(t)가 곧 feature — 인코더 불필요
+    elif args.encoder == "two-stream-v11":
         if args.checkpoint is None:
             raise ValueError("v11 encoder requires --checkpoint")
         model, fwd = build_v11_encoder(
@@ -604,9 +659,17 @@ def main():
         # Streaming: demo loop 안에서 frames load → preprocess → encoder forward →
         # embeddings + targets만 누적. raw frames은 즉시 폐기 (메모리 절약).
         def collect_embed(demo_list, label):
-            embed_chunks, tgt_chunks, demo_ids = [], [], []
+            embed_chunks, tgt_chunks, demo_ids, pos_chunks = [], [], [], []
             for di, (hp, d, tid) in enumerate(demo_list):
-                if args.view == "both":
+                if args.position_control == "only":
+                    # 위치 control: 프레임/인코더 미사용 — ee/action만 로드 (CPU로도 충분히 빠름)
+                    with h5py.File(hp, "r") as f:
+                        g = f[f"data/{d}"]
+                        eef_pos = np.asarray(g["obs/ee_pos"])
+                        ee_ori = np.asarray(g["obs/ee_ori"])
+                        actions = np.asarray(g["actions"])
+                    T = eef_pos.shape[0]
+                elif args.view == "both":
                     # §C12 paper main: av+eih feature-level concat
                     frames_av, eef_pos, ee_ori, actions = load_demo(hp, d, view="agentview_rgb")
                     frames_eih, _, _, _ = load_demo(hp, d, view="eye_in_hand_rgb")
@@ -623,7 +686,9 @@ def main():
                         libero_action_target(eef_pos, ee_ori, actions, t, gap)
                         for t in range(T - gap)
                     ])
-                if args.view == "both":
+                if args.position_control == "only":
+                    emb = pos_covariate(eef_pos, gap, args.pos_covariate)  # (T-gap, 3|6)
+                elif args.view == "both":
                     prev_av = preprocess_frames(frames_av[:T - gap], img_size)
                     curr_av = preprocess_frames(frames_av[gap:], img_size)
                     prev_eih = preprocess_frames(frames_eih[:T - gap], img_size)
@@ -639,6 +704,8 @@ def main():
                         prev, curr = rotate_pair(prev, curr, device, rot_rng)
                     emb = encode_fn(prev, curr)  # (T-gap, D), already on CPU
                     del frames, prev, curr
+                if args.position_control == "concat":
+                    pos_chunks.append(pos_covariate(eef_pos, gap, args.pos_covariate))
                 embed_chunks.append(emb)
                 tgt_chunks.append(tgts)
                 demo_ids.extend([di] * (T - gap))
@@ -648,13 +715,30 @@ def main():
                 torch.cat(embed_chunks, 0),
                 torch.from_numpy(np.concatenate(tgt_chunks, 0)),
                 np.array(demo_ids),
+                torch.cat(pos_chunks, 0) if pos_chunks else None,
             )
 
         print(f"  encoding train (streaming per demo) ...")
-        emb_tr, tgt_tr, demo_tr = collect_embed(train_demos, "train")
+        emb_tr, tgt_tr, demo_tr, pos_tr = collect_embed(train_demos, "train")
         print(f"  encoding eval  (streaming per demo) ...")
-        emb_ev, tgt_ev, demo_ev = collect_embed(eval_demos, "eval")
+        emb_ev, tgt_ev, demo_ev, pos_ev = collect_embed(eval_demos, "eval")
         print(f"  pairs: train={len(tgt_tr)} eval={len(tgt_ev)}")
+
+        # ── 위치 공변량: z-score(train 통계) → RFF 확장 — only/concat 동일 표현 ──
+        extra_tr = extra_ev = None
+        if args.position_control == "only":
+            mu, sd = emb_tr.mean(0), emb_tr.std(0) + 1e-6
+            emb_tr = rff_expand((emb_tr - mu) / sd, args.seed + 2)
+            emb_ev = rff_expand((emb_ev - mu) / sd, args.seed + 2)
+        elif args.position_control == "concat":
+            mu, sd = pos_tr.mean(0), pos_tr.std(0) + 1e-6
+            pos_tr = rff_expand((pos_tr - mu) / sd, args.seed + 2)
+            pos_ev = rff_expand((pos_ev - mu) / sd, args.seed + 2)
+            if args.readout == "mean":
+                emb_tr = torch.cat([emb_tr, pos_tr], dim=-1)
+                emb_ev = torch.cat([emb_ev, pos_ev], dim=-1)
+            else:
+                extra_tr, extra_ev = pos_tr, pos_ev  # attentive: pooled 뒤 concat (probe 내부)
 
         # Standardize target (MSE/R² scale-friendly)
         # NOTE: R²은 scale-invariant이지만 MSE와 학습 안정성 위해 옵션 — skip
@@ -668,6 +752,7 @@ def main():
             weight_decay=args.probe_weight_decay,
             task=("classification" if is_cls else "regression"),
             out_dim=(n_classes if is_cls else ACTION_DIM),
+            extra_train=extra_tr, extra_eval=extra_ev,
         )
         m = best["metrics"]
         elapsed = time.time() - t0
@@ -711,6 +796,8 @@ def main():
             "gap_seconds": gap / 20.0,
             "readout": args.readout,
             "target": args.target,
+            "position_control": args.position_control,
+            "pos_covariate": args.pos_covariate,
             "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
             "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
             "n_train_demos": len(train_demos),

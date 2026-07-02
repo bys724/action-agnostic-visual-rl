@@ -48,6 +48,8 @@ READOUT="${READOUT:-mean}"                 # mean | attentive (STEP 0 게이트)
 PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m | m_only | p_t_only(crossover)
 TARGET="${TARGET:-action}"                 # action(pose-Δ R²) | identity(task-id acc, factorization)
 ROTATE="${ROTATE:-0}"                       # 1 = --rotate-aug (위치↔identity de-confound)
+POSCTRL="${POSCTRL:-none}"                  # none | only(ee_pos ceiling) | concat(feature⊕ee_pos) — 위치 partial-out
+POSCOV="${POSCOV:-pos}"                     # pos | pos_delta(identity 전용: +Δpos 6d, 기하+운동 통제)
 VIDEOMAE_ENCODER="${VIDEOMAE_ENCODER:-adapter}"  # videomae-ours: adapter(legacy) | vla
 PROBE_WEIGHT_DECAY="${PROBE_WEIGHT_DECAY:-0.0}"
 
@@ -83,6 +85,7 @@ ARGS=(
     --gaps $GAPS
 )
 ARGS+=(--readout "$READOUT" --probe-weight-decay "$PROBE_WEIGHT_DECAY" --target "$TARGET")
+ARGS+=(--position-control "$POSCTRL" --pos-covariate "$POSCOV")
 if [[ "$ROTATE" == "1" ]]; then ARGS+=(--rotate-aug); fi
 if [[ -n "$CHECKPOINT" ]]; then ARGS+=(--checkpoint "$CHECKPOINT"); fi
 if [[ -n "$TASK_IDS" ]]; then ARGS+=(--task-ids $TASK_IDS); fi
