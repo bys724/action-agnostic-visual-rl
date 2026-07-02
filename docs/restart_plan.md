@@ -144,7 +144,8 @@
 - 🔴 **3런 matched 보장**: 동일 part1(MAX_VIDEOS 동일), 동일 epoch, 동일 ViT-S. subset fraction을 로그에 명시(향후 calibration).
 - 🟠 **`VideoMAE` 재학습 금지**: cross-size external reference로만. cross-size mechanism attribution 금지(작은 ours를 큰 VideoMAE와 직접 메커니즘 비교 X).
 - 🟠 **small-only 종착 금지**: ΔL inductive-bias 이점은 데이터·크기↑서 약화 가능(bitter-lesson) → 핵심 비교는 STEP 2(2-scale) 또는 STEP 3(ViT-B)로 재확인해야 paper claim.
-- 🟢 **gate 위치 (정정)**: STEP 0는 게이트 아님(baseline 특성화만). 실제 게이트 = **STEP 1의 MCP-MAE-S 첫 run** — collapse 없이 healthy patch+CLS R² + OOD slope가 VideoMAE 대비 우위인지 확인 후에야 매트릭스(2-scale·ViT-B) 확장. ⚠️ thesis slope는 ours 학습 전엔 산출 불가(ours probing 부재, v15 no-op 프록시 부적합).
+- 🟢 **gate 위치 (정정)**: STEP 0는 게이트 아님(baseline 특성화만). 실제 게이트 = **STEP 1의 MCP-MAE-S 첫 run** — collapse 없이 healthy patch+CLS R² 확인 후에야 매트릭스(2-scale·ViT-B) 확장. ⚠️ **slope 기반 게이트는 폐기**(2026-07-02, 3a regression-to-ceiling) → factorization crossover signature로 대체.
+- 🔴 **STEP 1 factorization ablation 판정 규율 (2026-07-02)**: no-M/routing/V-source ablation을 **raw 성능 하락으로 읽지 말 것** — no-M은 M-full 라우팅(미래 ΔL) 제거로 P task가 VideoMAE급↑ 가혹해져 난이도 confound. **crossover *signature*(이중분리 유지/붕괴)로 판정** + 모든 ablation을 **Phase A와 동일 arena·aug·readout**로 측정(same-probe → arena confound 상쇄, 인과=모델 간 Δ). 주력 arm=V-source. 상세 = [`factorization_crossover_plan.md`](factorization_crossover_plan.md) §4 Phase C.
 
 ---
 
