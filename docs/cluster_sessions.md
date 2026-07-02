@@ -111,6 +111,18 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36225602 | AIP 1×1 H100 (mem120G) | 02:00:00 | **CALVIN vmae attentive 재제출**(985 OOM 수정) | ✅ COMPLETED 21m35s. CALVIN pos **0.610**(mean 0.529). mem120G로 해결. |
 | 36225603 | AIP 1×1 H100 | 03:00:00 | **VideoMAE attentive in-domain EgoDex**(`attentive_concat_p_t_p_tk`) — attentive slope-diff에 필요 | ❌ **OUT_OF_MEMORY** MaxRSS **545GB**(768d × full EgoDex 180k 토큰). = 문서화된 "B(768d) disk-backed 필요" 케이스. → **attentive slope-diff 유보**(comp 384d는 통과, VideoMAE in-domain attentive만 blocked). 후속 = pre-alloc/disk-backed 캐시. |
 
+### 2026-07-02 STEP 0 efficiency 표 확장 — LIBERO object·goal probing
+
+**목적**: 3b efficiency 표를 libero_spatial 외 **object·goal** suite로 확장. spatial 매트릭스(07-01 `36224986–991`)를 2개 suite로 복제 — CoMP-MAE-S{mean,attn}×{p_t_p_tk,p_t_m} + VideoMAE-vla{mean,attn}, 이 두 모델만 mean/attn 둘 다. ckpt·readout·gaps(`1 13 20 40`)·view 전부 spatial과 동일(parity, TASK_SUITE만 차이). baseline(VC-1/DINOv2/SigLIP object·goal)은 `tab2_probing/libero_all_gaps_summary.csv`에 기존재 → 재제출 불필요. ⚠️ build 스크립트 확장 시 parity 앵커는 spatial(9690) 전용이라 suite별 n_eval로 분리 필요.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36300651~654 | AIP 1×1 H100 ×4 | 01:30:00 | **LIBERO_object comp** — 651 mean_ptptk / 652 mean_ptm / 653 attn_ptptk / 654 attn_ptm | ✅ 5~9m. object pos R²(gap20, n_eval=12710): mean ptptk **0.811**·ptm **0.838** / attn ptptk **0.829**·ptm **0.851** |
+| 36300655/656 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_object videomae-vla** — 655 mean / 656 attn | 655 ✅ 12m pos **0.867**. 656 ❌ **OOM**(768d attentive 스파이크, CALVIN 985와 동일) → mem120G 재제출 **36303903** |
+| 36300657~660 | AIP 1×1 H100 ×4 | 01:30:00 | **LIBERO_goal comp** — 657 mean_ptptk / 658 mean_ptm / 659 attn_ptptk / 660 attn_ptm | ✅ 5~9m. goal pos R²(gap20, n_eval=11100): mean ptptk **0.702**·ptm **0.708** / attn ptptk **0.709**·ptm **0.751** |
+| 36300661/662 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_goal videomae-vla** — 661 mean / 662 attn | ✅ 10/16m. goal pos: mean **0.791** / attn **0.830** |
+| 36303903 | AIP 1×1 H100 (mem120G) | 01:30:00 | **LIBERO_object vmae attentive 재제출**(656 OOM 수정) | ✅ COMPLETED 19m43s. object attn pos **0.903**(mean 0.867). mem120G로 해결(CALVIN 985→602와 동일 패턴). |
+
 **STEP 0 게이트 판독 (mean slope-diff 완결 / attentive slope-diff 유보=vmae in-domain OOM)**:
 - attentive OOD 절대값(참고): CALVIN pos comp ptm **0.486** vs vmae **0.610** / LIBERO comp ptm **0.814** vs vmae **0.879** (comp 40M < vmae 86M, 효율 신호 유지). attentive slope-diff는 VideoMAE in-domain EgoDex attentive(545GB OOM)가 막혀 미완 — comp crossover(아래)만 확정.
 - **slope-diff = slope_comp − slope_VideoMAE** (in=EgoDex 18d − OOD=CALVIN pos; diff-in-diff로 target-space confound 상쇄): **p_t_m −0.247**(comp가 M 통해 OOD서 gap 좁힘=factorization 신호) vs **p_t_p_tk +0.038**(appearance 단독=이득 없음, 정상 null). → **M stream이 OOD robustness 원천** = Paper 2 가설 정합.
