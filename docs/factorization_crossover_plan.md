@@ -5,7 +5,7 @@
 > - **Phase A (✅ 실행)**: libero_object 2×2. de-confound(rot+trans) 후 identity **P_t 0.851 vs M 0.278**(chance 0.10) = directional 이중분리. BUT arena가 위치↔identity↔motion 얽혀 **단일 arena clean 2×2 미달**(문제셀 P-motion 0.547). 상세 `cluster_sessions.md`(2026-07-02 Factorization crossover Phase A).
 > - **🚫 EgoDex clean arena 조사 = 불가**: repo의 EgoDex는 hand-pose HDF5(transforms/confidences)만 추출 → object/scene identity label 부재, task=폴더명이나 motion-confounded, video-id는 k-NN proxy뿐. **EgoDex 단일 arena clean 2×2는 신규 annotation 필요**(값싼 경로 아님). 재조사 불필요.
 > - **Phase B(readout-free) 강등**: 남은 gap = arena(데이터 얽힘)지 readout 아님 → k-NN도 이 confound 못 고침(별개 문제).
-> - **다음**: ① LIBERO 통계적 de-confound(위치 partial-out / same-position-diff-object 서브셋) **또는** ② triangulation 수용 + **STEP 1 인과**(§4 Phase C 규율 준수).
+> - **① 통계 de-confound = ✅ 완료** (2026-07-02, 위치 partial-out beyond-position 2×2, git 5bfcf9c): aug 경로(P 0.851/M 0.278)와 통계 경로가 독립 수렴 → **directional 이중분리 확정**. → **다음 = ② STEP 1 인과**. 실행 우선순위·저비용 선결·구현 TODO = **§4.1**(2026-07-04 결정).
 > **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Paper/2. Experiments.md §4 남은 게이트 A` / `README.md §다음 수` / `History.md`(2026-07-02).
 > **관련 dev docs**: [`restart_plan.md`](restart_plan.md) §3.3(cross-leakage TODO), [`comp_mae_plan.md`](comp_mae_plan.md) §6(dissociation probe·§6.1 M 배포 무효), [`eval_protocols.md`](eval_protocols.md), [`PROBING_GUIDE.md`](PROBING_GUIDE.md).
 
@@ -68,6 +68,28 @@ Phase A/B는 상관("표현이 factored 되어 있다")까지. 인과("M-recon �
    - **V-source (M-recon `V_M` vs `V_P`)** = **주력 인과 arm**(P task 난이도 덜 건드림). "M이 진짜 motion 배우나 vs no-op 통과냐". comp_mae_plan §6 게이트.
    - **routing on/off** = P 난이도 건드림 → **raw 금지, signature로만**.
    - **no-M (single-stream)** = "M vs P 2×2" 불가 → "**한 stream 안에서 motion·identity가 분리되나 뒤섞이나**(separability)"로 읽고, **난이도-매칭 참조(VideoMAE·Image MAE matched)와 삼각측량.** raw headline 절대 금지.
+
+### 4.1 STEP 1 실행 우선순위 — part1 최소 런 (2026-07-04 결정)
+
+> Phase A directional 이중분리 확정 후. part1 학습 기회 제한 → **최소 런으로 M-recon 인과 판별**. 코드 구현은 **dev 세션**(이 저장소 별도 세션); 아래는 spec·순서·판정만.
+
+**중심 질문 먼저**: 이 프로젝트 #1 리스크 = **M no-op**(v11/v15 재발). M이 no-op이면 라우팅 스타일은 애초 무의미 → **"M이 grounded인가"를 먼저** 확정.
+
+**우선순위** (전부 part1 · same-probe[Phase C §3] · **signature Δ로만** 판정):
+
+1. **[최우선] M-recon `V_M → V_P` 스칼펠** — M-recon의 **value 소유만 M→P로 뒤집어** M grounding만 외과적으로 off. P-recon(=P 난이도) 불변 → **난이도 매칭**(no-M보다 깨끗). V_P에서 M motion-probing/crossover가 무너지면 → **V_M(M-recon grounding)이 factorization 인과 성분** 입증. no-op 판정의 정본. 구현 = `blocks.py:210` M-recon 라우팅 인스턴스 forward의 `v_owner_state`를 M→P로 스위치하는 플래그(예 `--m-recon-v-source {m,p}`).
+2. **[차선] plain baseline** — P-recon `v_from_m`(표준 cross-attn) + M-recon off (두 노브 동시 off). "우리 mechanism이 plain cross-modal MAE(≈temporal MultiMAE)를 이기나" = **외부 headline control**. 골격만으로 factored되는지 분리(#1의 인과 몫과 상보).
+3. **[생략]** (a) P-recon `v_from_p→v_from_m` 단독(M-recon on) = 라우팅 스타일 곁가지, reviewer 요구 시만. (b) M-recon **통째 제거** 단독(v_from_p 유지) = #1 스칼펠에 지배(난이도까지 바뀌어 덜 깨끗) → 불필요.
+
+⇒ 3 런 아니라 **2 런(#1·#2)로 충분**. #1(no-op 판정) 먼저.
+
+**저비용 선결** (본학습 전, 코드=dev 세션):
+
+- **Case A 효율** (zero-encode 낭비): ΔL(t,t)=0을 M-encoder에 통과시키는 forward가 입력-무관 낭비([two_stream_v15.py:944](../src/models/two_stream_v15.py)). **`caseA_prob` 낮추기(0.25~0.5)** 우선 — Case A는 calibration이고 Case B floor 가중이 정지 신호를 이미 일부 보유. 매 step 유지 시 zero 입력 batch=1 1회 인코딩 후 broadcast. ⚠️ encoder를 learned token으로 **완전 대체 금지**(Case A calibration 소멸).
+- **rotation** (motion 신호 오염 방지): 사전학습 **`independent_rotation_prob=0`(joint rotation만)**. 서로 다르게 회전한 pair는 `ΔL(rot_k0, rot_k1)`이 90° 재배치 아티팩트로 지배 → motion 구조 소멸(cross-rotation 매칭 아니라 노이즈). joint는 `ΔL(rot,rot)=rot(ΔL)`로 유효. 교차회전 equivariance가 목표면 pixel-ΔL 아닌 별도 타깃 필요(범위 밖). ⚠️ probe-side de-confound aug(Phase C §3 same-probe의 rot+trans)와 무관 — 그건 유지.
+- **(선택) 직렬 encoder pass batching**: `_forward_pair_comp`의 masked_t/masked_tk, Case A/B masked-M을 `[2B]`로 묶어 occupancy↑(작은 S에서 kernel-launch 이득). **프로파일 before/after 후 적용** — batch 크면 이득 작음. 정합성 무관 최적화(결함 아님).
+
+**판정**: Phase C §3 규율 그대로 — raw 아닌 **crossover signature Δ**, Phase A와 동일 arena·probe protocol.
 
 ## 5. Critical guards (구현 시 실수 방지)
 
