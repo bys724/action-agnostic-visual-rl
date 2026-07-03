@@ -225,6 +225,13 @@ def main():
                         help='[CoMP-MAE] Case A(정지 ΔL=0 calibration) 상대 loss 가중 (default 1.0).')
     parser.add_argument('--v15-caseA-prob', type=float, default=1.0,
                         help='[CoMP-MAE] Case A 실행 확률 (효율: <1이면 step별 확률 skip → 연산 절감, default 1.0).')
+    parser.add_argument('--v15-m-recon-v-source', type=str, default='m', choices=['m', 'p'],
+                        help='[CoMP-MAE, STEP 1 스칼펠] M-recon V 소유 stream. m(default)=V_M(기존, grounding on) / '
+                             'p=V_P — value 소유만 뒤집어 M grounding 외과적 off (P-recon 난이도 불변). '
+                             'factorization_crossover_plan §4.1 #1.')
+    parser.add_argument('--v15-independent-rotation-prob', type=float, default=0.1,
+                        help='[v15/CoMP-MAE] rotation-aug 시 두 프레임 독립 회전 확률. '
+                             '0=joint rotation만 (§4.1 선결: 교차회전 ΔL은 재배치 아티팩트 → motion 오염 방지).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -368,6 +375,8 @@ def main():
             m_recon_weight_scale=args.v15_m_recon_scale,
             caseA_weight=args.v15_caseA_weight,
             caseA_prob=args.v15_caseA_prob,
+            m_recon_v_source=args.v15_m_recon_v_source,
+            independent_rotation_prob=args.v15_independent_rotation_prob,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

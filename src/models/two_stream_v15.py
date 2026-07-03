@@ -58,11 +58,11 @@ class RoutingInterpreterStep(nn.Module):
     """
 
     def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float, routing_mode: str,
-                 decode_first: bool = False, routing_source: str = "m"):
+                 decode_first: bool = False, routing_source: str = "m", v_source: str = "owner"):
         super().__init__()
         self.routing = MotionRoutingBlock(
             embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
-            routing_mode=routing_mode, routing_source=routing_source,
+            routing_mode=routing_mode, routing_source=routing_source, v_source=v_source,
         )
         self.interp = TransformerBlock(
             embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
@@ -271,6 +271,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_recon_iters: Optional[int] = None,  # None=num_motion_iters와 동일
         m_recon_weight_floor: float = 0.1,    # guard 7: 정지 patch calibration floor (0 매몰 방지)
         m_recon_weight_scale: float = 1.0,    # guard 7: |ΔL| 비례 가중 스케일
+        m_recon_v_source: str = "m",          # STEP 1 스칼펠: M-recon V 소유 (m=기존 V_M / p=V_P 스칼펠)
         caseA_weight: float = 1.0,            # Case A(정지 calibration) 상대 loss 가중
         caseA_prob: float = 1.0,              # Case A 실행 확률 (효율: <1이면 step별 확률 skip)
     ):
@@ -430,6 +431,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.mask_ratio_m_recon = mask_ratio_m_recon
         self.m_recon_weight_floor = m_recon_weight_floor
         self.m_recon_weight_scale = m_recon_weight_scale
+        self.m_recon_v_source = m_recon_v_source
         self.caseA_weight = caseA_weight
         self.caseA_prob = caseA_prob
         if comp_mae:
@@ -437,6 +439,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
             assert not no_motion and not pixel_pred, "comp_mae는 no_motion/pixel_pred과 배타적"
             assert not use_sobel, "comp_mae는 no-Sobel 전용 (M=ΔL 1ch, P=RGB 3ch) — guard 5"
             assert routing_source == "m", "comp_mae는 routing_source='m'(motion-routed) 전용"
+            assert m_recon_v_source in ("m", "p"), f"m_recon_v_source={m_recon_v_source} — 'm' 또는 'p'"
             m_in_ch = 1  # no-Sobel ΔL
             # 미사용 모듈 삭제 (pixel_pred과 동일) — 단 mask_token_m·dec_pos_embed_m는 **보존**
             #   (M-recon이 mask token 주입 + APE에 사용). JEPA M-decoder(m_decoder_*)는 M-recon이
@@ -447,11 +450,14 @@ class TwoStreamV15Model(TwoStreamV11Model):
             # ── M-recon decoder: (M self-attn → P-grouping routing) × N (미러, decode_first) ──
             #   routing_source="m" 고정 = Q/K를 helper(P_full)에서 → P→P grouping, gather M.
             #   p_motion_decoder(P-recon)와 별도 인스턴스 = param-symmetry (guard 1).
+            #   v_source: m_recon_v_source="p"(스칼펠)면 V를 helper(P)에서 gather — M grounding만
+            #     off, P-recon 경로·난이도 불변 (factorization_crossover_plan §4.1 #1).
             n_iters = m_recon_iters if m_recon_iters is not None else num_motion_iters
             self.m_recon_decoder = nn.ModuleList([
                 RoutingInterpreterStep(
                     embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
                     routing_mode=routing_mode, decode_first=True, routing_source="m",
+                    v_source="owner" if m_recon_v_source == "m" else "helper",
                 )
                 for _ in range(n_iters)
             ])

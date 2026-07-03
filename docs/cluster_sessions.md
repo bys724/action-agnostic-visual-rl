@@ -89,6 +89,23 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-07-04 STEP 1 인과 ablation — part1 2런 (§4.1: #1 V_P 스칼펠 · #2 plain baseline)
+
+**목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.1): M-recon grounding이 factorization의 **인과**인지 판정. **신규 배선**(이 세션): ① `--v15-m-recon-v-source {m,p}` — M-recon 라우팅 V 소유만 M→P 스위치(residual·P-recon 불변 = 난이도 매칭 스칼펠), `MotionRoutingBlock`에 `v_source={owner,helper}` 추가(param-symmetric, 입력만 교체). ② `--v15-independent-rotation-prob` CLI 노출(§4.1 선결: 0 = joint rotation만 — 교차회전 ΔL 아티팩트 방지; 기존 default 0.1은 유지). plain baseline(#2)은 기존 노브 조합 = `V15_PIXEL_PRED=1 + V11_ROUTING_MODE=v_from_m + V15_MASKED_ANCHOR=1`(CoMP가 P-recon decoder complete-first 강제라 masked_anchor 명시 필요; 잔여 차이 = null helper가 CoMP는 learned token, pixel_pred는 M_enc(ΔL=0) full-pass). CPU smoke PASS: 3구성 forward·backward finite, 스칼펠 loss 분기(2.774→2.740), param-symmetric(1,034,112 동일).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| ~~36652377/378~~ | AIP 1×1 H100 ×2 | 00:30:00 | sanity 2잡 최초 제출 | ❌ **취소**(0 GPU·h) — AIP 20/20 GPU 점유·Slurm 추정 시작 07-06. mig-3g.40gb 유휴 7 slice로 재제출 → 36652536/537 |
+| 36652536 | mig-3g.40gb 1×1 | 00:30:00 | **sanity #1 V_P 스칼펠** (comp, `V15_M_RECON_V_SOURCE=p`·caseA_prob0.25·floor0.02·indep_rot0, 1ep·MV200·**batch64**(40GB slice 안전)) SUFFIX=step1_comp_vp_sanity | ✅ COMPLETED 3m33s (~0.06 GPU·h). loss 0.630, L_mB 0.042 active·L_mA 간헐(caseA 0.25 정상). 플래그 전달 확인(`--v15-m-recon-v-source p`) |
+| 36652537 | mig-3g.40gb 1×1 | 00:30:00 | **sanity #2 plain baseline** (pixel_pred·v_from_m·masked_anchor·indep_rot0, 1ep·MV200·batch64) SUFFIX=step1_plain_xmae_sanity | ✅ COMPLETED 3m33s (~0.06 GPU·h). loss 0.489. 플래그 전달 확인(`v_from_m`·`--v15-masked-anchor`) |
+
+**본학습 2런** (sanity PASS 후 제출, 2026-07-04). config = CoMP-MAE-S 36177296과 matched(part1·50ep·ViT-S 384/6·m6·batch128/GPU eff1024·LR 2.8e-4·no-Sobel·pair·floor0.02·mask_m0.5·λ_M1.0), 차이 = ablation 노브 + 선결(caseA_prob 0.25↓·indep_rot 0). 판정 = §4 규율: raw 금지, Phase A same-probe **crossover signature Δ**로만.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36652563 | AIP_long 2×4 H100 | 1-00:00:00 | **#1 V_P 스칼펠 본학습** — M-recon V 소유 M→P(`V15_M_RECON_V_SOURCE=p`), M grounding만 외과적 off. no-op 판정의 정본. 추정 ~13h(S 13h42m − caseA 절감), ~110 GPU·h. SUFFIX=step1_comp_mae_s_vp | 제출됨 (PD — AIP 포화, 2노드 대기) |
+| 36652564 | AIP_long 2×4 H100 | 1-00:00:00 | **#2 plain baseline 본학습** — pixel_pred(M-recon off)+`v_from_m`(표준 cross-attn)+masked_anchor(CoMP P-recon과 동일 complete-first). ≈temporal MultiMAE 외부 headline control. 추정 ≤13h. SUFFIX=step1_plain_xmae_s | 제출됨 (PD) |
+
 ### 2026-07-01 STEP 0 value 게이트 — CoMP-MAE-S/VideoMAE OOD probing (CALVIN·LIBERO)
 
 **목적**(restart_plan §3.1): CoMP-MAE-S를 STEP 1(대규모 학습) 전에 OOD probe → same-corpus slope(ours vs VideoMAE −0.083) + OOD-motion 절대값으로 value 현상 판정. **신규 배선**: `probe_action_libero.py`(공유 base)에 parvo(CoMP-MAE) 로더 + VideoMAE-VLA 토큰 로더 + `AttentivePoolProbe` + `--readout {mean,attentive}`·`--parvo-mode {p_t_p_tk,p_t_m}`·`--videomae-encoder {adapter,vla}` (CALVIN/LIBERO 상속). CPU smoke 통과(mean 768·attentive (392,384) fp16). readout parity: EgoDex in-domain = patch_mean concat P_t⊕P_tk **+0.236**/M patch_mean **+0.094**. attentive는 comp+videomae 2개만 배선(frozen baseline 후속). CALVIN eval=32,183 pairs(ViT-S 384d attentive ~10GB fp16 → 노드 안전, EgoDex 180k OOM과 무관).

@@ -163,11 +163,22 @@ class MotionRoutingBlock(nn.Module):
         mlp_ratio: float = 4.0,
         routing_mode: str = "v_from_p",
         routing_source: str = "m",
+        v_source: str = "owner",
     ):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.routing_mode = routing_mode
+        # v_source (v_from_p 전용, STEP 1 스칼펠): V(+v_p·norm_p 입력)를 어디서 뽑나.
+        #   "owner" (default) = V는 residual 대상 stream — 기존 동작 (V_M in M-recon).
+        #   "helper" = V를 Q/K helper에서 (V_P in M-recon) — M-recon value 소유만 뒤집어
+        #     M grounding을 외과적으로 off (factorization_crossover_plan §4.1 #1).
+        #     residual·후속 state는 owner 유지 (P-recon 난이도 불변 = 난이도 매칭).
+        self.v_source = v_source
+        if v_source not in ("owner", "helper"):
+            raise ValueError(f"Unknown v_source: {v_source}. Expected 'owner' or 'helper'.")
+        if v_source == "helper" and routing_mode != "v_from_p":
+            raise ValueError("v_source='helper' (V-source 스칼펠)는 routing_mode='v_from_p' 전용.")
         # routing_source (v_from_p 전용): Q/K를 어디서 뽑나.
         #   "m" (default) = M(motion/ΔL)이 routing pattern 결정 — 논문 핵심(MCP-MAE/MS-JEPA).
         #   "p" = SiamMAE-analog 대조군. Q/K도 P(RGB)에서 → "ΔL-where vs RGB-where" 단일변수 격리.
@@ -232,7 +243,9 @@ class MotionRoutingBlock(nn.Module):
                 B, N, 2, self.num_heads, self.head_dim,
             )
             q, k = qk.unbind(dim=2)
-            v = self.v_p(self.norm_p(v_owner_state)).reshape(
+            # v_source="helper"(스칼펠): V만 helper에서 gather. residual은 그대로 owner.
+            v_src = v_owner_state if self.v_source == "owner" else qk_helper_state
+            v = self.v_p(self.norm_p(v_src)).reshape(
                 B, N, self.num_heads, self.head_dim,
             )
         else:  # v_from_m — 표준 cross-attn: Q=owner, K/V=helper (ablation, M-recon 미사용)

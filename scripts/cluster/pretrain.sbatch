@@ -286,6 +286,10 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ -n "${V15_M_RECON_SCALE:-}" ] && MODEL_ARGS+=(--v15-m-recon-scale "$V15_M_RECON_SCALE")
     [ -n "${V15_CASEA_WEIGHT:-}" ] && MODEL_ARGS+=(--v15-caseA-weight "$V15_CASEA_WEIGHT")
     [ -n "${V15_CASEA_PROB:-}" ] && MODEL_ARGS+=(--v15-caseA-prob "$V15_CASEA_PROB")
+    # STEP 1 스칼펠 (factorization_crossover_plan §4.1 #1): M-recon V 소유 m(기존)|p(V_P 스칼펠)
+    [ -n "${V15_M_RECON_V_SOURCE:-}" ] && MODEL_ARGS+=(--v15-m-recon-v-source "$V15_M_RECON_V_SOURCE")
+    # §4.1 선결: 0 = joint rotation만 (교차회전 ΔL 아티팩트 방지). 미설정 시 기존 default 0.1
+    [ -n "${V15_INDEP_ROT_PROB:-}" ] && MODEL_ARGS+=(--v15-independent-rotation-prob "$V15_INDEP_ROT_PROB")
     [ -n "${V15_LAMBDA_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-recon "$V15_LAMBDA_RECON")  # §9 복구 가중치
     [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
     [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6
