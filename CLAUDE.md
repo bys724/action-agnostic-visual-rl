@@ -11,7 +11,10 @@
 5. **`docs/setup/LIBERO_TEST_GUIDE.md`** — LIBERO 평가
 6. **`docs/cluster_sessions.md`** — IBS 클러스터 세션 로그 (비용 청구 대조)
 7. **`docs/artifacts.md`** — 클러스터/로컬 산출물·데이터셋 경로 인덱스
-8. **`docs/v15b_retraining_status.md`** — Parvo(code v15b) 현황·본학습 명령(§6)·no-M ablation(§11)
+8. **Paper 2 (AAAI) 현 ours 축 = CoMP-MAE (code v16)**:
+   - **`docs/comp_mae_plan.md`** — CoMP-MAE 대칭 cross-recon 설계·guard·ablation(§6)
+   - **`docs/factorization_crossover_plan.md`** — factorization 이중분리 + **STEP 1 인과 실행(§4.1)**
+   - **`docs/v15b_retraining_status.md`** — 선행 MS-JEPA(code v15b) 현황·본학습 명령(§6)
 9. 보조: **`docs/FILE_INDEX.md`**(파일 인덱스) · **`docs/WORKFLOW_COMMANDS.md`**(실행 명령) · **`docs/TROUBLESHOOTING.md`**(사고/재발 가드)
 
 **문서 작성 원칙**: 새 문서보다 기존 핵심 문서 **업데이트** 우선 · 핵심 계획은 `RESEARCH_PLAN.md` · 일회성 정보는 git commit message.
@@ -24,21 +27,22 @@ EgoDex로 action-agnostic 시각 표현 사전학습 → LIBERO 로봇 조작으
 ## 명명 · 2논문 구조 (정규 — source of truth)
 
 > Obsidian `Projects/Action-Agnostic Paper/` + `Projects/Input-Prior Robot Representation (ICRA)/`와 1:1. 이 섹션이 명명·프레이밍의 단일 출처 — 다른 docs(eval_protocols·RESEARCH_PLAN·v15b_status)가 역참조.
-> 🔄 **기능 서술명 reorg (2026-06-23, 확정)**: Parvo→**MS-JEPA**, no-M→**Image MAE**, §9→**MCP-MAE**, Paper1→**Edge-Prior Image MAE** (2-축: Edge-Prior/no-Sobel × Image MAE/MS-JEPA/MCP-MAE). 표·근거 = [docs/REFACTOR_PLAN.md](docs/REFACTOR_PLAN.md). 본 섹션 본문의 `Parvo` 표현 전체 치환 + 코드 식별자(`v15` 등) rename은 **본학습 후 일괄**(deferred).
+> 🔄 **기능 서술명 reorg (2026-06-23, 확정)**: no-M→**Image MAE**, Paper1→**Edge-Prior Image MAE** (2-축: Edge-Prior/no-Sobel × Image MAE/MS-JEPA/**CoMP-MAE**[구 MCP-MAE]). 표·근거 = [docs/REFACTOR_PLAN.md](docs/REFACTOR_PLAN.md). 코드 식별자(`v15`/`v16` 등) rename은 **본학습 후 일괄**(deferred) — 코드·ckpt는 옛 이름 유지.
 
 **고유명은 논문 핵심 모델 하나에만 부여. 나머지(의도와 달랐던 버전 포함)는 버전명 유지.**
 
-- **`Parvo`** — 논문 핵심 모델. two-stream M/P scaffold: M(motion)이 학습 중 P(appearance)를 scaffold, 배포 시 P만 남음. **현재 구현 = code `v15b`** (student-anchor, M→P gradient 연결), `main` 브랜치. 코드 식별자 rename은 본학습 후.
-- **v15** = Parvo 직전 divergent 버전. motion routing이 student P에 **gradient=0 (no-op)** → **paper-main 아님**, `paper-corl2026` 동결. ⚠️ v15의 `+0.390(P_t⊕P_tk)`을 motion routing 인과로 귀속한 것은 **철회됨**(no-op, artifact 의심) — 재귀속 금지.
+- **`CoMP-MAE`** (code `v16`) — **현 Paper 2 핵심(ours) 축.** 대칭 cross-reconstruction: M도 자기 ΔL을 복구(M-recon)해 motion을 실제 표상 → v15 no-op 정면 대응. S/B 학습 완료·collapse 없음. 계보: MS-JEPA(v15) → MCP-MAE → **CoMP-MAE(v16)**. 설계·ablation = [docs/comp_mae_plan.md](docs/comp_mae_plan.md).
+- **`MS-JEPA`** (code `v15b`) — CoMP-MAE 직전 축(student-anchor, M→P gradient 연결, no-Sobel). LIBERO BC 0.785 = 현상 유지(scaffold 이점 미입증) → CoMP-MAE로 승격. `main` 브랜치.
+- **v15** = 그 이전 divergent 버전. motion routing이 student P에 **gradient=0 (no-op)** → **paper-main 아님**, `paper-corl2026` 동결. ⚠️ v15의 `+0.390(P_t⊕P_tk)`을 motion routing 인과로 귀속한 것은 **철회됨**(no-op, artifact 의심) — 재귀속 금지.
 
 | | **Paper 1 (ICRA)** — Input-Prior | **Paper 2 (AAAI)** — Action-Agnostic |
 |---|---|---|
-| 핵심 모델 | 단일프레임 image MAE (Sobel+RGB) = Parvo의 P stream 단독 | **Parvo** (code: v15b) |
-| 주장 | image MAE(Sobel+RGB) **> VideoMAE** | M/P 구조적 cross-stream(scaffold) bias가 표현을 개선 |
-| 상태 | **좁지만 입증** (matched 아님, ablation 필요) | **미입증, 검증 중** (지지 증거 0) |
+| 핵심 모델 | 단일프레임 image MAE (Sobel+RGB) = P stream 단독 | **CoMP-MAE** (code v16) |
+| 주장 | image MAE(Sobel+RGB) **> VideoMAE** | M/P 구조적 cross-stream bias가 factored·효율적 표현을 만든다 (3-claim) |
+| 상태 | **좁지만 입증** (matched 아님, ablation 필요) | **미입증, 검증 중** (3b 효율·directional factorization 확보, **인과=STEP 1 대기**) |
 
-- **검증 질문** (Parvo): M→P gradient를 실제 연결한 Parvo가 **input-only baseline(Paper 1 image MAE)을 넘는가**. 못 넘으면 "multi-frame MAE concat이 강한 단순 baseline"으로 정직 재서술.
-- catalyst→scaffold 용어 전환·인과 철회 history: `docs/RESEARCH_PLAN.md` · `docs/v15b_retraining_status.md` §1.
+- **검증 질문** (CoMP-MAE): ① M-recon grounding이 factorization의 **인과**인가 (STEP 1 `V_M` vs `V_P` 스칼펠) ② plain cross-modal MAE를 이기나(plain baseline). 상세 = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.1.
+- catalyst→scaffold 용어 전환·인과 철회·slope 폐기 history: `docs/RESEARCH_PLAN.md` · `docs/factorization_crossover_plan.md`.
 
 ## 관련 Obsidian 노트
 
@@ -73,9 +77,9 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 ## 워크플로우
 
-**활성 모델 = `Parvo`** (code v15b, student-anchor, `main`). Paper 2 검증 대상, 본학습 보류 중. VideoMAE-ours = controlled baseline. 명명은 위 "명명 · 2논문 구조".
+**활성 모델 = `CoMP-MAE`** (code v16, `comp_mae` 분기, `main`). Paper 2 ours 축, S/B 학습 완료 — 다음 = **STEP 1 인과 ablation**(`V_M/V_P` 스칼펠 + plain baseline, factorization_crossover_plan §4.1). VideoMAE-ours = controlled baseline. 명명은 위 "명명 · 2논문 구조".
 
-1. **EgoDex Pre-training** — Parvo 본학습 명령은 [docs/v15b_retraining_status.md](docs/v15b_retraining_status.md) §6 단일 출처.
+1. **EgoDex Pre-training** — 본학습 명령: CoMP-MAE = [docs/comp_mae_plan.md](docs/comp_mae_plan.md) / 선행 MS-JEPA = [docs/v15b_retraining_status.md](docs/v15b_retraining_status.md) §6.
 2. **Action Probing** — 학습 표현이 행동 정보를 인코딩하는지 R²로 검증 → [docs/PROBING_GUIDE.md](docs/PROBING_GUIDE.md).
 3. **LIBERO BC-T Fine-tuning & Rollout** — frozen encoder + 공식 BCTransformerPolicy → [docs/setup/LIBERO_TEST_GUIDE.md](docs/setup/LIBERO_TEST_GUIDE.md).
 
@@ -107,13 +111,15 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 새 데이터셋은 샘플 테스트 → 결정 기록(`docs/preprocessing/`) → 전체 추출 → 검증. 절차·기존 사례(EgoDex/DROID/Ego4D) → [docs/preprocessing/README.md](docs/preprocessing/README.md).
 
-## 현재 상태 (2026-06-22)
+## 현재 상태 (2026-07-04)
 
 > 2논문 분리. 상세 phase·이력은 마스터 문서로 위임 — 본 섹션은 스냅샷. 명명 정규 출처 = 위 "명명 · 2논문 구조".
 
 - **Paper 1 (ICRA)**: 단일프레임 image MAE(Sobel+RGB) > VideoMAE = **좁지만 입증**. 남은 일 = ablation(RGB-only vs Sobel+RGB, VideoMAE fairness) + real-robot.
-- **Paper 2 (AAAI)**: scaffold 가설 **미입증**. **Parvo**(code v15b)로 M→P gradient 연결해 검증 중.
-- **최신 (Parvo BC-T, 2026-06-21)**: LIBERO BC avg **0.785** ≈ v15-ptptk(0.777) — 붕괴방어·no-Sobel이 SR 무손실 유지. frozen baseline(SigLIP 0.855/VC-1 0.821/DINOv2 0.811) 미달, spatial 약점. → v15b_status §10.
-- **다음**: **no-M ablation** (`--v15-no-motion`, routing-off=two-frame image MAE) 구현 완료. 본 실행 후 Parvo vs no-M 동일 LIBERO BC + OOD eval로 M 기여 격리 (v15b_status §11). 본학습 재제출(§6) 보류 중.
+- **Paper 2 (AAAI)** — ours 축 = **CoMP-MAE(v16)**, S/B 학습 완료·collapse 없음. 논문 spine = **3-claim**(① factorization ② dissociation ③ 도메인-robust 효율).
+  - **✅ STEP 0**: 🚨 slope(3a) **폐기**(regression-to-ceiling confound) → **3b 절대 효율만 생존** — ~32M CoMP-MAE-S(P_t⊕M)가 86M DINOv2/SigLIP 이기고 same-data VideoMAE 근접(`paper_artifacts/tables/step0_ood_efficiency/`).
+  - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(단 인과 아님, 상관까지).
+  - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.
+- **다음 = STEP 1 인과** (part1 · 2런): **#1 M-recon `V_M→V_P` 스칼펠**(no-op 판정) → **#2 plain baseline**. 저비용 선결(caseA_prob·rotation·batching) 포함 — 실행 spec = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.1.
 
-상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/v15b_retraining_status.md](docs/v15b_retraining_status.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).
+상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).
