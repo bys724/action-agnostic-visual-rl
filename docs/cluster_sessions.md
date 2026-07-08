@@ -89,6 +89,17 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-07-08 STEP 1 판정 — same-probe crossover signature Δ (16잡)
+
+**목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.1 판정): 완료된 2런 ckpt(`…_s_vp`·`…_plain_xmae_s`, 둘 다 `latest.pt` = Phase A parity)에 Phase A와 동일 arena·protocol(libero_object·attentive·gap20)로 **raw 2×2 + beyond-position Δ 2×2**(POSCTRL=concat) 측정. 위치 ctrl(only 0.314/0.579)은 arena 공통 → Phase A 값 재사용. 기준 signature(CoMP-MAE-S): M motion Δ+0.338 ≫ P Δ+0.126 · M-identity 잔여 +0.307. **판정**: V_P 스칼펠에서 M signature 붕괴 → V_M grounding = 인과 / 유지 → no-op. **제출 전 점검**: probe forward = `_encode_p/m_unmasked`(인코더 전용, v_source·pixel_pred 노브와 분리) 확인 + CPU smoke(두 ckpt × m_only/p_t_only × mean/attentive finite, `_comp` 자동감지 True/False 정확) PASS.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36785365~372 | AIP 1×1 H100 ×8 | 00:40:00 | **#1 V_P 스칼펠 판정 8잡** (`s1vp_{m,pt}_{act,id}{,_pos}`) — raw 2×2 + ⊕pos 2×2 | ✅ 전부 COMPLETED ~2.5m/잡 (16잡 합 ~0.7 GPU·h). **M motion raw 0.829/Δ+0.332 = 기준(0.835/+0.338)과 동일 → M signature 생존**. M identity 0.497/Δ+0.274(≈기준). 🚨 **P 훼손**: P_t identity **0.224**(기준 0.999)·P_t motion 0.055(기준 0.547) — "P-recon 불변=난이도 매칭" 전제 붕괴, M-recon grad의 P 관통이 P 표현 오염 |
+| 36785373~380 | AIP 1×1 H100 ×8 | 00:40:00 | **#2 plain baseline 판정 8잡** (`s1px_…` 동일 매트릭스) | ✅ 전부 COMPLETED. **M motion raw 0.107/Δ+0.016 = M grounding 붕괴**(M-recon off면 cross-attn 사용 gradient로는 안 생김). M identity 0.134/Δ+0.029. P_t identity 0.800/Δ+0.507(appearance 유지, 기준 0.999보단 낮음)·P_t motion 0.014 |
+
+**🟢 STEP 1 판정 (2026-07-08, 결과 = `paper_artifacts/libero_action_probing/*_s1{vp,px}_*`)**: ① **M-recon 존재 = M grounding의 인과** — plain(M-recon off)에서 M motion 0.835→0.107 완전 붕괴. v_from_m cross-attn으로 M이 gradient를 받아도 자기 recon 목적 없이는 grounding 안 됨. 골격만으로 factored 안 됨 = CoMP mechanism이 plain cross-modal MAE를 이김(외부 headline control 성립). ② **V 소유(V_M vs V_P)는 M grounding의 인과 아님** — 스칼펠에서 M signature 완전 생존(§4.1 조건문 "무너지면 V_M 인과"는 불성립). ③ **대신 V_P는 P를 오염** — P_t identity 0.999→0.224. 스칼펠이 "M만 외과적 off"가 아니라 "P를 motion-화"하는 개입이었음 → **V_M이 올바른 설계**(M grounding 유지 + P 무손상)의 인과적 정당화. ⚠️ caveat: ①의 귀속은 plain이 2노브 동시 off(M-recon+라우팅)라 M-recon 단독 몫은 미분리(§4.1 #3a 생략분) — 단 "M이 사용(gradient)돼도 붕괴"라 M-recon 필요성 자체는 확정.
+
 ### 2026-07-04 STEP 1 인과 ablation — part1 2런 (§4.1: #1 V_P 스칼펠 · #2 plain baseline)
 
 **목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.1): M-recon grounding이 factorization의 **인과**인지 판정. **신규 배선**(이 세션): ① `--v15-m-recon-v-source {m,p}` — M-recon 라우팅 V 소유만 M→P 스위치(residual·P-recon 불변 = 난이도 매칭 스칼펠), `MotionRoutingBlock`에 `v_source={owner,helper}` 추가(param-symmetric, 입력만 교체). ② `--v15-independent-rotation-prob` CLI 노출(§4.1 선결: 0 = joint rotation만 — 교차회전 ΔL 아티팩트 방지; 기존 default 0.1은 유지). plain baseline(#2)은 기존 노브 조합 = `V15_PIXEL_PRED=1 + V11_ROUTING_MODE=v_from_m + V15_MASKED_ANCHOR=1`(CoMP가 P-recon decoder complete-first 강제라 masked_anchor 명시 필요; 잔여 차이 = null helper가 CoMP는 learned token, pixel_pred는 M_enc(ΔL=0) full-pass). CPU smoke PASS: 3구성 forward·backward finite, 스칼펠 loss 분기(2.774→2.740), param-symmetric(1,034,112 동일).
@@ -103,8 +114,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 36652563 | AIP_long 2×4 H100 | 1-00:00:00 | **#1 V_P 스칼펠 본학습** — M-recon V 소유 M→P(`V15_M_RECON_V_SOURCE=p`), M grounding만 외과적 off. no-op 판정의 정본. 추정 ~13h(S 13h42m − caseA 절감), ~110 GPU·h. SUFFIX=step1_comp_mae_s_vp | 제출됨 (PD — AIP 포화, 2노드 대기) |
-| 36652564 | AIP_long 2×4 H100 | 1-00:00:00 | **#2 plain baseline 본학습** — pixel_pred(M-recon off)+`v_from_m`(표준 cross-attn)+masked_anchor(CoMP P-recon과 동일 complete-first). ≈temporal MultiMAE 외부 headline control. 추정 ≤13h. SUFFIX=step1_plain_xmae_s | 제출됨 (PD) |
+| 36652563 | AIP_long 2×4 H100 | 1-00:00:00 | **#1 V_P 스칼펠 본학습** — M-recon V 소유 M→P(`V15_M_RECON_V_SOURCE=p`), M grounding만 외과적 off. no-op 판정의 정본. 추정 ~13h(S 13h42m − caseA 절감), ~110 GPU·h. SUFFIX=step1_comp_mae_s_vp | ✅ **COMPLETED** 07-07 15:33 → 07-08 12:01, 20h27m52s = **~163.7 GPU·h** (8 H100). 50ep 완주, final train 0.0229 / eval 0.0235 (L_mA≈0·L_mB 0.0045 active — caseA_prob0.25 정상). std_m=0.023·std_p=0.100. 최종 throughput ~3333 samp/s(초기 2966에서 회복, 기준런 4694의 71% — g003↔g012 경로 의심 유지). ckpt=`two_stream_v15b_step1_comp_mae_s_vp`. → 판정은 same-probe crossover signature Δ 대기 |
+| 36652564 | AIP_long 2×4 H100 | **2-00:00:00** (07-07 상향) | **#2 plain baseline 본학습** — pixel_pred(M-recon off)+`v_from_m`(표준 cross-attn)+masked_anchor(CoMP P-recon과 동일 complete-first). ≈temporal MultiMAE 외부 headline control. 추정 ≤13h. SUFFIX=step1_plain_xmae_s | ✅ **COMPLETED** 07-08 01:24 → 07-08 20:40, 19h16m10s = **~154.2 GPU·h** (8 H100). 50ep 완주, final train 0.0609 / eval 0.0619 (L_mj=0 = M-recon off 확인). std_m=0.078·std_p=0.036. throughput ~3014 samp/s. ckpt=`two_stream_v15b_step1_plain_xmae_s` |
 
 ### 2026-07-01 STEP 0 value 게이트 — CoMP-MAE-S/VideoMAE OOD probing (CALVIN·LIBERO)
 

@@ -39,9 +39,9 @@ EgoDex로 action-agnostic 시각 표현 사전학습 → LIBERO 로봇 조작으
 |---|---|---|
 | 핵심 모델 | 단일프레임 image MAE (Sobel+RGB) = P stream 단독 | **CoMP-MAE** (code v16) |
 | 주장 | image MAE(Sobel+RGB) **> VideoMAE** | M/P 구조적 cross-stream bias가 factored·효율적 표현을 만든다 (3-claim) |
-| 상태 | **좁지만 입증** (matched 아님, ablation 필요) | **미입증, 검증 중** (3b 효율·directional factorization 확보, **인과=STEP 1 대기**) |
+| 상태 | **좁지만 입증** (matched 아님, ablation 필요) | **표현 레벨 인과까지 확보** (3b 효율·directional factorization·**STEP 1 인과 ✅**; 남은 것 = value 레벨 headline control) |
 
-- **검증 질문** (CoMP-MAE): ① M-recon grounding이 factorization의 **인과**인가 (STEP 1 `V_M` vs `V_P` 스칼펠) ② plain cross-modal MAE를 이기나(plain baseline). 상세 = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.1.
+- **검증 질문** (CoMP-MAE, **STEP 1 판정 완료 2026-07-08**): ① M-recon grounding이 factorization의 **인과**인가 → **✅ M-recon 존재 = 인과**(plain에서 M motion 0.835→0.107 붕괴; 단 V 소유 `V_M/V_P`는 인과 아님 — 대신 V_P는 P를 오염 0.999→0.224 = V_M 설계 정당화) ② plain cross-modal MAE를 이기나 → **✅ 표현 signature 레벨 성립**(value 레벨은 미완). 판정 상세 = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
 - catalyst→scaffold 용어 전환·인과 철회·slope 폐기 history: `docs/RESEARCH_PLAN.md` · `docs/factorization_crossover_plan.md`.
 
 ## 관련 Obsidian 노트
@@ -77,7 +77,7 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 ## 워크플로우
 
-**활성 모델 = `CoMP-MAE`** (code v16, `comp_mae` 분기, `main`). Paper 2 ours 축, S/B 학습 완료 — 다음 = **STEP 1 인과 ablation**(`V_M/V_P` 스칼펠 + plain baseline, factorization_crossover_plan §4.1). VideoMAE-ours = controlled baseline. 명명은 위 "명명 · 2논문 구조".
+**활성 모델 = `CoMP-MAE`** (code v16, `comp_mae` 분기, `main`). Paper 2 ours 축, S/B 학습 완료 · **STEP 1 인과 ablation 판정 완료**(factorization_crossover_plan §4.2) — 다음 = **plain baseline value 연장**(3b 효율 표·LIBERO BC-T). VideoMAE-ours = controlled baseline. 명명은 위 "명명 · 2논문 구조".
 
 1. **EgoDex Pre-training** — 본학습 명령: CoMP-MAE = [docs/comp_mae_plan.md](docs/comp_mae_plan.md) / 선행 MS-JEPA = [docs/v15b_retraining_status.md](docs/v15b_retraining_status.md) §6.
 2. **Action Probing** — 학습 표현이 행동 정보를 인코딩하는지 R²로 검증 → [docs/PROBING_GUIDE.md](docs/PROBING_GUIDE.md).
@@ -111,15 +111,16 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 새 데이터셋은 샘플 테스트 → 결정 기록(`docs/preprocessing/`) → 전체 추출 → 검증. 절차·기존 사례(EgoDex/DROID/Ego4D) → [docs/preprocessing/README.md](docs/preprocessing/README.md).
 
-## 현재 상태 (2026-07-04)
+## 현재 상태 (2026-07-08)
 
 > 2논문 분리. 상세 phase·이력은 마스터 문서로 위임 — 본 섹션은 스냅샷. 명명 정규 출처 = 위 "명명 · 2논문 구조".
 
 - **Paper 1 (ICRA)**: 단일프레임 image MAE(Sobel+RGB) > VideoMAE = **좁지만 입증**. 남은 일 = ablation(RGB-only vs Sobel+RGB, VideoMAE fairness) + real-robot.
 - **Paper 2 (AAAI)** — ours 축 = **CoMP-MAE(v16)**, S/B 학습 완료·collapse 없음. 논문 spine = **3-claim**(① factorization ② dissociation ③ 도메인-robust 효율).
   - **✅ STEP 0**: 🚨 slope(3a) **폐기**(regression-to-ceiling confound) → **3b 절대 효율만 생존** — ~32M CoMP-MAE-S(P_t⊕M)가 86M DINOv2/SigLIP 이기고 same-data VideoMAE 근접(`paper_artifacts/tables/step0_ood_efficiency/`).
-  - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(단 인과 아님, 상관까지).
+  - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(상관).
+  - **✅ STEP 1 인과 (2026-07-08)**: 2런(V_P 스칼펠·plain) same-probe 판정 — **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107) · V 소유는 인과 아님(스칼펠 M 생존) · **V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 대칭 설계의 인과적 정당화**. 판정·caveat = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
   - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.
-- **다음 = STEP 1 인과** (part1 · 2런): **#1 M-recon `V_M→V_P` 스칼펠**(no-op 판정) → **#2 plain baseline**. 저비용 선결(caseA_prob·rotation·batching) 포함 — 실행 spec = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.1.
+- **다음 = plain baseline value 연장**: 3b 효율 표(OOD probing)·LIBERO BC-T에 plain 추가 → headline control("CoMP > plain")을 표현 레벨에서 value 레벨로 완결. plain ckpt 학습 완료 상태라 저비용.
 
 상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).

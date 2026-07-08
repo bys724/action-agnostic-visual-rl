@@ -6,6 +6,7 @@
 > - **🚫 EgoDex clean arena 조사 = 불가**: repo의 EgoDex는 hand-pose HDF5(transforms/confidences)만 추출 → object/scene identity label 부재, task=폴더명이나 motion-confounded, video-id는 k-NN proxy뿐. **EgoDex 단일 arena clean 2×2는 신규 annotation 필요**(값싼 경로 아님). 재조사 불필요.
 > - **Phase B(readout-free) 강등**: 남은 gap = arena(데이터 얽힘)지 readout 아님 → k-NN도 이 confound 못 고침(별개 문제).
 > - **① 통계 de-confound = ✅ 완료** (2026-07-02, 위치 partial-out beyond-position 2×2, git 5bfcf9c): aug 경로(P 0.851/M 0.278)와 통계 경로가 독립 수렴 → **directional 이중분리 확정**. → **다음 = ② STEP 1 인과**. 실행 우선순위·저비용 선결·구현 TODO = **§4.1**(2026-07-04 결정).
+> - **② STEP 1 인과 = ✅ 실행·판정 완료** (2026-07-08, 2런 학습 36652563/564 + same-probe 16잡 36785365~380): **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107 붕괴) · **V 소유는 인과 아님**(V_P 스칼펠서 M signature 생존 0.829/Δ+0.332) · **대신 V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 설계의 인과적 정당화**. 판정 상세 = **§4.1 말미** · 수치 로그 = `cluster_sessions.md`(2026-07-08). **다음 = plain을 value 지표로 연장**(3b 효율 표·LIBERO BC-T에 plain 추가 = headline control 완결).
 > **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Paper/2. Experiments.md §4 남은 게이트 A` / `README.md §다음 수` / `History.md`(2026-07-02).
 > **관련 dev docs**: [`restart_plan.md`](restart_plan.md) §3.3(cross-leakage TODO), [`comp_mae_plan.md`](comp_mae_plan.md) §6(dissociation probe·§6.1 M 배포 무효), [`eval_protocols.md`](eval_protocols.md), [`PROBING_GUIDE.md`](PROBING_GUIDE.md).
 
@@ -90,6 +91,27 @@ Phase A/B는 상관("표현이 factored 되어 있다")까지. 인과("M-recon �
 - **(선택) 직렬 encoder pass batching**: `_forward_pair_comp`의 masked_t/masked_tk, Case A/B masked-M을 `[2B]`로 묶어 occupancy↑(작은 S에서 kernel-launch 이득). **프로파일 before/after 후 적용** — batch 크면 이득 작음. 정합성 무관 최적화(결함 아님).
 
 **판정**: Phase C §3 규율 그대로 — raw 아닌 **crossover signature Δ**, Phase A와 동일 arena·probe protocol.
+
+### 4.2 STEP 1 판정 결과 (2026-07-08, ✅ 완료)
+
+2런 학습(36652563 스칼펠 / 36652564 plain, 각 50ep 완주) + same-probe 16잡(36785365~380, libero_object·attentive·gap20, raw 2×2 + beyond-position Δ 2×2). 결과 = `paper_artifacts/libero_action_probing/*_s1{vp,px}_*` · 수치 로그 = `cluster_sessions.md`(2026-07-08).
+
+| 셀 (raw / Δ=⊕pos−ctrl) | CoMP-MAE-S (기준) | #1 V_P 스칼펠 | #2 plain |
+|---|---|---|---|
+| M motion | 0.835 / +0.338 | **0.829 / +0.332** (생존) | 🚨 **0.107 / +0.016** (붕괴) |
+| M identity | 0.526 / +0.307 | 0.497 / +0.274 | 0.134 / +0.029 |
+| P_t identity | 0.999 (ceiling) | 🚨 **0.224** (붕괴) | 0.800 / +0.507 |
+| P_t motion | 0.547 | 0.055 | 0.014 |
+
+**판정 3항**:
+
+1. **M-recon 존재 = M grounding의 인과 (확정)** — plain에서 M motion 완전 붕괴. plain에서도 M은 `v_from_m` cross-attn으로 **사용되며 gradient를 받는데도** 자기 recon 목적 없이는 grounding 안 생김("학습 신호 부족" 반론 차단). 골격만으로 factored 안 됨 = **CoMP mechanism > plain cross-modal MAE** (외부 headline control, 표현 signature 레벨).
+2. **V 소유(V_M vs V_P)는 M grounding의 인과 아님** — 스칼펠에서 M signature가 기준과 동일 수준으로 생존. §4.1 #1의 조건문("V_P에서 무너지면 V_M 인과")은 불성립.
+3. **V_P는 M을 끄는 게 아니라 P를 오염** — P_t identity 0.999→0.224 (chance 0.10 인접). "P-recon 불변 = 난이도 매칭"이라는 스칼펠 설계 전제가 깨짐: M-recon grad가 P 12-layer를 관통(학습 중 throughput 저하 관찰과 정합)해 P의 appearance 선형가독성을 붕괴. ⟹ 뒤집으면 **V_M이 유일하게 "M grounding + P 무손상"을 동시 달성** = CoMP 대칭 설계의 인과적 정당화.
+
+**Caveats**: ① 판정 1의 귀속은 plain이 2노브 동시 off(M-recon+라우팅)라 M-recon 단독 몫 미분리(#3a 생략분) — "사용돼도 붕괴" 논리로 실질 방어, reviewer 요구 시만 #3a. ② same-probe는 통계 경로(beyond-position Δ) 기준 — aug(rot+trans) 경로 미실행이나 효과 크기(0.835→0.107)가 경로 선택에 강건. ③ 스칼펠 P 붕괴는 linear-probe 가독성 기준(P pixel recon L_t 0.0071 건강) — 스토리 주력으로 쓸 경우 mean readout 교차확인 권장.
+
+**다음**: plain을 **value 지표로 연장** — 3b 효율 표(OOD probing)·LIBERO BC-T에 plain 추가 = headline control("CoMP > plain")을 표현 레벨→value 레벨로 완결. plain ckpt 학습 완료 상태라 저비용.
 
 ## 5. Critical guards (구현 시 실수 방지)
 
