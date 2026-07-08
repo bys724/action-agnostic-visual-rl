@@ -123,6 +123,7 @@ STEP 1이 표현 signature 레벨에서 "CoMP mechanism > plain"을 확정 → *
 - 프로토콜 = CoMP-S와 동일: CALVIN xfold(gap30) + LIBERO spatial/object/goal(gap20), **mean+attn**, position R²(dims 0–2). readout = `P_t⊕M`(plain도 M stream 구조 보유, M-recon만 off). probe forward = `_encode_p/m_unmasked`(step1 판정 16잡과 동일 경로).
 - 산출 = `paper_artifacts/tables/step0_ood_efficiency/efficiency.csv`에 plain 행 → `scripts/eval/build_step0_efficiency_table.py` 재생성. 판정 = CoMP-S signature 우위가 probing value로도 이어지는지(같은 param·data).
 - 위치 = 클러스터 or 로컬(둘 다 가능, frozen).
+- **✅ 완료 (2026-07-09, 잡 36785986–993, ~1.1 GPU·h)**: plain `P_t⊕M`(attn) = CALVIN **0.030** / spatial **0.127** / object **0.109** / goal **0.059** — CoMP-S(0.487/0.814/0.851/0.751) 대비 4벤치 전부 붕괴 수준. **게이트 (A) PASS**(same 32.3M·same data에서 efficiency = CoMP mechanism의 산물). 내부 정합: object attn 0.109 ≈ STEP 1 M motion raw 0.107 + P_t motion 0.014(동일 arena). parity 앵커 전부 일치.
 
 **(B) LIBERO BC-T rollout — reportable, full-suite·aug-on·P-only (load-bearing)**
 - CoMP-S와 plain **둘 다**, 3 suite(spatial/object/goal), **P-only**(P+M은 causal confusion 배포 제외 = comp_mae_plan §6), **aug-on**, seed 0/1/2, 500 ep/seed — 기존 `libero_rollout/summary.csv` baseline(dinov2/siglip/vc1/videomae) 매칭.

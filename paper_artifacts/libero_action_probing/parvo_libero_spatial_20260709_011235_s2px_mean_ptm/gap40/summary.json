@@ -1,0 +1,32 @@
+{
+  "encoder": "parvo",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_step1_plain_xmae_s/20260708_012539/latest.pt",
+  "task_suite": "libero_spatial",
+  "view": "agentview_rgb",
+  "gap": 40,
+  "gap_seconds": 2.0,
+  "readout": "mean",
+  "target": "action",
+  "position_control": "none",
+  "pos_covariate": "pos",
+  "parvo_mode": "p_t_m",
+  "v11_mode": null,
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 33780,
+  "n_eval_pairs": 7710,
+  "best_epoch": 15,
+  "elapsed_seconds": 50.66131067276001,
+  "r2_aggregate": 0.051748045226957085,
+  "r2_per_dim": [
+    0.12666196980206823,
+    0.22656699662763802,
+    0.08315034756957318,
+    0.045077260378201145,
+    0.09693276337003598,
+    0.18281085430424104,
+    0.03626917853315892
+  ],
+  "mse": 0.10655321180820465,
+  "cosine_sim": 0.5750091075897217
+}

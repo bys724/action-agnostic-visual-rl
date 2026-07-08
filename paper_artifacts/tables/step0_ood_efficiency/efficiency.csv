@@ -3,6 +3,8 @@ CoMP-MAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",0.4054,
 CoMP-MAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",0.4868,0.8140,0.8510,0.7511
 CoMP-MAE-S  P_t⊕P_tk (mean),21.6,"EgoDex part1 subset (~46k, unlabeled)",0.2571,0.7409,0.8112,0.7015
 CoMP-MAE-S  P_t⊕P_tk (attn),21.6,"EgoDex part1 subset (~46k, unlabeled)",0.1747,0.7656,0.8294,0.7092
+Plain xMAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",0.0142,0.1232,0.1116,0.0179
+Plain xMAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",0.0304,0.1270,0.1086,0.0585
 "VideoMAE-ours (mean, vla)",86.0,EgoDex full (~314k),0.5290,0.8532,0.8671,0.7912
 "VideoMAE-ours (attn, vla)",86.0,EgoDex full (~314k),0.6104,0.8786,0.9028,0.8299
 VC-1 (frozen),86.0,Ego4D+ (internet),0.5356,0.8913,0.9049,0.8355

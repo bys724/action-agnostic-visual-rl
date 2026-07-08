@@ -22,6 +22,8 @@ cross-folder OOD. CoMP-MAE-S·VideoMAE-ours만 mean/attn 둘 다 산출(그 외�
 | CoMP-MAE-S  P_t⊕M  (mean) | ~32M | EgoDex part1 subset | +0.405 | +0.809 | +0.838 | +0.708 |
 | CoMP-MAE-S  P_t⊕P_tk (attn) | ~22M | EgoDex part1 subset | +0.175 | +0.766 | +0.829 | +0.709 |
 | CoMP-MAE-S  P_t⊕P_tk (mean) | ~22M | EgoDex part1 subset | +0.257 | +0.741 | +0.811 | +0.702 |
+| Plain xMAE-S  P_t⊕M  (attn) *headline control* | ~32M | EgoDex part1 subset | +0.030 | +0.127 | +0.109 | +0.059 |
+| Plain xMAE-S  P_t⊕M  (mean) *headline control* | ~32M | EgoDex part1 subset | +0.014 | +0.123 | +0.112 | +0.018 |
 | VideoMAE-ours (attn) *matched data* | 86M | EgoDex full (~314k) | +0.610 | +0.879 | +0.903 | +0.830 |
 | VideoMAE-ours (mean) *matched data* | 86M | EgoDex full | +0.529 | +0.853 | +0.867 | +0.791 |
 | VC-1 (frozen) | 86M | Ego4D+ (internet) | +0.536 | +0.891 | +0.905 | +0.836 |
@@ -43,13 +45,19 @@ cross-folder OOD. CoMP-MAE-S·VideoMAE-ours만 mean/attn 둘 다 산출(그 외�
   win" (ViT-B variant did *worse*, per project note).
 - **M stream is load-bearing**: `P_t⊕M` ≫ `P_t⊕P_tk` (appearance-only) on both benchmarks —
   the efficiency comes from the motion stream, consistent with the action-agnostic thesis.
+- **vs plain cross-modal MAE (headline control, STEP 2A)**: same arch (32.3M), same data, same
+  probe — plain (M-recon off) **collapses everywhere** (CALVIN +0.03 vs +0.49, spatial +0.13 vs
+  +0.81, object +0.11 vs +0.85, goal +0.06 vs +0.75, attn). The efficiency is a product of the
+  **CoMP mechanism** (symmetric M-recon grounding), not of the two-stream skeleton or the data.
+  Internally consistent with STEP 1 signatures (object attn 0.109 ≈ M motion raw 0.107 +
+  P_t motion 0.014, same arena).
 
 ## Methodology / parity (recurring-incident guard: eval_protocols §0)
 
 - **Target**: 7-DoF pose-derived; **position = dims 0–2** (translational Δ). Rotation/gripper
   excluded (noisier, not the efficiency-relevant channel).
 - **CALVIN**: cross-folder OOD (train on `training/`, eval on `validation/`), gap30 (~1 s),
-  MAX_EPISODES=200. **Parity anchor: n_eval = 32,183 pairs — identical across all 10 encoders.**
+  MAX_EPISODES=200. **Parity anchor: n_eval = 32,183 pairs — identical across all encoders.**
 - **LIBERO**: `libero_{spatial,object,goal}`, `agentview_rgb`, gap20 (~1 s). **Per-suite parity
   anchors: n_eval = spatial 9,690 / object 12,710 / goal 11,100 — identical across all encoders
   within each suite** (build script asserts this). ⚠️ Never average across suites (earlier draft
@@ -88,5 +96,6 @@ trustworthy claim; **mechanism selectivity (STEP 0.5 ③, corrupt-in-place ΔR²
 - CoMP-MAE-S ckpt: `two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt`
 - Jobs (2026-07-01): CALVIN/LIBERO-spatial step0 matrix `36224980–991` (+ `36225602` vmae-attn CALVIN rerun).
 - Jobs (2026-07-02): LIBERO-object/goal step0 matrix `36300651–662` (+ `36303903` vmae-attn object rerun, mem120G OOM fix).
+- Plain xMAE-S ckpt: `two_stream_v15b_step1_plain_xmae_s/20260708_012539/latest.pt`; jobs (2026-07-09, STEP 2A): `36785986–993` (`s2px_{mean,attn}_ptm`).
 - Baselines: CALVIN `*_training_20260526_213639_gapsweep`; LIBERO (all 3 suites) `tables/tab2_probing/libero_all_gaps_summary.csv`.
 - Session log: `docs/cluster_sessions.md` (2026-07-01 STEP 0).

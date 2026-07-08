@@ -111,7 +111,7 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 새 데이터셋은 샘플 테스트 → 결정 기록(`docs/preprocessing/`) → 전체 추출 → 검증. 절차·기존 사례(EgoDex/DROID/Ego4D) → [docs/preprocessing/README.md](docs/preprocessing/README.md).
 
-## 현재 상태 (2026-07-08)
+## 현재 상태 (2026-07-09)
 
 > 2논문 분리. 상세 phase·이력은 마스터 문서로 위임 — 본 섹션은 스냅샷. 명명 정규 출처 = 위 "명명 · 2논문 구조".
 
@@ -121,6 +121,8 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
   - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(상관).
   - **✅ STEP 1 인과 (2026-07-08)**: 2런(V_P 스칼펠·plain) same-probe 판정 — **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107) · V 소유는 인과 아님(스칼펠 M 생존) · **V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 대칭 설계의 인과적 정당화**. 판정·caveat = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
   - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.
-- **다음 = STEP 2 value-level headline control** ([factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.3, task spec 2026-07-09): CoMP-S vs plain을 value 지표로 완결. **(A)** OOD 효율 표에 plain 행 추가(frozen probing, 저비용, 클러스터/로컬). **(B)** LIBERO BC-T reportable rollout — full-suite·aug-on·P-only, **CoMP-S+plain 동시**(⚠️ CoMP 자신도 task0 탐색만 했고 reportable rollout 미완), 로컬. 두 ckpt 학습 완료 → 신규 pretrain 없음.
+- **STEP 2 value-level headline control** ([factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.3) 진행 중:
+  - **✅ (A) 완료 (2026-07-09)**: plain `P_t⊕M` OOD probing = 4벤치 전부 붕괴 수준(CALVIN 0.030/spatial 0.127/object 0.109/goal 0.059, attn — CoMP-S 0.487/0.814/0.851/0.751) → **게이트 PASS**, efficiency = CoMP mechanism의 산물(same 32.3M·same data). `step0_ood_efficiency/` plain 2행 추가.
+  - **🔄 (B) finetune 진행 중**: reportable 매트릭스(CoMP-S+plain × 3suite × seed012, P-only·attentive·aug-on) 18잡 클러스터 제출(`36786153–170`, 2026-07-09). 역할분담 = finetune 클러스터 / rollout 로컬(eval_protocols §6 정규). 완료 후 best.pt 로컬 반출 → rollout 500ep/seed → `aggregate_libero_rollouts.py`.
 
 상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).

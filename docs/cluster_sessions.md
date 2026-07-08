@@ -89,6 +89,29 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-07-09 STEP 2(B) — CoMP-S·plain LIBERO BC-T reportable finetune (클러스터=finetune / 로컬=rollout)
+
+**목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.3 (B)): CoMP-S + plain **P-only·attentive·aug-on·full-suite** reportable 매트릭스 = 2 encoder × 3 suite × seed{0,1,2} = 18잡. 프로토콜 = baseline v3와 동일([eval_protocols.md](eval_protocols.md) §6: frozen·GMM5·use_joint·ColorJitter0.3+TranslationAug4·50ep·batch32·lr1e-4·seq10). pooling=**attentive**(stream별 pool_q만 학습, CoMP·plain 동일 = 내부 matched). AMP=1(bf16). **제출 전 점검**: 코드리뷰(aug 순서 128→resize·frozen no_grad·pool_q optimizer 수거·seed 통제·best.pt self-contained) + CPU 어댑터 체크(comp/plain × attentive: (2,10,768) finite, trainable=pool_q만) PASS. ⚠️ 역할분담 정정: finetune=클러스터(eval_protocols §6 정규 — 07-01 "모두 로컬" 메모는 폐기), rollout=로컬 docker.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36786144 | AIP 1×1 H100 | 00:30:00 | **smoke plain**(object task0·1ep·10batch·aug-check PNG) — plain ckpt × 어댑터 end-to-end | ✅ COMPLETED 47s. trainable 2.9M(pool_q, CoMP 탐색과 동일), loss 5.44→3.38, 입력 [0,1] 확인. aug PNG 육안 검증: 시점·카메라 일관 augmentation 정상 |
+| 36786153~161 | AIP 1×1 H100 ×9 | 08:00:00 | **CoMP-S reportable 9잡** — {spatial,object,goal}×seed{0,1,2}, P-only·attentive·aug-on·50ep. SUFFIX=s2rep_comp_ponly_attn | 제출 |
+| 36786162~170 | AIP 1×1 H100 ×9 | 08:00:00 | **plain reportable 9잡** — 동일 매트릭스. SUFFIX=s2rep_plain_ponly_attn | 제출 |
+
+### 2026-07-09 STEP 2(A) — plain OOD 효율 probing (8잡)
+
+**목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.3 (A)): plain(`two_stream_v15b_step1_plain_xmae_s/20260708_012539/latest.pt`)을 STEP 0 효율 표 프로토콜 그대로(CALVIN xfold MAX_EPISODES=200 gaps 10/20/30/45 + LIBERO spatial/object/goal gaps 1/13/20/40, `p_t_m`, mean+attn) probing → `efficiency.csv`에 plain 행 추가. **신규 배선 없음** — probe forward = `_encode_p/m_unmasked`(STEP 1 판정 16잡과 동일 경로). 제출 전 CPU smoke PASS(plain ckpt × `p_t_m` × mean(2,768)/attentive(2,392,384) finite, `_comp`=False 자동감지). SUFFIX=`s2px_{mean,attn}_ptm`(기존 `*step0_*` glob과 무충돌).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36785986/987 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN plain** — 986=mean / 987=attn (xfold, `p_t_m`) | ✅ 13m/13m. CALVIN pos R²(gap30): mean **0.014** / attn **0.030** |
+| 36785988/989 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_spatial plain** — 988=mean / 989=attn | ✅ 5/7m. spatial pos R²(gap20): mean **0.123** / attn **0.127** |
+| 36785990/991 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_object plain** — 990=mean / 991=attn | ✅ 6/9m. object pos R²(gap20): mean **0.112** / attn **0.109** |
+| 36785992/993 | AIP 1×1 H100 ×2 | 01:30:00 | **LIBERO_goal plain** — 992=mean / 993=attn | ✅ 5/7m. goal pos R²(gap20): mean **0.018** / attn **0.059** |
+
+**🟢 STEP 2(A) 게이트 판정 (2026-07-09, 8잡 합 ~1.1 GPU·h)**: plain `P_t⊕M`이 4벤치 전부에서 CoMP-S 대비 **붕괴 수준**(CALVIN 0.03 vs 0.49 / spatial 0.13 vs 0.81 / object 0.11 vs 0.85 / goal 0.06 vs 0.75, attn 기준) — same param(32.3M)·same data에서 **efficiency는 CoMP mechanism의 산물** 확정. parity 앵커 전부 일치(CALVIN 32183 / spatial 9690 / object 12710 / goal 11100). 내부 정합: object attn 0.109 ≈ STEP 1 판정의 M motion raw 0.107 + P_t motion 0.014(동일 arena·protocol). `efficiency.csv` 재생성 + build 스크립트 plain 2행 추가 완료. 게이트 (A) **PASS** → 남은 것 = §4.3 (B) LIBERO BC-T reportable(로컬).
+
 ### 2026-07-08 STEP 1 판정 — same-probe crossover signature Δ (16잡)
 
 **목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.1 판정): 완료된 2런 ckpt(`…_s_vp`·`…_plain_xmae_s`, 둘 다 `latest.pt` = Phase A parity)에 Phase A와 동일 arena·protocol(libero_object·attentive·gap20)로 **raw 2×2 + beyond-position Δ 2×2**(POSCTRL=concat) 측정. 위치 ctrl(only 0.314/0.579)은 arena 공통 → Phase A 값 재사용. 기준 signature(CoMP-MAE-S): M motion Δ+0.338 ≫ P Δ+0.126 · M-identity 잔여 +0.307. **판정**: V_P 스칼펠에서 M signature 붕괴 → V_M grounding = 인과 / 유지 → no-op. **제출 전 점검**: probe forward = `_encode_p/m_unmasked`(인코더 전용, v_source·pixel_pred 노브와 분리) 확인 + CPU smoke(두 ckpt × m_only/p_t_only × mean/attentive finite, `_comp` 자동감지 True/False 정확) PASS.

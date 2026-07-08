@@ -37,6 +37,11 @@ ENCODERS = [
      "parvo_training_*step0_mean_ptptk", "parvo_libero_{suite}_*step0_mean_ptptk", None, None),
     ("CoMP-MAE-S  P_t⊕P_tk (attn)", 21.6, "EgoDex part1 subset (~46k, unlabeled)",
      "parvo_training_*step0_attn_ptptk", "parvo_libero_{suite}_*step0_attn_ptptk", None, None),
+    # STEP 2(A) headline control — plain cross-modal MAE (M-recon off), 동일 arch·data·probe
+    ("Plain xMAE-S  P_t⊕M  (mean)", 32.3, "EgoDex part1 subset (~46k, unlabeled)",
+     "parvo_training_*s2px_mean_ptm", "parvo_libero_{suite}_*s2px_mean_ptm", None, None),
+    ("Plain xMAE-S  P_t⊕M  (attn)", 32.3, "EgoDex part1 subset (~46k, unlabeled)",
+     "parvo_training_*s2px_attn_ptm", "parvo_libero_{suite}_*s2px_attn_ptm", None, None),
     # matched-data baseline (VideoMAE-ours) — VLA self-consistent (comp와 동일 forward 규약)
     ("VideoMAE-ours (mean, vla)",  86.0, "EgoDex full (~314k)",
      "videomae-ours_training_*step0_vla_mean", "videomae-ours_libero_{suite}_*step0_vla_mean", None, None),
