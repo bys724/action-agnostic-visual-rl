@@ -111,7 +111,31 @@ Phase A/B는 상관("표현이 factored 되어 있다")까지. 인과("M-recon �
 
 **Caveats**: ① 판정 1의 귀속은 plain이 2노브 동시 off(M-recon+라우팅)라 M-recon 단독 몫 미분리(#3a 생략분) — "사용돼도 붕괴" 논리로 실질 방어, reviewer 요구 시만 #3a. ② same-probe는 통계 경로(beyond-position Δ) 기준 — aug(rot+trans) 경로 미실행이나 효과 크기(0.835→0.107)가 경로 선택에 강건. ③ 스칼펠 P 붕괴는 linear-probe 가독성 기준(P pixel recon L_t 0.0071 건강) — 스토리 주력으로 쓸 경우 mean readout 교차확인 권장.
 
-**다음**: plain을 **value 지표로 연장** — 3b 효율 표(OOD probing)·LIBERO BC-T에 plain 추가 = headline control("CoMP > plain")을 표현 레벨→value 레벨로 완결. plain ckpt 학습 완료 상태라 저비용.
+**다음 → §4.3** (STEP 2 value-level headline control).
+
+### 4.3 STEP 2 — value-level headline control (task spec, 2026-07-09)
+
+STEP 1이 표현 signature 레벨에서 "CoMP mechanism > plain"을 확정 → **value 레벨(probing R²·BC SR)로 완결**하는 단계. 비교 대상 = CoMP-MAE-S(ckpt `two_stream_v15b_step1_comp_mae_s_vp`의 기준런 = `…_comp_mae_s`, deployed **P-only**) vs plain(ckpt `two_stream_v15b_step1_plain_xmae_s`). **둘 다 학습 완료 → 신규 pretrain 없음.**
+
+⚠️ **CoMP 자신의 reportable rollout도 미완** — 지금까지 task0·aug-off 탐색(P-only 68.7 vs P+M 2.0, cluster_sessions 2026-07-01)만. 따라서 (B)는 plain 추가가 아니라 **CoMP-S + plain 동시** reportable 매트릭스.
+
+**(A) OOD 효율 표에 plain 행 추가 — 저비용 (frozen probing, ~0.7 GPU·h)**
+- 프로토콜 = CoMP-S와 동일: CALVIN xfold(gap30) + LIBERO spatial/object/goal(gap20), **mean+attn**, position R²(dims 0–2). readout = `P_t⊕M`(plain도 M stream 구조 보유, M-recon만 off). probe forward = `_encode_p/m_unmasked`(step1 판정 16잡과 동일 경로).
+- 산출 = `paper_artifacts/tables/step0_ood_efficiency/efficiency.csv`에 plain 행 → `scripts/eval/build_step0_efficiency_table.py` 재생성. 판정 = CoMP-S signature 우위가 probing value로도 이어지는지(같은 param·data).
+- 위치 = 클러스터 or 로컬(둘 다 가능, frozen).
+
+**(B) LIBERO BC-T rollout — reportable, full-suite·aug-on·P-only (load-bearing)**
+- CoMP-S와 plain **둘 다**, 3 suite(spatial/object/goal), **P-only**(P+M은 causal confusion 배포 제외 = comp_mae_plan §6), **aug-on**, seed 0/1/2, 500 ep/seed — 기존 `libero_rollout/summary.csv` baseline(dinov2/siglip/vc1/videomae) 매칭.
+- 위치 = **로컬**(finetune+rollout 모두, ckpt 로컬 전송 선결 — 역할 분담: 클러스터는 탐색만, cluster_sessions 2026-07-01 §다음).
+- 집계 = `scripts/eval/aggregate_libero_rollouts.py` → summary.csv에 CoMP-S·plain 두 행 추가.
+- ⚠️ **probing R² ≠ SR** (memory `feedback_evaluation_metric`): value 판정의 본 측정은 (B). (A)는 효율 표 완성용.
+
+**선택(옵션)**: CoMP-MAE-B 효율 행 — size-scaling 참조. deployed-P B는 feature-geometry 병리(추격 실익 낮음, cluster_sessions 2026-06)라 필수 아님. 넣는다면 M-stream만.
+
+**성공 기준(게이트)**:
+- (A) plain probing < CoMP-S(`P_t⊕M`) at matched param/data → efficiency 주장 강화.
+- (B) CoMP-S P-only SR ≥ plain P-only SR(3 suite 평균 + suite별) → headline control이 value로 성립.
+- 둘 다 만족 시 **Paper 2 factorization claim이 value 레벨까지 완결**.
 
 ## 5. Critical guards (구현 시 실수 방지)
 

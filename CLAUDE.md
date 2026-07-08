@@ -121,6 +121,6 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
   - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(상관).
   - **✅ STEP 1 인과 (2026-07-08)**: 2런(V_P 스칼펠·plain) same-probe 판정 — **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107) · V 소유는 인과 아님(스칼펠 M 생존) · **V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 대칭 설계의 인과적 정당화**. 판정·caveat = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
   - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.
-- **다음 = plain baseline value 연장**: 3b 효율 표(OOD probing)·LIBERO BC-T에 plain 추가 → headline control("CoMP > plain")을 표현 레벨에서 value 레벨로 완결. plain ckpt 학습 완료 상태라 저비용.
+- **다음 = STEP 2 value-level headline control** ([factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.3, task spec 2026-07-09): CoMP-S vs plain을 value 지표로 완결. **(A)** OOD 효율 표에 plain 행 추가(frozen probing, 저비용, 클러스터/로컬). **(B)** LIBERO BC-T reportable rollout — full-suite·aug-on·P-only, **CoMP-S+plain 동시**(⚠️ CoMP 자신도 task0 탐색만 했고 reportable rollout 미완), 로컬. 두 ckpt 학습 완료 → 신규 pretrain 없음.
 
 상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).
