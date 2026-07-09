@@ -39,6 +39,40 @@ from scripts.viz.pca_overlay import (
 SEED_RE = re.compile(r"_seed(\d+)_\d{8}")
 
 
+def build_bct_p_patcher(bct_ckpt: str, device):
+    """ours 계열(CoMP-MAE/parvo/plain) BC-T best.pt에 **내장된** frozen P 인코더로
+    patch 추출기 생성. pca_overlay ENCODER_BUILDERS엔 없는 인코더용 — pretrain ckpt
+    없이 rollout ckpt만으로 자체 인코더 overlay (eval_libero 자기완결 로딩과 동일 규약).
+    P 인코더는 seed 무관 동일 frozen이라 아무 한 ckpt에서 로드해 전 seed에 재사용."""
+    from src.models.two_stream_v15 import TwoStreamV15Model
+    ck = torch.load(bct_ckpt, map_location="cpu", weights_only=False)
+    psd = ck["policy_state_dict"]
+    pre = "adapter.model."
+    sd = {k[len(pre):]: v for k, v in psd.items() if k.startswith(pre)}
+    ed = sd["pos_embed_p"].shape[-1]
+    md = len({k.split("blocks_m.")[1].split(".")[0] for k in sd if "blocks_m." in k})
+    comp = any("m_recon" in k for k in sd)
+    model = TwoStreamV15Model(
+        embed_dim=ed, num_heads=ed // 64, m_depth=md, comp_mae=comp,
+        pair_mode=True, use_sobel=False, masked_anchor=True,
+    ).to(device).eval()
+    missing, _ = model.load_state_dict(sd, strict=False)
+    enc_missing = [k for k in missing
+                   if k.startswith(("blocks_p", "patch_embed_p", "pos_embed_p"))]
+    assert not enc_missing, f"P encoder 가중치 미로드 {enc_missing[:3]}"
+    print(f"[bct-encoder] {bct_ckpt}: embed_dim={ed} m_depth={md} comp_mae={comp}")
+
+    def patcher(ft):
+        # ft [0,1] RGB → compute_p_channel(no-Sobel raw) → P patches (CLS 제외).
+        # adapter.forward의 P_t/P_tk 추출 경로와 동일 (train↔inference parity).
+        with torch.no_grad():
+            p = model.preprocessing.compute_p_channel(ft.to(device))
+            tok = model._encode_p_unmasked(p)[:, 1:]
+        hp = int(round(tok.shape[1] ** 0.5))
+        return tok.cpu(), (hp, hp)
+    return patcher
+
+
 def pick_cases(results_dir: pathlib.Path):
     """suite → {'fastest': meta, 'slowest': meta}. 성공(non-errored) 중 전역 min/max steps."""
     cases: dict[str, dict[str, dict]] = {}
@@ -82,10 +116,10 @@ def read_mp4(mp4: pathlib.Path, max_frames: int) -> np.ndarray:
     return np.stack([np.asarray(f)[..., :3] for f in frames]).astype(np.uint8)
 
 
-def make_overlay_gif(frames_uint8, encoder, device, v15_ckpt, vmae_ckpt,
-                     gif: pathlib.Path, alpha: float, grayscale: bool, fps: int):
+def make_overlay_gif(frames_uint8, patcher, gif: pathlib.Path,
+                     alpha: float, grayscale: bool, fps: int):
     ft = preprocess_frames(frames_uint8)                          # (T,3,224,224)
-    patches, grid = ENCODER_BUILDERS[encoder](ft, device, v15_ckpt, vmae_ckpt)
+    patches, grid = patcher(ft)
     rgb_per_frame, _ = fit_pca_to_rgb(patches, grid)              # per-episode PCA fit
     overlays = [overlay_rgb_on_frame(frames_uint8[t], rgb_per_frame[t],
                                      alpha=alpha, grayscale_base=grayscale)
@@ -100,7 +134,11 @@ def main():
     ap.add_argument("--results-dir", required=True)
     ap.add_argument("--videos-dir", required=True)
     ap.add_argument("--encoder", required=True,
-                    help=f"overlay 인코더 ({'/'.join(ENCODER_BUILDERS)}). 출력 folder 이름도 겸함")
+                    help=f"overlay 인코더 ({'/'.join(ENCODER_BUILDERS)}) 또는 --bct-encoder-ckpt "
+                         "지정 시 임의 label(출력 folder 이름 겸함)")
+    ap.add_argument("--bct-encoder-ckpt", default=None,
+                    help="ours 계열: 이 BC-T best.pt 내장 P 인코더로 overlay "
+                         "(ENCODER_BUILDERS 없이 자기완결). seed 무관 동일 encoder라 1개 지정")
     ap.add_argument("--out", default="scratch/viz/rollout_success")
     ap.add_argument("--alpha", type=float, default=0.5)
     ap.add_argument("--color-base", action="store_true",
@@ -112,9 +150,15 @@ def main():
     ap.add_argument("--videomae-ckpt", default=None)
     args = ap.parse_args()
 
-    if args.encoder not in ENCODER_BUILDERS:
-        raise SystemExit(f"unknown encoder {args.encoder}; choices={list(ENCODER_BUILDERS)}")
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    if args.bct_encoder_ckpt:
+        patcher = build_bct_p_patcher(args.bct_encoder_ckpt, device)
+    elif args.encoder in ENCODER_BUILDERS:
+        patcher = lambda ft: ENCODER_BUILDERS[args.encoder](
+            ft, device, args.v15_ckpt, args.videomae_ckpt)
+    else:
+        raise SystemExit(f"unknown encoder {args.encoder}; choices={list(ENCODER_BUILDERS)} "
+                         "or pass --bct-encoder-ckpt")
     results_dir = pathlib.Path(args.results_dir)
     videos_dir = pathlib.Path(args.videos_dir)
     out_root = pathlib.Path(args.out) / args.encoder
@@ -138,8 +182,7 @@ def main():
                 miss += 1
                 continue
             frames = read_mp4(mp4, args.max_frames)
-            n = make_overlay_gif(frames, args.encoder, device, args.v15_ckpt,
-                                 args.videomae_ckpt, gif, args.alpha,
+            n = make_overlay_gif(frames, patcher, gif, args.alpha,
                                  grayscale=not args.color_base, fps=args.fps)
             print(f"  [OK] {suite:14s} {label:7s} task{tid:2d} seed{r['seed']} "
                   f"ep{r['ep_id']:2d} {r['steps']:3d}st → {gif.name} ({n}f)")
