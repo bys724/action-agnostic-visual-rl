@@ -16,7 +16,8 @@
 
 | File | 모델 | 용도 | 도구 |
 |------|------|------|------|
-| **`comp_mae_fig.png` / `.pdf`** | **CoMP-MAE** | **메인 Fig 1** — 대칭 cross-recon mirrored 2-branch (실제 EgoDex 프레임) | matplotlib |
+| **`fig1_architecture_tikz.pdf` / `.png`** | **CoMP-MAE** | **메인 Fig 1 (현행 정본, 2026-07-09)** — 대칭 cross-recon mirrored 2-row, value-ownership·frame_t-only helper·per-loss target 표기. ⚠️ 소스는 paper repo `figures/fig1_architecture.tex` (commit `b39213f`) — 여기 파일은 렌더 사본(예외적 역방향 반입) | TikZ (paper repo) |
+| `comp_mae_fig.png` / `.pdf` | CoMP-MAE | matplotlib 초안 (06-26) — TikZ판으로 대체됨, 발표·비교용 | matplotlib |
 | `mcp_mae_fig.png` / `.pdf` | MCP-MAE | predecessor 도식 (P-recon만 — history 비교) | matplotlib |
 | `mcp_mae_architecture.png` | MCP-MAE | 상세 dataflow — 통일 predict() ×3 | Mermaid |
 | `ms_jepa_fig.png` / `.pdf` | MS-JEPA | predecessor 도식 (EMA-teacher 비교) | matplotlib |
