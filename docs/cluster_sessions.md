@@ -96,8 +96,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 36786144 | AIP 1×1 H100 | 00:30:00 | **smoke plain**(object task0·1ep·10batch·aug-check PNG) — plain ckpt × 어댑터 end-to-end | ✅ COMPLETED 47s. trainable 2.9M(pool_q, CoMP 탐색과 동일), loss 5.44→3.38, 입력 [0,1] 확인. aug PNG 육안 검증: 시점·카메라 일관 augmentation 정상 |
-| 36786153~161 | AIP 1×1 H100 ×9 | 08:00:00 | **CoMP-S reportable 9잡** — {spatial,object,goal}×seed{0,1,2}, P-only·attentive·aug-on·50ep. SUFFIX=s2rep_comp_ponly_attn | 제출 |
-| 36786162~170 | AIP 1×1 H100 ×9 | 08:00:00 | **plain reportable 9잡** — 동일 매트릭스. SUFFIX=s2rep_plain_ponly_attn | 제출 |
+| 36786153~161 | AIP 1×1 H100 ×9 | 08:00:00 | **CoMP-S reportable 9잡** — {spatial,object,goal}×seed{0,1,2}, P-only·attentive·aug-on·50ep. SUFFIX=s2rep_comp_ponly_attn | ✅ 9/9 COMPLETED (2.8~3.4h/잡, 합 ~27.6 GPU·h). 50ep 완주·best.pt 9개 확인. best eval loss: spatial −20.5~−20.9 / object −23.2~−24.0 / goal −20.6~−21.2 |
+| 36786162~170 | AIP 1×1 H100 ×9 | 08:00:00 | **plain reportable 9잡** — 동일 매트릭스. SUFFIX=s2rep_plain_ponly_attn | ✅ 9/9 COMPLETED (2.9~3.6h/잡, 합 ~28.3 GPU·h). 50ep 완주·best.pt 9개 확인. best eval loss: spatial −20.7~−21.1 / object −23.6~−24.0 / goal −20.6~−21.0 (⚠️ eval loss는 CoMP와 비슷 — 판정은 rollout SR로) |
 
 ### 2026-07-09 STEP 2(A) — plain OOD 효율 probing (8잡)
 
