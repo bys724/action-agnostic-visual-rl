@@ -22,7 +22,7 @@ slope = (in-domain EgoDex R²) − (OOD CALVIN pos R²)
   - CALVIN OOD(진짜) : paper_artifacts/calvin_action_probing/<enc>_training_20260526_213639_gapsweep/all_gaps.csv
                        (§4 cross-folder: train=training/ eval=validation/, gap=30, pos=mean(r2_dim0..2)).
                        ⚠️ `_validation_*_seg` 런은 within-validation(in-distribution)이라 OOD 아님 — 쓰지 말 것.
-  - LIBERO(보조)     : paper_artifacts/tables/tab2_probing/libero_all_gaps_summary.csv (gap=20, pos).
+  - LIBERO(보조)     : paper_artifacts/probing_summary/libero_all_gaps_summary.csv (gap=20, pos).
                        ⚠️ within-suite probe(cross-folder 아님) → CALVIN보다 약한 OOD. slope엔 미사용, 참고만.
 
 사용: python3 scripts/eval/aggregate_dissociation_slope.py

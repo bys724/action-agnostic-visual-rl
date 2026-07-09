@@ -35,7 +35,7 @@
 
 ## 3. 손에 있는 것 / 없는 것
 
-- **있음 (motion 열)**: CoMP-MAE-S에서 이미 측정 — P_t 단독 **−0.009**(P는 motion 거의 0) / M **+0.094(mean)→+0.239(attentive)** / 3b efficiency 표 전체(`paper_artifacts/tables/step0_ood_efficiency/`). → crossover의 motion 열은 채워졌고, **P가 motion을 못 담는다**는 절반이 이미 확인됨.
+- **있음 (motion 열)**: CoMP-MAE-S에서 이미 측정 — P_t 단독 **−0.009**(P는 motion 거의 0) / M **+0.094(mean)→+0.239(attentive)** / 3b efficiency 표 전체(`paper_artifacts/ood_efficiency/`). → crossover의 motion 열은 채워졌고, **P가 motion을 못 담는다**는 절반이 이미 확인됨.
 - **없음 (identity/appearance 열)**: 🔴 **유일한 실질 블로커.** M·P 각각을 identity로 재는 label·프로토콜이 필요. EgoDex엔 깨끗한 object identity label이 애매.
 
 ## 4. 실행 순서 (저비용 → 깔끔, 게이트 구조)
@@ -121,7 +121,7 @@ STEP 1이 표현 signature 레벨에서 "CoMP mechanism > plain"을 확정 → *
 
 **(A) OOD 효율 표에 plain 행 추가 — 저비용 (frozen probing, ~0.7 GPU·h)**
 - 프로토콜 = CoMP-S와 동일: CALVIN xfold(gap30) + LIBERO spatial/object/goal(gap20), **mean+attn**, position R²(dims 0–2). readout = `P_t⊕M`(plain도 M stream 구조 보유, M-recon만 off). probe forward = `_encode_p/m_unmasked`(step1 판정 16잡과 동일 경로).
-- 산출 = `paper_artifacts/tables/step0_ood_efficiency/efficiency.csv`에 plain 행 → `scripts/eval/build_step0_efficiency_table.py` 재생성. 판정 = CoMP-S signature 우위가 probing value로도 이어지는지(같은 param·data).
+- 산출 = `paper_artifacts/ood_efficiency/efficiency.csv`에 plain 행 → `scripts/eval/build_step0_efficiency_table.py` 재생성. 판정 = CoMP-S signature 우위가 probing value로도 이어지는지(같은 param·data).
 - 위치 = 클러스터 or 로컬(둘 다 가능, frozen).
 - **✅ 완료 (2026-07-09, 잡 36785986–993, ~1.1 GPU·h)**: plain `P_t⊕M`(attn) = CALVIN **0.030** / spatial **0.127** / object **0.109** / goal **0.059** — CoMP-S(0.487/0.814/0.851/0.751) 대비 4벤치 전부 붕괴 수준. **게이트 (A) PASS**(same 32.3M·same data에서 efficiency = CoMP mechanism의 산물). 내부 정합: object attn 0.109 ≈ STEP 1 M motion raw 0.107 + P_t motion 0.014(동일 arena). parity 앵커 전부 일치.
 
@@ -185,4 +185,4 @@ report_interaction(stream x readout)         # main effect 2개 아님을 명시
 
 - **Vault 결정 출처**: Obsidian `Projects/Action-Agnostic Paper/2. Experiments.md §4`(남은 게이트 A/B) · `README.md §다음 수` · `History.md`(2026-07-02).
 - **dev**: [`restart_plan.md`](restart_plan.md) §3.3(cross-leakage·correspondence TODO), [`comp_mae_plan.md`](comp_mae_plan.md) §6(dissociation probe·ablation)·§6.1(M 배포 무효), [`eval_protocols.md`](eval_protocols.md)(parity 가드), [`PROBING_GUIDE.md`](PROBING_GUIDE.md).
-- **코드 진입점(참고)**: `scripts/eval/probe_action.py`(per-dim R²·stream 조합·attentive), `paper_artifacts/tables/step0_ood_efficiency/`(3b 표·provenance).
+- **코드 진입점(참고)**: `scripts/eval/probe_action.py`(per-dim R²·stream 조합·attentive), `paper_artifacts/ood_efficiency/`(3b 표·provenance).

@@ -89,6 +89,16 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-07-09 CoMP-MAE ep50 가시화 요소별 재생성 (--save-elems)
+
+**목적**: 최종(ep50) recon 가시화의 cell 단위 개별 저장(재조합·다른 렌더링용). `visualize_comp_mae.py`에 `--save-elems` 추가(RGB=PNG, ΔL=colormap PNG+raw npy, `<out_stem>_elems/`) 후 S·B ep50 재실행 — seed 42 고정이라 기존 composite(`recon_ep0050_droid.png`)과 동일 샘플.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| ~~36789450/451~~ | mig-1g.10gb 1×1 ×2 | 00:30:00 | 최초 제출 (S/B) | ❌ **취소**(0 GPU·h) — mig-1g.10gb 만석(타그룹 3-day 잡 14 slice 점유), 예상 시작 07-11 → normal(V100) 재제출 36790391/392 (선례 36186233·36197884 동일 파티션) |
+| 36790391 | normal V100 1×1 | 00:30:00 | **CoMP-MAE-S ep50** (`…comp_mae_s/20260629_101634/latest.pt`, 기본 arch 384/h6/m6/mask_m0.5, +DROID) → `scratch/viz/comp_mae_s/recon_ep0050_droid{.png,_elems/}` | ✅ COMPLETED 1m39s (~0.03 GPU·h). elems 54 PNG+24 npy. 품질 기존 동급(Case-A static 0.0001~2, M-recon(B)≈target) |
+| 36790392 | normal V100 1×1 | 00:30:00 | **CoMP-MAE-B ep50** (`…comp_mae_b/20260630_073500/latest.pt`, 768/h12/m4/mask_m0.6, +DROID) → `scratch/viz/comp_mae_b/recon_ep0050_droid{.png,_elems/}` | ✅ COMPLETED 1m39s (~0.03 GPU·h). elems 54 PNG+24 npy. ⚠️ gap 샘플링이 seed 미통제(np.random 별도) → composite는 **새 샘플로 재생성·덮어씀**(구 gap15/5/10/25/12/11 → 신 13/22/9/15/9/5) — composite↔elems 1:1 일치는 보장 |
+
 ### 2026-07-09 STEP 2(B) — CoMP-S·plain LIBERO BC-T reportable finetune (클러스터=finetune / 로컬=rollout)
 
 **목적**([factorization_crossover_plan.md](factorization_crossover_plan.md) §4.3 (B)): CoMP-S + plain **P-only·attentive·aug-on·full-suite** reportable 매트릭스 = 2 encoder × 3 suite × seed{0,1,2} = 18잡. 프로토콜 = baseline v3와 동일([eval_protocols.md](eval_protocols.md) §6: frozen·GMM5·use_joint·ColorJitter0.3+TranslationAug4·50ep·batch32·lr1e-4·seq10). pooling=**attentive**(stream별 pool_q만 학습, CoMP·plain 동일 = 내부 matched). AMP=1(bf16). **제출 전 점검**: 코드리뷰(aug 순서 128→resize·frozen no_grad·pool_q optimizer 수거·seed 통제·best.pt self-contained) + CPU 어댑터 체크(comp/plain × attentive: (2,10,768) finite, trainable=pool_q만) PASS. ⚠️ 역할분담 정정: finetune=클러스터(eval_protocols §6 정규 — 07-01 "모두 로컬" 메모는 폐기), rollout=로컬 docker.

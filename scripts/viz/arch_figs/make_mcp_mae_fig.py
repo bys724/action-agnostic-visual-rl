@@ -10,7 +10,7 @@ Code: src/models/two_stream_v15.py (_forward_pair_pixel / _predict_pixels),
       src/models/common/blocks.py (MotionRoutingBlock), preprocessing.py (no-Sobel).
 
 Run from repo root:
-    python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/fig1_architecture/mcp_mae_fig.png
+    python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/architecture/mcp_mae_fig.png
 """
 import sys
 import matplotlib

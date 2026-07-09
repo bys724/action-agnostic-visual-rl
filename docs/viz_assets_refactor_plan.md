@@ -3,6 +3,7 @@
 > **목적**: 가시화 산출물(PNG/GIF/PDF)을 "중복 누적" 대신 "업데이트 in-place"로 관리하도록 리팩토링.
 > 코드 리팩토링(legacy viz 스크립트 삭제) 이후 **출력물만 남은 고아 자산**을 정리하고, 향후 생성 컨벤션을 고정한다.
 > **작성**: 2026-06-24 (Vault 세션에서 진단·계획 / 실행은 dev 세션).
+> ⚠️ **2026-07-09 이후 경로 만료**: 본문 `fig8_mp_attention/`·`fig4_recon_quality/` 등 figN 폴더는 키워드 재편으로 삭제·이동됨(`paper_artifacts/README.md` 참조). 살아있는 원칙은 **§컨벤션(scratch=iteration 덤프, 확정본만 paper_artifacts 승격)**뿐 — 나머지는 이력.
 
 ---
 

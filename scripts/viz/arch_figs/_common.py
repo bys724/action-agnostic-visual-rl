@@ -34,7 +34,7 @@ SERIF = FontProperties(family="Times New Roman")
 NG = 8   # display patch grid (model is 14x14; coarse grid is schematic)
 
 # default frame source: an EgoDex pair with clear, localized object motion
-DEFAULT_PAIR_PNG = "paper_artifacts/parvo_runB2cont_recon_samples/epoch_030_pair.png"
+DEFAULT_PAIR_PNG = "paper_artifacts/recon_quality/msjepa_runB2_samples/epoch_030_pair.png"
 
 
 def load_frame_pair(png=DEFAULT_PAIR_PNG, col_t=(228, 546), col_tk=(562, 880),

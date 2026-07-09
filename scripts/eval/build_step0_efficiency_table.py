@@ -19,8 +19,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 CAL_DIR = REPO / "paper_artifacts" / "calvin_action_probing"
 LIB_DIR = REPO / "paper_artifacts" / "libero_action_probing"
-LIB_BASELINE_CSV = REPO / "paper_artifacts" / "tables" / "tab2_probing" / "libero_all_gaps_summary.csv"
-OUT_DIR = REPO / "paper_artifacts" / "tables" / "step0_ood_efficiency"
+LIB_BASELINE_CSV = REPO / "paper_artifacts" / "probing_summary" / "libero_all_gaps_summary.csv"
+OUT_DIR = REPO / "paper_artifacts" / "ood_efficiency"
 POS = (0, 1, 2)  # 7-DoF: dim0-2 = position Δ (translational)
 
 # (display, params_M, pretrain, calvin step0 dir glob | None, libero step0 dir glob TEMPLATE | None,

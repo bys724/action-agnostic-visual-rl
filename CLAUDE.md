@@ -117,7 +117,7 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 - **Paper 1 (ICRA)**: 단일프레임 image MAE(Sobel+RGB) > VideoMAE = **좁지만 입증**. 남은 일 = ablation(RGB-only vs Sobel+RGB, VideoMAE fairness) + real-robot.
 - **Paper 2 (AAAI)** — ours 축 = **CoMP-MAE(v16)**, S/B 학습 완료·collapse 없음. 논문 spine = **3-claim**(① factorization ② dissociation ③ 도메인-robust 효율).
-  - **✅ STEP 0**: 🚨 slope(3a) **폐기**(regression-to-ceiling confound) → **3b 절대 효율만 생존** — ~32M CoMP-MAE-S(P_t⊕M)가 86M DINOv2/SigLIP 이기고 same-data VideoMAE 근접(`paper_artifacts/tables/step0_ood_efficiency/`).
+  - **✅ STEP 0**: 🚨 slope(3a) **폐기**(regression-to-ceiling confound) → **3b 절대 효율만 생존** — ~32M CoMP-MAE-S(P_t⊕M)가 86M DINOv2/SigLIP 이기고 same-data VideoMAE 근접(`paper_artifacts/ood_efficiency/`).
   - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(상관).
   - **✅ STEP 1 인과 (2026-07-08)**: 2런(V_P 스칼펠·plain) same-probe 판정 — **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107) · V 소유는 인과 아님(스칼펠 M 생존) · **V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 대칭 설계의 인과적 정당화**. 판정·caveat = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
   - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.

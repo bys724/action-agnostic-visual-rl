@@ -1,7 +1,7 @@
 # Architecture figure generation
 
 논문/발표용 아키텍처 도식의 **생성 소스·코드** 한곳 모음. 렌더 결과(아티팩트)는
-[`paper_artifacts/fig1_architecture/`](../../../paper_artifacts/fig1_architecture/) 로 출력.
+[`paper_artifacts/architecture/`](../../../paper_artifacts/architecture/) 로 출력.
 
 > 소스(코드+mermaid)는 여기, 렌더 산출물은 paper_artifacts — source/artifact 분리.
 > 저장소 전체 리팩토링은 별도 작업(코드 식별자 rename 등). 여기는 figure 생성에 한정.
@@ -26,19 +26,19 @@ head/output = orange · teacher/EMA = teal (MS-JEPA 전용) · loss = red · mas
 
 ```bash
 # matplotlib figures (실제 EgoDex 프레임 추출 포함)
-python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/fig1_architecture/comp_mae_fig.png   # 현행 메인
-python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/fig1_architecture/comp_mae_fig.pdf
-python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/fig1_architecture/mcp_mae_fig.png
-python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/fig1_architecture/mcp_mae_fig.pdf
-python3 scripts/viz/arch_figs/make_ms_jepa_fig.py  paper_artifacts/fig1_architecture/ms_jepa_fig.png
-python3 scripts/viz/arch_figs/make_ms_jepa_fig.py  paper_artifacts/fig1_architecture/ms_jepa_fig.pdf
+python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/architecture/comp_mae_fig.png   # 현행 메인
+python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/architecture/comp_mae_fig.pdf
+python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/architecture/mcp_mae_fig.png
+python3 scripts/viz/arch_figs/make_mcp_mae_fig.py paper_artifacts/architecture/mcp_mae_fig.pdf
+python3 scripts/viz/arch_figs/make_ms_jepa_fig.py  paper_artifacts/architecture/ms_jepa_fig.png
+python3 scripts/viz/arch_figs/make_ms_jepa_fig.py  paper_artifacts/architecture/ms_jepa_fig.pdf
 
 # mermaid dataflow (claude-mermaid MCP 또는 mmdc CLI)
-mmdc -i scripts/viz/arch_figs/mcp_mae_architecture.mmd -o paper_artifacts/fig1_architecture/mcp_mae_architecture.png -t neutral -b white
-mmdc -i scripts/viz/arch_figs/ms_jepa_architecture.mmd  -o paper_artifacts/fig1_architecture/ms_jepa_architecture.png  -t neutral -b white
+mmdc -i scripts/viz/arch_figs/mcp_mae_architecture.mmd -o paper_artifacts/architecture/mcp_mae_architecture.png -t neutral -b white
+mmdc -i scripts/viz/arch_figs/ms_jepa_architecture.mmd  -o paper_artifacts/architecture/ms_jepa_architecture.png  -t neutral -b white
 ```
 
-- **프레임 출처**: `_common.load_frame_pair()` 기본값 = `paper_artifacts/parvo_runB2cont_recon_samples/epoch_030_pair.png`
+- **프레임 출처**: `_common.load_frame_pair()` 기본값 = `paper_artifacts/recon_quality/msjepa_runB2_samples/epoch_030_pair.png`
   의 EgoDex GT 쌍(녹색 물체 조작, row2). 다른 예시로 바꾸려면 `row=` 인자 조정.
 - **언어**: figure는 대외 산출물 → 영어 라벨. (Times New Roman; 한글 글리프 없음.)
 

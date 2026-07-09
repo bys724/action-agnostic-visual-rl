@@ -107,10 +107,9 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 - repo에 포함되어 있어 `git pull`로 워크스테이션 동기화 가능
 
 ### 가시화 산출물 (repo 내부, git 동기화)
-> 정책: obsolete 모델(v11/v15) viz는 포맷 샘플 1개만 보존, 나머지 삭제(git 복구 가능). 현 타깃(Parvo/baseline) viz는 정식 보관. 코드는 `scripts/eval`·`scripts/viz`에 유지.
-- `paper_artifacts/fig8_mp_attention/combined/v11_ep44_combined.png` — M/P attention 포맷 샘플 1개 (obsolete v11, Parvo 재생성 참조용)
-- `paper_artifacts/visualizations/{grad_cam_arrow,pca_overlay}/` — representation viz 포맷 샘플 (각 1세트, post-accept track / Parvo 재생성 예정)
+> 정책: obsolete 모델(v11/v15) viz 포맷 샘플은 **전부 삭제**(2026-07-09 정리, git 복구 가능) — 재생성은 `scripts/eval`·`scripts/viz` 코드로 CoMP-MAE 대상 수행. 현 타깃 viz만 정식 보관.
 - iteration 덤프(per-epoch recon·sanity 등)는 gitignored `scratch/viz/` — 커밋 안 됨. 컨벤션: [`docs/viz_assets_refactor_plan.md`](viz_assets_refactor_plan.md)
+- `scratch/viz/comp_mae_{s,b}/recon_ep0050_droid{.png,_elems/}` — CoMP-MAE ep50 최종 recon composite + **요소별 PNG/npy**(재조합용, ΔL은 raw npy 포함)
 
 ### 로그
 - Slurm sbatch logs: `/proj/external_group/mrg/logs/{<jobname>_<jobid>.out,.err}`

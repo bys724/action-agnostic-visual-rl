@@ -16,7 +16,7 @@ Code: src/models/two_stream_v15.py (_forward_pair / _vjepa_p_masked / _mae_one_f
       common/blocks.py (MotionRoutingBlock). Run B-2 here: lambda_m_jepa=0, lambda_var=0.
 
 Run from repo root:
-    python3 scripts/viz/arch_figs/make_ms_jepa_fig.py paper_artifacts/fig1_architecture/ms_jepa_fig.png
+    python3 scripts/viz/arch_figs/make_ms_jepa_fig.py paper_artifacts/architecture/ms_jepa_fig.png
 """
 import sys
 import matplotlib

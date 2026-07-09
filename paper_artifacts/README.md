@@ -1,83 +1,61 @@
 # Paper Artifacts — Paper 1 (ICRA, Input-Prior) · Paper 2 (AAAI, Action-Agnostic)
 
-본 디렉토리는 **dev 저장소 ↔ 논문 작성 저장소** 사이의 단일 hand-off 지점.
-**2논문 구조**에 맞춰 산출물을 Paper별로 정렬 (정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조"):
+**dev 저장소 ↔ 논문 작성 저장소** 사이의 단일 hand-off 지점. paper 작성 흐름에 직결되는
+**확정 산출물**만 보관하고, 양쪽에서 read-only로 참조한다.
 
-- **Paper 1 (ICRA, Input-Prior)** — 단일프레임 image MAE(Sobel+RGB) > VideoMAE. 계획 = [`docs/paper1_input_prior_plan.md`](../docs/paper1_input_prior_plan.md).
-- **Paper 2 (AAAI, Action-Agnostic)** — Parvo(code v15b) scaffold. 계획 = [`docs/RESEARCH_PLAN.md`](../docs/RESEARCH_PLAN.md).
+- 명명·2논문 구조의 정규 출처 = [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조"
+- **Paper 2 ours 축 = CoMP-MAE (code v16)** · 논문 spine = 3-claim (① factorization ② dissociation ③ 도메인-robust 효율)
+- 진행 상태·계획 = [`docs/RESEARCH_PLAN.md`](../docs/RESEARCH_PLAN.md) · [`docs/factorization_crossover_plan.md`](../docs/factorization_crossover_plan.md)
 
-> **relabel in-place**: 물리적 폴더는 paper별로 나누지 않고 README에서 귀속만 명시(docs 경로 참조 보존). 각 figN/tab README 상단에 `Paper N` 태그.
+## 폴더 원칙 (2026-07-09 재편)
 
-## 목적
+- **키워드 폴더**: "어떤 자료인지 / 뭘 보여주는지"로 명명. **fig/tab 넘버링 금지** —
+  넘버는 논문 편집 중 수시로 바뀌므로 넘버↔폴더 매핑은 Vault `7. Outline.md`에서만 관리.
+- **scratch ↔ paper_artifacts 역할 분리**: gitignored `scratch/` = iteration·중간 덤프(재생성 가능, 언제든 삭제).
+  확정된 자료만 여기 키워드 폴더로 **승격**(git 추적). 빈 placeholder 폴더는 만들지 않음 — 자료가 생길 때 폴더 생성.
+- 폴더 내 산출물은 **수작업 편집 금지** (CSV/PNG는 생성 스크립트에서). README만 수동 갱신.
 
-- Dev repo는 raw 실험 (probing, ckpt, scratch 분석) 담당
-- Paper repo는 figure styling, LaTeX, 편집 iteration 담당
-- 본 디렉토리만 양쪽에서 read-only로 참조 — paper 작성 흐름에 직결되는 산출물만 보관
+## 폴더 인덱스
 
-## Paper 1 (ICRA, Input-Prior) 산출물
+| 폴더 | 무엇을 보여주나 | 귀속 | Status |
+|------|----------------|------|--------|
+| `ood_efficiency/` | **3b 효율 headline 표** — CoMP-S vs plain/VideoMAE/internet-scale, 4벤치 OOD probing R². 재생성 = `scripts/eval/build_step0_efficiency_table.py` | P2 | 🟢 최신 (plain 행 포함) |
+| `libero_action_probing/` `calvin_action_probing/` | probing **raw** (`summary.json`/`all_gaps.csv`) — step0 효율·Phase A factorization·STEP 1 인과 판정(s1vp/s1px)·plain(s2px) + 05월 baseline | P2 | 🟢 인용 중 |
+| `probing_summary/` | baseline probing aggregate CSV (`libero_all_gaps_summary.csv` — 효율 표 baseline 행의 source) | P2 | 🟢 |
+| `libero_rollout/` | LIBERO BC rollout **단일 출처** `{summary,per_task,episodes}.csv` — 제어 성능 | P2 | 🟡 STEP 2(B) 18잡 rollout 대기 |
+| `architecture/` | 모델 구조 다이어그램 (CoMP-MAE·MCP-MAE·MS-JEPA). 생성 = `scripts/viz/arch_figs/` | P2 | 🟢 |
+| `recon_quality/` | recon 품질 증거 — `comp_mae_{s,b}_ep50/`(최종 composite + **요소별 PNG/npy**, ΔL raw 포함 재조합용) · `msjepa_runB2_samples/`(선행 v15b 계보) · v11 vs v15 구 비교 | P2 | 🟢 ep50 요소 확보 |
+| `view_sensitivity/` | encoder별 view(agentview/eih) robustness 데이터+figure | P2(❓) | 🟡 |
+| `droid_crossdomain/` | DROID cross-domain probing summary — 도메인 일반화 | 공유 | 🟡 |
+| `cortexbench/` | **Paper 1 핵심 증거**: image MAE(Sobel+RGB) P-only > VideoMAE-ours | P1 | 🟡 ablation·real-robot 남음 |
+| `presentation/` | concept/hero 이미지 (발표용, 논문 무관) | — | 🟢 |
 
-| Type | 폴더 | Status |
-|------|------|--------|
-| CortexBench (핵심 증거: v15 P-only > VideoMAE-ours) | `cortexbench/{v15_p_only, videomae_ours, siglip_base/dinov2_base/vc1_vitb}` | 🟡 21잡 보유. 정규화 사고 재실행 이력 → [`eval_protocols.md`](../docs/eval_protocols.md) |
-| RGB-only vs Sobel+RGB ablation | (TODO) | 🔴 미실시 — **Paper 1 존재 여부 가름** |
-| Real-robot | (TODO) | 🔴 ICRA 본체 lift |
-
-## Paper 2 (AAAI, Action-Agnostic) 산출물
-
-| Position | Type | 폴더 | Status |
-|----------|------|------|--------|
-| §3 Method | Fig 1 | `fig1_architecture/` (ms_jepa·mcp_mae) | 🟡 신규 아키텍처 figure 보유 |
-| §5 Analysis ★ | Fig 2 | `fig2_catalyst/` | 🔴 미시작 |
-| §4 Experiments ★ | Fig 3 + Tab 1 | `fig3_bc_main/`(figure spec) + `tables/tab1_libero_bc/` · 데이터=`libero_rollout/` | 🟡 데이터 최신(parvo 포함), bar chart 미생성 |
-| §5 Analysis | Fig 4 | `fig4_recon_quality/` | 🔴 미시작 (source 메트릭만) |
-| §5.2 Analysis ★ | Fig 6 + Tab 3 | `fig6_motion_routing_ablation/` + `tables/tab3_ablation/` | 🔴 C1 학습 대기 |
-| Appendix C | Fig 7 | `fig7_loss_curves/` | 🔴 wandb 추출 필요 |
-| Appendix D | Fig 8 | `fig8_mp_attention/` | 🟡 v11 포맷 샘플 1개, **Parvo 분리본 미생성** |
-| §4 | Tab 2 | `tables/tab2_probing/` | 🟡 baseline+v11, Parvo 미통합 |
-| §5.4 | Tab 4 | `tables/tab4_12mode/` | 🔴 Parvo 12-mode export 대기 |
-| Appendix B | Tab 5 | `tables/tab5_hparams/` | 🔴 config 추출 필요 |
-| Appendix or §5 | Tab 6 | `tables/tab6_catalyst_evidence/` | 🔴 fig2와 동일 dependency |
-| §4 (❓) | Tab 7 | `tables/tab7_view_sensitivity/` | view robustness (❓ paper 귀속 확인) |
-| 보조 (probing raw) | — | `calvin_action_probing/`, `libero_action_probing/`, `egodex_action_probing/` | baseline + obsolete v11/v15 기록 (Parvo 재실행 예정) |
-| LIBERO BC rollout (canonical) | Fig 3 / Tab 1 데이터 | `libero_rollout/` | **단일 출처** `{summary,per_task,episodes}.csv` (전 encoder×suite×seed, parvo 포함) |
-| representation viz | — | `visualizations/{grad_cam_arrow, pca_overlay}/` | post-accept project-page track (Parvo 재생성), 현재 포맷 샘플 1세트만 |
-
-## 공유 (양 논문 공통)
-
-- **baseline encoders** (`siglip / vc1 / dinov2 / videomae-ours`) = 양 논문 공유 비교군.
-- `fig5_droid/` — **DROID cross-domain probing** (공유 평가). 공유 데이터(`*_droid_summary.csv`)를 두고 Paper 1(input-prior 일반화)·Paper 2(action-agnostic 일반화)가 각자 figure를 별도 렌더.
-
-## 기타
-
-- `presentation/` — concept/hero 이미지 (논문 무관, 발표용).
-- `_archive/` — paper main 비사용 (v13, v3 sanity, value alignment).
-- iteration 덤프는 gitignored `scratch/viz/` (커밋 안 됨) — 컨벤션 [`docs/viz_assets_refactor_plan.md`](../docs/viz_assets_refactor_plan.md).
-
-전체 생성 작업 우선순위는 [`TODO.md`](TODO.md) 참조.
+baseline encoders(`siglip/vc1/dinov2/videomae-ours`)는 양 논문 공유 비교군 (probing raw + summary에 포함).
 
 ## 작업 컨벤션
 
-- 본 디렉토리는 **수작업 편집 금지** 원칙 (CSV/PNG는 생성/추출 스크립트에서). 단 README와 TODO.md는 수동 갱신.
-- CSV는 UTF-8 `,`-separated + header row
-- `r2` column = EgoDex/DROID **action joint position** R²
-- **현 모델 = Parvo (code v15b)**. "v11"/"v15"는 obsolete 구 모델 — 포맷 샘플·유효 probing 기록만 보존(figure는 paper 미사용).
+- CSV는 UTF-8 `,`-separated + header row. `r2` column = action joint position R².
 - 색 컨벤션: **M=blue / P=red / motion routing=purple / loss=green / mask=gray hatched** (paper 전체 일관)
 
 ## Provenance
 
 - 마스터 연구 계획 (Paper 2): [`docs/RESEARCH_PLAN.md`](../docs/RESEARCH_PLAN.md)
 - Paper 1 계획: [`docs/paper1_input_prior_plan.md`](../docs/paper1_input_prior_plan.md)
-- 실험 list (C-series) + 평가 프로토콜: [`docs/eval_protocols.md`](../docs/eval_protocols.md)
+- 평가 프로토콜 (parity 체크리스트): [`docs/eval_protocols.md`](../docs/eval_protocols.md)
 - 클러스터 잡 → ckpt 매핑: [`docs/cluster_sessions.md`](../docs/cluster_sessions.md)
-- Probing 결과 (raw): [`data/probing_results/`](../data/probing_results/) (gitignored)
-- BC rollout 결과 (raw): [`data/libero/results/`](../data/libero/results/) (gitignored)
 
 ## Vault cross-link
 
 | Vault path | 본 디렉토리 매핑 |
 |------------|----------------|
-| `Projects/Action-Agnostic Paper/7. Outline.md` | Paper 2 Figure/Table spec |
+| `Projects/Action-Agnostic Paper/7. Outline.md` | **fig/tab 넘버 ↔ 키워드 폴더 매핑** (단일 출처) |
 | `Projects/Input-Prior Robot Representation (ICRA)/` | Paper 1 계획·근거 |
-| `Projects/Action-Agnostic Paper/Evolution.md` | v1→v15→Parvo 진화 (_archive history) |
+| `Projects/Action-Agnostic Paper/Evolution.md` | v1→v15→CoMP-MAE 진화 (구세대 산출물은 git history) |
 
 (Vault 루트: `/Users/bys724/LocalVault/Obsidian Vault/`)
+
+## 정리 이력
+
+- 2026-07-09 **키워드 재편**: figN/tabN 폴더 → 키워드 폴더(rename 표는 git history), README-only
+  placeholder 8개 삭제, scratch ep50 요소별 viz를 `recon_quality/`로 승격, scratch는 순수 임시로 환원.
+- 2026-07-09 구세대 삭제: `_archive/`·v11 probing raw·catalyst 잔재(fig2/tab6)·구 viz 샘플·TODO.md (git history 보존).

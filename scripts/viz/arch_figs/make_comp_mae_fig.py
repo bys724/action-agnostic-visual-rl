@@ -18,7 +18,7 @@ Design source: docs/comp_mae_plan.md ; Vault "1. Core Idea.md" §대칭 Cross-Re
 Code (to be implemented): src/models/two_stream_v15.py, common/blocks.py MotionRoutingBlock.
 
 Run from repo root:
-    python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/fig1_architecture/comp_mae_fig.png
+    python3 scripts/viz/arch_figs/make_comp_mae_fig.py paper_artifacts/architecture/comp_mae_fig.png
 """
 import sys
 import matplotlib

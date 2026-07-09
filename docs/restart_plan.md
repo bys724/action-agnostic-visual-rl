@@ -85,7 +85,7 @@
 - [ ] **③ [배선] controlled-shift corrupt-in-place** (유일한 클린 mechanism 테스트): 공통 셋에 통제 섭동 → **각 모델 자기 clean baseline 대비 ΔR²**. dim·baseline·도메인 confound 원천 회피. semantic(ours robust 예상) + photometric(프레임 간 비대칭, ours fragile 예상) **교차 = selectivity**. ⚠️ 약한 feature는 잃을 게 적어 trivially robust — baseline R² 충분한 셋(CALVIN comp p_t_m 0.41) + **교차**로 판정.
 - [ ] ④ (유보) attentive slope-diff — 폐기(3a와 함께). VideoMAE in-domain EgoDex attentive 545GB OOM.
 
-**결론 (STEP 0.5 종료)**: **3a(slope/dissociation) 폐기** — dataset 난이도 천장 confound. **살아남은 주장 = 3b(efficiency 절대값)**: CoMP-MAE-S(~32M P+M, 좁은 unlabeled home-video)가 internet-scale ViT-B(DINOv2/SigLIP) 이기고 same-data VideoMAE(86M)에 근접. **검증된 표·방법론·provenance = [`paper_artifacts/tables/step0_ood_efficiency/`](../paper_artifacts/tables/step0_ood_efficiency/README.md)** (parity: CALVIN n_eval=32183 / LIBERO_spatial 9690, 전 인코더 일치). **다음 = ③ mechanism(selectivity)** → 그 후 STEP 1(no-M·SiamMAE-analog 인과).
+**결론 (STEP 0.5 종료)**: **3a(slope/dissociation) 폐기** — dataset 난이도 천장 confound. **살아남은 주장 = 3b(efficiency 절대값)**: CoMP-MAE-S(~32M P+M, 좁은 unlabeled home-video)가 internet-scale ViT-B(DINOv2/SigLIP) 이기고 same-data VideoMAE(86M)에 근접. **검증된 표·방법론·provenance = [`paper_artifacts/ood_efficiency/`](../paper_artifacts/ood_efficiency/README.md)** (parity: CALVIN n_eval=32183 / LIBERO_spatial 9690, 전 인코더 일치). **다음 = ③ mechanism(selectivity)** → 그 후 STEP 1(no-M·SiamMAE-analog 인과).
 
 **STEP 1이 보이려는 것 (참고)**: STEP 0=상관("M 경유 신호"), STEP 1=인과. no-M(M 빼면 robustness 사라지나) + SiamMAE-analog(ΔL-where가 RGB-where 이기나). 단 confound된 STEP 0 위에 올리면 그대로 상속 → 위 de-confound가 선결.
 

@@ -30,6 +30,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from PIL import Image
 
 from src.datasets import EgoDexDataset, DROIDDataset
 from src.models import TwoStreamV15Model
@@ -83,7 +84,10 @@ def main():
                     help="DROID ep 디렉터리(droid-root 기준 상대경로) 고정. 프레임 보유 ep만 — 95k 전수 스캔 회피.")
     ap.add_argument("--max-videos", type=int, default=100)
     ap.add_argument("--out", default="scratch/viz/comp_mae_s/recon.png",
-                    help="기본=gitignored scratch. 모델별 폴더(comp_mae_{s|b}) + 파일명 recon_ep{NNNN}_{domain}.png. 논문 승격 시 paper_artifacts/figN/ 명시")
+                    help="기본=gitignored scratch. 모델별 폴더(comp_mae_{s|b}) + 파일명 recon_ep{NNNN}_{domain}.png. 논문 승격 시 paper_artifacts/recon_quality/ 명시")
+    ap.add_argument("--save-elems", action="store_true",
+                    help="composite grid 외에 cell 단위 개별 저장 (<out_stem>_elems/): RGB=PNG, "
+                         "ΔL=colormap PNG + raw .npy (다른 colormap/vlim 재렌더용)")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
     random.seed(args.seed)
@@ -166,6 +170,15 @@ def main():
         sources.append(("UNSEEN (DROID x-domain)", ds_droid))
 
     # 각 cell = (array, kind): kind 'rgb' → imshow / 'dl' → imshow(cmap=seismic, vlim)
+    # cell 순서는 아래 titles와 1:1 (--save-elems 파일명 키)
+    cell_keys = ["frame_t", "frame_tk", "p_rec_t", "p_rec_tk", "p_pred_tk",
+                 "m_dl_target", "m_dl_recon_b", "m_static_t", "m_static_tk"]
+    elem_dir = None
+    if args.save_elems:
+        out_p = Path(args.out)
+        elem_dir = out_p.parent / (out_p.stem + "_elems")
+        elem_dir.mkdir(parents=True, exist_ok=True)
+
     rows = []
     with torch.no_grad():
         for label, ds in sources:
@@ -192,6 +205,18 @@ def main():
                 print(f"  [{label}] gap={int(gap)} | P rec_t={s_t:.3f} pred_tk={s_pred:.3f} | "
                       f"M-recon(B)={s_mB:.3f} target={dl_target.std().item():.3f} | "
                       f"Case-A(→0 기대) static_t={s_mA_t:.4f} static_tk={s_mA_tk:.4f}")
+                if elem_dir is not None:
+                    src_key = "_".join(
+                        "".join(c if c.isalnum() else " " for c in label.lower()).split())
+                    row_tag = f"r{len(rows):02d}_{src_key}_gap{int(gap):02d}"
+                    for key, (im, kind) in zip(cell_keys, cells):
+                        if kind == "dl":
+                            np.save(elem_dir / f"{row_tag}_{key}.npy", im)
+                            plt.imsave(elem_dir / f"{row_tag}_{key}.png", im,
+                                       cmap="seismic", vmin=-args.dl_vlim, vmax=args.dl_vlim)
+                        else:
+                            Image.fromarray((im * 255).astype(np.uint8)).save(
+                                elem_dir / f"{row_tag}_{key}.png")
                 rows.append((label, int(gap), cells))
 
     titles = ["frame_t", "frame_t+k", "P:rec_t", "P:rec_t+k", "P:pred_t+k",
