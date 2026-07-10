@@ -89,6 +89,19 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-07-10 Full-data scaling — CoMP-B × part1-5 compute-matched ([fulldata_scaling_plan.md](fulldata_scaling_plan.md))
+
+**목적**: B deployed-P 병리의 원인 판정(데이터 기아 vs 구조적 병리). 기준런 `36186569`(part1 50ep)과 config 완전 동일, 변경 = DATA(part1-5)·EPOCHS만.
+**🔴 가드 2 재산정**: part1-5 실제 = 46,234+95,125+53,779+44,129+75,572 = **314,839 vids = part1의 6.81×** (계획 ≈5× 추정 보정) → compute-matched EPOCHS = 50/6.81 = 7.34 → **7ep 확정** (샘플 수 기준런의 95.3%; 10ep는 +36% 과잉). 비용 재산정 ≈ **18.1h wall ≈ 145 GPU·h** (기준런 1367s/part1-ep 앵커).
+**가드 1 (LR step-매칭)**: 스케줄러 epoch-granularity(SequentialLR) → warmup `max(1,7//10)`=1 full-ep=30,746 steps (기준런 5ep=22,575 steps, +36%·비율 13.6% vs 10%) = epoch 단위 제약 내 최선. cosine envelope step-공간 동일. **가드 3**: SPLITS 명시 열거 = test 누출 구조적 불가. **가드 4**: save_interval 자동 `max(1,7//12)`=1 → 매 epoch 저장.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36822612 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (1차) — MAX_VIDEOS=200/split, B config(768/h12/m4·no-Sobel·pair·mask_m-recon0.6·caseA0.25·floor0.02·batch128·LR2.8e-4). SUFFIX=sanity_fulldata_comp_b | ⚠️ COMPLETED 1m45s (~0.23 GPU·h)이나 **SPLITS 콤마 이스케이프 실패 → part1만 로드** (`--export=…,SPLITS=part1\,part2…`는 sbatch 콤마 파싱에 잘림). model args·loss 스케일(1.97→1.30)은 정상. 교훈: 콤마 값은 --export로 못 넘김 — sbatch 기본값(part1-5) 사용 |
+| 36822618 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (2차, SPLITS 미지정 → 기본 part1-5) — 나머지 동일 | ⚠️ COMPLETED 2m04s (~0.27 GPU·h). **5-split ConcatDataset 로드 확인**(각 200 vids → 100,000 samples)·param 기준런 일치(207,749,632/172,305,664). 단 **같은 SUFFIX로 1차 ckpt auto-resume → 학습 0 step** (start_epoch=2>1). 교훈: sanity 반복 시 SUFFIX 매번 갱신 |
+| 36822703 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (3차, fresh SUFFIX=sanity3_fulldata_comp_b, MAX_VIDEOS=1000/split → 500k samples 488 steps) — 5-split 실학습 throughput·loss 실측 (앵커: 기준런 3382 samp/s) | ✅ COMPLETED 5m36s (~0.75 GPU·h). **3041.6 samp/s** (cold 1ep 포함; steady는 기준런 3382 근접 예상). loss 1.83→0.25 정상 감쇠, L_mB 수렴·L_mA caseA 간헐 발화 정상. 에러 없음 → **본 잡 게이트 PASS** |
+| 36822727 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-B full-data 7ep compute-matched** — part1-5(314,839 vids)·EPOCHS=7(가드2 재산정: 50/6.81=7.34→7, 기준런 샘플의 95.3%)·warmup 1ep·save 매 ep·SUFFIX=fulldata_comp_mae_b_7ep. 나머지 config = 기준런 `36186569` 동일. 예상 **18.1~20.1h wall ≈ 145~161 GPU·h** | 🔄 제출 (2026-07-10) |
+
 ### 2026-07-09 CoMP-MAE ep50 가시화 요소별 재생성 (--save-elems)
 
 **목적**: 최종(ep50) recon 가시화의 cell 단위 개별 저장(재조합·다른 렌더링용). `visualize_comp_mae.py`에 `--save-elems` 추가(RGB=PNG, ΔL=colormap PNG+raw npy, `<out_stem>_elems/`) 후 S·B ep50 재실행 — seed 42 고정이라 기존 composite(`recon_ep0050_droid.png`)과 동일 샘플.
