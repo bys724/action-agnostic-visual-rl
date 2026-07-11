@@ -99,7 +99,23 @@ JHMDB split1-test 268클립·8,858프레임, 전 encoder 동일 조건(14×14 gr
 - **실패/모호**: 서랍. limitations "general motion 미검증"(옵션 C) 유지 + framing 강화(옵션 B). negative 기록.
 - **무게중심 불변**: 이건 external validity 보강이지 논문 헤드라인 아님. 7/28 전 spine 재편 금지.
 
-## 7. Cross-refs
+## 7. 경로 1 재개 — SSv2 2-frame linear probe (2026-07-12 설계, 실행 = 로컬 세션)
+
+> 경로 2(correspondence) gate FAIL 후 사용자 결정으로 경로 1 시도. **미채택 사유였던 artifact 위험을 완화 설계로 수용**: readout = **mean-pool + linear 한정** (attentive/concat token probe 금지 — 2회 철회 실패모드). ⚠️ 데이터 = 로컬 `/mnt/data/ssv2/`만 보유 (~200GB, 클러스터 이전 비현실적) → **구현·실행 = 로컬 워크스테이션 세션**.
+
+**설계 (matched 2-frame 규약)**:
+- Task: SSv2 174-class 분류, frozen encoder + linear probe (mean-pool).
+- 입력: 클립당 (t, t+gap) 2-frame pair — gap ≈ 1s(EgoDex 학습 분포 정합, SSv2 12fps → gap≈12). eval은 클립당 N pair(예: 3) logit 평균.
+- Encoder(전부 기존 배선 재사용): CoMP-S {`p_t_m`, `p_t_p_tk`} / DINOv2 / SigLIP / VideoMAE-vla. 전 encoder 동일 pair·해상도·probe 설정 (parity §0).
+- **방향성 control (on-thesis, artifact-내성)**: SSv2는 방향 민감(pushing left/right 등) → eval 시 pair 순서 반전 acc 하락폭 = motion 정보 사용의 직접 증거. `p_t_m`에서 하락 크고 `p_t_p_tk`에서 작으면 M이 방향 정보를 실제 운반.
+- 비용: feature 추출 train 169k + val 25k 클립 × N pair (로컬 H100×2, 수 시간) + linear probe (분 단위).
+
+**🟠 gate 사전 등록 (결과 확인 전 고정, 2026-07-12)**:
+1. **내부 대조(주)**: top-1 acc(`p_t_m`) − acc(`p_t_p_tk`) ≥ **+2%p** — M-stream의 실질 기여.
+2. **외부 대조(부)**: max(CoMP) ≥ max(DINOv2, SigLIP) − 2%p — appearance 대비 동급 이상.
+- 둘 다 충족 → 보고(attach-only, §6 규율 동일). 미달 → 서랍 + negative 기록. 절대 SOTA 주장 금지(2-frame 프로토콜은 상대 비교 전용).
+
+## 8. Cross-refs
 
 - Vault: `Projects/Action-Agnostic Visual Representation (AAAI)/README.md` §열린 우려 (옵션 A/B/C) · `2. Experiments.md` §4 ②correspondence label-propagation.
 - dev: `siammae_baseline_plan.md` (SiamMAE=correspondence 홈) · `eval_protocols.md` §0 parity · `factorization_crossover_plan.md` (per-stream 측정 규율) · `fulldata_scaling_plan.md` §4 (attach-only 선례).
