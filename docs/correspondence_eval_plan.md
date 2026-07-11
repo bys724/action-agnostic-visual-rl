@@ -101,7 +101,8 @@ JHMDB split1-test 268클립·8,858프레임, 전 encoder 동일 조건(14×14 gr
 
 ## 7. 경로 1 재개 — SSv2 2-frame linear probe (2026-07-12 설계, 실행 = 로컬 세션)
 
-> 경로 2(correspondence) gate FAIL 후 사용자 결정으로 경로 1 시도. **미채택 사유였던 artifact 위험을 완화 설계로 수용**: readout = **mean-pool + linear 한정** (attentive/concat token probe 금지 — 2회 철회 실패모드). ⚠️ 데이터 = 로컬 `/mnt/data/ssv2/`만 보유 (~200GB, 클러스터 이전 비현실적) → **구현·실행 = 로컬 워크스테이션 세션**.
+> 경로 2(correspondence) gate FAIL 후 사용자 결정으로 경로 1 시도. **미채택 사유였던 artifact 위험을 완화 설계로 수용**: readout = **mean-pool + linear 한정** (attentive/concat token probe 금지 — 2회 철회 실패모드).
+> 🔄 **실행 위치 = 클러스터로 변경 (2026-07-12)**: "~220GB" 추정은 오류 — SSv2 공식 배포는 **~19.4GB**(220k webm, 12fps 저해상도). HF 미러(`morpheushoc/something-something-v2`, 공식 20-part 레이아웃+어노테이션)에서 `/proj/external_group/mrg/datasets/ssv2/`로 다운로드. 라이선스: Qualcomm 연구 라이선스 — 로컬 `/mnt/data/ssv2/` 정식 보유분과 동일 데이터의 미러.
 
 **설계 (matched 2-frame 규약)**:
 - Task: SSv2 174-class 분류, frozen encoder + linear probe (mean-pool).
