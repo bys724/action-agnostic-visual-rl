@@ -73,6 +73,7 @@
 - 🔴 **parity (`eval_protocols.md` §0 규율)**: 전 encoder **동일** 입력 해상도·patch grid·context 길이 K·top-k·τ·layer(마지막 block token). 하나라도 다르면 비교 무효.
 - 🔴 **artifact 규율**: **학습 head 절대 추가 금지** — 이게 경로 2 채택의 이유. 순수 유사도만.
 - 🟠 **screen-then-report gate (사전 등록 — 실행 전 X 고정)**: CoMP(P or M best) vs appearance baseline(DINOv2/SigLIP) 마진 **≥ X** (JHMDB PCK@0.1 기준) → 보고. 미달 → **서랍**(negative를 `cluster_sessions.md`에 기록), 글쓰기 옵션 B+C로 회귀.
+  - **X = +0.05 로 고정 (2026-07-12, 결과 확인 전 등록)**. 근거: frame 수 ~10k지만 클립 내 상관으로 유효 n 축소 → 클립 레벨 노이즈 ~1–2%p 추정, 5%p = 노이즈 대비 명확 + 문헌에서 방법 간 유의미 격차로 통용되는 크기. 비교 대상 = max(DINOv2, SigLIP) vs max(CoMP-P, CoMP-M) (CoMP ckpt = **S**, 논문 headline 모델).
 - 🟠 **절대 수치 ≠ SiamMAE 공개값**: matched-budget EgoDex pretrain·coarse patch → 절대 J&F/PCK 낮음. **상대 비교(우리 stream 간·vs baseline)만** 주장. SOTA correspondence 주장 금지.
 - 🟢 **비용**: frozen forward + 유사도, 학습 0 → 저렴. 데이터 작음. 주 비용 = **harness 구현·디버깅(~1–2일 eng)**.
 
