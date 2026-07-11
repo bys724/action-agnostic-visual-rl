@@ -102,6 +102,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36822703 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (3차, fresh SUFFIX=sanity3_fulldata_comp_b, MAX_VIDEOS=1000/split → 500k samples 488 steps) — 5-split 실학습 throughput·loss 실측 (앵커: 기준런 3382 samp/s) | ✅ COMPLETED 5m36s (~0.75 GPU·h). **3041.6 samp/s** (cold 1ep 포함; steady는 기준런 3382 근접 예상). loss 1.83→0.25 정상 감쇠, L_mB 수렴·L_mA caseA 간헐 발화 정상. 에러 없음 → **본 잡 게이트 PASS** |
 | 36822727 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-B full-data 7ep compute-matched** — part1-5(314,839 vids)·EPOCHS=7(가드2 재산정: 50/6.81=7.34→7, 기준런 샘플의 95.3%)·warmup 1ep·save 매 ep·SUFFIX=fulldata_comp_mae_b_7ep. 나머지 config = 기준런 `36186569` 동일. 예상 **18.1~20.1h wall ≈ 145~161 GPU·h** | ✅ COMPLETED (07-10 14:34→07-11 23:48, **33h13m = 265.8 GPU·h**, 예상 +65%: per-sample throughput 3400→~1470 samp/s **I/O 병목** — 실측·개선 후보 = [fulldata_scaling_plan §5](fulldata_scaling_plan.md)). 7ep 완주, train 0.0112/eval 0.0124, collapse 없음. ckpt `two_stream_v15b_fulldata_comp_mae_b_7ep/20260710_143730/` (매 ep 저장, latest=best=ep7) |
 
+### 2026-07-12 Correspondence label-prop (JHMDB) — 옵션 A 실행 ([correspondence_eval_plan.md](correspondence_eval_plan.md))
+
+**목적**: general-motion external validity — readout-free JHMDB PCK. gate **X=+0.05 사전 등록**(plan §5, 결과 확인 전 고정). 데이터: JHMDB 4.5GB+DAVIS 833MB 신규 다운로드(`datasets/{jhmdb,davis2017}`, 병렬 range로 단축). harness 합성 unit test 10/10 PASS 후 제출.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36828463/464 | normal V100 1×1 ×2 | 02:00:00 | **sanity 5클립** — 463=dinov2 / 464=parvo-m(CoMP-S) | ✅ 각 ~1m (~0.03 GPU·h). dinov2 PCK@0.1 0.388 / parvo-m 0.383 — 문헌 정합(coarse 14×14), 파이프라인 PASS |
+| 36828465~469 | normal V100 1×1 ×5 | 02:00:00 | **본 측정 268클립** — 465=parvo-p·466=parvo-m(CoMP-S) / 467=dinov2·468=siglip / 469=videomae-vla(`videomae/20260415_012017/best`). 전파 하이퍼 전 encoder 동일(τ0.1·topk5·r3·n_last7·grid14) | 🔄 제출 (2026-07-12) |
+
 ### 2026-07-12 B-full probing 게이트 (11잡)
 
 **목적**([fulldata_scaling_plan.md](fulldata_scaling_plan.md) §3 — **판정 기준 사전 등록됨**, probe 결과 확인 전 고정): B-full ep7 `latest.pt` same-probe 판정(데이터 기아 vs 구조적 병리). EgoDex 3잡 = `36197899` 프로토콜 그대로(parvo·split=test·gap=10·MAX_VIDEOS=1500·40ep) / OOD 8잡 = STEP 2(A) `36785986~993` 프로토콜 그대로(parvo `p_t_m`·CALVIN xfold MAX_EPISODES=200·LIBERO 3suite·mean+attn·SUFFIX=`bfull_{mean,attn}_ptm`).
