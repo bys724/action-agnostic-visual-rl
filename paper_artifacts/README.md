@@ -48,9 +48,9 @@ baseline encoders(`siglip/vc1/dinov2/videomae-ours`)는 양 논문 공유 비교
 
 | Vault path | 본 디렉토리 매핑 |
 |------------|----------------|
-| `Projects/Action-Agnostic Paper/7. Outline.md` | **fig/tab 넘버 ↔ 키워드 폴더 매핑** (단일 출처) |
+| `Projects/Action-Agnostic Visual Representation (AAAI)/7. Outline.md` | **fig/tab 넘버 ↔ 키워드 폴더 매핑** (단일 출처) |
 | `Projects/Input-Prior Robot Representation (ICRA)/` | Paper 1 계획·근거 |
-| `Projects/Action-Agnostic Paper/Evolution.md` | v1→v15→CoMP-MAE 진화 (구세대 산출물은 git history) |
+| `Projects/Action-Agnostic Visual Representation (AAAI)/Evolution.md` | v1→v15→CoMP-MAE 진화 (구세대 산출물은 git history) |
 
 (Vault 루트: `/Users/bys724/LocalVault/Obsidian Vault/`)
 

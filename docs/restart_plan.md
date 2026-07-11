@@ -1,7 +1,7 @@
 # Restart Plan — subset-matched small 재시작 (2026-06-23)
 
 > **상태**: 계획 확정, 실행 전. **문서 전용**(계획·주의·체크리스트·pseudocode). 실제 코드(slope 집계 스크립트·analog routing 분기·run config)는 이 저장소 dev 세션에서.
-> **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Paper/2. Experiments.md` §"결정: subset-matched small 재시작".
+> **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md` §"결정: subset-matched small 재시작".
 > **명명**: 코드 식별자 우선(rename deferred). 기능명↔코드 매핑 = `REFACTOR_PLAN.md` §1 / `CLAUDE.md` "명명 · 2논문 구조".
 
 ---
@@ -191,5 +191,5 @@ rank(enc by slope)                      # 지표 = 절대 R²가 아니라 slope
 
 ## 7. Cross-refs
 
-- **Vault 결정 출처**: Obsidian `Projects/Action-Agnostic Paper/2. Experiments.md` §"결정: subset-matched small 재시작" / `README.md` "현재 상태".
+- **Vault 결정 출처**: Obsidian `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md` §"결정: subset-matched small 재시작" / `README.md` "현재 상태".
 - **관련 dev docs**: [`v15b_retraining_status.md`](v15b_retraining_status.md) §9(MCP-MAE 채택)·§10(BC 78.5)·§11(no-M), [`siammae_baseline_plan.md`](siammae_baseline_plan.md), [`cluster_sessions.md`](cluster_sessions.md)(part1 확정·GPU·h), [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md), [`REFACTOR_PLAN.md`](REFACTOR_PLAN.md) §1(명명표).

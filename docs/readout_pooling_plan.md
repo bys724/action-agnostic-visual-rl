@@ -1,7 +1,7 @@
 # Readout / Pooling 개선 — 조사 + 계획
 
 > frozen 인코더의 **대표값(단일 토큰) readout**을 평균(GAP)보다 정보손실 적게 만드는 방향. downstream 추가학습 없이.
-> 출처: 2026-06-22 Vault 세션 토론 + read-only capability survey. 개념 = Vault `Projects/Action-Agnostic Paper/1. Core Idea.md` §Invariance vs Equivariance, §일반화 프레임.
+> 출처: 2026-06-22 Vault 세션 토론 + read-only capability survey. 개념 = Vault `Projects/Action-Agnostic Visual Representation (AAAI)/1. Core Idea.md` §Invariance vs Equivariance, §일반화 프레임.
 > ⚠️ 본 문서는 **계획·주의사항만**. 실제 구현(pooling 교체, 요약 토큰 학습)은 dev 세션에서.
 
 ## 1. 배경 / 동기
@@ -75,6 +75,6 @@ frozen 인코더 그대로, 합치기 함수만 교체해 GAP 대비 이득을 �
 
 ## 7. Cross-references
 
-- **개념/thesis**: Vault `Projects/Action-Agnostic Paper/1. Core Idea.md` §Invariance vs Equivariance, §일반화 프레임 / `2. Experiments.md` §4(equivariance probe·spatial 약점).
+- **개념/thesis**: Vault `Projects/Action-Agnostic Visual Representation (AAAI)/1. Core Idea.md` §Invariance vs Equivariance, §일반화 프레임 / `2. Experiments.md` §4(equivariance probe·spatial 약점).
 - **관련 코드**: `src/encoders/adapters/{single_frame.py, videomae.py, parvo_pt_ptk.py, base.py}`, `src/policies/bc_transformer_adapted.py`.
 - **grounding 출처**: 2026-06-22 read-only capability survey (본 문서 §2).

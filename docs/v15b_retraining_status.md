@@ -358,7 +358,7 @@ forward 추적 결과 **M→P gradient의 유일한 경로 = `L_pred`** (`_vjepa
 ### 11.3 no-M ≈ two-frame image MAE = Paper1 vs Paper2 비교
 
 - routing을 끄면 P에 남는 학습 신호는 `L_t`/`L_tk_recon`뿐 → **두 프레임 각각 masked reconstruction = 사실상 (two-frame) image MAE.**
-- ∴ no-M ablation = **Paper 1(image MAE) vs Paper 2(motion routing)** 을 한 코드베이스에서 깨끗하게 수행하는 것. 이건 새 허들이 아니라 [`Projects/Action-Agnostic Paper/README.md`](Vault) 의 성패 기준 *"Paper 1을 넘어야 성립"* / `2. Experiments.md §4` *"대조군 = standalone image MAE(P단독), 못 넘으면 구조적 연결 불필요 → 가설 기각"* 을 실제로 측정.
+- ∴ no-M ablation = **Paper 1(image MAE) vs Paper 2(motion routing)** 을 한 코드베이스에서 깨끗하게 수행하는 것. 이건 새 허들이 아니라 [`Projects/Action-Agnostic Visual Representation (AAAI)/README.md`](Vault) 의 성패 기준 *"Paper 1을 넘어야 성립"* / `2. Experiments.md §4` *"대조군 = standalone image MAE(P단독), 못 넘으면 구조적 연결 불필요 → 가설 기각"* 을 실제로 측정.
 - ⚠️ **off-the-shelf image MAE / VideoMAE-ours와 비교 금지** — 아키텍처·mask·params·데이터 confound. 반드시 **같은 Parvo 코드 routing-off** 버전이라야 함.
 
 ### 11.4 이 실험이 잡는 축 / 못 잡는 축

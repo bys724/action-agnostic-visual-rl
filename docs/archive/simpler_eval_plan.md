@@ -3,7 +3,7 @@
 > **목적**: 우리 action-agnostic encoder/표현을 **SIMPLER** 벤치마크로 평가하기 위한 준비.
 > **분담**: 클러스터(olaf) = 데이터셋 학습 / 로컬 워크스테이션 = SIMPLER 환경 + 테스트.
 > **상태**: 계획 (2026-06-11). 실제 구현은 dev session에서.
-> **결정 출처**: Vault 조사 (SIMPLER 세팅·공식 학습 데이터) — `Projects/Action-Agnostic Paper/2. Experiments`.
+> **결정 출처**: Vault 조사 (SIMPLER 세팅·공식 학습 데이터) — `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments`.
 
 ---
 
@@ -74,7 +74,7 @@ repo에 SIMPLER 통합이 일부 존재. 새로 짜지 말고 **확장**할 것:
 
 ## 🔗 Cross-references
 
-- **Vault 결정·조사**: `Projects/Action-Agnostic Paper/2. Experiments` (SIMPLER 평가 축)
+- **Vault 결정·조사**: `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments` (SIMPLER 평가 축)
 - **기존 코드**: `src/policies/openvla/openvla_model.py`, `scripts/setup/setup_openvla.py`
 - **데이터 확보**: `docs/dataset_todo.md`
 - **상위 계획**: `docs/RESEARCH_PLAN.md`, `docs/paper_experiments_plan.md`

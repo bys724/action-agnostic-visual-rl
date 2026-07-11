@@ -3,7 +3,7 @@
 > **목적**: general-motion 벤치 리뷰어 리스크(Vault `README.md` §열린 우려) 대응 **옵션 A** 실행 계획.
 > readout-free **correspondence(경로 2)** — SSv2 linear-probe(경로 1)·optical flow(경로 3) 대신 채택.
 > **상태**: 계획, 코드 미착수. 이 문서 = 참조·guard. **구현·잡 제출은 dev/클러스터 세션.**
-> 결정 정본: Vault `Projects/Action-Agnostic Paper/README.md` §열린 우려 (옵션 A/B/C).
+> 결정 정본: Vault `Projects/Action-Agnostic Visual Representation (AAAI)/README.md` §열린 우려 (옵션 A/B/C).
 
 ## 0. 한 줄 요약 / 왜 이 방법
 
@@ -101,6 +101,6 @@ JHMDB split1-test 268클립·8,858프레임, 전 encoder 동일 조건(14×14 gr
 
 ## 7. Cross-refs
 
-- Vault: `Projects/Action-Agnostic Paper/README.md` §열린 우려 (옵션 A/B/C) · `2. Experiments.md` §4 ②correspondence label-propagation.
+- Vault: `Projects/Action-Agnostic Visual Representation (AAAI)/README.md` §열린 우려 (옵션 A/B/C) · `2. Experiments.md` §4 ②correspondence label-propagation.
 - dev: `siammae_baseline_plan.md` (SiamMAE=correspondence 홈) · `eval_protocols.md` §0 parity · `factorization_crossover_plan.md` (per-stream 측정 규율) · `fulldata_scaling_plan.md` §4 (attach-only 선례).
 - 참고 논문: SiamMAE (arXiv 2305.14344) · DINO video segmentation eval · Jabri et al. Contrastive Random Walk (NeurIPS 2020).

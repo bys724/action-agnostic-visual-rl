@@ -26,7 +26,7 @@ EgoDex로 action-agnostic 시각 표현 사전학습 → LIBERO 로봇 조작으
 
 ## 명명 · 2논문 구조 (정규 — source of truth)
 
-> Obsidian `Projects/Action-Agnostic Paper/` + `Projects/Input-Prior Robot Representation (ICRA)/`와 1:1. 이 섹션이 명명·프레이밍의 단일 출처 — 다른 docs(eval_protocols·RESEARCH_PLAN·v15b_status)가 역참조.
+> Obsidian `Projects/Action-Agnostic Visual Representation (AAAI)/` + `Projects/Input-Prior Robot Representation (ICRA)/`와 1:1. 이 섹션이 명명·프레이밍의 단일 출처 — 다른 docs(eval_protocols·RESEARCH_PLAN·v15b_status)가 역참조.
 > 🔄 **기능 서술명 reorg (2026-06-23, 확정)**: no-M→**Image MAE**, Paper1→**Edge-Prior Image MAE** (2-축: Edge-Prior/no-Sobel × Image MAE/MS-JEPA/**CoMP-MAE**[구 MCP-MAE]). 표·근거 = [docs/REFACTOR_PLAN.md](docs/REFACTOR_PLAN.md). 코드 식별자(`v15`/`v16` 등) rename은 **본학습 후 일괄**(deferred) — 코드·ckpt는 옛 이름 유지.
 
 **고유명은 논문 핵심 모델 하나에만 부여. 나머지(의도와 달랐던 버전 포함)는 버전명 유지.**
@@ -50,9 +50,9 @@ EgoDex로 action-agnostic 시각 표현 사전학습 → LIBERO 로봇 조작으
 
 | 카테고리 | 경로 |
 |---------|------|
-| 프로젝트 메인 (Paper 2, AAAI) | `Projects/Action-Agnostic Paper/README.md` |
+| 프로젝트 메인 (Paper 2, AAAI) | `Projects/Action-Agnostic Visual Representation (AAAI)/README.md` |
 | Paper 1 (ICRA, Input-Prior) | `Projects/Input-Prior Robot Representation (ICRA)/{README, 1. Core Claim & Plan}.md` |
-| 단계별 정리 | `Projects/Action-Agnostic Paper/{1. Core Idea … 5. Project Management}.md` |
+| 단계별 정리 | `Projects/Action-Agnostic Visual Representation (AAAI)/{1. Core Idea … 5. Project Management}.md` |
 | 핵심 개념 | `Concepts/{Action-Agnostic Pretraining Framework, Two Visual Pathways, Two-Stream Image Preprocessing, …}.md` |
 | 논문 노트 | `Sources/papers/{EgoDex (2025), V-JEPA 2 (2025)}.md` |
 

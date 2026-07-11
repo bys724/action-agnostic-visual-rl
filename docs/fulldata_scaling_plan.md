@@ -2,7 +2,7 @@
 
 > **목적**: 마지막 살아있는 제약 "모델만 키우면 좁은 데이터서 악화(B deployed-P 발산)"의 원인 판정 — **데이터 기아 vs 구조적 병리**.
 > 가설 출처 = cluster_sessions 2026-07 §가설: "B의 P-appearance overfit-proneness = part1 대비 모델 규모 과대. EgoDex 전체 학습이 appearance 일반화로 완화 기대 (M은 이미 part1로도 clean·scale)."
-> Vault 결정 = `Projects/Action-Agnostic Paper/2. Experiments.md` §규모 결정 (2026-07-10 항목). 논문 반영 = **attach-only** (아래 §4).
+> Vault 결정 = `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md` §규모 결정 (2026-07-10 항목). 논문 반영 = **attach-only** (아래 §4).
 > 본 문서 = 계획·주의사항. 잡 제출·구현은 dev/클러스터 세션에서.
 
 ## 1. 설계 — compute-matched 10ep 우선 (단계적)
@@ -87,5 +87,5 @@
 ## 6. Cross-refs
 
 - 가설·데이터 준비: [`cluster_sessions.md`](cluster_sessions.md) 2026-07 §가설 · B 본학습 `36186569` (config·비용 앵커).
-- Vault 결정: `Projects/Action-Agnostic Paper/2. Experiments.md` §규모 결정 · §STEP 2 (FAIL 스코핑 맥락).
+- Vault 결정: `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md` §규모 결정 · §STEP 2 (FAIL 스코핑 맥락).
 - 모델 정의: [`comp_mae_plan.md`](comp_mae_plan.md).

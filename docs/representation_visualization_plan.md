@@ -6,7 +6,7 @@
 >
 > **시점**: CoRL 2026 accept 발표 이후 (paper 마감 5/29 이후 워크플로우). Anonymous review 기간 동안 public 공개 X.
 >
-> **상세 framing 배경**: Vault `Projects/Action-Agnostic Paper/README.md` 참조.
+> **상세 framing 배경**: Vault `Projects/Action-Agnostic Visual Representation (AAAI)/README.md` 참조.
 >
 > **최종 갱신**: 2026-05-27
 
@@ -279,8 +279,8 @@ def quiver_overlay(frame, cx_map, cy_map, patch_grid_shape):
 
 ## 8. Cross-references
 
-- Vault: `Projects/Action-Agnostic Paper/README.md` (paper 전체 진행 상황 + project page 논의)
-- Vault: `Projects/Action-Agnostic Paper/4. Paper Writing.md` (paper main framing 결정 + Edit Spec)
-- Vault: `Projects/Action-Agnostic Paper/3. Experiments.md` (실험 결과 + per-dim 진단 결과 — visualization 검증 시 reference)
+- Vault: `Projects/Action-Agnostic Visual Representation (AAAI)/README.md` (paper 전체 진행 상황 + project page 논의)
+- Vault: `Projects/Action-Agnostic Visual Representation (AAAI)/4. Paper Writing.md` (paper main framing 결정 + Edit Spec)
+- Vault: `Projects/Action-Agnostic Visual Representation (AAAI)/3. Experiments.md` (실험 결과 + per-dim 진단 결과 — visualization 검증 시 reference)
 - Dev repo: `docs/PROBING_GUIDE.md` (probe 학습 protocol, viz 전 확인 필요)
 - Dev repo: `paper_artifacts/calvin_action_probing/_diagnostic/per_dim_r2.png` (per-dim 분해 결과 figure — viz 사례 참고)

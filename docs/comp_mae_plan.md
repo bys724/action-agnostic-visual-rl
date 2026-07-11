@@ -2,7 +2,7 @@
 
 > **이름**: CoMP-MAE = **Co**-reconstructive **M**agno-**P**arvo **MAE**. Co=상호 cross-reconstruction(이번 본질), MP=magno(ΔL)/parvo(RGB) 두 stream(불변 골격), MAE=pixel objective. 코드 버전 = **v16** (개념 이름과 분리). 선행: MS-JEPA(v15) → MCP-MAE → **CoMP-MAE(v16)**.
 
-> 설계 출처: Vault `Projects/Action-Agnostic Paper/1. Core Idea.md` §대칭 Cross-Reconstruction 설계 (MotionMAE 읽기 + 대화로 정련).
+> 설계 출처: Vault `Projects/Action-Agnostic Visual Representation (AAAI)/1. Core Idea.md` §대칭 Cross-Reconstruction 설계 (MotionMAE 읽기 + 대화로 정련).
 > 본 문서는 **구현 참고(계획·주의·pseudocode)** 다. 실제 코드는 dev 세션에서 작성.
 > 기존 MCP-MAE 노선(JEPA 제거·pixel 통일)의 연장 — `docs/v15b_retraining_status.md §9` 위에 쌓는다.
 

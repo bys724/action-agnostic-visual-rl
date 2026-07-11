@@ -246,7 +246,7 @@ def main():
 
 ## 8. Cross-references
 
-- Vault 결정 source: `Projects/Action-Agnostic Paper/3. Experiments § Phase 2 보강 § 추가 실험: P Stream Evaluation Gap`
+- Vault 결정 source: `Projects/Action-Agnostic Visual Representation (AAAI)/3. Experiments § Phase 2 보강 § 추가 실험: P Stream Evaluation Gap`
 - 관련 plan: `docs/libero_action_probing_plan.md` (Phase 2 보강 main)
 - 기존 script 재사용: `scripts/eval/probe_action_libero.py` (action regression → classification 변형)
 - 기존 v11 mode 옵션 참고: `scripts/eval/probe_action_v11.py` (cls_mode argument)

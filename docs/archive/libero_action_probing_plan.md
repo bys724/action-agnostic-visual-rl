@@ -203,7 +203,7 @@ def main():
 
 ## 9. Cross-references
 
-- Vault 결정 source: `Projects/Action-Agnostic Paper/3. Experiments.md § Phase 2 보강`
+- Vault 결정 source: `Projects/Action-Agnostic Visual Representation (AAAI)/3. Experiments.md § Phase 2 보강`
 - Paper 측 ref: paper repo `notes/paper_writing_plan.md`
 - 관련 기존 script: `scripts/eval/probe_action_droid.py`, `scripts/eval/probe_action_droid_v11.py`, `scripts/eval/value_alignment.py`
 - DROID protocol (기존): `docs/PROBING_GUIDE.md § DROID Probing`

@@ -188,7 +188,7 @@ PHASE3_BCT_DEBUG_2026-05-03.md (249 lines) →
 - [ ] ⚠️ **CLAUDE.md / RESEARCH_PLAN.md 의 핵심 정보 (current Phase, v11 ep44 결과 등) 손실 금지** — 갱신만, 삭제 X
 - [ ] ⚠️ **클러스터 pull 시 git conflict 가능성** — 클러스터에서도 사용자가 작업 중이면 (예: 진행 중 잡의 결과 파일이 untracked 로 누적) pull 전에 충돌 검토 필요
 - [ ] ⚠️ **사용자가 다른 곳에서 작업 중인 미커밋 변경사항 보호** — 본 plan 의 모든 step 은 사용자 결정 후 진행. 임의 staging 금지
-- [ ] ⚠️ **archive 후 Vault cross-link 깨짐 검토** — Vault `Sources/papers/`, `Projects/Action-Agnostic Paper/` 에 dev repo 경로 link 다수 있음. 이동된 파일은 link 갱신 필요
+- [ ] ⚠️ **archive 후 Vault cross-link 깨짐 검토** — Vault `Sources/papers/`, `Projects/Action-Agnostic Visual Representation (AAAI)/` 에 dev repo 경로 link 다수 있음. 이동된 파일은 link 갱신 필요
 
 ---
 
@@ -204,7 +204,7 @@ PHASE3_BCT_DEBUG_2026-05-03.md (249 lines) →
 
 ## 7. Cross-references
 
-- Vault 결정 source: `Projects/Action-Agnostic Paper/3. Experiments § Phase 3-1` + `우려사항 및 대응방안 § 14`
+- Vault 결정 source: `Projects/Action-Agnostic Visual Representation (AAAI)/3. Experiments § Phase 3-1` + `우려사항 및 대응방안 § 14`
 - 통합 대상 docs: `PHASE3_BCT_DEBUG_2026-05-03.md`, `cluster_sessions.md`, `RESEARCH_PLAN.md`
 - Hand-off contract: `paper_artifacts/README.md`, `docs/artifacts.md`
 - V3 학습 plan: `RESEARCH_PLAN.md` § Phase 3-1 V3 + 본 문서 § 3

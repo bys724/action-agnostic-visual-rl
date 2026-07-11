@@ -7,7 +7,7 @@
 > - **Phase B(readout-free) 강등**: 남은 gap = arena(데이터 얽힘)지 readout 아님 → k-NN도 이 confound 못 고침(별개 문제).
 > - **① 통계 de-confound = ✅ 완료** (2026-07-02, 위치 partial-out beyond-position 2×2, git 5bfcf9c): aug 경로(P 0.851/M 0.278)와 통계 경로가 독립 수렴 → **directional 이중분리 확정**. → **다음 = ② STEP 1 인과**. 실행 우선순위·저비용 선결·구현 TODO = **§4.1**(2026-07-04 결정).
 > - **② STEP 1 인과 = ✅ 실행·판정 완료** (2026-07-08, 2런 학습 36652563/564 + same-probe 16잡 36785365~380): **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107 붕괴) · **V 소유는 인과 아님**(V_P 스칼펠서 M signature 생존 0.829/Δ+0.332) · **대신 V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 설계의 인과적 정당화**. 판정 상세 = **§4.1 말미** · 수치 로그 = `cluster_sessions.md`(2026-07-08). **다음 = plain을 value 지표로 연장**(3b 효율 표·LIBERO BC-T에 plain 추가 = headline control 완결).
-> **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Paper/2. Experiments.md §4 남은 게이트 A` / `README.md §다음 수` / `History.md`(2026-07-02).
+> **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md §4 남은 게이트 A` / `README.md §다음 수` / `History.md`(2026-07-02).
 > **관련 dev docs**: [`restart_plan.md`](restart_plan.md) §3.3(cross-leakage TODO), [`comp_mae_plan.md`](comp_mae_plan.md) §6(dissociation probe·§6.1 M 배포 무효), [`eval_protocols.md`](eval_protocols.md), [`PROBING_GUIDE.md`](PROBING_GUIDE.md).
 
 ---
@@ -183,6 +183,6 @@ report_interaction(stream x readout)         # main effect 2개 아님을 명시
 
 ## 8. Cross-refs
 
-- **Vault 결정 출처**: Obsidian `Projects/Action-Agnostic Paper/2. Experiments.md §4`(남은 게이트 A/B) · `README.md §다음 수` · `History.md`(2026-07-02).
+- **Vault 결정 출처**: Obsidian `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md §4`(남은 게이트 A/B) · `README.md §다음 수` · `History.md`(2026-07-02).
 - **dev**: [`restart_plan.md`](restart_plan.md) §3.3(cross-leakage·correspondence TODO), [`comp_mae_plan.md`](comp_mae_plan.md) §6(dissociation probe·ablation)·§6.1(M 배포 무효), [`eval_protocols.md`](eval_protocols.md)(parity 가드), [`PROBING_GUIDE.md`](PROBING_GUIDE.md).
 - **코드 진입점(참고)**: `scripts/eval/probe_action.py`(per-dim R²·stream 조합·attentive), `paper_artifacts/ood_efficiency/`(3b 표·provenance).
