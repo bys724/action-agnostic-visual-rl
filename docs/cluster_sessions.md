@@ -111,6 +111,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36828463/464 | normal V100 1×1 ×2 | 02:00:00 | **sanity 5클립** — 463=dinov2 / 464=parvo-m(CoMP-S) | ✅ 각 ~1m (~0.03 GPU·h). dinov2 PCK@0.1 0.388 / parvo-m 0.383 — 문헌 정합(coarse 14×14), 파이프라인 PASS |
 | 36828465~469 | normal V100 1×1 ×5 | 02:00:00 | **본 측정 268클립** — 465=parvo-p·466=parvo-m(CoMP-S) / 467=dinov2·468=siglip / 469=videomae-vla(`videomae/20260415_012017/best`). 전파 하이퍼 전 encoder 동일(τ0.1·topk5·r3·n_last7·grid14) | ✅ 각 2m11s (~0.2 GPU·h 합). 268클립·8,858프레임 전 encoder 동일(parity ✓). **PCK@0.1: parvo-p 0.312 / parvo-m 0.294 / dinov2 0.363 / siglip 0.299 / vmae-vla 0.350** |
 
+### 2026-07-12 SSv2 2-frame linear probe — 경로 1 ([correspondence_eval_plan.md](correspondence_eval_plan.md) §7)
+
+**목적**: correspondence(경로 2) FAIL 후 사용자 결정으로 경로 1 실행. gate 사전 등록(§7): ① acc(`p_t_m`)−acc(`p_t_p_tk`) ≥ +2%p ② max(CoMP) ≥ max(DINOv2,SigLIP)−2%p. **데이터 신규**: SSv2 19.4GB(공식 20-part HF 미러) → `datasets/ssv2/`, 220,847 webm 해제·개수 정합, cv2 VP9 디코드 검증.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36828508 | normal V100 1×1 | 04:00:00 | **sanity 500클립** — parvo p_t_m (최복잡 경로 e2e) | ✅ 35s (~0.01 GPU·h). 추출→probe(loss 5.16→3.27)→방향 control→summary e2e PASS (top1 1.2%는 500클립 학습이라 무의미 — 파이프라인 검증 목적) |
+| 36828510~514 | normal V100 1×1 ×5 | 04:00:00 | **본 측정** (train 169k·val 24.8k, gap12·pair train2/val3·mean-pool linear 20ep) — 510=parvo `p_t_m`·511=parvo `p_t_p_tk`·512=dinov2·513=siglip·514=videomae-vla | 🔄 제출 (2026-07-12) |
+
 **🔴 gate 판정 (사전 등록 X=+0.05): FAIL → 서랍.** max(CoMP-P,M)=0.312 − max(DINOv2,SigLIP)=0.363 = **−0.052**. 계획대로 negative 기록·논문 미반영, 글쓰기 옵션 B+C 회귀(limitations "general motion 미검증" 유지 + framing 강화). 정직 신호: on-thesis 기대("M이 appearance보다 correspondence↑")가 불성립 — M(0.294)이 최약체, ΔL 기반 motion feature는 저속 구간(ΔL≈0)서 매칭용 appearance 변별력이 없는 것으로 해석(추정). 참고: CoMP-P는 SigLIP 상회(0.312>0.299), same-data VideoMAE(86M, full 314k)도 DINOv2 하회(0.350<0.363) = EgoDex 사전학습 전반이 인간-비디오 OOD correspondence서 internet-scale 대비 열세(plan §5 예고된 비대칭). 산출물 = `paper_artifacts/correspondence_labelprop/*_20260712_050420/`.
 
 ### 2026-07-12 B-full probing 게이트 (11잡)
