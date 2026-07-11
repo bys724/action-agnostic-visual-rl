@@ -44,7 +44,24 @@
 - 완화 시: §4.4 효율 표 **참조 행** + limitations "part1 서브셋"·"B 악화" 두 항목 완화 재서술만.
 - 지속 시: limitations 유지, negative 결과 본 문서·cluster_sessions에 기록.
 
-## 5. Cross-refs
+## 5. 데이터 로딩 I/O 병목 — 학습 종료 후 점검·개선 (2026-07-11 기록)
+
+본학습 `36822727`(7ep, part1-5 실측 6.8× 반영)에서 **per-sample throughput 2.3× 저하** 관측 — 단순 배수 스케일링 아님:
+
+| | part1 기준런 `36186569` | full-data `36822727` |
+|---|---|---|
+| 샘플/epoch | 4.62M | 31.48M (6.8×) |
+| epoch 시간 | ~1,360s | ~21,400s (**15.7×**) |
+| throughput | ~3,400 samp/s 유지 | 2,710(ep1) → **~1,470**(ep3+ 안정) |
+
+- 하드웨어(2×4 H100)·global batch(1024)·모델(207M) 동일 → 연산 아닌 **데이터 로딩 병목 추정**: 315k 비디오·31.5M 샘플 셔플 랜덤 액세스가 페이지 캐시 워킹셋 초과 → GPFS 실제 리드 직행. §1 비용 앵커(418.9 samp/s/GPU)는 part1 캐시 우호 조건 값 — **full-data 추정에 재사용 금지** (실측 ~184 samp/s/GPU).
+- **학습 종료 후 점검·개선 후보** (50ep 연장 등 후속 full-data 잡 전 필수 — 현 속도면 연장 비용 2.3× 증가):
+  1. **node-local scratch(NVMe) stage-in** — 잡 시작 시 데이터 노드 로컬 복사 (용량 확인 필요)
+  2. **샤드 순차 읽기** (webdataset/tar 샤드 + 샤드 단위 셔플) — 랜덤 액세스 자체를 제거
+  3. num_workers·prefetch 재점검 (16 CPU/task 기준 포화 여부 프로파일)
+- 이번 런은 개입 불필요 (~6h/ep 안정, ~37.5h 완료 전망 < 48h 캡).
+
+## 6. Cross-refs
 
 - 가설·데이터 준비: [`cluster_sessions.md`](cluster_sessions.md) 2026-07 §가설 · B 본학습 `36186569` (config·비용 앵커).
 - Vault 결정: `Projects/Action-Agnostic Paper/2. Experiments.md` §규모 결정 · §STEP 2 (FAIL 스코핑 맥락).
