@@ -100,7 +100,17 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36822612 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (1차) — MAX_VIDEOS=200/split, B config(768/h12/m4·no-Sobel·pair·mask_m-recon0.6·caseA0.25·floor0.02·batch128·LR2.8e-4). SUFFIX=sanity_fulldata_comp_b | ⚠️ COMPLETED 1m45s (~0.23 GPU·h)이나 **SPLITS 콤마 이스케이프 실패 → part1만 로드** (`--export=…,SPLITS=part1\,part2…`는 sbatch 콤마 파싱에 잘림). model args·loss 스케일(1.97→1.30)은 정상. 교훈: 콤마 값은 --export로 못 넘김 — sbatch 기본값(part1-5) 사용 |
 | 36822618 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (2차, SPLITS 미지정 → 기본 part1-5) — 나머지 동일 | ⚠️ COMPLETED 2m04s (~0.27 GPU·h). **5-split ConcatDataset 로드 확인**(각 200 vids → 100,000 samples)·param 기준런 일치(207,749,632/172,305,664). 단 **같은 SUFFIX로 1차 ckpt auto-resume → 학습 0 step** (start_epoch=2>1). 교훈: sanity 반복 시 SUFFIX 매번 갱신 |
 | 36822703 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (3차, fresh SUFFIX=sanity3_fulldata_comp_b, MAX_VIDEOS=1000/split → 500k samples 488 steps) — 5-split 실학습 throughput·loss 실측 (앵커: 기준런 3382 samp/s) | ✅ COMPLETED 5m36s (~0.75 GPU·h). **3041.6 samp/s** (cold 1ep 포함; steady는 기준런 3382 근접 예상). loss 1.83→0.25 정상 감쇠, L_mB 수렴·L_mA caseA 간헐 발화 정상. 에러 없음 → **본 잡 게이트 PASS** |
-| 36822727 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-B full-data 7ep compute-matched** — part1-5(314,839 vids)·EPOCHS=7(가드2 재산정: 50/6.81=7.34→7, 기준런 샘플의 95.3%)·warmup 1ep·save 매 ep·SUFFIX=fulldata_comp_mae_b_7ep. 나머지 config = 기준런 `36186569` 동일. 예상 **18.1~20.1h wall ≈ 145~161 GPU·h** | 🔄 제출 (2026-07-10) |
+| 36822727 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-B full-data 7ep compute-matched** — part1-5(314,839 vids)·EPOCHS=7(가드2 재산정: 50/6.81=7.34→7, 기준런 샘플의 95.3%)·warmup 1ep·save 매 ep·SUFFIX=fulldata_comp_mae_b_7ep. 나머지 config = 기준런 `36186569` 동일. 예상 **18.1~20.1h wall ≈ 145~161 GPU·h** | ✅ COMPLETED (07-10 14:34→07-11 23:48, **33h13m = 265.8 GPU·h**, 예상 +65%: per-sample throughput 3400→~1470 samp/s **I/O 병목** — 실측·개선 후보 = [fulldata_scaling_plan §5](fulldata_scaling_plan.md)). 7ep 완주, train 0.0112/eval 0.0124, collapse 없음. ckpt `two_stream_v15b_fulldata_comp_mae_b_7ep/20260710_143730/` (매 ep 저장, latest=best=ep7) |
+
+### 2026-07-12 B-full probing 게이트 (11잡)
+
+**목적**([fulldata_scaling_plan.md](fulldata_scaling_plan.md) §3 — **판정 기준 사전 등록됨**, probe 결과 확인 전 고정): B-full ep7 `latest.pt` same-probe 판정(데이터 기아 vs 구조적 병리). EgoDex 3잡 = `36197899` 프로토콜 그대로(parvo·split=test·gap=10·MAX_VIDEOS=1500·40ep) / OOD 8잡 = STEP 2(A) `36785986~993` 프로토콜 그대로(parvo `p_t_m`·CALVIN xfold MAX_EPISODES=200·LIBERO 3suite·mean+attn·SUFFIX=`bfull_{mean,attn}_ptm`).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36828291/292/293 | AIP 1×1 H100 ×3 | 03:00:00 | **EgoDex same-probe** — 291=`attentive_concat_p_t_p_tk`(**deployed-P★ 주판정**: 발산 소멸+best≥0.15=완화) / 292=`attentive_m`(단조성, 기대 ≳0.35) / 293=`attentive_concat_p_m`(P_t⊕M red-flag 잔존 확인) | 🔄 제출 (2026-07-12) |
+| 36828294/295 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN B-full** — 294=mean / 295=attn (xfold, `p_t_m`) → efficiency 참조 행 | 🔄 제출 |
+| 36828296~301 | AIP 1×1 H100 ×6 | 01:30:00 | **LIBERO B-full** — 296/297=spatial·298/299=object·300/301=goal (각 mean/attn, `p_t_m`) | 🔄 제출 |
 
 ### 2026-07-09 CoMP-MAE ep50 가시화 요소별 재생성 (--save-elems)
 
