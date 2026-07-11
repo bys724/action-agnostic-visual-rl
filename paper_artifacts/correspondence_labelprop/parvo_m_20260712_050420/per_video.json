@@ -1,0 +1,1878 @@
+[
+  {
+    "action": "brush_hair",
+    "clip": "April_09_brush_hair_u_nm_np1_ba_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.4752136752136752,
+    "pck@0.2": 0.7076923076923077
+  },
+  {
+    "action": "brush_hair",
+    "clip": "April_09_brush_hair_u_nm_np1_ba_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.4341880341880342,
+    "pck@0.2": 0.7333333333333333
+  },
+  {
+    "action": "brush_hair",
+    "clip": "April_09_brush_hair_u_nm_np1_ba_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.29914529914529914,
+    "pck@0.2": 0.6273504273504273
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_Hair_with_Beth_brush_hair_h_nm_np1_le_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.24444444444444444,
+    "pck@0.2": 0.41367521367521365
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_Hair_with_Beth_brush_hair_u_nm_np1_fr_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.46153846153846156,
+    "pck@0.2": 0.5811965811965812
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_Hair_with_Beth_brush_hair_u_nm_np1_fr_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.38974358974358975,
+    "pck@0.2": 0.4427350427350427
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_my_hair_-_December_2008_brush_hair_u_cm_np1_ba_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.4341880341880342,
+    "pck@0.2": 0.5982905982905983
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_my_hair_-_December_2008_brush_hair_u_cm_np1_ba_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.38461538461538464,
+    "pck@0.2": 0.5094017094017094
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_my_hair_-_December_2008_brush_hair_u_nm_np1_ba_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.4564102564102564,
+    "pck@0.2": 0.6
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Ella_brushing_her_amazing_long_hair_brush_hair_u_cm_np1_ba_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.37777777777777777,
+    "pck@0.2": 0.5897435897435898
+  },
+  {
+    "action": "brush_hair",
+    "clip": "brush_my_hair_without_wearing_the_glasses_brush_hair_u_nm_np1_fr_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.3811965811965812,
+    "pck@0.2": 0.764102564102564
+  },
+  {
+    "action": "brush_hair",
+    "clip": "brush_my_hair_without_wearing_the_glasses_brush_hair_u_nm_np1_fr_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.3658119658119658,
+    "pck@0.2": 0.6905982905982906
+  },
+  {
+    "action": "catch",
+    "clip": "Frisbee_catch_f_cm_np1_ri_med_0",
+    "frames": 37,
+    "pck@0.1": 0.24259259259259258,
+    "pck@0.2": 0.5351851851851852
+  },
+  {
+    "action": "catch",
+    "clip": "Frisbee_catch_f_cm_np1_ri_med_1",
+    "frames": 40,
+    "pck@0.1": 0.1658119658119658,
+    "pck@0.2": 0.38632478632478634
+  },
+  {
+    "action": "catch",
+    "clip": "Goalkeeper_Training_Day_@_7_catch_f_cm_np1_ri_med_0",
+    "frames": 30,
+    "pck@0.1": 0.006896551724137931,
+    "pck@0.2": 0.04827586206896552
+  },
+  {
+    "action": "catch",
+    "clip": "LearnToShootFromTheMaster_catch_f_cm_np1_ba_med_6",
+    "frames": 17,
+    "pck@0.1": 0.2625,
+    "pck@0.2": 0.6208333333333333
+  },
+  {
+    "action": "catch",
+    "clip": "LearnToShootFromTheMaster_catch_f_nm_np1_ba_med_0",
+    "frames": 18,
+    "pck@0.1": 0.14901960784313725,
+    "pck@0.2": 0.40784313725490196
+  },
+  {
+    "action": "catch",
+    "clip": "LearnToShootFromTheMaster_catch_f_nm_np1_ba_med_1",
+    "frames": 15,
+    "pck@0.1": 0.2619047619047619,
+    "pck@0.2": 0.6095238095238096
+  },
+  {
+    "action": "catch",
+    "clip": "LearnToShootFromTheMaster_catch_f_nm_np1_ba_med_4",
+    "frames": 17,
+    "pck@0.1": 0.15416666666666667,
+    "pck@0.2": 0.5375
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_f_cm_np1_le_bad_5",
+    "frames": 21,
+    "pck@0.1": 0.28,
+    "pck@0.2": 0.5966666666666667
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_u_cm_np1_fr_bad_4",
+    "frames": 19,
+    "pck@0.1": 0.1925925925925926,
+    "pck@0.2": 0.6888888888888889
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_u_cm_np1_le_bad_6",
+    "frames": 22,
+    "pck@0.1": 0.30158730158730157,
+    "pck@0.2": 0.6984126984126984
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_u_cm_np1_le_bad_7",
+    "frames": 21,
+    "pck@0.1": 0.24333333333333335,
+    "pck@0.2": 0.58
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_u_cm_np1_ri_med_0",
+    "frames": 23,
+    "pck@0.1": 0.4,
+    "pck@0.2": 0.6575757575757576
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_u_cm_np1_ri_med_1",
+    "frames": 27,
+    "pck@0.1": 0.43333333333333335,
+    "pck@0.2": 0.6846153846153846
+  },
+  {
+    "action": "catch",
+    "clip": "Torwarttraining_catch_u_cm_np1_ri_med_2",
+    "frames": 20,
+    "pck@0.1": 0.3508771929824561,
+    "pck@0.2": 0.6105263157894737
+  },
+  {
+    "action": "clap",
+    "clip": "103_years_old_japanese_woman__Nao_is_clapping_with_piano_music_by_beethoven_clap_u_cm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.558974358974359,
+    "pck@0.2": 0.7435897435897436
+  },
+  {
+    "action": "clap",
+    "clip": "103_years_old_japanese_woman__Nao_is_clapping_with_piano_music_by_beethoven_clap_u_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.588034188034188,
+    "pck@0.2": 0.764102564102564
+  },
+  {
+    "action": "clap",
+    "clip": "Applauding_Abby_clap_u_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.4,
+    "pck@0.2": 0.7367521367521368
+  },
+  {
+    "action": "clap",
+    "clip": "Applauding_Abby_clap_u_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.4581196581196581,
+    "pck@0.2": 0.8854700854700854
+  },
+  {
+    "action": "clap",
+    "clip": "Baby_Bob_kann_klatschen_!_clap_u_cm_np1_fr_med_0",
+    "frames": 27,
+    "pck@0.1": 0.4512820512820513,
+    "pck@0.2": 0.6820512820512821
+  },
+  {
+    "action": "clap",
+    "clip": "Boom_Snap_Clap_clap_u_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.5435897435897435,
+    "pck@0.2": 0.7128205128205128
+  },
+  {
+    "action": "clap",
+    "clip": "Boom_Snap_Clap_clap_u_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.5606837606837607,
+    "pck@0.2": 0.7213675213675214
+  },
+  {
+    "action": "clap",
+    "clip": "Budam_-_Clap_Hands_clap_u_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.5316239316239316,
+    "pck@0.2": 0.9179487179487179
+  },
+  {
+    "action": "clap",
+    "clip": "Budam_-_Clap_Hands_clap_u_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.5213675213675214,
+    "pck@0.2": 0.8957264957264958
+  },
+  {
+    "action": "clap",
+    "clip": "Flamenco_Dance_Steps_-_Flamenco_Dance_Soft_Claps_clap_u_cm_np1_fr_goo_1",
+    "frames": 39,
+    "pck@0.1": 0.5614035087719298,
+    "pck@0.2": 0.7280701754385965
+  },
+  {
+    "action": "clap",
+    "clip": "Flamenco_Dance_Steps_-_Flamenco_Dance_Soft_Claps_clap_u_cm_np1_fr_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.7025641025641025,
+    "pck@0.2": 0.7333333333333333
+  },
+  {
+    "action": "clap",
+    "clip": "The_Slow_Clap_clap_u_cm_np1_fr_med_4",
+    "frames": 27,
+    "pck@0.1": 0.48205128205128206,
+    "pck@0.2": 0.6871794871794872
+  },
+  {
+    "action": "clap",
+    "clip": "The_Slow_Clap_clap_u_nm_np1_fr_bad_20",
+    "frames": 18,
+    "pck@0.1": 0.396078431372549,
+    "pck@0.2": 0.5568627450980392
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "GuardiansOfO256kb_climb_stairs_f_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.1641025641025641,
+    "pck@0.2": 0.48034188034188036
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "I_DO_NOT_Run_Up_Stairs_Like_A_GIRL_climb_stairs_l_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.358974358974359,
+    "pck@0.2": 0.6991452991452991
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "I_DO_NOT_Run_Up_Stairs_Like_A_GIRL_climb_stairs_l_cm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.37264957264957266,
+    "pck@0.2": 0.7452991452991453
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "I_DO_NOT_Run_Up_Stairs_Like_A_GIRL_climb_stairs_l_cm_np1_ba_med_2",
+    "frames": 30,
+    "pck@0.1": 0.15402298850574714,
+    "pck@0.2": 0.4482758620689655
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "I_DO_NOT_Run_Up_Stairs_Like_A_GIRL_climb_stairs_l_cm_np1_ba_med_3",
+    "frames": 40,
+    "pck@0.1": 0.3111111111111111,
+    "pck@0.2": 0.535042735042735
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "I_DO_NOT_Run_Up_Stairs_Like_A_GIRL_climb_stairs_l_cm_np1_ba_med_4",
+    "frames": 40,
+    "pck@0.1": 0.3076923076923077,
+    "pck@0.2": 0.48547008547008547
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "I_DO_NOT_Run_Up_Stairs_Like_A_GIRL_climb_stairs_l_cm_np1_ba_med_5",
+    "frames": 36,
+    "pck@0.1": 0.23047619047619047,
+    "pck@0.2": 0.46285714285714286
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "Stairway_to_fitness_climb_stairs_f_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.3213675213675214,
+    "pck@0.2": 0.6341880341880342
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "Stairway_to_fitness_climb_stairs_f_nm_np1_fr_med_1",
+    "frames": 35,
+    "pck@0.1": 0.15098039215686274,
+    "pck@0.2": 0.5705882352941176
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "Walking_up_the_stairs_climb_stairs_l_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.24957264957264957,
+    "pck@0.2": 0.5333333333333333
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "Walking_up_the_stairs_climb_stairs_l_cm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.2564102564102564,
+    "pck@0.2": 0.5487179487179488
+  },
+  {
+    "action": "climb_stairs",
+    "clip": "Walking_up_the_stairs_climb_stairs_l_cm_np1_ba_med_2",
+    "frames": 40,
+    "pck@0.1": 0.20341880341880342,
+    "pck@0.2": 0.582905982905983
+  },
+  {
+    "action": "golf",
+    "clip": "Anna_Rawson_Driver_Practice_golf_f_nm_np1_ri_bad_0",
+    "frames": 40,
+    "pck@0.1": 0.19829059829059828,
+    "pck@0.2": 0.770940170940171
+  },
+  {
+    "action": "golf",
+    "clip": "Anna_Rawson_LPGA_golf_f_nm_np1_ri_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.26495726495726496,
+    "pck@0.2": 0.6444444444444445
+  },
+  {
+    "action": "golf",
+    "clip": "Cobra_Golf_-_Camilo_Villegas_golf_f_cm_np1_ri_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.1811965811965812,
+    "pck@0.2": 0.4376068376068376
+  },
+  {
+    "action": "golf",
+    "clip": "Cobra_Golf_-_Camilo_Villegas_golf_f_cm_np1_ri_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.1452991452991453,
+    "pck@0.2": 0.5264957264957265
+  },
+  {
+    "action": "golf",
+    "clip": "Eric_Axley_golf_f_cm_np1_le_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.25982905982905985,
+    "pck@0.2": 0.5948717948717949
+  },
+  {
+    "action": "golf",
+    "clip": "Golfswing_golf_f_cm_np1_fr_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.11623931623931624,
+    "pck@0.2": 0.4581196581196581
+  },
+  {
+    "action": "golf",
+    "clip": "Golfswing_golf_f_cm_np1_ri_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.15042735042735042,
+    "pck@0.2": 0.4581196581196581
+  },
+  {
+    "action": "golf",
+    "clip": "Jeff_Ritter_-_Power_Drill_golf_f_nm_np1_ri_med_0",
+    "frames": 40,
+    "pck@0.1": 0.2170940170940171,
+    "pck@0.2": 0.558974358974359
+  },
+  {
+    "action": "golf",
+    "clip": "Morgan_Pressel_golf_f_cm_np1_ri_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.24786324786324787,
+    "pck@0.2": 0.6341880341880342
+  },
+  {
+    "action": "golf",
+    "clip": "golf_golf_f_nm_np1_ri_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.3213675213675214,
+    "pck@0.2": 0.5811965811965812
+  },
+  {
+    "action": "golf",
+    "clip": "golf_golf_f_nm_np1_ri_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.28034188034188035,
+    "pck@0.2": 0.6564102564102564
+  },
+  {
+    "action": "golf",
+    "clip": "golf_golf_f_nm_np1_ri_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.252991452991453,
+    "pck@0.2": 0.5709401709401709
+  },
+  {
+    "action": "jump",
+    "clip": "KUNG_FU_HUSTLE_jump_f_cm_np1_fr_bad_16",
+    "frames": 39,
+    "pck@0.1": 0.13508771929824562,
+    "pck@0.2": 0.4842105263157895
+  },
+  {
+    "action": "jump",
+    "clip": "KUNG_FU_HUSTLE_jump_f_cm_np1_fr_bad_55",
+    "frames": 34,
+    "pck@0.1": 0.01818181818181818,
+    "pck@0.2": 0.06666666666666667
+  },
+  {
+    "action": "jump",
+    "clip": "Learn_Freerunning_and_Parkour__-_Diving_Kong_jump_f_cm_np1_ba_bad_1",
+    "frames": 22,
+    "pck@0.1": 0.047619047619047616,
+    "pck@0.2": 0.08253968253968254
+  },
+  {
+    "action": "jump",
+    "clip": "Learn_Freerunning_and_Parkour__-_Diving_Kong_jump_f_cm_np1_le_bad_2",
+    "frames": 40,
+    "pck@0.1": 0.03247863247863248,
+    "pck@0.2": 0.07692307692307693
+  },
+  {
+    "action": "jump",
+    "clip": "Learn_Freerunning_and_Parkour__-_Diving_Kong_jump_f_cm_np1_le_bad_3",
+    "frames": 25,
+    "pck@0.1": 0.016666666666666666,
+    "pck@0.2": 0.05
+  },
+  {
+    "action": "jump",
+    "clip": "Learn_Freerunning_and_Parkour__-_Diving_Kong_jump_f_cm_np1_le_bad_5",
+    "frames": 30,
+    "pck@0.1": 0.041379310344827586,
+    "pck@0.2": 0.12413793103448276
+  },
+  {
+    "action": "jump",
+    "clip": "Sommerland_Syd_sprung_in_den_tod_jump_f_cm_np1_fr_bad_0",
+    "frames": 17,
+    "pck@0.1": 0.029166666666666667,
+    "pck@0.2": 0.10416666666666667
+  },
+  {
+    "action": "jump",
+    "clip": "St__Louis_Goalkeeping__Academy_elite_training_jump_f_nm_np1_le_bad_3",
+    "frames": 20,
+    "pck@0.1": 0.021052631578947368,
+    "pck@0.2": 0.12280701754385964
+  },
+  {
+    "action": "jump",
+    "clip": "prelinger_ControlY1950_jump_f_nm_np1_fr_bad_13",
+    "frames": 30,
+    "pck@0.1": 0.04827586206896552,
+    "pck@0.2": 0.2160919540229885
+  },
+  {
+    "action": "jump",
+    "clip": "prelinger_ControlY1950_jump_f_nm_np1_fr_bad_6",
+    "frames": 32,
+    "pck@0.1": 0.02795698924731183,
+    "pck@0.2": 0.1053763440860215
+  },
+  {
+    "action": "jump",
+    "clip": "prelinger_ControlY1950_jump_f_nm_np1_fr_bad_7",
+    "frames": 24,
+    "pck@0.1": 0.08405797101449275,
+    "pck@0.2": 0.21739130434782608
+  },
+  {
+    "action": "jump",
+    "clip": "prelinger_ControlY1950_jump_f_nm_np1_fr_med_12",
+    "frames": 26,
+    "pck@0.1": 0.07466666666666667,
+    "pck@0.2": 0.24
+  },
+  {
+    "action": "kick_ball",
+    "clip": "Britney_Spears_-_Comercial_Pepsi_soccer_kick_ball_f_nm_np1_ba_med_0",
+    "frames": 17,
+    "pck@0.1": 0.0,
+    "pck@0.2": 0.03333333333333333
+  },
+  {
+    "action": "kick_ball",
+    "clip": "FIFA_11_Gamescom-Trailer_kick_ball_f_cm_np1_ba_bad_1",
+    "frames": 40,
+    "pck@0.1": 0.05982905982905983,
+    "pck@0.2": 0.2222222222222222
+  },
+  {
+    "action": "kick_ball",
+    "clip": "FIFA_11_Gamescom-Trailer_kick_ball_f_cm_np1_ba_med_3",
+    "frames": 24,
+    "pck@0.1": 0.1855072463768116,
+    "pck@0.2": 0.48405797101449277
+  },
+  {
+    "action": "kick_ball",
+    "clip": "FIFA_11_Gamescom-Trailer_kick_ball_f_cm_np1_ba_med_4",
+    "frames": 20,
+    "pck@0.1": 0.20350877192982456,
+    "pck@0.2": 0.49473684210526314
+  },
+  {
+    "action": "kick_ball",
+    "clip": "FOOT_2009_(REMI_GAILLARD)_kick_ball_f_cm_np1_ba_bad_1",
+    "frames": 29,
+    "pck@0.1": 0.06904761904761905,
+    "pck@0.2": 0.31666666666666665
+  },
+  {
+    "action": "kick_ball",
+    "clip": "FOOT_2009_(REMI_GAILLARD)_kick_ball_f_cm_np1_ba_bad_2",
+    "frames": 40,
+    "pck@0.1": 0.1452991452991453,
+    "pck@0.2": 0.38632478632478634
+  },
+  {
+    "action": "kick_ball",
+    "clip": "Nike_Soccer_Commercial_-_Good_vs__Evil_kick_ball_f_cm_np1_fr_med_0",
+    "frames": 15,
+    "pck@0.1": 0.3333333333333333,
+    "pck@0.2": 0.8809523809523809
+  },
+  {
+    "action": "kick_ball",
+    "clip": "Wayne_Rooney_At_Home_Funny_Must_See_kick_ball_f_cm_np1_ba_med_6",
+    "frames": 32,
+    "pck@0.1": 0.08387096774193549,
+    "pck@0.2": 0.2946236559139785
+  },
+  {
+    "action": "kick_ball",
+    "clip": "Wayne_Rooney_At_Home_Funny_Must_See_kick_ball_f_cm_np1_le_bad_5",
+    "frames": 40,
+    "pck@0.1": 0.08376068376068375,
+    "pck@0.2": 0.28376068376068375
+  },
+  {
+    "action": "kick_ball",
+    "clip": "funny_soccer_commercial_kick_ball_f_cm_np1_fr_med_0",
+    "frames": 31,
+    "pck@0.1": 0.09777777777777778,
+    "pck@0.2": 0.2777777777777778
+  },
+  {
+    "action": "kick_ball",
+    "clip": "pepsi_banned_soccer_commercial_kick_ball_f_cm_np1_fr_bad_0",
+    "frames": 20,
+    "pck@0.1": 0.20350877192982456,
+    "pck@0.2": 0.45964912280701753
+  },
+  {
+    "action": "pick",
+    "clip": "Collecting_litter_on_the_woodland_ground_surface_pick_f_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.14871794871794872,
+    "pck@0.2": 0.37606837606837606
+  },
+  {
+    "action": "pick",
+    "clip": "Fishing_For_People_pick_f_cm_np1_fr_med_3",
+    "frames": 40,
+    "pck@0.1": 0.11965811965811966,
+    "pck@0.2": 0.4239316239316239
+  },
+  {
+    "action": "pick",
+    "clip": "Fishing_For_People_pick_f_cm_np1_ri_med_2",
+    "frames": 40,
+    "pck@0.1": 0.11282051282051282,
+    "pck@0.2": 0.3162393162393162
+  },
+  {
+    "action": "pick",
+    "clip": "Fishing_For_People_pick_f_cm_np1_ri_med_5",
+    "frames": 40,
+    "pck@0.1": 0.07179487179487179,
+    "pck@0.2": 0.42905982905982903
+  },
+  {
+    "action": "pick",
+    "clip": "GardenWiseB256kb_pick_f_nm_np1_le_med_0",
+    "frames": 30,
+    "pck@0.1": 0.296551724137931,
+    "pck@0.2": 0.5816091954022988
+  },
+  {
+    "action": "pick",
+    "clip": "Magic_Boys-_Der_Portmonai_Trick_pick_l_nm_np1_ri_med_0",
+    "frames": 40,
+    "pck@0.1": 0.11965811965811966,
+    "pck@0.2": 0.4153846153846154
+  },
+  {
+    "action": "pick",
+    "clip": "NH_gun_owners_react_to_detention_with_armed_litter_pickup_pick_f_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.13675213675213677,
+    "pck@0.2": 0.40683760683760684
+  },
+  {
+    "action": "pick",
+    "clip": "NH_gun_owners_react_to_detention_with_armed_litter_pickup_pick_u_cm_np1_ba_med_2",
+    "frames": 40,
+    "pck@0.1": 0.07521367521367521,
+    "pck@0.2": 0.19145299145299147
+  },
+  {
+    "action": "pick",
+    "clip": "Pick_Up_Your_Trash!_pick_f_cm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.07179487179487179,
+    "pck@0.2": 0.14871794871794872
+  },
+  {
+    "action": "pick",
+    "clip": "Pick_Up_Your_Trash!_pick_f_cm_np1_le_med_0",
+    "frames": 40,
+    "pck@0.1": 0.1076923076923077,
+    "pck@0.2": 0.2923076923076923
+  },
+  {
+    "action": "pick",
+    "clip": "Pilzesuchen_pick_f_cm_np1_fr_med_0",
+    "frames": 20,
+    "pck@0.1": 0.11578947368421053,
+    "pck@0.2": 0.26666666666666666
+  },
+  {
+    "action": "pick",
+    "clip": "Yep__I_m_picking_up_trash_today_pick_f_cm_np1_fr_med_1",
+    "frames": 31,
+    "pck@0.1": 0.13555555555555557,
+    "pck@0.2": 0.3977777777777778
+  },
+  {
+    "action": "pour",
+    "clip": "Bartender_School_Students_Practice_pour_u_cm_np1_fr_med_1",
+    "frames": 29,
+    "pck@0.1": 0.5380952380952381,
+    "pck@0.2": 0.8571428571428571
+  },
+  {
+    "action": "pour",
+    "clip": "Bartender_School_Students_Practice_pour_u_cm_np1_fr_med_3",
+    "frames": 30,
+    "pck@0.1": 0.5379310344827586,
+    "pck@0.2": 0.6919540229885057
+  },
+  {
+    "action": "pour",
+    "clip": "Bartender_of_America_Bartending_School_pour_u_cm_np1_fr_med_0",
+    "frames": 30,
+    "pck@0.1": 0.5149425287356322,
+    "pck@0.2": 0.7011494252873564
+  },
+  {
+    "action": "pour",
+    "clip": "Bartender_of_America_Bartending_School_pour_u_cm_np1_fr_med_1",
+    "frames": 30,
+    "pck@0.1": 0.18160919540229886,
+    "pck@0.2": 0.4045977011494253
+  },
+  {
+    "action": "pour",
+    "clip": "Bartender_of_America_Bartending_School_pour_u_cm_np1_fr_med_2",
+    "frames": 30,
+    "pck@0.1": 0.1724137931034483,
+    "pck@0.2": 0.4298850574712644
+  },
+  {
+    "action": "pour",
+    "clip": "Basic_Vodka_Recipes_-_How_to_Make_a_Shirley_Temple_pour_u_cm_np1_fr_med_0",
+    "frames": 30,
+    "pck@0.1": 0.3931034482758621,
+    "pck@0.2": 0.5333333333333333
+  },
+  {
+    "action": "pour",
+    "clip": "Basic_Vodka_Recipes_-_How_to_Make_a_Shirley_Temple_pour_u_cm_np1_fr_med_1",
+    "frames": 30,
+    "pck@0.1": 0.4206896551724138,
+    "pck@0.2": 0.6689655172413793
+  },
+  {
+    "action": "pour",
+    "clip": "Bier_richtig_einschenken_pour_u_cm_np1_fr_med_0",
+    "frames": 30,
+    "pck@0.1": 0.4804597701149425,
+    "pck@0.2": 0.6781609195402298
+  },
+  {
+    "action": "pour",
+    "clip": "Bier_richtig_einschenken_pour_u_cm_np1_fr_med_1",
+    "frames": 30,
+    "pck@0.1": 0.5172413793103449,
+    "pck@0.2": 0.5862068965517241
+  },
+  {
+    "action": "pour",
+    "clip": "Drink_@18_-_Apple_martini_pour_u_nm_np1_fr_goo_0",
+    "frames": 30,
+    "pck@0.1": 0.36091954022988504,
+    "pck@0.2": 0.639080459770115
+  },
+  {
+    "action": "pour",
+    "clip": "Drink_@18_-_Apple_martini_pour_u_nm_np1_fr_goo_1",
+    "frames": 30,
+    "pck@0.1": 0.42528735632183906,
+    "pck@0.2": 0.6804597701149425
+  },
+  {
+    "action": "pour",
+    "clip": "Drink_@18_-_Apple_martini_pour_u_nm_np1_fr_goo_2",
+    "frames": 30,
+    "pck@0.1": 0.4666666666666667,
+    "pck@0.2": 0.6896551724137931
+  },
+  {
+    "action": "pour",
+    "clip": "How_To_Pour_Ice_Tea_pour_u_nm_np1_fr_med_2",
+    "frames": 30,
+    "pck@0.1": 0.5287356321839081,
+    "pck@0.2": 0.7333333333333333
+  },
+  {
+    "action": "pour",
+    "clip": "Kamikaze_Martini_Coctail_pour_u_nm_np1_fr_med_0",
+    "frames": 30,
+    "pck@0.1": 0.4482758620689655,
+    "pck@0.2": 0.6367816091954023
+  },
+  {
+    "action": "pour",
+    "clip": "Kamikaze_Martini_Coctail_pour_u_nm_np1_fr_med_1",
+    "frames": 30,
+    "pck@0.1": 0.6022988505747127,
+    "pck@0.2": 0.7172413793103448
+  },
+  {
+    "action": "pour",
+    "clip": "Kamikaze_Martini_Coctail_pour_u_nm_np1_fr_med_2",
+    "frames": 30,
+    "pck@0.1": 0.5954022988505747,
+    "pck@0.2": 0.7264367816091954
+  },
+  {
+    "action": "pullup",
+    "clip": "20_good_form_pullups_pullup_f_nm_np1_ri_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.3094017094017094,
+    "pck@0.2": 0.7316239316239316
+  },
+  {
+    "action": "pullup",
+    "clip": "20_good_form_pullups_pullup_f_nm_np1_ri_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.30085470085470084,
+    "pck@0.2": 0.7623931623931623
+  },
+  {
+    "action": "pullup",
+    "clip": "20_good_form_pullups_pullup_f_nm_np1_ri_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.22393162393162394,
+    "pck@0.2": 0.6871794871794872
+  },
+  {
+    "action": "pullup",
+    "clip": "30_(dead-hang)_pull-ups_pullup_u_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.27863247863247864,
+    "pck@0.2": 0.6376068376068376
+  },
+  {
+    "action": "pullup",
+    "clip": "30_(dead-hang)_pull-ups_pullup_u_cm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.3282051282051282,
+    "pck@0.2": 0.67008547008547
+  },
+  {
+    "action": "pullup",
+    "clip": "30_(dead-hang)_pull-ups_pullup_u_cm_np1_ba_med_2",
+    "frames": 40,
+    "pck@0.1": 0.40854700854700854,
+    "pck@0.2": 0.6512820512820513
+  },
+  {
+    "action": "pullup",
+    "clip": "32_Pull-ups_at_193IBS_pullup_f_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.3384615384615385,
+    "pck@0.2": 0.6017094017094017
+  },
+  {
+    "action": "pullup",
+    "clip": "32_Pull-ups_at_193IBS_pullup_f_cm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.4324786324786325,
+    "pck@0.2": 0.7931623931623931
+  },
+  {
+    "action": "pullup",
+    "clip": "32_Pull-ups_at_193IBS_pullup_f_cm_np1_ba_med_2",
+    "frames": 40,
+    "pck@0.1": 0.40854700854700854,
+    "pck@0.2": 0.6786324786324787
+  },
+  {
+    "action": "pullup",
+    "clip": "Random_Pull_Up_Exercises_pullup_f_nm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.24273504273504273,
+    "pck@0.2": 0.5965811965811966
+  },
+  {
+    "action": "pullup",
+    "clip": "Random_Pull_Up_Exercises_pullup_f_nm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.26666666666666666,
+    "pck@0.2": 0.6153846153846154
+  },
+  {
+    "action": "pullup",
+    "clip": "Random_Pull_Up_Exercises_pullup_f_nm_np1_fr_med_2",
+    "frames": 40,
+    "pck@0.1": 0.3230769230769231,
+    "pck@0.2": 0.811965811965812
+  },
+  {
+    "action": "pullup",
+    "clip": "Random_Pull_Up_Exercises_pullup_f_nm_np1_fr_med_3",
+    "frames": 40,
+    "pck@0.1": 0.305982905982906,
+    "pck@0.2": 0.8256410256410256
+  },
+  {
+    "action": "pullup",
+    "clip": "Super_Training_Pull_Ups_pullup_f_cm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.3641025641025641,
+    "pck@0.2": 0.629059829059829
+  },
+  {
+    "action": "pullup",
+    "clip": "Super_Training_Pull_Ups_pullup_f_cm_np1_ba_med_1",
+    "frames": 40,
+    "pck@0.1": 0.27350427350427353,
+    "pck@0.2": 0.4888888888888889
+  },
+  {
+    "action": "pullup",
+    "clip": "Super_Training_Pull_Ups_pullup_f_cm_np1_ba_med_2",
+    "frames": 40,
+    "pck@0.1": 0.2,
+    "pck@0.2": 0.5025641025641026
+  },
+  {
+    "action": "push",
+    "clip": "Alexander_pushing_the_table_push_f_cm_np1_ba_bad_1",
+    "frames": 30,
+    "pck@0.1": 0.18620689655172415,
+    "pck@0.2": 0.5241379310344828
+  },
+  {
+    "action": "push",
+    "clip": "Alexander_pushing_the_table_push_f_cm_np1_le_bad_0",
+    "frames": 40,
+    "pck@0.1": 0.11623931623931624,
+    "pck@0.2": 0.3384615384615385
+  },
+  {
+    "action": "push",
+    "clip": "Joel_Pushing_Box_push_f_cm_np1_ba_bad_1",
+    "frames": 40,
+    "pck@0.1": 0.5897435897435898,
+    "pck@0.2": 0.947008547008547
+  },
+  {
+    "action": "push",
+    "clip": "Joel_Pushing_Box_push_f_cm_np1_ri_bad_0",
+    "frames": 40,
+    "pck@0.1": 0.676923076923077,
+    "pck@0.2": 0.8581196581196581
+  },
+  {
+    "action": "push",
+    "clip": "Push_That_Car!_push_f_cm_np1_ri_med_0",
+    "frames": 40,
+    "pck@0.1": 0.19487179487179487,
+    "pck@0.2": 0.6273504273504273
+  },
+  {
+    "action": "push",
+    "clip": "Pushing_Music_Table_push_f_cm_np1_le_bad_5",
+    "frames": 30,
+    "pck@0.1": 0.19080459770114944,
+    "pck@0.2": 0.5517241379310345
+  },
+  {
+    "action": "push",
+    "clip": "Pushing_Music_Table_push_f_cm_np1_ri_bad_2",
+    "frames": 40,
+    "pck@0.1": 0.26324786324786326,
+    "pck@0.2": 0.7264957264957265
+  },
+  {
+    "action": "push",
+    "clip": "Pushing_Music_Table_push_f_cm_np1_ri_bad_7",
+    "frames": 40,
+    "pck@0.1": 0.23076923076923078,
+    "pck@0.2": 0.5743589743589743
+  },
+  {
+    "action": "push",
+    "clip": "pushing_box_around_house_push_f_cm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.09743589743589744,
+    "pck@0.2": 0.35213675213675216
+  },
+  {
+    "action": "push",
+    "clip": "pushing_box_around_house_push_f_cm_np1_le_bad_3",
+    "frames": 40,
+    "pck@0.1": 0.07521367521367521,
+    "pck@0.2": 0.22393162393162394
+  },
+  {
+    "action": "push",
+    "clip": "pushing_box_around_house_push_f_cm_np1_le_med_2",
+    "frames": 40,
+    "pck@0.1": 0.18461538461538463,
+    "pck@0.2": 0.42905982905982903
+  },
+  {
+    "action": "push",
+    "clip": "pushing_box_around_house_push_u_cm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.08717948717948718,
+    "pck@0.2": 0.3606837606837607
+  },
+  {
+    "action": "run",
+    "clip": "American_History_X_run_f_cm_np1_le_med_17",
+    "frames": 40,
+    "pck@0.1": 0.24786324786324787,
+    "pck@0.2": 0.6461538461538462
+  },
+  {
+    "action": "run",
+    "clip": "Catch_Me_If_You_Can_run_u_cm_np1_fr_med_9",
+    "frames": 40,
+    "pck@0.1": 0.3623931623931624,
+    "pck@0.2": 0.6598290598290598
+  },
+  {
+    "action": "run",
+    "clip": "Faith_Rewarded_run_f_cm_np1_le_med_16",
+    "frames": 40,
+    "pck@0.1": 0.23247863247863249,
+    "pck@0.2": 0.5418803418803418
+  },
+  {
+    "action": "run",
+    "clip": "IamLegend_run_f_nm_np1_le_med_3",
+    "frames": 40,
+    "pck@0.1": 0.22564102564102564,
+    "pck@0.2": 0.6068376068376068
+  },
+  {
+    "action": "run",
+    "clip": "RATRACE_run_f_cm_np1_ba_med_14",
+    "frames": 29,
+    "pck@0.1": 0.11190476190476191,
+    "pck@0.2": 0.45476190476190476
+  },
+  {
+    "action": "run",
+    "clip": "RATRACE_run_f_cm_np1_fr_med_16",
+    "frames": 25,
+    "pck@0.1": 0.18888888888888888,
+    "pck@0.2": 0.5472222222222223
+  },
+  {
+    "action": "run",
+    "clip": "RATRACE_run_f_nm_np1_ri_med_7",
+    "frames": 30,
+    "pck@0.1": 0.2942528735632184,
+    "pck@0.2": 0.6114942528735632
+  },
+  {
+    "action": "run",
+    "clip": "TrumanShow_run_f_cm_np1_ba_med_13",
+    "frames": 26,
+    "pck@0.1": 0.16266666666666665,
+    "pck@0.2": 0.52
+  },
+  {
+    "action": "run",
+    "clip": "TrumanShow_run_f_nm_np1_ba_med_19",
+    "frames": 40,
+    "pck@0.1": 0.06495726495726496,
+    "pck@0.2": 0.20683760683760682
+  },
+  {
+    "action": "run",
+    "clip": "TrumanShow_run_f_nm_np1_ba_med_21",
+    "frames": 30,
+    "pck@0.1": 0.0367816091954023,
+    "pck@0.2": 0.09885057471264368
+  },
+  {
+    "action": "run",
+    "clip": "TrumanShow_run_f_nm_np1_le_med_11",
+    "frames": 18,
+    "pck@0.1": 0.043137254901960784,
+    "pck@0.2": 0.1843137254901961
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "JashaunKidsWhoRipAmazingBasketball_shoot_ball_f_cm_np1_le_med_4",
+    "frames": 22,
+    "pck@0.1": 0.06666666666666667,
+    "pck@0.2": 0.29523809523809524
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "JashaunKidsWhoRipAmazingBasketball_shoot_ball_f_cm_np1_le_med_5",
+    "frames": 20,
+    "pck@0.1": 0.06315789473684211,
+    "pck@0.2": 0.24561403508771928
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "JashaunKidsWhoRipAmazingBasketball_shoot_ball_u_cm_np1_le_med_3",
+    "frames": 16,
+    "pck@0.1": 0.09333333333333334,
+    "pck@0.2": 0.19111111111111112
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "PlayingBasketballGotWater_shoot_ball_f_nm_np1_ba_med_0",
+    "frames": 30,
+    "pck@0.1": 0.08275862068965517,
+    "pck@0.2": 0.3218390804597701
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "PlayingBasketballGotWater_shoot_ball_f_nm_np1_ba_med_4",
+    "frames": 30,
+    "pck@0.1": 0.06436781609195402,
+    "pck@0.2": 0.3264367816091954
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "PlayingBasketballGotWater_shoot_ball_f_nm_np1_ba_med_6",
+    "frames": 30,
+    "pck@0.1": 0.03908045977011494,
+    "pck@0.2": 0.21149425287356322
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "PlayingBasketballGotWater_shoot_ball_f_nm_np1_ba_med_8",
+    "frames": 40,
+    "pck@0.1": 0.14188034188034188,
+    "pck@0.2": 0.3572649572649573
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "PlayingBasketballGotWater_shoot_ball_f_nm_np1_ri_med_1",
+    "frames": 30,
+    "pck@0.1": 0.04367816091954023,
+    "pck@0.2": 0.18850574712643678
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "PlayingBasketball_shoot_ball_f_nm_np1_ba_med_6",
+    "frames": 20,
+    "pck@0.1": 0.16842105263157894,
+    "pck@0.2": 0.4456140350877193
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "ReggieMillerTakesonThreeAverageGuysinaShootout_shoot_ball_u_nm_np1_ba_med_3",
+    "frames": 20,
+    "pck@0.1": 0.07719298245614035,
+    "pck@0.2": 0.4842105263157895
+  },
+  {
+    "action": "shoot_ball",
+    "clip": "ReggieMillerTakesonThreeAverageGuysinaShootout_shoot_ball_u_nm_np1_ba_med_9",
+    "frames": 20,
+    "pck@0.1": 0.1649122807017544,
+    "pck@0.2": 0.5157894736842106
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "6arrowswithin30seconds_shoot_bow_f_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.29743589743589743,
+    "pck@0.2": 0.5162393162393163
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "6arrowswithin30seconds_shoot_bow_f_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.294017094017094,
+    "pck@0.2": 0.6324786324786325
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "6arrowswithin30seconds_shoot_bow_f_nm_np1_fr_med_2",
+    "frames": 40,
+    "pck@0.1": 0.35555555555555557,
+    "pck@0.2": 0.6717948717948717
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "6arrowswithin30seconds_shoot_bow_f_nm_np1_fr_med_3",
+    "frames": 40,
+    "pck@0.1": 0.38461538461538464,
+    "pck@0.2": 0.6512820512820513
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "6arrowswithin30seconds_shoot_bow_f_nm_np1_fr_med_4",
+    "frames": 40,
+    "pck@0.1": 0.27863247863247864,
+    "pck@0.2": 0.6358974358974359
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "6arrowswithin30seconds_shoot_bow_f_nm_np1_fr_med_5",
+    "frames": 40,
+    "pck@0.1": 0.3264957264957265,
+    "pck@0.2": 0.7162393162393162
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Hannahfront23may08_shoot_bow_u_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.37606837606837606,
+    "pck@0.2": 0.6598290598290598
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Hannahfront23may08_shoot_bow_u_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.4683760683760684,
+    "pck@0.2": 0.6666666666666666
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Shootingarecurve_shoot_bow_u_cm_np1_fr_med_5",
+    "frames": 26,
+    "pck@0.1": 0.408,
+    "pck@0.2": 0.64
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Shootingarecurve_shoot_bow_u_nm_np1_fr_med_0",
+    "frames": 30,
+    "pck@0.1": 0.4413793103448276,
+    "pck@0.2": 0.632183908045977
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Shootingarecurve_shoot_bow_u_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.5042735042735043,
+    "pck@0.2": 0.6410256410256411
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Shootingarecurve_shoot_bow_u_nm_np1_fr_med_2",
+    "frames": 38,
+    "pck@0.1": 0.46846846846846846,
+    "pck@0.2": 0.5621621621621622
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Shootingarecurve_shoot_bow_u_nm_np1_fr_med_3",
+    "frames": 30,
+    "pck@0.1": 0.4068965517241379,
+    "pck@0.2": 0.6
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "Shootingarecurve_shoot_bow_u_nm_np1_fr_med_4",
+    "frames": 30,
+    "pck@0.1": 0.4827586206896552,
+    "pck@0.2": 0.6160919540229886
+  },
+  {
+    "action": "shoot_bow",
+    "clip": "erikafrontcompound6feb09_shoot_bow_f_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.770940170940171,
+    "pck@0.2": 0.8615384615384616
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "Fastestguninthewest_shoot_gun_f_nm_np1_ri_med_0",
+    "frames": 40,
+    "pck@0.1": 0.28888888888888886,
+    "pck@0.2": 0.49743589743589745
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_f_cm_np1_ri_med_0",
+    "frames": 30,
+    "pck@0.1": 0.25057471264367814,
+    "pck@0.2": 0.6
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_f_cm_np1_ri_med_1",
+    "frames": 30,
+    "pck@0.1": 0.3264367816091954,
+    "pck@0.2": 0.6804597701149425
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_f_nm_np1_ri_med_7",
+    "frames": 40,
+    "pck@0.1": 0.28547008547008546,
+    "pck@0.2": 0.5709401709401709
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_cm_np1_ba_med_5",
+    "frames": 40,
+    "pck@0.1": 0.4256410256410256,
+    "pck@0.2": 0.6136752136752137
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_cm_np1_ri_med_2",
+    "frames": 40,
+    "pck@0.1": 0.15384615384615385,
+    "pck@0.2": 0.48034188034188036
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_nm_np1_ri_goo_6",
+    "frames": 40,
+    "pck@0.1": 0.7367521367521368,
+    "pck@0.2": 0.8598290598290599
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_nm_np1_ri_goo_9",
+    "frames": 25,
+    "pck@0.1": 0.4388888888888889,
+    "pck@0.2": 0.7
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_nm_np1_ri_med_11",
+    "frames": 35,
+    "pck@0.1": 0.33137254901960783,
+    "pck@0.2": 0.6215686274509804
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_nm_np1_ri_med_3",
+    "frames": 30,
+    "pck@0.1": 0.5770114942528736,
+    "pck@0.2": 0.8160919540229885
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "FirearmsTraining_shoot_gun_u_nm_np1_ri_med_4",
+    "frames": 35,
+    "pck@0.1": 0.6450980392156863,
+    "pck@0.2": 0.8333333333333334
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "MeShootin2_shoot_gun_u_nm_np1_ri_med_0",
+    "frames": 30,
+    "pck@0.1": 0.5218390804597701,
+    "pck@0.2": 0.5333333333333333
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "MeShootin2_shoot_gun_u_nm_np1_ri_med_1",
+    "frames": 33,
+    "pck@0.1": 0.48125,
+    "pck@0.2": 0.5333333333333333
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "MeShootin2_shoot_gun_u_nm_np1_ri_med_2",
+    "frames": 29,
+    "pck@0.1": 0.5023809523809524,
+    "pck@0.2": 0.5333333333333333
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "deserteagle_shoot_gun_u_cm_np1_ri_goo_0",
+    "frames": 30,
+    "pck@0.1": 0.5540229885057472,
+    "pck@0.2": 0.7195402298850575
+  },
+  {
+    "action": "shoot_gun",
+    "clip": "dualdeserteagle_shoot_gun_f_cm_np1_le_med_0",
+    "frames": 30,
+    "pck@0.1": 0.5747126436781609,
+    "pck@0.2": 0.7816091954022989
+  },
+  {
+    "action": "sit",
+    "clip": "AllThePresidentMen_sit_f_nm_np1_fr_goo_3",
+    "frames": 20,
+    "pck@0.1": 0.37543859649122807,
+    "pck@0.2": 0.5649122807017544
+  },
+  {
+    "action": "sit",
+    "clip": "AllThePresidentMen_sit_f_nm_np1_ri_med_7",
+    "frames": 27,
+    "pck@0.1": 0.1717948717948718,
+    "pck@0.2": 0.5461538461538461
+  },
+  {
+    "action": "sit",
+    "clip": "AmericanGangster_sit_f_cm_np1_fr_med_70",
+    "frames": 39,
+    "pck@0.1": 0.18070175438596492,
+    "pck@0.2": 0.49298245614035086
+  },
+  {
+    "action": "sit",
+    "clip": "CharlieAndTheChocolateFactory_sit_f_nm_np1_fr_med_3",
+    "frames": 34,
+    "pck@0.1": 0.3292929292929293,
+    "pck@0.2": 0.7313131313131314
+  },
+  {
+    "action": "sit",
+    "clip": "CharlieAndTheChocolateFactory_sit_f_nm_np1_le_med_7",
+    "frames": 21,
+    "pck@0.1": 0.12666666666666668,
+    "pck@0.2": 0.3566666666666667
+  },
+  {
+    "action": "sit",
+    "clip": "HP_PRISONER_OF_AZKABAN_sit_f_cm_np1_le_med_1",
+    "frames": 24,
+    "pck@0.1": 0.11884057971014493,
+    "pck@0.2": 0.3710144927536232
+  },
+  {
+    "action": "sit",
+    "clip": "NoCountryForOldMen_sit_f_nm_np1_fr_goo_4",
+    "frames": 40,
+    "pck@0.1": 0.13333333333333333,
+    "pck@0.2": 0.3418803418803419
+  },
+  {
+    "action": "sit",
+    "clip": "NoCountryForOldMen_sit_f_nm_np1_ri_med_6",
+    "frames": 39,
+    "pck@0.1": 0.12982456140350876,
+    "pck@0.2": 0.4
+  },
+  {
+    "action": "sit",
+    "clip": "Prelinger_ActYourA1949_sit_u_cm_np1_ri_med_2",
+    "frames": 40,
+    "pck@0.1": 0.19829059829059828,
+    "pck@0.2": 0.42905982905982903
+  },
+  {
+    "action": "sit",
+    "clip": "Prelinger_HabitPat1954_sit_u_cm_np1_le_med_8",
+    "frames": 25,
+    "pck@0.1": 0.10833333333333334,
+    "pck@0.2": 0.275
+  },
+  {
+    "action": "sit",
+    "clip": "TrumanShow_sit_f_nm_np1_le_med_37",
+    "frames": 39,
+    "pck@0.1": 0.13333333333333333,
+    "pck@0.2": 0.3631578947368421
+  },
+  {
+    "action": "sit",
+    "clip": "likebeckam_sit_f_nm_np1_le_bad_29",
+    "frames": 24,
+    "pck@0.1": 0.34202898550724636,
+    "pck@0.2": 0.6144927536231884
+  },
+  {
+    "action": "stand",
+    "clip": "A_Beautiful_Mind_6_stand_u_cm_np1_fr_med_3",
+    "frames": 40,
+    "pck@0.1": 0.3452991452991453,
+    "pck@0.2": 0.7282051282051282
+  },
+  {
+    "action": "stand",
+    "clip": "BATMAN_BEGINS_stand_f_cm_np1_fr_med_8",
+    "frames": 21,
+    "pck@0.1": 0.3,
+    "pck@0.2": 0.6266666666666667
+  },
+  {
+    "action": "stand",
+    "clip": "Fellowship_4_stand_f_cm_np1_fr_med_3",
+    "frames": 30,
+    "pck@0.1": 0.42528735632183906,
+    "pck@0.2": 0.7839080459770115
+  },
+  {
+    "action": "stand",
+    "clip": "Panic_in_the_Streets_stand_u_cm_np1_ri_med_2",
+    "frames": 27,
+    "pck@0.1": 0.1282051282051282,
+    "pck@0.2": 0.32051282051282054
+  },
+  {
+    "action": "stand",
+    "clip": "RushHour2_stand_u_cm_np1_fr_med_11",
+    "frames": 25,
+    "pck@0.1": 0.18611111111111112,
+    "pck@0.2": 0.5111111111111111
+  },
+  {
+    "action": "stand",
+    "clip": "SoundAndTheStory_stand_f_cm_np1_ri_med_0",
+    "frames": 30,
+    "pck@0.1": 0.135632183908046,
+    "pck@0.2": 0.45977011494252873
+  },
+  {
+    "action": "stand",
+    "clip": "SweeneyTodd_stand_f_cm_np1_le_med_10",
+    "frames": 36,
+    "pck@0.1": 0.22666666666666666,
+    "pck@0.2": 0.6304761904761905
+  },
+  {
+    "action": "stand",
+    "clip": "SweeneyTodd_stand_f_cm_np1_ri_med_33",
+    "frames": 40,
+    "pck@0.1": 0.19145299145299147,
+    "pck@0.2": 0.49914529914529915
+  },
+  {
+    "action": "stand",
+    "clip": "likebeckam_stand_f_nm_np1_fr_med_7",
+    "frames": 30,
+    "pck@0.1": 0.12413793103448276,
+    "pck@0.2": 0.3195402298850575
+  },
+  {
+    "action": "stand",
+    "clip": "prelinger_ControlY1950_stand_f_cm_np1_fr_med_2",
+    "frames": 40,
+    "pck@0.1": 0.3213675213675214,
+    "pck@0.2": 0.6974358974358974
+  },
+  {
+    "action": "stand",
+    "clip": "prelinger_ControlY1950_stand_u_cm_np1_fr_med_0",
+    "frames": 20,
+    "pck@0.1": 0.3649122807017544,
+    "pck@0.2": 0.712280701754386
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "HowtoswingaBaseballbat_swing_baseball_f_nm_np1_le_bad_0",
+    "frames": 40,
+    "pck@0.1": 0.14358974358974358,
+    "pck@0.2": 0.5230769230769231
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "Tannerafterwecorrected_swing_baseball_f_cm_np1_fr_bad_0",
+    "frames": 40,
+    "pck@0.1": 0.4717948717948718,
+    "pck@0.2": 0.705982905982906
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "Tannerafterwecorrected_swing_baseball_f_cm_np1_fr_bad_1",
+    "frames": 30,
+    "pck@0.1": 0.46206896551724136,
+    "pck@0.2": 0.7609195402298851
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "Tannerafterwecorrected_swing_baseball_f_cm_np1_fr_bad_2",
+    "frames": 40,
+    "pck@0.1": 0.26153846153846155,
+    "pck@0.2": 0.6512820512820513
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.3418803418803419,
+    "pck@0.2": 0.6153846153846154
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.3145299145299145,
+    "pck@0.2": 0.6341880341880342
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_10",
+    "frames": 40,
+    "pck@0.1": 0.3316239316239316,
+    "pck@0.2": 0.5965811965811966
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_11",
+    "frames": 40,
+    "pck@0.1": 0.2512820512820513,
+    "pck@0.2": 0.5965811965811966
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_3",
+    "frames": 40,
+    "pck@0.1": 0.28547008547008546,
+    "pck@0.2": 0.588034188034188
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_4",
+    "frames": 40,
+    "pck@0.1": 0.305982905982906,
+    "pck@0.2": 0.6307692307692307
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_5",
+    "frames": 40,
+    "pck@0.1": 0.3623931623931624,
+    "pck@0.2": 0.6717948717948717
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_6",
+    "frames": 40,
+    "pck@0.1": 0.3128205128205128,
+    "pck@0.2": 0.6547008547008547
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_7",
+    "frames": 40,
+    "pck@0.1": 0.3367521367521368,
+    "pck@0.2": 0.6478632478632479
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_8",
+    "frames": 40,
+    "pck@0.1": 0.28717948717948716,
+    "pck@0.2": 0.5897435897435898
+  },
+  {
+    "action": "swing_baseball",
+    "clip": "hittingofftee2_swing_baseball_f_nm_np1_fr_med_9",
+    "frames": 40,
+    "pck@0.1": 0.3128205128205128,
+    "pck@0.2": 0.6136752136752137
+  },
+  {
+    "action": "throw",
+    "clip": "KnifeThrowing_throw_f_nm_np1_le_med_0",
+    "frames": 40,
+    "pck@0.1": 0.3418803418803419,
+    "pck@0.2": 0.6
+  },
+  {
+    "action": "throw",
+    "clip": "KnifeThrowing_throw_f_nm_np1_le_med_1",
+    "frames": 40,
+    "pck@0.1": 0.3316239316239316,
+    "pck@0.2": 0.6017094017094017
+  },
+  {
+    "action": "throw",
+    "clip": "KnifeThrowing_throw_f_nm_np1_le_med_2",
+    "frames": 39,
+    "pck@0.1": 0.3333333333333333,
+    "pck@0.2": 0.6017543859649123
+  },
+  {
+    "action": "throw",
+    "clip": "KnifeThrowing_throw_f_nm_np1_le_med_3",
+    "frames": 39,
+    "pck@0.1": 0.34035087719298246,
+    "pck@0.2": 0.6403508771929824
+  },
+  {
+    "action": "throw",
+    "clip": "KnifeThrowing_throw_f_nm_np1_le_med_4",
+    "frames": 38,
+    "pck@0.1": 0.35315315315315315,
+    "pck@0.2": 0.5981981981981982
+  },
+  {
+    "action": "throw",
+    "clip": "Knifethrowing4knivestogethernospin_throw_f_nm_np1_ri_med_1",
+    "frames": 40,
+    "pck@0.1": 0.29914529914529914,
+    "pck@0.2": 0.5316239316239316
+  },
+  {
+    "action": "throw",
+    "clip": "Knifethrowing4knivestogethernospin_throw_u_nm_np1_ba_med_0",
+    "frames": 40,
+    "pck@0.1": 0.38290598290598293,
+    "pck@0.2": 0.6427350427350428
+  },
+  {
+    "action": "throw",
+    "clip": "Veoh_Alpha_Dog_1_throw_f_cm_np1_le_med_5",
+    "frames": 39,
+    "pck@0.1": 0.10350877192982456,
+    "pck@0.2": 0.3280701754385965
+  },
+  {
+    "action": "throw",
+    "clip": "Veoh_Alpha_Dog_1_throw_u_nm_np1_ri_med_25",
+    "frames": 19,
+    "pck@0.1": 0.12962962962962962,
+    "pck@0.2": 0.337037037037037
+  },
+  {
+    "action": "throw",
+    "clip": "amazingballthrowingtricks_throw_f_cm_np1_ri_med_5",
+    "frames": 33,
+    "pck@0.1": 0.20416666666666666,
+    "pck@0.2": 0.625
+  },
+  {
+    "action": "throw",
+    "clip": "amazingballthrowingtricks_throw_f_nm_np1_ri_med_0",
+    "frames": 40,
+    "pck@0.1": 0.4222222222222222,
+    "pck@0.2": 0.7401709401709402
+  },
+  {
+    "action": "walk",
+    "clip": "50_FIRST_DATES_walk_f_cm_np1_le_med_33",
+    "frames": 36,
+    "pck@0.1": 0.3333333333333333,
+    "pck@0.2": 0.72
+  },
+  {
+    "action": "walk",
+    "clip": "AmericanGangster_walk_f_nm_np1_ba_med_72",
+    "frames": 40,
+    "pck@0.1": 0.22905982905982905,
+    "pck@0.2": 0.46324786324786327
+  },
+  {
+    "action": "walk",
+    "clip": "AmericanGangster_walk_f_nm_np1_fr_med_38",
+    "frames": 24,
+    "pck@0.1": 0.4956521739130435,
+    "pck@0.2": 0.8695652173913043
+  },
+  {
+    "action": "walk",
+    "clip": "EVOLUTION_walk_f_cm_np1_fr_med_23",
+    "frames": 40,
+    "pck@0.1": 0.09743589743589744,
+    "pck@0.2": 0.4324786324786325
+  },
+  {
+    "action": "walk",
+    "clip": "Juno_walk_f_cm_np1_fr_med_8",
+    "frames": 40,
+    "pck@0.1": 0.23931623931623933,
+    "pck@0.2": 0.505982905982906
+  },
+  {
+    "action": "walk",
+    "clip": "LONGESTYARD_walk_f_nm_np1_fr_med_6",
+    "frames": 40,
+    "pck@0.1": 0.2717948717948718,
+    "pck@0.2": 0.8632478632478633
+  },
+  {
+    "action": "walk",
+    "clip": "Panic_in_the_Streets_walk_u_cm_np1_ba_med_5",
+    "frames": 16,
+    "pck@0.1": 0.12,
+    "pck@0.2": 0.39111111111111113
+  },
+  {
+    "action": "walk",
+    "clip": "Panic_in_the_Streets_walk_u_nm_np1_fr_med_4",
+    "frames": 38,
+    "pck@0.1": 0.15135135135135136,
+    "pck@0.2": 0.42882882882882883
+  },
+  {
+    "action": "walk",
+    "clip": "Prelinger_LetYours1940_walk_f_nm_np1_ba_med_5",
+    "frames": 40,
+    "pck@0.1": 0.3452991452991453,
+    "pck@0.2": 0.7145299145299145
+  },
+  {
+    "action": "walk",
+    "clip": "THE_PROTECTOR_walk_f_cm_np1_ba_med_27",
+    "frames": 17,
+    "pck@0.1": 0.37083333333333335,
+    "pck@0.2": 0.675
+  },
+  {
+    "action": "walk",
+    "clip": "Veoh_Alpha_Dog_2_walk_f_cm_np2_ri_med_10",
+    "frames": 23,
+    "pck@0.1": 0.09696969696969697,
+    "pck@0.2": 0.37575757575757573
+  },
+  {
+    "action": "walk",
+    "clip": "Veoh_Alpha_Dog_2_walk_u_nm_np1_le_med_29",
+    "frames": 30,
+    "pck@0.1": 0.18620689655172415,
+    "pck@0.2": 0.4689655172413793
+  },
+  {
+    "action": "wave",
+    "clip": "20060723sfjffbartsinger_wave_f_cm_np1_ba_med_0",
+    "frames": 31,
+    "pck@0.1": 0.5088888888888888,
+    "pck@0.2": 0.8733333333333333
+  },
+  {
+    "action": "wave",
+    "clip": "50_FIRST_DATES_wave_u_cm_np1_fr_goo_30",
+    "frames": 36,
+    "pck@0.1": 0.3295238095238095,
+    "pck@0.2": 0.4780952380952381
+  },
+  {
+    "action": "wave",
+    "clip": "American_History_X_wave_u_nm_np1_fr_med_16",
+    "frames": 26,
+    "pck@0.1": 0.43466666666666665,
+    "pck@0.2": 0.664
+  },
+  {
+    "action": "wave",
+    "clip": "BIG_FISH_wave_u_nm_np1_fr_bad_4",
+    "frames": 32,
+    "pck@0.1": 0.36129032258064514,
+    "pck@0.2": 0.7806451612903226
+  },
+  {
+    "action": "wave",
+    "clip": "BIG_FISH_wave_u_nm_np1_fr_goo_9",
+    "frames": 40,
+    "pck@0.1": 0.4752136752136752,
+    "pck@0.2": 0.6324786324786325
+  },
+  {
+    "action": "wave",
+    "clip": "Chris_Benoit_waving_goodbye_wave_u_nm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.4341880341880342,
+    "pck@0.2": 0.5897435897435898
+  },
+  {
+    "action": "wave",
+    "clip": "Chris_Benoit_waving_goodbye_wave_u_nm_np1_fr_med_1",
+    "frames": 30,
+    "pck@0.1": 0.367816091954023,
+    "pck@0.2": 0.535632183908046
+  },
+  {
+    "action": "wave",
+    "clip": "Maya_beim_Winken_wave_f_cm_np1_fr_med_0",
+    "frames": 40,
+    "pck@0.1": 0.3811965811965812,
+    "pck@0.2": 0.882051282051282
+  },
+  {
+    "action": "wave",
+    "clip": "Maya_beim_Winken_wave_f_cm_np1_fr_med_1",
+    "frames": 40,
+    "pck@0.1": 0.5863247863247864,
+    "pck@0.2": 0.9487179487179487
+  },
+  {
+    "action": "wave",
+    "clip": "Maya_beim_Winken_wave_f_cm_np1_fr_med_2",
+    "frames": 40,
+    "pck@0.1": 0.535042735042735,
+    "pck@0.2": 0.8957264957264958
+  },
+  {
+    "action": "wave",
+    "clip": "WeddingCrashers_wave_u_nm_np1_fr_goo_0",
+    "frames": 28,
+    "pck@0.1": 0.3925925925925926,
+    "pck@0.2": 0.4222222222222222
+  },
+  {
+    "action": "wave",
+    "clip": "veoh_harold_and_kumar_wave_u_nm_np1_fr_goo_5",
+    "frames": 38,
+    "pck@0.1": 0.38198198198198197,
+    "pck@0.2": 0.4666666666666667
+  }
+]

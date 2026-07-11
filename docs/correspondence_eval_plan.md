@@ -79,6 +79,22 @@
 
 ## 6. 판정·논문 반영 (attach-only)
 
+### ✅ 실행·판정 완료 (2026-07-12) — **gate FAIL → 서랍**
+
+JHMDB split1-test 268클립·8,858프레임, 전 encoder 동일 조건(14×14 grid·τ0.1·topk5·r3·n_last7, parity ✓), 잡 `36828465~469` (V100, ~0.2 GPU·h):
+
+| Encoder | PCK@0.1 | PCK@0.2 |
+|---|---:|---:|
+| DINOv2 (86M, internet) | **0.363** | 0.643 |
+| VideoMAE-ours (86M, EgoDex full) | 0.350 | 0.604 |
+| **CoMP-S P-stream** | 0.312 | 0.539 |
+| SigLIP (86M, internet) | 0.299 | 0.538 |
+| **CoMP-S M-stream** | 0.294 | 0.561 |
+
+- **판정**: max(CoMP) 0.312 − max(appearance baseline) 0.363 = **−0.052 < X(+0.05)** → 사전 등록대로 **미보고**(서랍), 글쓰기 옵션 B+C 회귀. 상세·해석 = cluster_sessions 2026-07-12.
+- 정직 신호: "M이 correspondence↑" 기대 불성립(M 최약체). 추정 원인 = ΔL 기반 motion feature는 저속 구간(ΔL≈0)서 매칭용 변별력 부재. CoMP-P > SigLIP, same-data VideoMAE도 DINOv2 하회 = §5 예고된 데이터 비대칭과 일관.
+- 구현 자산은 유지: `scripts/eval/correspondence_labelprop.py` + sbatch (DAVIS 확장·후속 모델 재측정 시 재사용).
+
 - **성공** (gate PASS): §4.x general-motion external-validity 참조 문단 1개 + 표 1개. **attach-only**(spine 불변, `fulldata_scaling_plan.md` 선례).
 - **실패/모호**: 서랍. limitations "general motion 미검증"(옵션 C) 유지 + framing 강화(옵션 B). negative 기록.
 - **무게중심 불변**: 이건 external validity 보강이지 논문 헤드라인 아님. 7/28 전 spine 재편 금지.

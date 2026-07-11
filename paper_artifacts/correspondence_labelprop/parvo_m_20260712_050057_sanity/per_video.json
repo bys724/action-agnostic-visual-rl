@@ -1,0 +1,37 @@
+[
+  {
+    "action": "brush_hair",
+    "clip": "April_09_brush_hair_u_nm_np1_ba_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.4752136752136752,
+    "pck@0.2": 0.7076923076923077
+  },
+  {
+    "action": "brush_hair",
+    "clip": "April_09_brush_hair_u_nm_np1_ba_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.4341880341880342,
+    "pck@0.2": 0.7333333333333333
+  },
+  {
+    "action": "brush_hair",
+    "clip": "April_09_brush_hair_u_nm_np1_ba_goo_2",
+    "frames": 40,
+    "pck@0.1": 0.29914529914529914,
+    "pck@0.2": 0.6273504273504273
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_Hair_with_Beth_brush_hair_h_nm_np1_le_goo_0",
+    "frames": 40,
+    "pck@0.1": 0.24444444444444444,
+    "pck@0.2": 0.41367521367521365
+  },
+  {
+    "action": "brush_hair",
+    "clip": "Brushing_Hair_with_Beth_brush_hair_u_nm_np1_fr_goo_1",
+    "frames": 40,
+    "pck@0.1": 0.46153846153846156,
+    "pck@0.2": 0.5811965811965812
+  }
+]

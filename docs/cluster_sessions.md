@@ -109,7 +109,9 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 36828463/464 | normal V100 1×1 ×2 | 02:00:00 | **sanity 5클립** — 463=dinov2 / 464=parvo-m(CoMP-S) | ✅ 각 ~1m (~0.03 GPU·h). dinov2 PCK@0.1 0.388 / parvo-m 0.383 — 문헌 정합(coarse 14×14), 파이프라인 PASS |
-| 36828465~469 | normal V100 1×1 ×5 | 02:00:00 | **본 측정 268클립** — 465=parvo-p·466=parvo-m(CoMP-S) / 467=dinov2·468=siglip / 469=videomae-vla(`videomae/20260415_012017/best`). 전파 하이퍼 전 encoder 동일(τ0.1·topk5·r3·n_last7·grid14) | 🔄 제출 (2026-07-12) |
+| 36828465~469 | normal V100 1×1 ×5 | 02:00:00 | **본 측정 268클립** — 465=parvo-p·466=parvo-m(CoMP-S) / 467=dinov2·468=siglip / 469=videomae-vla(`videomae/20260415_012017/best`). 전파 하이퍼 전 encoder 동일(τ0.1·topk5·r3·n_last7·grid14) | ✅ 각 2m11s (~0.2 GPU·h 합). 268클립·8,858프레임 전 encoder 동일(parity ✓). **PCK@0.1: parvo-p 0.312 / parvo-m 0.294 / dinov2 0.363 / siglip 0.299 / vmae-vla 0.350** |
+
+**🔴 gate 판정 (사전 등록 X=+0.05): FAIL → 서랍.** max(CoMP-P,M)=0.312 − max(DINOv2,SigLIP)=0.363 = **−0.052**. 계획대로 negative 기록·논문 미반영, 글쓰기 옵션 B+C 회귀(limitations "general motion 미검증" 유지 + framing 강화). 정직 신호: on-thesis 기대("M이 appearance보다 correspondence↑")가 불성립 — M(0.294)이 최약체, ΔL 기반 motion feature는 저속 구간(ΔL≈0)서 매칭용 appearance 변별력이 없는 것으로 해석(추정). 참고: CoMP-P는 SigLIP 상회(0.312>0.299), same-data VideoMAE(86M, full 314k)도 DINOv2 하회(0.350<0.363) = EgoDex 사전학습 전반이 인간-비디오 OOD correspondence서 internet-scale 대비 열세(plan §5 예고된 비대칭). 산출물 = `paper_artifacts/correspondence_labelprop/*_20260712_050420/`.
 
 ### 2026-07-12 B-full probing 게이트 (11잡)
 
