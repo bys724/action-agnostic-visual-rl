@@ -111,7 +111,7 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 새 데이터셋은 샘플 테스트 → 결정 기록(`docs/preprocessing/`) → 전체 추출 → 검증. 절차·기존 사례(EgoDex/DROID/Ego4D) → [docs/preprocessing/README.md](docs/preprocessing/README.md).
 
-## 현재 상태 (2026-07-09)
+## 현재 상태 (2026-07-12)
 
 > 2논문 분리. 상세 phase·이력은 마스터 문서로 위임 — 본 섹션은 스냅샷. 명명 정규 출처 = 위 "명명 · 2논문 구조".
 
@@ -123,6 +123,7 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
   - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.
 - **STEP 2 value-level headline control** ([factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.3) 진행 중:
   - **✅ (A) 완료 (2026-07-09)**: plain `P_t⊕M` OOD probing = 4벤치 전부 붕괴 수준(CALVIN 0.030/spatial 0.127/object 0.109/goal 0.059, attn — CoMP-S 0.487/0.814/0.851/0.751) → **게이트 PASS**, efficiency = CoMP mechanism의 산물(same 32.3M·same data). `step0_ood_efficiency/` plain 2행 추가.
-  - **🔄 (B) finetune 진행 중**: reportable 매트릭스(CoMP-S+plain × 3suite × seed012, P-only·attentive·aug-on) 18잡 클러스터 제출(`36786153–170`, 2026-07-09). 역할분담 = finetune 클러스터 / rollout 로컬(eval_protocols §6 정규). 완료 후 best.pt 로컬 반출 → rollout 500ep/seed → `aggregate_libero_rollouts.py`.
+  - **🔄 (B) finetune 완료·rollout 대기**: reportable 매트릭스(CoMP-S+plain × 3suite × seed012, P-only·attentive·aug-on) 18잡 완료(`36786153–170`). 역할분담 = finetune 클러스터 / rollout 로컬(eval_protocols §6 정규). 남은 일 = best.pt 로컬 반출 → rollout 500ep/seed → `aggregate_libero_rollouts.py`.
+- **✅ Full-data scaling 게이트 (2026-07-12)**: CoMP-B × part1-5 compute-matched 7ep → same-probe 판정 = **완화 확정(데이터 기아, 구조 무죄)** — B-part1 deployed-P 발산(−0.49)이 B-full **+0.375**(S 0.329 상회)로 소멸, M 단조 지속(0.352→**0.401**). OOD 효율은 S 대비 +0.03~0.08에 그침(3.5×params+6.8×data) = **3b 효율 headline 강화**, same-data VideoMAE는 여전히 전 벤치 하회("small but close" 유지). efficiency 표 B-full 2행 추가. 50ep 연장 불채택. 판정·수치 = [docs/fulldata_scaling_plan.md](docs/fulldata_scaling_plan.md) §3.
 
 상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).

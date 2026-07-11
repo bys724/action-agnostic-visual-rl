@@ -46,6 +46,21 @@
 - 보조 기대치: M 단조성 B-full ≳ 0.35 (B-part1 수준 유지 — M은 part1로도 clean했으므로 하락 시 별도 flag), P_t⊕M이 M 단독을 하회하는 red-flag 잔존 여부 병기.
 - caveat 유지: 지속이어도 "CoMP 구조 결함" 즉시 확정 아님 — attentive readout 아티팩트 가능성(WD probe 2026-06 결론) 병기.
 
+### ✅ 판정 결과 (2026-07-12, 게이트 13잡 `36828291~301`+`338/339` ≈2.5 GPU·h)
+
+**완화 확정 = 데이터 기아, 구조 무죄.** same-probe (attentive·test·gap10·1500vids·40ep):
+
+| Probe 축 | S(part1) | B(part1) | **B(full 7ep)** |
+|---|---:|---:|---:|
+| deployed-P (P_t⊕P_tk)★ | +0.329 | −0.03→**−0.49 발산** | **+0.375** (ep40 +0.323, 발산 소멸 — 기준 ①② 충족) |
+| M | +0.293 | +0.352 | **+0.401** (단조 지속) |
+| P_t⊕M | +0.286 (M−0.007) | +0.236 (M−0.116 red flag) | +0.361 (M−0.040, 대폭 완화·P 기여 여전히 ≤0) |
+
+- **B-part1 병리 = 규모-데이터 미스매치**로 판정. deployed-P가 S도 상회(+0.375>+0.329) → "size가 P를 망친다" 서사 해소. scale은 다양성이 받쳐줄 때 양 스트림 모두에 이로움.
+- **OOD 효율**(pos R², `efficiency.csv` 정식 행 추가·parity PASS): B-full attn CALVIN **0.571**/spatial **0.850**/object **0.881**/goal **0.703** (mean 0.532/0.813/0.857/0.753). S 대비 +0.03~0.08에 그침 = **3.5× params+6.8× data의 한계효용 작음 → S 효율 headline 강화**. same-data VideoMAE(attn 0.610/0.879/0.903/0.830)는 전 벤치 하회 — "small but close" 프레이밍 유지.
+- ⚠️ 관찰: goal만 attn(0.703)<mean(0.753)·S(0.751) — 유일한 attn<mean 역전(단일 관찰, 해석 보류). B attentive probe는 host RAM 63GB 초과(OOM 2잡 → 16cpu 재제출) — B급 attentive 잡은 `--cpus-per-task=16` 필수.
+- **후속 결정**: 50ep 연장 **불채택**(목적 달성·한계효용 낮음·I/O 병목 시 ~1,750 GPU·h). §4 attach-only대로 limitations 완화 재서술 + 효율 표 참조 행까지만. S-full(옵션②)은 7/28 이후 판단.
+
 ## 4. 논문 반영 정책 — attach-only (사전 등록)
 
 - **7/28 전 spine 재편 금지.** 결과가 인상적이어도 3-claim 골격·헤드라인 불변.

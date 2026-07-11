@@ -37,6 +37,12 @@ ENCODERS = [
      "parvo_training_*step0_mean_ptptk", "parvo_libero_{suite}_*step0_mean_ptptk", None, None),
     ("CoMP-MAE-S  P_t⊕P_tk (attn)", 21.6, "EgoDex part1 subset (~46k, unlabeled)",
      "parvo_training_*step0_attn_ptptk", "parvo_libero_{suite}_*step0_attn_ptptk", None, None),
+    # scale×diversity 참조 (fulldata_scaling_plan §3 게이트, 2026-07-12) — B-full 7ep compute-matched.
+    # attn 산출물 SUFFIX 불일치(초회 bfull_attentive_ptm / OOM 재제출 bfull_attn_ptm) → att* glob, sorted[-1]=재제출본
+    ("CoMP-MAE-B-full  P_t⊕M  (mean)", 114.5, "EgoDex full (~314k, unlabeled)",
+     "parvo_training_*bfull_mean_ptm", "parvo_libero_{suite}_*bfull_mean_ptm", None, None),
+    ("CoMP-MAE-B-full  P_t⊕M  (attn)", 114.5, "EgoDex full (~314k, unlabeled)",
+     "parvo_training_*bfull_att*_ptm", "parvo_libero_{suite}_*bfull_att*_ptm", None, None),
     # STEP 2(A) headline control — plain cross-modal MAE (M-recon off), 동일 arch·data·probe
     ("Plain xMAE-S  P_t⊕M  (mean)", 32.3, "EgoDex part1 subset (~46k, unlabeled)",
      "parvo_training_*s2px_mean_ptm", "parvo_libero_{suite}_*s2px_mean_ptm", None, None),

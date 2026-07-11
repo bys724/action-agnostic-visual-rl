@@ -22,6 +22,8 @@ cross-folder OOD. CoMP-MAE-S·VideoMAE-ours만 mean/attn 둘 다 산출(그 외�
 | CoMP-MAE-S  P_t⊕M  (mean) | ~32M | EgoDex part1 subset | +0.405 | +0.809 | +0.838 | +0.708 |
 | CoMP-MAE-S  P_t⊕P_tk (attn) | ~22M | EgoDex part1 subset | +0.175 | +0.766 | +0.829 | +0.709 |
 | CoMP-MAE-S  P_t⊕P_tk (mean) | ~22M | EgoDex part1 subset | +0.257 | +0.741 | +0.811 | +0.702 |
+| CoMP-MAE-B-full  P_t⊕M (attn) *scale×diversity ref* | ~114M | EgoDex full (~314k, unlabeled) | +0.571 | +0.850 | +0.881 | +0.703 |
+| CoMP-MAE-B-full  P_t⊕M (mean) *scale×diversity ref* | ~114M | EgoDex full | +0.532 | +0.813 | +0.857 | +0.753 |
 | Plain xMAE-S  P_t⊕M  (attn) *headline control* | ~32M | EgoDex part1 subset | +0.030 | +0.127 | +0.109 | +0.059 |
 | Plain xMAE-S  P_t⊕M  (mean) *headline control* | ~32M | EgoDex part1 subset | +0.014 | +0.123 | +0.112 | +0.018 |
 | VideoMAE-ours (attn) *matched data* | 86M | EgoDex full (~314k) | +0.610 | +0.879 | +0.903 | +0.830 |
@@ -45,6 +47,14 @@ cross-folder OOD. CoMP-MAE-S·VideoMAE-ours만 mean/attn 둘 다 산출(그 외�
   win" (ViT-B variant did *worse*, per project note).
 - **M stream is load-bearing**: `P_t⊕M` ≫ `P_t⊕P_tk` (appearance-only) on both benchmarks —
   the efficiency comes from the motion stream, consistent with the action-agnostic thesis.
+- **Scale×diversity reference (CoMP-MAE-B-full, 2026-07-12)**: ViT-B-class CoMP (~114M P⊕M)
+  pretrained on **EgoDex full** (compute-matched 7 ep) improves on S by only **+0.03–0.08**
+  (CALVIN +0.571 vs +0.487, spatial +0.850 vs +0.814, object +0.881 vs +0.851) and stays
+  **below same-data VideoMAE on every suite** — i.e. ~3.5× params + 6.8× data buys little,
+  reinforcing the efficiency reading: the 32M/46k S model already captures most of the signal.
+  One asymmetry: **goal attn (+0.703) < goal mean (+0.753)**, the only suite where attn < mean
+  (single observation; noted, not interpreted). Context: B-full also *resolves* the B-part1
+  deployed-P pathology (data starvation, not architecture — `docs/fulldata_scaling_plan.md` §3).
 - **vs plain cross-modal MAE (headline control, STEP 2A)**: same arch (32.3M), same data, same
   probe — plain (M-recon off) **collapses everywhere** (CALVIN +0.03 vs +0.49, spatial +0.13 vs
   +0.81, object +0.11 vs +0.85, goal +0.06 vs +0.75, attn). The efficiency is a product of the
@@ -97,5 +107,6 @@ trustworthy claim; **mechanism selectivity (STEP 0.5 ③, corrupt-in-place ΔR²
 - Jobs (2026-07-01): CALVIN/LIBERO-spatial step0 matrix `36224980–991` (+ `36225602` vmae-attn CALVIN rerun).
 - Jobs (2026-07-02): LIBERO-object/goal step0 matrix `36300651–662` (+ `36303903` vmae-attn object rerun, mem120G OOM fix).
 - Plain xMAE-S ckpt: `two_stream_v15b_step1_plain_xmae_s/20260708_012539/latest.pt`; jobs (2026-07-09, STEP 2A): `36785986–993` (`s2px_{mean,attn}_ptm`).
+- CoMP-MAE-B-full ckpt: `two_stream_v15b_fulldata_comp_mae_b_7ep/20260710_143730/latest.pt` (ep7); jobs (2026-07-12, fulldata gate): `36828294–301` + OOM 재제출 `36828338/339` (`bfull_{mean,attn|attentive}_ptm`).
 - Baselines: CALVIN `*_training_20260526_213639_gapsweep`; LIBERO (all 3 suites) `tables/tab2_probing/libero_all_gaps_summary.csv`.
 - Session log: `docs/cluster_sessions.md` (2026-07-01 STEP 0).
