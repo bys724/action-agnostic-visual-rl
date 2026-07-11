@@ -1,0 +1,18 @@
+{
+  "encoder": "dinov2",
+  "checkpoint": null,
+  "n_train_pairs": 337826,
+  "n_val_clips": 24777,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_meanpool",
+  "epochs": 20,
+  "top1": 0.22763046622276306,
+  "top5": 0.49166566133499146,
+  "top1_reversed": 0.1831940859556198,
+  "direction_drop": 0.04443638026714325
+}

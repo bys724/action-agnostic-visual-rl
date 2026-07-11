@@ -114,6 +114,23 @@ JHMDB split1-test 268클립·8,858프레임, 전 encoder 동일 조건(14×14 gr
 **🟠 gate 사전 등록 (결과 확인 전 고정, 2026-07-12)**:
 1. **내부 대조(주)**: top-1 acc(`p_t_m`) − acc(`p_t_p_tk`) ≥ **+2%p** — M-stream의 실질 기여.
 2. **외부 대조(부)**: max(CoMP) ≥ max(DINOv2, SigLIP) − 2%p — appearance 대비 동급 이상.
+
+### ✅ 실행·판정 완료 (2026-07-12) — **① PASS · ② FAIL → 서랍**
+
+val 24,777클립(클립 레벨 top-1, pair 3개 logit 평균), 잡 `36828510~514` (~3.8 GPU·h):
+
+| Encoder | top-1 | top-5 | Δdir (반전 하락) |
+|---|---:|---:|---:|
+| DINOv2 | **22.8%** | 49.2% | +4.4%p |
+| SigLIP | 21.8% | 47.9% | +4.2%p |
+| **CoMP-S `p_t_m`** | 5.7% | 18.5% | +0.3%p |
+| VideoMAE-ours | 5.0% | 16.3% | +0.8%p |
+| **CoMP-S `p_t_p_tk`** | 3.0% | 10.9% | +0.3%p |
+
+- **① +2.77%p PASS** — M-stream이 motion-sensitive 분류에 실질 기여(상대 +94%). on-thesis 내부 신호는 성립.
+- **② 대폭 미달** (5.7 ≪ 20.8) → 사전 등록대로 **미보고(서랍)**. correspondence와 동일 패턴의 극단형: EgoDex 학습 모델 전부(VideoMAE 포함)가 인터넷-scale semantic appearance에 대패 — mean-pool linear 분류는 object/scene semantic이 지배.
+- **방향성 control 역설(정직 신호)**: Δdir가 DINOv2(+4.4%p) > CoMP(+0.3%p) — "M이 방향 정보 운반" 기대 불성립. probe가 CoMP feature의 시간 방향성을 거의 사용하지 않음.
+- 종합: 경로 1·2 모두 서랍 → **글쓰기 옵션 B+C 확정** (limitations "general motion 미검증" 유지 + framing 강화: CoMP 표현은 general-vision이 아닌 action-relevant 특화). ① 신호와 dissociation 관찰(§6 B-full correspondence 포함)은 framing 논거로만 활용.
 - 둘 다 충족 → 보고(attach-only, §6 규율 동일). 미달 → 서랍 + negative 기록. 절대 SOTA 주장 금지(2-frame 프로토콜은 상대 비교 전용).
 
 ## 8. Cross-refs
