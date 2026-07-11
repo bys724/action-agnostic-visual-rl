@@ -108,9 +108,10 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 36828291/292/293 | AIP 1×1 H100 ×3 | 03:00:00 | **EgoDex same-probe** — 291=`attentive_concat_p_t_p_tk`(**deployed-P★ 주판정**: 발산 소멸+best≥0.15=완화) / 292=`attentive_m`(단조성, 기대 ≳0.35) / 293=`attentive_concat_p_m`(P_t⊕M red-flag 잔존 확인) | 🔄 제출 (2026-07-12) |
-| 36828294/295 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN B-full** — 294=mean / 295=attn (xfold, `p_t_m`) → efficiency 참조 행 | 🔄 제출 |
-| 36828296~301 | AIP 1×1 H100 ×6 | 01:30:00 | **LIBERO B-full** — 296/297=spatial·298/299=object·300/301=goal (각 mean/attn, `p_t_m`) | 🔄 제출 |
+| 36828291/292/293 | AIP 1×1 H100 ×3 | 03:00:00 | **EgoDex same-probe** — 291=`attentive_concat_p_t_p_tk`(**deployed-P★ 주판정**: 발산 소멸+best≥0.15=완화) / 292=`attentive_m`(단조성, 기대 ≳0.35) / 293=`attentive_concat_p_m`(P_t⊕M red-flag 잔존 확인) | ✅ 9~10m/잡 (~0.5 GPU·h). **291 deployed-P best 0.375·ep40 0.323 발산 소멸** → 사전 등록 기준 ①② 충족 = **완화 판정** (B-part1 −0.49 발산 → +0.375, S 0.329도 상회). **292 M best 0.401** = 단조성 유지·초과 (S 0.293→B-p1 0.352→B-full 0.401). **293 P_t⊕M 0.361** — red-flag 대폭 완화(B-p1 M대비 −0.116→−0.040)나 P 기여는 여전히 0 이하 |
+| 36828294/295 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN B-full** — 294=mean / 295=attn (xfold, `p_t_m`) → efficiency 참조 행 | 294 ✅ 16m. gap30 agg 0.057, pos-dim 0.64/0.49/0.47 (S mean pos 0.405 상회 추정 — 정식 집계는 CSV) · **295 ❌ OOM**(48GB>63GB cap, B 768d attentive) → 36828338 재제출 |
+| 36828296~301 | AIP 1×1 H100 ×6 | 01:30:00 | **LIBERO B-full** — 296/297=spatial·298/299=object·300/301=goal (각 mean/attn, `p_t_m`) | 5/6 ✅ (7~15m/잡). gap20 pos-dim(근사): spatial mean ~0.81/attn ~0.85 · object mean ~0.86 · goal mean ~0.75/attn ~0.70 (S attn 0.814/0.851/0.751 동급~상회). **299 object attn ❌ OOM** → 36828339 재제출 |
+| 36828338/339 | AIP 1×1 H100 ×2 | 02:00:00/01:30:00 | **OOM 재제출** (cpus 8→16 = RAM 63→126GB) — 338=CALVIN attn / 339=object attn | 🔄 제출 (2026-07-12) |
 
 ### 2026-07-09 CoMP-MAE ep50 가시화 요소별 재생성 (--save-elems)
 
