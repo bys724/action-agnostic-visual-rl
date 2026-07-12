@@ -117,7 +117,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 36829370 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000/split, fresh SUFFIX=sanity_fulldata_comp_s) — S arch × 5-split 로드·throughput·loss 앵커 | 🔄 제출 (2026-07-12) |
+| 36829370 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000/split, fresh SUFFIX=sanity_fulldata_comp_s) — S arch × 5-split 로드·throughput·loss 앵커 | ✅ 5m14s (~0.7 GPU·h). params 56,109,568 = S ckpt 정확 일치·5-split 500k 로드·loss 0.49 정상·3,887 samp/s → **게이트 PASS** |
+| 36829403 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-S full-data 7ep compute-matched** — config = S 기준런 `36177296` 동일, 변경 = SPLITS(part1-5)·EPOCHS(7). SUFFIX=fulldata_comp_mae_s_7ep. 예상 ~33h(I/O-bound) ≈ 265 GPU·h | 🔄 제출 (2026-07-12) |
 
 ### 2026-07-12 SSv2 2-frame linear probe — 경로 1 ([correspondence_eval_plan.md](correspondence_eval_plan.md) §7)
 
