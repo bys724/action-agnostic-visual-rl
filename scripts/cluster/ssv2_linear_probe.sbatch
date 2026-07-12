@@ -31,6 +31,7 @@ PARVO_MODE="${PARVO_MODE:-p_t_m}"
 MAX_CLIPS="${MAX_CLIPS:-0}"
 WORKERS="${WORKERS:-14}"
 READOUT="${READOUT:-mean}"
+ANN_DIR="${ANN_DIR:-}"
 SUFFIX="${SUFFIX:-}"
 
 TAG="$ENCODER"; [ "$ENCODER" = "parvo" ] && TAG="${ENCODER}_${PARVO_MODE}"
@@ -50,6 +51,7 @@ cd "$PROJECT_ROOT"
 ARGS=(--encoder "$ENCODER" --ssv2-root "$SSV2_ROOT" --output-dir "$OUT_DIR"
       --parvo-mode "$PARVO_MODE" --max-clips "$MAX_CLIPS" --workers "$WORKERS"
       --readout "$READOUT")
+[ -n "$ANN_DIR" ] && ARGS+=(--ann-dir "$ANN_DIR")
 [ -n "$CHECKPOINT" ] && ARGS+=(--checkpoint "$CHECKPOINT")
 
 "$CONDA_PREFIX/bin/python" scripts/eval/ssv2_linear_probe.py "${ARGS[@]}"

@@ -132,6 +132,15 @@ val 24,777클립(클립 레벨 top-1, pair 3개 logit 평균), 잡 `36828510~514
 - **방향성 control 역설(정직 신호)**: Δdir가 DINOv2(+4.4%p) > CoMP(+0.3%p) — "M이 방향 정보 운반" 기대 불성립. probe가 CoMP feature의 시간 방향성을 거의 사용하지 않음.
 - 종합: 경로 1·2 모두 서랍 → **글쓰기 옵션 B+C 확정** (limitations "general motion 미검증" 유지 + framing 강화: CoMP 표현은 general-vision이 아닌 action-relevant 특화). ① 신호와 dissociation 관찰(§6 B-full correspondence 포함)은 framing 논거로만 활용.
 
+### 경로 1-b: Something-Else compositional split (2026-07-12 사전 등록)
+
+> 사용자 문제 제기: 표준 split은 train/val이 물체를 공유 → appearance shortcut이 점수를 지배, "물체-불변 행위 semantic" 측정 도구로 부적합. **Something-Else** (Materzynska et al., CVPR 2020) compositional split = train 물체 186종 ∩ val 물체 185종 **교집합 0** (검증 완료) → "사과로 배우고 비사과로 시험"이 정확히 구현됨. train 54,919/val 57,876, 같은 174 템플릿. 어노테이션 = `datasets/ssv2/splits_something_else/compositional/`.
+
+**🟠 사전 등록 (2026-07-12, 결과 확인 전 고정)** — 프로토콜: 표준 런과 동일(2-frame gap12·mean readout·linear·fp16), split만 교체. 5 encoder 동일 매트릭스:
+
+1. **보고 후보 조건**: ① 내부 대조 acc(`p_t_m`)−acc(`p_t_p_tk`) ≥ +2%p 유지 **AND** ② 외부 격차 max(DINOv2,SigLIP)−max(CoMP)가 표준 split(17.0%p) 대비 **≥5%p 축소**. 둘 다 → M의 물체-불변성 증거로 보고 검토(새 gate로 옵션 A 부활 검토). 미달 → 관찰 기록.
+2. 부가 관찰(판정 아님): DINOv2/SigLIP 절대치 하락폭 = appearance shortcut 크기의 추정치.
+
 ### 후속 관찰 (2026-07-12, 전부 관찰 전용 — gate 불변)
 
 1. **readout-병목 반증** (meanmax 매트릭스 `36828832~836`): "mean-pool이 국소 M 신호를 희석해 CoMP에 불리"라는 가설을 mean⊕max(파라미터 0, 전 encoder 동일)로 검정 → 이득이 전 encoder +0.6~1.0%p 균등, 외부 격차 불변(17.0→16.8%p), 내부 대조 +2.77→+3.06%p. **격차는 readout이 아니라 표현(semantic 부재) 문제로 확정** — FAIL 결론 견고. (meanmax 런 = fp16 autocast·rev 토큰 재사용, 2.7× 단축.)

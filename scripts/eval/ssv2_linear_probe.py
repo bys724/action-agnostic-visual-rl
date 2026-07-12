@@ -52,10 +52,13 @@ PAIRS = {"train": 2, "validation": 3}
 # ─────────────────────────────────────────────────────────────────────────
 
 class SSv2PairDataset(Dataset):
-    def __init__(self, root: str, split: str):
+    def __init__(self, root: str, split: str, ann_dir: str | None = None):
+        """ann_dir: 대체 split 어노테이션 dir (예: Something-Else compositional —
+        물체 train/val 완전 disjoint). None = 공식 split (root의 json)."""
         self.video_dir = Path(root) / "20bn-something-something-v2"
-        labels = json.load(open(Path(root) / "labels.json"))
-        anns = json.load(open(Path(root) / f"{split}.json"))
+        ad = Path(ann_dir) if ann_dir else Path(root)
+        labels = json.load(open(ad / "labels.json"))
+        anns = json.load(open(ad / f"{split}.json"))
         self.items = [(d["id"], int(labels[d["template"].replace("[", "").replace("]", "")]))
                       for d in anns]
         self.n_pairs = PAIRS[split]
@@ -208,8 +211,9 @@ class MeanFeatureExtractor:
         return fwd, rev
 
 
-def extract_split(extractor, root, split, with_reverse, batch_clips, workers, log_every=200):
-    ds = SSv2PairDataset(root, split)
+def extract_split(extractor, root, split, with_reverse, batch_clips, workers,
+                  ann_dir=None, log_every=200):
+    ds = SSv2PairDataset(root, split, ann_dir=ann_dir)
     dl = DataLoader(ds, batch_size=batch_clips, num_workers=workers,
                     collate_fn=collate, shuffle=False)
     feats, feats_rev, labels, clip_ids = [], [], [], []
@@ -288,6 +292,8 @@ def main():
     ap.add_argument("--readout", default="mean", choices=["mean", "meanmax"],
                     help="meanmax = readout-병목 정량화 (파라미터 0, 전 encoder 동일 적용)")
     ap.add_argument("--ssv2-root", default="/proj/external_group/mrg/datasets/ssv2")
+    ap.add_argument("--ann-dir", default=None,
+                    help="대체 split (예: splits_something_else/compositional — 물체 disjoint)")
     ap.add_argument("--max-clips", type=int, default=0, help="sanity용 제한 (양 split 공통)")
     ap.add_argument("--batch-clips", type=int, default=64)
     ap.add_argument("--workers", type=int, default=8)
@@ -306,15 +312,15 @@ def main():
 
     if args.max_clips:  # sanity: 데이터셋 절단
         SSv2PairDataset_orig = SSv2PairDataset.__init__
-        def _init(self, root, split):
-            SSv2PairDataset_orig(self, root, split)
+        def _init(self, root, split, ann_dir=None):
+            SSv2PairDataset_orig(self, root, split, ann_dir=args.ann_dir)
             self.items = self.items[: args.max_clips]
         SSv2PairDataset.__init__ = _init
 
     tr = extract_split(extractor, args.ssv2_root, "train", False,
-                       args.batch_clips, args.workers)
+                       args.batch_clips, args.workers, ann_dir=args.ann_dir)
     va = extract_split(extractor, args.ssv2_root, "validation", True,
-                       args.batch_clips, args.workers)
+                       args.batch_clips, args.workers, ann_dir=args.ann_dir)
 
     evaluate = train_probe(tr, va, device, epochs=args.epochs)
     top1, top5 = evaluate(va["features"])
@@ -325,6 +331,7 @@ def main():
         "n_val_clips": int(np.unique(va["clip_ids"]).shape[0]),
         "gap_frames": FPS_GAP, "img_size": IMG_SIZE, "pairs": PAIRS,
         "probe": f"linear_{args.readout}", "readout": args.readout, "epochs": args.epochs,
+        "ann_dir": args.ann_dir,
         "top1": top1, "top5": top5,
         "top1_reversed": top1_rev,
         "direction_drop": top1 - top1_rev,
