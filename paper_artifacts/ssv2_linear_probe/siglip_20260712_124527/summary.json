@@ -1,0 +1,19 @@
+{
+  "encoder": "siglip",
+  "checkpoint": null,
+  "n_train_pairs": 337826,
+  "n_val_clips": 24777,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_meanmax",
+  "readout": "meanmax",
+  "epochs": 20,
+  "top1": 0.21314121782779694,
+  "top5": 0.47911369800567627,
+  "top1_reversed": 0.1749606430530548,
+  "direction_drop": 0.038180574774742126
+}

@@ -131,6 +131,12 @@ val 24,777클립(클립 레벨 top-1, pair 3개 logit 평균), 잡 `36828510~514
 - **② 대폭 미달** (5.7 ≪ 20.8) → 사전 등록대로 **미보고(서랍)**. correspondence와 동일 패턴의 극단형: EgoDex 학습 모델 전부(VideoMAE 포함)가 인터넷-scale semantic appearance에 대패 — mean-pool linear 분류는 object/scene semantic이 지배.
 - **방향성 control 역설(정직 신호)**: Δdir가 DINOv2(+4.4%p) > CoMP(+0.3%p) — "M이 방향 정보 운반" 기대 불성립. probe가 CoMP feature의 시간 방향성을 거의 사용하지 않음.
 - 종합: 경로 1·2 모두 서랍 → **글쓰기 옵션 B+C 확정** (limitations "general motion 미검증" 유지 + framing 강화: CoMP 표현은 general-vision이 아닌 action-relevant 특화). ① 신호와 dissociation 관찰(§6 B-full correspondence 포함)은 framing 논거로만 활용.
+
+### 후속 관찰 (2026-07-12, 전부 관찰 전용 — gate 불변)
+
+1. **readout-병목 반증** (meanmax 매트릭스 `36828832~836`): "mean-pool이 국소 M 신호를 희석해 CoMP에 불리"라는 가설을 mean⊕max(파라미터 0, 전 encoder 동일)로 검정 → 이득이 전 encoder +0.6~1.0%p 균등, 외부 격차 불변(17.0→16.8%p), 내부 대조 +2.77→+3.06%p. **격차는 readout이 아니라 표현(semantic 부재) 문제로 확정** — FAIL 결론 견고. (meanmax 런 = fp16 autocast·rev 토큰 재사용, 2.7× 단축.)
+2. **B-full scale 효과** (`36828700/701`, mean): 내부 대조 +2.77(S)→**+4.13%p**(B-full) — scale이 P⊕P(+0.89%p)보다 M 기여를 크게 키움. M-recon scale 단조성(action probing R² 0.401)과 정합, JHMDB(제자리)와 대조 = **"scale이 키우는 건 motion-분류 유용 정보이지 매칭용 appearance 지문이 아님"** dissociation 3번째 데이터셋 일관.
+3. Δdir(방향)은 모든 조건에서 CoMP ≈ 0(+0.25~0.5%p) vs DINOv2 +4.4~4.7%p — 방향 불사용 결론 유지.
 - 둘 다 충족 → 보고(attach-only, §6 규율 동일). 미달 → 서랍 + negative 기록. 절대 SOTA 주장 금지(2-frame 프로토콜은 상대 비교 전용).
 
 ## 8. Cross-refs
