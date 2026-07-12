@@ -161,6 +161,15 @@ top-1 (mean·fp16; ⚠️ comp는 train 54.9k(표준 1/3)·val 57.9k로 절대�
 - Δdir는 전 조건 CoMP ≈ +0.3~0.8%p 불변.
 - **종합**: 경로 1-b도 보고 기준 미달 → 서랍. 단 "appearance shortcut 실재 + M 전담 + motion 모델의 comp 상승" 3관찰은 framing(옵션 B) 논거로 축적.
 
+### 경로 1-c: S-full data-matched 확증 (2026-07-12 사전 등록, 학습 완료 전 고정)
+
+> 탐색(경로 1·1-b·B-full 관찰)이 시사한 것: M이 CoMP SSv2 점수 전담 + scale/데이터로 M 기여 증가(+2.77→+4.13%p) + motion 모델은 물체-disjoint서 상승. **확증 단계**: S-full(part1-5, 7ep compute-matched — 별도 학습, fulldata plan 옵션② 겸용) 완성 후 SSv2 재측정. **핵심**: VideoMAE-ours는 원래 full(314k) 학습 → S-full로 비로소 **data-matched**(32M vs 86M, same data) 공정 비교 성립. 논문 기입 방식 = 탐색→확증 2단계 정직 서술(탐색 결과는 서랍 유지, 확증만 보고).
+
+**🟠 사전 등록 (2026-07-12, S-full 학습 시작 전 고정)** — 프로토콜: 표준+compositional 양 split, mean·fp16, 동일 매트릭스:
+
+1. **보고 후보 조건 (data-matched 효율 claim)**: ① 내부 대조(`p_t_m`−`p_t_p_tk`) ≥ +2%p 유지 **AND** ② **S-full `p_t_m` ≥ VideoMAE-ours** (같은 split 기준, 표준·comp 중 최소 1개) — 32M이 86M same-data를 따라잡으면 로봇 밖 벤치에서도 "small but close→match" 확장. 둘 다 → attach-only 보고 검토. 미달 → 관찰 기록(서랍).
+2. 부가 관찰(판정 아님): S-part1 대비 상승폭의 M/P 분해(B-full 패턴 +4.13%p 재현 여부).
+
 ### 후속 관찰 (2026-07-12, 전부 관찰 전용 — gate 불변)
 
 1. **readout-병목 반증** (meanmax 매트릭스 `36828832~836`): "mean-pool이 국소 M 신호를 희석해 CoMP에 불리"라는 가설을 mean⊕max(파라미터 0, 전 encoder 동일)로 검정 → 이득이 전 encoder +0.6~1.0%p 균등, 외부 격차 불변(17.0→16.8%p), 내부 대조 +2.77→+3.06%p. **격차는 readout이 아니라 표현(semantic 부재) 문제로 확정** — FAIL 결론 견고. (meanmax 런 = fp16 autocast·rev 토큰 재사용, 2.7× 단축.)

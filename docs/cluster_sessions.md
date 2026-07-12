@@ -111,6 +111,14 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 36828463/464 | normal V100 1×1 ×2 | 02:00:00 | **sanity 5클립** — 463=dinov2 / 464=parvo-m(CoMP-S) | ✅ 각 ~1m (~0.03 GPU·h). dinov2 PCK@0.1 0.388 / parvo-m 0.383 — 문헌 정합(coarse 14×14), 파이프라인 PASS |
 | 36828465~469 | normal V100 1×1 ×5 | 02:00:00 | **본 측정 268클립** — 465=parvo-p·466=parvo-m(CoMP-S) / 467=dinov2·468=siglip / 469=videomae-vla(`videomae/20260415_012017/best`). 전파 하이퍼 전 encoder 동일(τ0.1·topk5·r3·n_last7·grid14) | ✅ 각 2m11s (~0.2 GPU·h 합). 268클립·8,858프레임 전 encoder 동일(parity ✓). **PCK@0.1: parvo-p 0.312 / parvo-m 0.294 / dinov2 0.363 / siglip 0.299 / vmae-vla 0.350** |
 
+### 2026-07-12 S-full 본학습 — CoMP-S × part1-5 compute-matched 7ep
+
+**목적**: ① fulldata plan §1 옵션② (2×2 scale×다양성 완성, 효율 표 참조 행) ② SSv2 data-matched 비교 — VideoMAE-ours는 원래 full(314k) 학습이라 S-full이 **비교를 공정하게 만듦** (기존 S-part1 vs vmae-full은 우리 핸디캡). SSv2 확증 gate = correspondence_eval_plan §7 경로 1-c 사전 등록. config = S 기준런 `36177296` 동일, 변경 = SPLITS(part1-5)·EPOCHS(50→7, B-full과 동일 compute-matched 로직). 예상 ~33h wall ≈ 265 GPU·h (I/O-bound, B-full 실측 앵커).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 36829370 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000/split, fresh SUFFIX=sanity_fulldata_comp_s) — S arch × 5-split 로드·throughput·loss 앵커 | 🔄 제출 (2026-07-12) |
+
 ### 2026-07-12 SSv2 2-frame linear probe — 경로 1 ([correspondence_eval_plan.md](correspondence_eval_plan.md) §7)
 
 **목적**: correspondence(경로 2) FAIL 후 사용자 결정으로 경로 1 실행. gate 사전 등록(§7): ① acc(`p_t_m`)−acc(`p_t_p_tk`) ≥ +2%p ② max(CoMP) ≥ max(DINOv2,SigLIP)−2%p. **데이터 신규**: SSv2 19.4GB(공식 20-part HF 미러) → `datasets/ssv2/`, 220,847 webm 해제·개수 정합, cv2 VP9 디코드 검증.
