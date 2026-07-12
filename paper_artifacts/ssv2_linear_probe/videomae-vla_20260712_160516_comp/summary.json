@@ -1,0 +1,20 @@
+{
+  "encoder": "videomae-vla",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt",
+  "n_train_pairs": 109838,
+  "n_val_clips": 57876,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_mean",
+  "readout": "mean",
+  "epochs": 20,
+  "ann_dir": "/proj/external_group/mrg/datasets/ssv2/splits_something_else/compositional",
+  "top1": 0.07700946927070618,
+  "top5": 0.2128516137599945,
+  "top1_reversed": 0.06183910369873047,
+  "direction_drop": 0.015170365571975708
+}

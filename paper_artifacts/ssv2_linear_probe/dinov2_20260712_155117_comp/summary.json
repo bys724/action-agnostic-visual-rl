@@ -1,0 +1,20 @@
+{
+  "encoder": "dinov2",
+  "checkpoint": null,
+  "n_train_pairs": 109838,
+  "n_val_clips": 57876,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_mean",
+  "readout": "mean",
+  "epochs": 20,
+  "ann_dir": "/proj/external_group/mrg/datasets/ssv2/splits_something_else/compositional",
+  "top1": 0.2058538943529129,
+  "top5": 0.4600525200366974,
+  "top1_reversed": 0.1607920378446579,
+  "direction_drop": 0.045061856508255005
+}

@@ -141,6 +141,26 @@ val 24,777클립(클립 레벨 top-1, pair 3개 logit 평균), 잡 `36828510~514
 1. **보고 후보 조건**: ① 내부 대조 acc(`p_t_m`)−acc(`p_t_p_tk`) ≥ +2%p 유지 **AND** ② 외부 격차 max(DINOv2,SigLIP)−max(CoMP)가 표준 split(17.0%p) 대비 **≥5%p 축소**. 둘 다 → M의 물체-불변성 증거로 보고 검토(새 gate로 옵션 A 부활 검토). 미달 → 관찰 기록.
 2. 부가 관찰(판정 아님): DINOv2/SigLIP 절대치 하락폭 = appearance shortcut 크기의 추정치.
 
+### ✅ 판정 (2026-07-12, 잡 36829354~360) — **① PASS(+2.46%p) · ② 미달(축소 3.3%p < 5%p) → 관찰 기록**
+
+top-1 (mean·fp16; ⚠️ comp는 train 54.9k(표준 1/3)·val 57.9k로 절대치의 split 간 비교는 참고용, within-split 대조가 정본):
+
+| Encoder | 표준 split | compositional | Δ |
+|---|---:|---:|---:|
+| DINOv2 | 22.76 | 20.59 | **−2.17** |
+| SigLIP | 21.79 | 18.85 | **−2.94** |
+| VideoMAE-ours | 4.98 | 7.70 | **+2.72** |
+| CoMP-S `p_t_m` | 5.72 | 6.85 | +1.13 |
+| CoMP-S **`m_only`** | 5.31 | 5.42 | +0.11 |
+| CoMP-S `p_t_p_tk` | 2.95 | 4.39 | +1.44 |
+| 내부 대조 | +2.77%p | +2.46%p | 유지 ✓ |
+| 격차(vs DINOv2) | 17.04%p | 13.74%p | −3.3%p (②미달) |
+
+- **방향은 가설대로**: 물체-disjoint에서 appearance 모델만 하락(−2.2/−2.9%p), EgoDex motion 모델들은 train 1/3에도 불구 **상승** — appearance shortcut 실재 확인. 특히 VideoMAE가 +2.72로 최대 수혜(comp에서 CoMP 추월 7.70>6.85). 단 축소 폭이 기준 미달 → DINOv2 우위의 대부분은 shortcut이 아닌 전이 가능한 semantic.
+- **P-방해 가설 (m_only, 36829354/360): 기각**. 양 split 모두 m_only ≤ p_t_m (역전 없음 — B-part1식 오염의 SSv2 재현 없음). 단 **표준에서 P의 순기여는 +0.41%p에 불과** (m_only 5.31이 절반 차원으로 p_t_m의 93%) = CoMP의 SSv2 점수는 사실상 M이 전담. comp에서는 P 기여 +1.43%p로 커짐 — P의 전이 성분(손·공간 배치)은 물체-disjoint에서도 유효.
+- Δdir는 전 조건 CoMP ≈ +0.3~0.8%p 불변.
+- **종합**: 경로 1-b도 보고 기준 미달 → 서랍. 단 "appearance shortcut 실재 + M 전담 + motion 모델의 comp 상승" 3관찰은 framing(옵션 B) 논거로 축적.
+
 ### 후속 관찰 (2026-07-12, 전부 관찰 전용 — gate 불변)
 
 1. **readout-병목 반증** (meanmax 매트릭스 `36828832~836`): "mean-pool이 국소 M 신호를 희석해 CoMP에 불리"라는 가설을 mean⊕max(파라미터 0, 전 encoder 동일)로 검정 → 이득이 전 encoder +0.6~1.0%p 균등, 외부 격차 불변(17.0→16.8%p), 내부 대조 +2.77→+3.06%p. **격차는 readout이 아니라 표현(semantic 부재) 문제로 확정** — FAIL 결론 견고. (meanmax 런 = fp16 autocast·rev 토큰 재사용, 2.7× 단축.)

@@ -1,0 +1,20 @@
+{
+  "encoder": "siglip",
+  "checkpoint": null,
+  "n_train_pairs": 109838,
+  "n_val_clips": 57876,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_mean",
+  "readout": "mean",
+  "epochs": 20,
+  "ann_dir": "/proj/external_group/mrg/datasets/ssv2/splits_something_else/compositional",
+  "top1": 0.1884891837835312,
+  "top5": 0.4313705265522003,
+  "top1_reversed": 0.15044233202934265,
+  "direction_drop": 0.03804685175418854
+}

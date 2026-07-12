@@ -1,0 +1,20 @@
+{
+  "encoder": "parvo-p_t_m",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt",
+  "n_train_pairs": 109838,
+  "n_val_clips": 57876,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_mean",
+  "readout": "mean",
+  "epochs": 20,
+  "ann_dir": "/proj/external_group/mrg/datasets/ssv2/splits_something_else/compositional",
+  "top1": 0.06854309141635895,
+  "top5": 0.2117803543806076,
+  "top1_reversed": 0.06410256773233414,
+  "direction_drop": 0.004440523684024811
+}

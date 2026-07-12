@@ -1,0 +1,20 @@
+{
+  "encoder": "parvo-m_only",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt",
+  "n_train_pairs": 337826,
+  "n_val_clips": 24777,
+  "gap_frames": 12,
+  "img_size": 224,
+  "pairs": {
+    "train": 2,
+    "validation": 3
+  },
+  "probe": "linear_mean",
+  "readout": "mean",
+  "epochs": 20,
+  "ann_dir": null,
+  "top1": 0.053113773465156555,
+  "top5": 0.18178148567676544,
+  "top1_reversed": 0.05024821311235428,
+  "direction_drop": 0.0028655603528022766
+}
