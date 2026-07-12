@@ -108,8 +108,18 @@ def collate(batch):
 # ─────────────────────────────────────────────────────────────────────────
 
 class MeanFeatureExtractor:
-    def __init__(self, encoder: str, checkpoint: str | None, parvo_mode: str, device):
+    """readout: mean = patch-mean (기본, gate 프로토콜) / meanmax = mean⊕max.
+
+    meanmax는 readout-병목 정량화용 (파라미터 0 유지 = artifact 규율 내):
+    M 신호는 공간 국소(CALVIN attn>mean 관찰)라 mean이 희석 가능 → max가 국소 peak 보존.
+    전 encoder 동일 적용 시 parity 유지, mean 결과와 나란히 비교.
+    """
+
+    def __init__(self, encoder: str, checkpoint: str | None, parvo_mode: str, device,
+                 readout: str = "mean"):
         self.encoder, self.mode, self.device = encoder, parvo_mode, device
+        assert readout in ("mean", "meanmax")
+        self.readout = readout
         if encoder == "parvo":
             from scripts.eval.probe_action_libero import build_parvo_encoder
             self.model = build_parvo_encoder(checkpoint, device)
@@ -133,30 +143,69 @@ class MeanFeatureExtractor:
         else:
             raise ValueError(encoder)
 
-    @torch.no_grad()
-    def _hf_mean(self, x: torch.Tensor) -> torch.Tensor:
-        hid = self.model(pixel_values=(x - self._mean) / self._std).last_hidden_state
-        return (hid[:, 1:] if self.encoder == "dinov2" else hid).mean(dim=1)
+    def _pool(self, tok: torch.Tensor) -> torch.Tensor:
+        """(n, n_patch, D) → mean: (n, D) / meanmax: (n, 2D)."""
+        if self.readout == "mean":
+            return tok.mean(dim=1)
+        return torch.cat([tok.mean(dim=1), tok.max(dim=1).values], dim=-1)
 
     @torch.no_grad()
-    def __call__(self, prev: torch.Tensor, curr: torch.Tensor) -> torch.Tensor:
-        """prev/curr (N, 3, H, W) [0,1] CPU → (N, D) CPU fp16."""
-        if self.encoder == "parvo":
-            from scripts.eval.probe_action_libero import encode_pairs_parvo
-            f = encode_pairs_parvo(self.model, prev, curr, self.device,
-                                   mode=self.mode, readout="mean", batch=256)
-        elif self.encoder == "videomae-vla":
-            from scripts.eval.probe_action_libero import encode_pairs_videomae_vla
-            f = encode_pairs_videomae_vla(self.model, prev, curr, self.device,
-                                          readout="mean", batch=256)
-        else:  # dinov2/siglip: single_frame adapter 규약 (frame별 인코딩 → concat)
-            out = []
-            for s in range(0, prev.shape[0], 256):
-                p = prev[s:s+256].to(self.device)
-                c = curr[s:s+256].to(self.device)
-                out.append(torch.cat([self._hf_mean(p), self._hf_mean(c)], dim=-1).cpu())
-            f = torch.cat(out)
-        return f.half()
+    def _hf_tok(self, x: torch.Tensor) -> torch.Tensor:
+        hid = self.model(pixel_values=(x - self._mean) / self._std).last_hidden_state
+        return hid[:, 1:] if self.encoder == "dinov2" else hid
+
+    @torch.no_grad()
+    def pair_features(self, prev: torch.Tensor, curr: torch.Tensor,
+                      with_reverse: bool = False):
+        """prev/curr (N,3,H,W)[0,1] CPU → (fwd, rev|None) 각 (N,D') fp16.
+
+        학습효율 개선 (mean 런 병목 분석: HF fp32 forward가 지배·rev 전체 재인코딩 낭비):
+        - autocast fp16 forward (V100 tensor core). caveat: 게이트 mean 런은 fp32 —
+          fp16 feature 노이즈는 probing 스케일에서 미미하나 정밀 비교 시 주의.
+        - 반전 feature: appearance 계열(순서 swap = concat 순서만 반전)은 **토큰 재사용,
+          재인코딩 0**. 진짜 재인코딩은 p_t_m의 M-half(ΔL 부호 반전)뿐.
+        """
+        outs, outs_rev = [], []
+        for s in range(0, prev.shape[0], 256):
+            p = prev[s:s+256].to(self.device)
+            c = curr[s:s+256].to(self.device)
+            with torch.autocast(device_type="cuda", dtype=torch.float16,
+                                enabled=self.device.type == "cuda"):
+                if self.encoder == "parvo":
+                    enc_p = lambda x: self.model._encode_p_unmasked(
+                        self.model.preprocessing.compute_p_channel(x))[:, 1:]
+                    enc_m = lambda x, y: self.model._encode_m_unmasked(
+                        self.model.preprocessing.compute_m_channel(x, y))[:, 1:]
+                    if self.mode == "m_only":  # 단독 진단 (1-stream, 차원 caveat)
+                        outs.append(self._pool(enc_m(p, c)).cpu())
+                        if with_reverse:
+                            outs_rev.append(self._pool(enc_m(c, p)).cpu())
+                        continue
+                    if self.mode == "p_t_only":  # 단독 진단 — 반전 = 기준 frame이 c로 바뀜
+                        outs.append(self._pool(enc_p(p)).cpu())
+                        if with_reverse:
+                            outs_rev.append(self._pool(enc_p(c)).cpu())
+                        continue
+                    a = self._pool(enc_p(p))
+                    if self.mode == "p_t_m":
+                        b = self._pool(enc_m(p, c))
+                        outs.append(torch.cat([a, b], -1).cpu())
+                        if with_reverse:  # P(c)·M(c,p) 모두 신규 — 재사용 불가
+                            outs_rev.append(torch.cat(
+                                [self._pool(enc_p(c)), self._pool(enc_m(c, p))], -1).cpu())
+                        continue
+                    b = self._pool(enc_p(c))
+                elif self.encoder == "videomae-vla":
+                    a = self._pool(self.model(torch.cat([p, p], dim=1)))  # self-pair (§C7)
+                    b = self._pool(self.model(torch.cat([c, c], dim=1)))
+                else:  # dinov2/siglip: frame별 인코딩 (single_frame adapter 규약)
+                    a, b = self._pool(self._hf_tok(p)), self._pool(self._hf_tok(c))
+            outs.append(torch.cat([a, b], -1).cpu())
+            if with_reverse:  # 순서 swap = 토큰 재사용 (재인코딩 0)
+                outs_rev.append(torch.cat([b, a], -1).cpu())
+        fwd = torch.cat(outs).half()
+        rev = torch.cat(outs_rev).half() if with_reverse else None
+        return fwd, rev
 
 
 def extract_split(extractor, root, split, with_reverse, batch_clips, workers, log_every=200):
@@ -168,9 +217,10 @@ def extract_split(extractor, root, split, with_reverse, batch_clips, workers, lo
     for bi, (pairs, lab, cid, n_pairs) in enumerate(dl):
         x = pairs.permute(0, 1, 4, 2, 3).float().div_(255.0)  # (ΣP, 2, 3, H, W)
         prev, curr = x[:, 0], x[:, 1]
-        feats.append(extractor(prev, curr))
+        f, fr = extractor.pair_features(prev, curr, with_reverse=with_reverse)
+        feats.append(f)
         if with_reverse:
-            feats_rev.append(extractor(curr, prev))
+            feats_rev.append(fr)
         labels.append(torch.repeat_interleave(lab, n_pairs))
         clip_ids.append(torch.repeat_interleave(cid, n_pairs))
         if (bi + 1) % log_every == 0:
@@ -231,7 +281,12 @@ def main():
     ap.add_argument("--encoder", required=True,
                     choices=["parvo", "dinov2", "siglip", "videomae-vla"])
     ap.add_argument("--checkpoint", default=None)
-    ap.add_argument("--parvo-mode", default="p_t_m", choices=["p_t_m", "p_t_p_tk"])
+    ap.add_argument("--parvo-mode", default="p_t_m",
+                    choices=["p_t_m", "p_t_p_tk", "m_only", "p_t_only"],
+                    help="m_only/p_t_only = 단독 stream 진단 (⚠️ 1-stream = 절반 차원, "
+                         "2-stream 조건과 probe 용량 다름 — 차이 비교는 p_t_m−p_t_p_tk가 정규)")
+    ap.add_argument("--readout", default="mean", choices=["mean", "meanmax"],
+                    help="meanmax = readout-병목 정량화 (파라미터 0, 전 encoder 동일 적용)")
     ap.add_argument("--ssv2-root", default="/proj/external_group/mrg/datasets/ssv2")
     ap.add_argument("--max-clips", type=int, default=0, help="sanity용 제한 (양 split 공통)")
     ap.add_argument("--batch-clips", type=int, default=64)
@@ -246,7 +301,8 @@ def main():
     print(f"[ssv2] {tag} device={device.type} gap={FPS_GAP}f img={IMG_SIZE} "
           f"pairs={PAIRS} probe=linear(mean-pool)", flush=True)
 
-    extractor = MeanFeatureExtractor(args.encoder, args.checkpoint, args.parvo_mode, device)
+    extractor = MeanFeatureExtractor(args.encoder, args.checkpoint, args.parvo_mode,
+                                     device, readout=args.readout)
 
     if args.max_clips:  # sanity: 데이터셋 절단
         SSv2PairDataset_orig = SSv2PairDataset.__init__
@@ -268,7 +324,7 @@ def main():
         "n_train_pairs": int(tr["labels"].shape[0]),
         "n_val_clips": int(np.unique(va["clip_ids"]).shape[0]),
         "gap_frames": FPS_GAP, "img_size": IMG_SIZE, "pairs": PAIRS,
-        "probe": "linear_meanpool", "epochs": args.epochs,
+        "probe": f"linear_{args.readout}", "readout": args.readout, "epochs": args.epochs,
         "top1": top1, "top5": top5,
         "top1_reversed": top1_rev,
         "direction_drop": top1 - top1_rev,
