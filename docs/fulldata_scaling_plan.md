@@ -59,13 +59,32 @@
 - **B-part1 병리 = 규모-데이터 미스매치**로 판정. deployed-P가 S도 상회(+0.375>+0.329) → "size가 P를 망친다" 서사 해소. scale은 다양성이 받쳐줄 때 양 스트림 모두에 이로움.
 - **OOD 효율**(pos R², `efficiency.csv` 정식 행 추가·parity PASS): B-full attn CALVIN **0.571**/spatial **0.850**/object **0.881**/goal **0.703** (mean 0.532/0.813/0.857/0.753). S 대비 +0.03~0.08에 그침 = **3.5× params+6.8× data의 한계효용 작음 → S 효율 headline 강화**. same-data VideoMAE(attn 0.610/0.879/0.903/0.830)는 전 벤치 하회 — "small but close" 프레이밍 유지.
 - ⚠️ 관찰: goal만 attn(0.703)<mean(0.753)·S(0.751) — 유일한 attn<mean 역전(단일 관찰, 해석 보류). B attentive probe는 host RAM 63GB 초과(OOM 2잡 → 16cpu 재제출) — B급 attentive 잡은 `--cpus-per-task=16` 필수.
-- **후속 결정**: 50ep 연장 **불채택**(목적 달성·한계효용 낮음·I/O 병목 시 ~1,750 GPU·h). §4 attach-only대로 limitations 완화 재서술 + 효율 표 참조 행까지만. S-full(옵션②)은 7/28 이후 판단.
+- **후속 결정**: 50ep 연장 **불채택**(목적 달성·한계효용 낮음·I/O 병목 시 ~1,750 GPU·h). §4 attach-only대로 limitations 완화 재서술 + 효율 표 참조 행까지만. ~~S-full(옵션②)은 7/28 이후 판단~~ → **번복(07-12)**: SSv2 경로 1-c가 S-full을 요구, 겸용 조기 착수 (§4-b).
 
 ## 4. 논문 반영 정책 — attach-only (사전 등록)
 
 - **7/28 전 spine 재편 금지.** 결과가 인상적이어도 3-claim 골격·헤드라인 불변.
 - 완화 시: §4.4 효율 표 **참조 행** + limitations "part1 서브셋"·"B 악화" 두 항목 완화 재서술만.
 - 지속 시: limitations 유지, negative 결과 본 문서·cluster_sessions에 기록.
+
+## 4-b. S-full 7ep (옵션② · SSv2 1-c 겸용) — 착수 기록 + probing 관찰 기준 사전 등록
+
+> **착수 경위 (07-12)**: §3 "S-full은 7/28 이후" 결정을 번복 — SSv2 경로 1-c(data-matched 확증, [`correspondence_eval_plan.md`](correspondence_eval_plan.md) §7)가 S-full을 요구해 옵션② 겸용 조기 착수. 설계 = §1과 동일하되 모델만 CoMP-S, 7ep compute-matched(part1-5 실측 6.8× 반영).
+> 잡: sanity `36829370` PASS → 본학습 `36829403` 제출(07-12) → **클러스터 점검 중단 → 복구 후 재개(07-14**, 재개 잡 ID는 cluster_sessions 기입 시 갱신**)**.
+
+**측정 순서 (학습 완료 후)**:
+0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
+1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
+2. **SSv2 경로 1-c** (gate는 `correspondence_eval_plan.md` §7에 기등록, 07-12 학습 시작 전 고정): 표준+compositional 양 split. probing과 독립 — 병렬 제출 가능.
+
+**🟠 probing 관찰 기준 사전 등록 (2026-07-14, probe 결과 확인 전 고정)** — 전부 **attach-only 관찰 기준, gate 아님** (spine 불변, §4 규율 동일). 참조값: S-part1 deployed-P +0.329 / M +0.293 / P_t⊕M +0.286 · B-full M +0.401 · OOD attn VideoMAE-ours 0.610/0.879/0.903/0.830 (S-part1 행 = `efficiency.csv`):
+
+1. **3b 효율 data-matched 재서술 조건 (주)**: OOD 4벤치에서 격차 (VideoMAE-ours − S-full)가 S-part1 대비 **과반 벤치에서 확대되지 않으면** → 논문 3b 효율 표에 data-matched 행 보강 ("small but close"가 same-data 32M vs 86M으로 승격). 확대되면 → 관찰 기록만, 기존 S-part1 표 유지.
+2. **다양성 이득 재현 (부)**: S-full M ≥ S-part1 +0.293 (B 패턴 0.352→0.401의 S 재현 기대). 미상승 = "다양성 이득이 B 전용"이라는 scale-interaction 관찰로 기록.
+3. **무병리 확인 (부)**: deployed-P가 S-part1 +0.329에서 악화되지 않는지 (S는 무병리 셀, B-full +0.375 선례상 상승 기대).
+4. **해석 규율**: 기준 1 미충족이어도 efficiency claim 훼손 아님 — 기존 표(S-part1)는 이미 parity PASS 상태. 이 측정은 **강화 기회**지 방어 의무가 아님. 사후 기준 변경 금지.
+
+**❌ 금지 (gate 사후 구제 방지)**: JHMDB correspondence 재측정(경로 2는 FAIL 서랍 — B-full exploratory로 scale 견고성 기확인) · LIBERO BC 재실행(dissociation foil 강등·고비용·7/28 전 spine 재편 금지).
 
 ## 5. 데이터 로딩 I/O 병목 — 학습 종료 후 점검·개선 (2026-07-11 기록)
 
