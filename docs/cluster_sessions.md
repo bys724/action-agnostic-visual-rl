@@ -128,10 +128,11 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 36832609/610/611 | AIP 1×1 H100 ×3 | 03:00:00 | **EgoDex same-probe** — 609=`attentive_concat_p_t_p_tk`(deployed-P) / 610=`attentive_m`(단조성) / 611=`attentive_concat_p_m`(P_t⊕M) | ✅ 9~10m/잡 (~0.5 GPU·h) |
-| 36832612/616 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN xfold** — 612=mean / 616=attn (`p_t_m`) | ✅ 13/14m (~0.4 GPU·h) |
-| 36832613~619 | AIP 1×1 H100 ×6 | 01:30:00 | **LIBERO 3suite** — 613/617=spatial·614/618=object·615/619=goal (mean/attn, `p_t_m`) | ✅ 5~9m/잡 (~0.7 GPU·h) |
-| 36832620~623 | normal V100 1×1 ×4 | 04:00:00 | **SSv2 경로 1-c** — 620/622=표준 `p_t_m`/`p_t_p_tk` · 621/623=compositional 동일쌍 (mean·fp16) | 🔄 PENDING (Priority) |
+| 36832609/610/611 | AIP 1×1 H100 ×3 | 03:00:00 | **EgoDex same-probe** — 609=`attentive_concat_p_t_p_tk`(deployed-P) / 610=`attentive_m`(단조성) / 611=`attentive_concat_p_m`(P_t⊕M) | ✅ 9~10m/잡 (~0.5 GPU·h). **deployed-P best 0.019 / M 0.095 / P_t⊕M 0.082** — S-part1(0.329/0.293/0.286) 대비 붕괴 수준 |
+| 36832612/616 | AIP 1×1 H100 ×2 | 02:00:00 | **CALVIN xfold** — 612=mean / 616=attn (`p_t_m`) | ✅ 13/14m (~0.4 GPU·h). gap30 pos(근사): mean ~0.15 / attn ~0.19 (S-part1 attn 0.487) |
+| 36832613~619 | AIP 1×1 H100 ×6 | 01:30:00 | **LIBERO 3suite** — 613/617=spatial·614/618=object·615/619=goal (mean/attn, `p_t_m`) | ✅ 5~9m/잡 (~0.7 GPU·h). gap20 pos attn: spatial **0.306**/object **0.531**/goal **0.297** (S-part1 0.814/0.851/0.751) — **🔴 §4-b 기준 ①②③ 전부 미충족, in-domain까지 붕괴 = ep6 spike 손상 가설 유력** → ep5 재probe 등록·제출(아래). 판독 = fulldata_scaling_plan §4-b |
+| 36832620~623 | normal V100 1×1 ×4 | 04:00:00 | **SSv2 경로 1-c** — 620/622=표준 `p_t_m`/`p_t_p_tk` · 621/623=compositional 동일쌍 (mean·fp16). ⚠️ ckpt=latest(ep7, post-spike) → **게이트 판정 보류, 손상 정량화 관찰로 강등** (§4-b 판독 규율) | 🔄 PENDING (Priority) |
+| 36832860~870 | AIP 1×1 H100 ×11 | 03:00/02:00/01:30 | **ep5 best_model 재probe** (spike 이전, §4-b 등록 후 실행) — 860/861/862=EgoDex 3modes · 863/867=CALVIN mean/attn · 864~866/868~870=LIBERO 3suite mean/attn. SUFFIX=`sfullep5_{mean,attn}_ptm`. 판정: ep5 회복 = spike 손상 확정 / ep5도 저조 = 스케일링 자체 negative | 🔄 제출 (2026-07-14 13:1x) |
 
 ### 2026-07-12 SSv2 2-frame linear probe — 경로 1 ([correspondence_eval_plan.md](correspondence_eval_plan.md) §7)
 

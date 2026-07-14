@@ -77,6 +77,18 @@
 - ckpt 상태: **latest.pt(ep7) = post-spike 부분회복** / **best_model.pt(ep5) = spike 이전**(유일 eval 0.0288).
 - **판독 규율**: 측정 1·2 판독은 사전 등록대로 **latest.pt 기준 유지**(B-full·S-part1과 same-probe 정합). 기준 미충족 시 spike를 원인으로 귀속하려면 **ep5 best_model 재probe를 별도 관찰로 등록 후 실행** — 사후 기준 변경·구제 금지 원칙 동일. 기준 충족 시 spike는 관찰 기록만.
 
+**🔴 측정 1 판독 — latest.pt(ep7) 기준 ①②③ 전부 미충족, 붕괴 수준 (2026-07-14, 잡 36832609~619)**:
+
+| | S-full ep7 | S-part1 참조 | VideoMAE-ours |
+|---|---|---|---|
+| EgoDex deployed-P (best) | **0.019** | +0.329 | — |
+| EgoDex M (best) | **0.095** | +0.293 (B-full 0.401) | — |
+| EgoDex P_t⊕M (best) | **0.082** | +0.286 | — |
+| OOD attn pos R² (CALVIN/spatial/object/goal) | **~0.19 / 0.306 / 0.531 / 0.297** | 0.487 / 0.814 / 0.851 / 0.751 | 0.610 / 0.879 / 0.903 / 0.830 |
+
+- ① 격차 전 벤치 확대 → data-matched 행 보강 없음 (기존 S-part1 표 유지) ② M 다양성 재현 실패 ③ deployed-P 대폭 악화. 단 **하락 폭이 "이득 없음" 수준이 아니라 in-domain까지 붕괴** — ep6 spike 손상 가설이 유력 (다양성/scale 효과 판정 불가능 상태).
+- **🟠 ep5 best_model 재probe 등록 (2026-07-14, 실행 전 고정)**: 동일 11잡(EgoDex 3 + OOD 8, same-probe)을 `best_model.pt`(ep5, spike 이전, eval 0.0288)로 재측정. 해석 기준: **ep5가 S-part1 수준 이상으로 회복되면 = spike 손상 확정**(7ep compute-matched 런은 무효, ep5는 5/7 compute라 §4-b 기준 ①② 판정엔 참고 관찰로만) / **ep5도 낮으면 = S-full 학습 자체 문제**(스케일링 negative, spike와 무관). SSv2 1-c 게이트 판정은 ckpt 대표성 문제(latest 손상)로 **보류** — 대기 중 4잡(latest.pt)은 손상 정량화 관찰로만 사용, 게이트 적용 여부는 ep5 재probe 후 결정.
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
