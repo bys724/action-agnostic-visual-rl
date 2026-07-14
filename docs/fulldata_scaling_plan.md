@@ -103,6 +103,12 @@
 4. spike 원인: stderr 무결(데이터/worker 에러 없음), grad clip 1.0 존재 — 수치/optimizer 이벤트 추정, 데이터 기인 배제 불가. ⚠️ DistributedSampler seed 고정(0) → **ep6 재실행 시 동일 배치 순서 재현**(데이터 기인이면 같은 지점 재발; 재발 자체가 원인 진단이 됨).
 - **수리 결정 (07-14, 사용자 확정)**: **A안 — ep5 재개 ep6-7 재실행, seed 동일**(재발 = 데이터 기인 진단). 잡 `36833097`(재개 확인: ep6부터, LR 7e-5 ✓) + orchestrator 재장전 `36833098`(afterok, 청정 완주 시 15잡 재제출). 손상 ep7 산출물은 `_sfullspike_`로 rename 격리, 손상-ckpt SSv2 4잡은 시작 전 취소. (B) ep7 연장·15ep 확장은 compute-matched 훼손으로 비채택 — 청정 7ep 판정 **후** 필요 시 별도 등록해 이어붙이기 가능(순차 실행이 정보 손실 없이 동등).
 
+**🔴 수리 결과 (07-14 저녁): spike 재발 → 단순 재실행 전략 무효, 시스템적 불안정 확정**:
+- 원 spike 지점(ep6 b26,200)은 무사 통과(0.033) 후 **ep6 b~28,400에서 재발**(0.029→0.086~0.098) — 동일 signature(전 성분 동시 + **L_mA(정지 calibration, 평시 정확 0) 발화**), ep7 평균 ~0.05로 종료 = 원 런과 동일 손상.
+- **진단**: 고정 데이터 지점 아님(같은 seed·같은 순서인데 다른 batch에서 발생) · 노드 아님(g[001,003]→g[003-004] 모두 발생) · S-part1 50ep·B-full 7ep에는 없음 → **S(32M) × part1-5(다양) × LR 말단(≤2e-5) 조합의 시스템적 불안정, 2/2 재현**. 기전 추정: 후기 sharp minimum에서 드문 대형 grad 이벤트가 가중치를 걷어참 → LR이 작아 재하강 불가(fp16 autocast 사용 중, grad clip 1.0으로는 미방어).
+- orchestrator `36833098` 발동 전 취소(손상 ckpt 15잡 차단). **유일 청정 ckpt = ep5** (양 런 공통). 누적 비용: 원 런 132 + 수리 44 ≈ 176 GPU·h.
+- **다음 옵션 (미결)**: (i) **3차 시도 + 방어 코드** — spike-guard(배치 loss가 이동평균 대비 k배 초과 시 step skip) 또는 bf16 전환 후 ep5 재개(~35 GPU·h, 코드 수정 필요·S-part1 config와의 엄밀 동일성 각주) / (ii) **S-full 서랍** — §4-b는 attach-only 관찰이라 spine 무피해, SSv2 1-c는 "S-full 확보 실패" 기록, B-full 결과(§3)만 유지 / (iii) 스케줄 변경 재학습(LR floor 등, compute-matched 훼손 각주).
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
