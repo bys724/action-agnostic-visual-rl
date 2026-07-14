@@ -137,6 +137,10 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 > 산출물 격리 (07-14): 손상 ep7 probe 산출물 dir suffix `_sfull_` → `_sfullspike_` rename (CALVIN 2 + LIBERO 6) — 이후 build script glob이 청정 재측정 `sfull_*`과 혼합되지 않도록. ep5 관찰은 `sfullep5_*` 유지.
 | 36832860~870 | AIP 1×1 H100 ×11 | 03:00/02:00/01:30 | **ep5 best_model 재probe** (spike 이전, §4-b 등록 후 실행) — 860/861/862=EgoDex 3modes · 863/867=CALVIN mean/attn · 864~866/868~870=LIBERO 3suite mean/attn. SUFFIX=`sfullep5_{mean,attn}_ptm`. 판정: ep5 회복 = spike 손상 확정 / ep5도 저조 = 스케일링 자체 negative | ✅ 5~13m/잡 (합 ~1.5 GPU·h). **OOD ep7 대비 ~2× 회복**(attn pos ~0.39/0.66/0.74/0.50), M 0.195(ep7 0.095) → **spike 손상 확정, 7ep 런 측정 무효**. 단 S-part1엔 미달(under-training 유보) · deployed-P는 ep5도 ~0(별도 신호 후보). 판독·수리 옵션 = fulldata_scaling_plan §4-b |
+| 36835705 | AIP 1×4 H100 | 00:40:00 | **spike-guard sanity #1** (옵션 i 방어 코드 검증, commit `8b182c5`) — 1ep, MAX_VIDEOS=1000/split, SUFFIX=sanity_spikeguard, **SPIKE_GUARD_K=1.05**(자연 grad 변동으로 skip 경로 발동 기대). 검증: ① `--spike-guard-k` plumbing ② skip 로그 ③ 완주·NaN 없음 ④ epoch末 guard summary | ✅ 6m13s (0.41 GPU·h). plumbing·EMA(0.453)·summary ✓, 976 batch 완주·loss 0.358 정상. **단 skip 0회** — 초반 학습은 grad norm 지속 하강이라 EMA(지연 추종)를 못 넘음 → skip 분기 미검증, K=0.5 sanity #2로 강제 발동 |
+| 36835711 | AIP 1×4 H100 | 00:30:00 | **spike-guard sanity #2** — 동일 config, SUFFIX=sanity_spikeguard2(fresh), **K=0.5**(gn > 0.5×EMA면 skip = warmup 후 대부분 step 강제 skip). 검증: skip 분기 실행·DDP desync 없이 완주 | ✅ 5m46s (0.38 GPU·h). **skip 637회 발동**(b334~975), desync/hang 없이 완주, skip된 norm의 EMA 미반영 확인(EMA 1.79→1.745 유지) → **게이트 PASS** |
+| 36835715 | AIP 2×4 H100 | 10:00:00 | **🚀 3차 본 잡: ep5 재개 ep6-7 재실행 + spike-guard K=4.0** (옵션 i, §4-b 수리 결정 2차). `RESUME`=`20260713_203245/checkpoint_epoch0005.pt` 명시(glob 우회), 그 외 env = 36829403 동일. K=4.0 근거: sanity #1에서 자연 변동이 1.05×EMA도 미초과 → 평시 무개입·spike 이벤트만 차단 | PENDING (~5.5h ≈ 44 GPU·h 예상) |
+| 36835716 | core_s CPU | 00:10:00 | orchestrator 재장전 #2 (`afterok:36835715`, kill-on-invalid-dep) — 청정 완주 시 후속 15잡(EgoDex 3 + OOD 8 + SSv2 1-c 4) 자동 제출 | PENDING |
 
 ### 2026-07-12 SSv2 2-frame linear probe — 경로 1 ([correspondence_eval_plan.md](correspondence_eval_plan.md) §7)
 

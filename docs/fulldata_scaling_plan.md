@@ -109,6 +109,12 @@
 - orchestrator `36833098` 발동 전 취소(손상 ckpt 15잡 차단). **유일 청정 ckpt = ep5** (양 런 공통). 누적 비용: 원 런 132 + 수리 44 ≈ 176 GPU·h.
 - **다음 옵션 (미결)**: (i) **3차 시도 + 방어 코드** — spike-guard(배치 loss가 이동평균 대비 k배 초과 시 step skip) 또는 bf16 전환 후 ep5 재개(~35 GPU·h, 코드 수정 필요·S-part1 config와의 엄밀 동일성 각주) / (ii) **S-full 서랍** — §4-b는 attach-only 관찰이라 spine 무피해, SSv2 1-c는 "S-full 확보 실패" 기록, B-full 결과(§3)만 유지 / (iii) 스케줄 변경 재학습(LR floor 등, compute-matched 훼손 각주).
 
+**🟢 수리 결정 2차 (07-15): 옵션 (i) 채택 — spike-guard 3차 시도** (commit `8b182c5`):
+- **guard 설계**: 배치 loss 이동평균이 아닌 **grad-norm EMA 기준**으로 변경 구현 — `clip_grad_norm_`의 total_norm은 DDP grad all-reduce **후** 값이라 rank 간 동일 → skip 결정이 모든 rank에서 일치 (per-rank loss 기반은 desync 위험). norm > k×EMA 시 optimizer step skip, skip된 norm은 EMA 미반영(spike의 기준선 오염 방지), epoch당 첫 200 batch는 EMA 수집만.
+- **기전 정합**: 진단이 "드문 대형 grad 이벤트가 가중치를 걷어참"이므로 grad-norm이 loss보다 상류 신호 — loss 상승은 이미 걷어차인 **후**에 관측되지만 grad spike는 걷어차는 step 자체를 차단.
+- **엄밀 동일성 각주 (사전 고정)**: config = S-part1/원 런과 동일, 유일 차이 = spike-guard. guard는 k×EMA 초과 이벤트에서만 개입하고 모든 skip이 로그에 남으므로, 청정 완주 시 "skip N회 = 개입 규모"를 각주로 보고. skip이 0이면 guard 무개입 = 원 config와 사실상 동일 런.
+- 잡: sanity #1 `36835705`(K=1.05 — plumbing·EMA·summary ✓, 단 skip 0회: 초반 학습은 norm 지속 하강이라 미발동) → sanity #2 `36835711`(K=0.5 강제 발동 — **skip 637회·desync 없이 완주·EMA 미오염 확인, PASS**) → **본 잡 `36835715`**(ep5 재개, `RESUME` 명시, **K=4.0** — sanity #1에서 자연 변동이 1.05×EMA도 미초과 → 평시 무개입 보장) + orchestrator 재장전 `36835716`(afterok).
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
