@@ -349,6 +349,10 @@ fi
 
 # sanity 잡: 비디오 수 제한 (MAX_VIDEOS 설정 시). 본 학습은 미설정 → 전체.
 [ -n "${MAX_VIDEOS:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --max-videos $MAX_VIDEOS"
+# 명시 resume (auto-detect glob 우회 — 특정 ckpt에서 재개 시. 예: spike 이전 epoch)
+[ -n "${RESUME:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --resume $RESUME"
+# spike-guard: grad-norm > k×EMA step skip (S-full 말단 저LR spike 사고 대응)
+[ -n "${SPIKE_GUARD_K:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --spike-guard-k $SPIKE_GUARD_K"
 
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
 # CRITICAL: srun이 새 shell을 띄우면서 PATH 전파 안 됨 → 절대 경로 사용.

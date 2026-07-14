@@ -140,7 +140,7 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
 
 def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 scaler=None, use_ssim=False, use_bf16=True,
-                v12_momentum=None):
+                v12_momentum=None, spike_guard_k=0.0):
     """
     Train for one epoch with multi-gap weighted loss.
 
@@ -164,6 +164,15 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
     total_loss_future = 0
     num_batches = 0
     gap_counts = {}
+
+    # spike-guard (spike_guard_k > 0일 때만): grad-norm이 EMA의 k배 초과 시 해당 step의
+    # optimizer/teacher 업데이트를 skip. 스케줄 말단 저LR 구간에서 드문 대형 grad 이벤트가
+    # 가중치를 minimum 밖으로 밀어내는 사고 방어 (S-full 2/2 재현, 36829403/36833097).
+    # DDP-safe: clip_grad_norm_의 total_norm은 grad all-reduce 후 값이라 rank 간 동일 →
+    # skip 결정이 모든 rank에서 일치 (per-rank loss 기반 guard는 desync 위험이라 금지).
+    sg_norm_ema = None
+    sg_skips = 0
+    SG_WARMUP = 200  # epoch 초반 EMA 안정화 전에는 skip 비활성 (EMA 수집만)
 
     # v15: triple unpacking 위해 model_name 미리 계산
     _actual_model_for_unpack = model.module if hasattr(model, 'module') else model
@@ -492,12 +501,27 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
 
         # Backward (BF16 autocast 사용 시 scaler 불필요 — dynamic range가 FP32와 동일)
         weighted_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-        # v15: EMA teacher update (TeacherP + TeacherM_encoder) each optimizer step
-        if model_name == 'TwoStreamV15Model' and v12_momentum is not None:
-            actual_model.update_teacher(v12_momentum)
+        sg_skip = False
+        if spike_guard_k > 0:
+            gn = float(total_norm)
+            if sg_norm_ema is not None and batch_idx >= SG_WARMUP and gn > spike_guard_k * sg_norm_ema:
+                sg_skip = True
+                sg_skips += 1
+                if _is_master():
+                    print(f"  [spike-guard] epoch {epoch} batch {batch_idx}: grad_norm {gn:.3f} "
+                          f"> {spike_guard_k:g}x EMA {sg_norm_ema:.3f} → step skip (#{sg_skips})", flush=True)
+            else:
+                # skip된 step의 norm은 EMA에 반영하지 않음 (spike가 기준선을 오염시키는 것 방지)
+                sg_norm_ema = gn if sg_norm_ema is None else 0.99 * sg_norm_ema + 0.01 * gn
+
+        if not sg_skip:
+            optimizer.step()
+
+            # v15: EMA teacher update (TeacherP + TeacherM_encoder) each optimizer step
+            if model_name == 'TwoStreamV15Model' and v12_momentum is not None:
+                actual_model.update_teacher(v12_momentum)
 
         total_loss += unweighted_loss.item()
         total_weighted_loss += weighted_loss.item()
@@ -548,6 +572,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
             avg_current = total_loss_current / num_batches
             print(f"  Loss breakdown: future={avg_future:.4f}, current={avg_current:.4f}")
         print(f"  Gap distribution: {gap_dist}")
+
+    if spike_guard_k > 0 and _is_master():
+        print(f"  [spike-guard] epoch {epoch}: {sg_skips} step(s) skipped, grad_norm EMA {sg_norm_ema:.3f}"
+              if sg_norm_ema is not None else f"  [spike-guard] epoch {epoch}: no steps")
 
     result = {'loss': avg_loss, 'weighted_loss': avg_weighted}
     if total_loss_future > 0:
@@ -878,6 +906,7 @@ def train(
     v15_lambda_compose_warmup_epochs=10,
     v15_lambda_compose_target=None,
     v15_lambda_gate_epochs=0,
+    spike_guard_k=0.0,
     lr_warmup_epochs=None,
 ):
     """
@@ -1194,7 +1223,7 @@ def train(
         train_result = train_epoch(
             model, dataloader, optimizer, device, epoch,
             dataset=train_dataset, use_ssim=use_ssim, use_bf16=use_bf16,
-            v12_momentum=v12_momentum,
+            v12_momentum=v12_momentum, spike_guard_k=spike_guard_k,
         )
         avg_loss = train_result['loss']
         scheduler.step()

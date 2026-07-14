@@ -76,6 +76,9 @@ def main():
                         help='Evaluate every N epochs (default: 10)')
     parser.add_argument('--resume', type=str, default=None,
                         help='Resume from checkpoint path (full state: weights+optimizer+scheduler+epoch)')
+    parser.add_argument('--spike-guard-k', type=float, default=0.0,
+                        help='grad-norm이 EMA의 k배 초과 시 optimizer step skip (0=off). '
+                             '스케줄 말단 저LR spike 가드 (S-full 사고 2/2 재현 대응)')
     parser.add_argument('--init-from', type=str, default=None,
                         help='가중치만 로드(strict=False) + fresh schedule. 다른 구조 ckpt에서 '
                              'encoder/routing 가중치 init용 (예: 3-frame ep8 → 2-frame pair).')
@@ -511,6 +514,7 @@ def main():
         multi_gpu=not args.no_multi_gpu,
         use_ssim=args.ssim,
         num_workers=args.num_workers,
+        spike_guard_k=args.spike_guard_k,
         **v12_kwargs,
     )
 
