@@ -89,6 +89,20 @@
 - ① 격차 전 벤치 확대 → data-matched 행 보강 없음 (기존 S-part1 표 유지) ② M 다양성 재현 실패 ③ deployed-P 대폭 악화. 단 **하락 폭이 "이득 없음" 수준이 아니라 in-domain까지 붕괴** — ep6 spike 손상 가설이 유력 (다양성/scale 효과 판정 불가능 상태).
 - **🟠 ep5 best_model 재probe 등록 (2026-07-14, 실행 전 고정)**: 동일 11잡(EgoDex 3 + OOD 8, same-probe)을 `best_model.pt`(ep5, spike 이전, eval 0.0288)로 재측정. 해석 기준: **ep5가 S-part1 수준 이상으로 회복되면 = spike 손상 확정**(7ep compute-matched 런은 무효, ep5는 5/7 compute라 §4-b 기준 ①② 판정엔 참고 관찰로만) / **ep5도 낮으면 = S-full 학습 자체 문제**(스케일링 negative, spike와 무관). SSv2 1-c 게이트 판정은 ckpt 대표성 문제(latest 손상)로 **보류** — 대기 중 4잡(latest.pt)은 손상 정량화 관찰로만 사용, 게이트 적용 여부는 ep5 재probe 후 결정.
 
+**🔴 ep5 재probe 판독 (2026-07-14, 잡 36832860~870)** — 결과는 두 등록 분기의 **중간**이나 spike 손상은 확정:
+
+| 측정 (attn) | ep7 post-spike | ep5 pre-spike | S-part1 |
+|---|---|---|---|
+| OOD pos (CALVIN/spat/obj/goal) | ~0.19/0.31/0.53/0.30 | **~0.39/0.66/0.74/0.50** | 0.49/0.81/0.85/0.75 |
+| EgoDex M / P_t⊕M (best) | 0.095 / 0.082 | **0.195 / 0.158** | 0.293 / 0.286 |
+| EgoDex deployed-P (best) | 0.019 | **0.006** | 0.329 |
+
+1. **spike 손상 확정** — ep5→ep7이 학습 진행인데도 OOD·M이 반토막(직접 증거). latest.pt는 §4-b 기준 ①② 판정 부적격 → **7ep 런 측정 무효**.
+2. ep5 < S-part1 은 **under-training confound**(5/7ep, LR 미annealed)로 스케일링 negative 결론 불가 — 청정 7ep 완주본이 있어야 판정 가능.
+3. ⚠️ **deployed-P(P_t⊕P_tk) ep5에서도 ~0** — spike 무관 신호 후보. B-part1 병리(발산)의 S-full 재현이면 scale-interaction 역전(§3 B는 full-data로 완화, S는 full-data로 발병) 관찰이 되나, 역시 under-training 유보. 청정 완주본에서 재판정.
+4. spike 원인: stderr 무결(데이터/worker 에러 없음), grad clip 1.0 존재 — 수치/optimizer 이벤트 추정, 데이터 기인 배제 불가. ⚠️ DistributedSampler seed 고정(0) → **ep6 재실행 시 동일 배치 순서 재현**(데이터 기인이면 같은 지점 재발; 재발 자체가 원인 진단이 됨).
+- **수리 옵션 (미결)**: (A) ep5 `checkpoint_epoch0005.pt`(full state)에서 재개해 ep6-7 재실행(~35 GPU·h, compute-matched 보존) — seed 동일(재발=진단) vs seed 변경(완주 우선, sampler seed 노출 1줄 필요) 선택 필요 / (B) ep7 연장 = compute 초과 confound로 비권장 / (C) 포기(negative 기록).
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
