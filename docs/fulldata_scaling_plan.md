@@ -70,7 +70,12 @@
 ## 4-b. S-full 7ep (옵션② · SSv2 1-c 겸용) — 착수 기록 + probing 관찰 기준 사전 등록
 
 > **착수 경위 (07-12)**: §3 "S-full은 7/28 이후" 결정을 번복 — SSv2 경로 1-c(data-matched 확증, [`correspondence_eval_plan.md`](correspondence_eval_plan.md) §7)가 S-full을 요구해 옵션② 겸용 조기 착수. 설계 = §1과 동일하되 모델만 CoMP-S, 7ep compute-matched(part1-5 실측 6.8× 반영).
-> 잡: sanity `36829370` PASS → 본학습 `36829403` 제출(07-12) → 노드 장애 requeue → **07-13 20:32 재시작(같은 JobID), ~2.1h/ep로 ETA 07-14 정오경**. 완료 시 아래 측정 1·2는 orchestrator `36831319`(`scripts/cluster/submit_sfull_followup.sh`, afterok dependency)가 **자동 제출** — EgoDex 3잡 + OOD 8잡 + SSv2 1-c 4잡, 잡 ID 기록 = `/proj/external_group/mrg/logs/sfull_followup_jobids.txt`.
+> 잡: sanity `36829370` PASS → 본학습 `36829403` 제출(07-12) → 노드 장애 requeue → 07-13 20:32 재시작 → **✅ COMPLETED (07-14 12:23, 15h54m = 127.3 GPU·h)**. 후속 15잡(EgoDex 3 + OOD 8 + SSv2 1-c 4)은 orchestrator `36831319`가 자동 제출 완료(`36832609~623`).
+
+**⚠️ 측정 0 (sanity) 판독 — ep6 loss spike (07-14, probe 결과 확인 전 고정)**:
+- train loss ep1→7 = 0.114/0.077/0.077/0.052/**0.032**/0.035/**0.051** — B-full(단조 감소)과 달리 **ep6 batch ~26,200에서 전 성분 동시 spike**(0.026→0.155, L_t/L_tk/L_pred/L_mB 모두). NaN 없음, 이후 회복 추세였으나 LR≤1.88e-5(cosine 말단)라 **부분 회복 상태로 종료**(ep7末 배치 ~0.045 vs spike 전 ~0.027).
+- ckpt 상태: **latest.pt(ep7) = post-spike 부분회복** / **best_model.pt(ep5) = spike 이전**(유일 eval 0.0288).
+- **판독 규율**: 측정 1·2 판독은 사전 등록대로 **latest.pt 기준 유지**(B-full·S-part1과 same-probe 정합). 기준 미충족 시 spike를 원인으로 귀속하려면 **ep5 best_model 재probe를 별도 관찰로 등록 후 실행** — 사후 기준 변경·구제 금지 원칙 동일. 기준 충족 시 spike는 관찰 기록만.
 
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
