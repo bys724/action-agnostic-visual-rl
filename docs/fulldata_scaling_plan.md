@@ -70,7 +70,7 @@
 ## 4-b. S-full 7ep (옵션② · SSv2 1-c 겸용) — 착수 기록 + probing 관찰 기준 사전 등록
 
 > **착수 경위 (07-12)**: §3 "S-full은 7/28 이후" 결정을 번복 — SSv2 경로 1-c(data-matched 확증, [`correspondence_eval_plan.md`](correspondence_eval_plan.md) §7)가 S-full을 요구해 옵션② 겸용 조기 착수. 설계 = §1과 동일하되 모델만 CoMP-S, 7ep compute-matched(part1-5 실측 6.8× 반영).
-> 잡: sanity `36829370` PASS → 본학습 `36829403` 제출(07-12) → **클러스터 점검 중단 → 복구 후 재개(07-14**, 재개 잡 ID는 cluster_sessions 기입 시 갱신**)**.
+> 잡: sanity `36829370` PASS → 본학습 `36829403` 제출(07-12) → 노드 장애 requeue → **07-13 20:32 재시작(같은 JobID), ~2.1h/ep로 ETA 07-14 정오경**. 완료 시 아래 측정 1·2는 orchestrator `36831319`(`scripts/cluster/submit_sfull_followup.sh`, afterok dependency)가 **자동 제출** — EgoDex 3잡 + OOD 8잡 + SSv2 1-c 4잡, 잡 ID 기록 = `/proj/external_group/mrg/logs/sfull_followup_jobids.txt`.
 
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).

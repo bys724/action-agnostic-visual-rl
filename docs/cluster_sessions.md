@@ -118,7 +118,9 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
 | 36829370 | AIP 2×4 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000/split, fresh SUFFIX=sanity_fulldata_comp_s) — S arch × 5-split 로드·throughput·loss 앵커 | ✅ 5m14s (~0.7 GPU·h). params 56,109,568 = S ckpt 정확 일치·5-split 500k 로드·loss 0.49 정상·3,887 samp/s → **게이트 PASS** |
-| 36829403 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-S full-data 7ep compute-matched** — config = S 기준런 `36177296` 동일, 변경 = SPLITS(part1-5)·EPOCHS(7). SUFFIX=fulldata_comp_mae_s_7ep. 예상 ~33h(I/O-bound) ≈ 265 GPU·h | 🔄 제출 (2026-07-12) |
+| 36829403 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 본 잡: CoMP-S full-data 7ep compute-matched** — config = S 기준런 `36177296` 동일, 변경 = SPLITS(part1-5)·EPOCHS(7). SUFFIX=fulldata_comp_mae_s_7ep. 예상 ~33h(I/O-bound) ≈ 265 GPU·h | 🔄 **노드 장애 REQUEUE** (07-12 17:58, olaf-g[003-004]에서 36m 진행 = ep1 batch 4,160/30,745, ~4.8 GPU·h 손실). ckpt 미저장(ep1 미완) → fresh start. **재개 확인 (07-14)**: 07-13 20:32 olaf-g[001,003]에서 재시작, run dir `20260713_203245`(구 `20260712_172523` 사장). ep5까지 ~2.1h/ep — I/O 병목이 B-full 대비 완화(S는 batch당 연산이 작아도 로더 수 동일 추정), **ETA 07-14 ~12:15 (~16h wall ≈ 126 GPU·h, 예상 33h보다 2배 빠름)** |
+| 36831289 | core_s CPU 1노드 | 00:05:00 | **compute node sbatch 가능 검증** — orchestrator(dependency 잡)가 compute node에서 후속 잡을 제출할 수 있는지 사전 확인 | ✅ 15s (CPU ~0.004 노드·h). `sbatch --test-only` controller 통신 성공 = 제출 가능 확인 |
+| 36831319 | core_s CPU 1노드 | 00:10:00 | **후속 15잡 자동 제출 orchestrator** (`scripts/cluster/submit_sfull_followup.sh`, `--dependency=afterok:36829403 --kill-on-invalid-dep=yes`) — 학습 성공 완료 시 최신 `latest.pt` glob + ep7 완주 확인 후 ① EgoDex same-probe 3잡(36197899 프로토콜) ② OOD 8잡(STEP 2(A) 프로토콜, SUFFIX=`sfull_{mean,attn}_ptm`) ③ SSv2 1-c 4잡(표준+comp × p_t_m/p_t_p_tk, V100) 제출. DRY_RUN 검증 PASS. 제출된 잡 ID = `/proj/external_group/mrg/logs/sfull_followup_jobids.txt` → 완료 후 본 표에 이기 | 🔄 Dependency 대기 (2026-07-14) |
 
 ### 2026-07-12 SSv2 2-frame linear probe — 경로 1 ([correspondence_eval_plan.md](correspondence_eval_plan.md) §7)
 
