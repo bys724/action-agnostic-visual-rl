@@ -101,7 +101,7 @@
 2. ep5 < S-part1 은 **under-training confound**(5/7ep, LR 미annealed)로 스케일링 negative 결론 불가 — 청정 7ep 완주본이 있어야 판정 가능.
 3. ⚠️ **deployed-P(P_t⊕P_tk) ep5에서도 ~0** — spike 무관 신호 후보. B-part1 병리(발산)의 S-full 재현이면 scale-interaction 역전(§3 B는 full-data로 완화, S는 full-data로 발병) 관찰이 되나, 역시 under-training 유보. 청정 완주본에서 재판정.
 4. spike 원인: stderr 무결(데이터/worker 에러 없음), grad clip 1.0 존재 — 수치/optimizer 이벤트 추정, 데이터 기인 배제 불가. ⚠️ DistributedSampler seed 고정(0) → **ep6 재실행 시 동일 배치 순서 재현**(데이터 기인이면 같은 지점 재발; 재발 자체가 원인 진단이 됨).
-- **수리 옵션 (미결)**: (A) ep5 `checkpoint_epoch0005.pt`(full state)에서 재개해 ep6-7 재실행(~35 GPU·h, compute-matched 보존) — seed 동일(재발=진단) vs seed 변경(완주 우선, sampler seed 노출 1줄 필요) 선택 필요 / (B) ep7 연장 = compute 초과 confound로 비권장 / (C) 포기(negative 기록).
+- **수리 결정 (07-14, 사용자 확정)**: **A안 — ep5 재개 ep6-7 재실행, seed 동일**(재발 = 데이터 기인 진단). 잡 `36833097`(재개 확인: ep6부터, LR 7e-5 ✓) + orchestrator 재장전 `36833098`(afterok, 청정 완주 시 15잡 재제출). 손상 ep7 산출물은 `_sfullspike_`로 rename 격리, 손상-ckpt SSv2 4잡은 시작 전 취소. (B) ep7 연장·15ep 확장은 compute-matched 훼손으로 비채택 — 청정 7ep 판정 **후** 필요 시 별도 등록해 이어붙이기 가능(순차 실행이 정보 손실 없이 동등).
 
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
