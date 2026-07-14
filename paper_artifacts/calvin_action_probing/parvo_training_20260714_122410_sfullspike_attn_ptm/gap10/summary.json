@@ -1,0 +1,28 @@
+{
+  "encoder": "parvo",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_fulldata_comp_mae_s_7ep/20260713_203245/latest.pt",
+  "split": "training",
+  "view": "rgb_static",
+  "gap": 10,
+  "gap_seconds": 0.3333333333333333,
+  "readout": "attentive",
+  "parvo_mode": "p_t_m",
+  "v11_mode": null,
+  "n_train_episodes": 200,
+  "n_eval_episodes": 1087,
+  "n_train_pairs": 10114,
+  "n_eval_pairs": 53923,
+  "best_epoch": 13,
+  "r2_aggregate": 0.030455888457073255,
+  "r2_per_dim": [
+    0.3064933948820403,
+    0.2019248657273074,
+    0.3903900036087141,
+    0.05170605025100794,
+    0.14402344027365976,
+    -0.01939058087981005,
+    0.030344957167485087
+  ],
+  "mse": 0.1368449479341507,
+  "cosine_sim": 0.236494779586792
+}
