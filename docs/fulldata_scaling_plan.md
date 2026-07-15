@@ -130,6 +130,8 @@
 - 함의: ① ep6 재발 여부는 여전히 미판별(guard가 궤적 자체를 바꿈 — 판별 실험은 실행되지 못한 것) ② 3차(36835715)의 67~92% skip도 상당 부분 동일 오발동+ratchet이었을 가능성(그 EMA 0.037은 ep5-재개 저norm 구간 수집치) ③ **부산물: guard 보정 데이터 확보** — 자연 tail 상한 ~41× vs 진짜 spike ~400×+ 는 한 자릿수 이상 분리 → **K=64~100이면 평시 무개입·재난 이벤트만 차단**이 실측 근거로 성립.
 - **5차 옵션 (미결, 사용자 결정 대기)**: (i′) **from-scratch 재시도 + K=100** (env만 변경, 코드 수정 없음) — 판별 실험을 실제로 실행. 청정 완주 시 그 자체가 §4-b 유효 측정, spike 재발 시 skip 로그가 이벤트 기록 + 게이트가 후속 차단. ~137 GPU·h(누적 ~490) / (ii) 서랍(§4-b attach-only라 spine 무피해) / (iii) 스케줄 변경.
 
+**🟢 수리 결정 4차 (07-16, 사용자 확정): 옵션 (i′) 채택 — 5차 from-scratch + K=100 제출**. 잡 `36841352`(본, `_fs2` 신규 dir) + `36841353`(orchestrator, skip-게이트). 판별 기준은 4차 사전 등록 그대로: **청정 완주(skip≈0) → §4-b 유효 측정으로 측정 1·2 진행 / ep6 부근 진짜 spike(skip 로그에 ~400× 이벤트) → 초기조건-독립 시스템적 불안정 확정, 추가 재시도 없이 (ii)/(iii)로 종결**.
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
