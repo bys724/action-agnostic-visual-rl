@@ -115,6 +115,15 @@
 - **엄밀 동일성 각주 (사전 고정)**: config = S-part1/원 런과 동일, 유일 차이 = spike-guard. guard는 k×EMA 초과 이벤트에서만 개입하고 모든 skip이 로그에 남으므로, 청정 완주 시 "skip N회 = 개입 규모"를 각주로 보고. skip이 0이면 guard 무개입 = 원 config와 사실상 동일 런.
 - 잡: sanity #1 `36835705`(K=1.05 — plumbing·EMA·summary ✓, 단 skip 0회: 초반 학습은 norm 지속 하강이라 미발동) → sanity #2 `36835711`(K=0.5 강제 발동 — **skip 637회·desync 없이 완주·EMA 미오염 확인, PASS**) → **본 잡 `36835715`**(ep5 재개, `RESUME` 명시, **K=4.0** — sanity #1에서 자연 변동이 1.05×EMA도 미초과 → 평시 무개입 보장) + orchestrator 재장전 `36835716`(afterok).
 
+**🔴 3차 결과 (07-15): guard가 학습을 정지시킨 채 완주 — 청정 완주 아님**:
+- ep6 b243부터 grad 상승이 **지속화**: guard skip **ep6 20,748 / ep7 28,345회**(ep당 30,745 batch의 67%/92%) = ep6 초반 이후 사실상 no-op. grad EMA 0.037→0.213, ep7 loss 0.157. exit 0이라 orchestrator `36835716` 발동 → 후속 15잡(`36835972~986`)이 skip-정지 ckpt로 실행됨(산출물 `_sfullsg` 격리, 관찰 전용 — EgoDex M 0.197 등 ep5 재probe와 동급 = guard의 가중치 보호는 확인).
+- 해석 caveat 2건: ① 발동 패턴이 "일회성 spike 차단"이 아니라 지속 상승 국면 — 진짜 지속 불안정일 수도, skip 시 EMA 미반영 설계가 만든 ratchet(EMA 저정체 → 웬만한 step 전부 4× 초과)일 수도 있음(미분리). ② **2·3차 모두 1차 런의 ep5 ckpt에서 재개 = "3/3 재현"에 공유-초기조건 confound** — 1차 ep0-5 중 잠재 손상(하드웨어 등)이 있었다면 어느 노드·시도든 ep6 부근 발산이 설명됨. 07-14 "시스템적 불안정 확정" 진단은 이 confound를 통제하지 못한 결론.
+
+**🟢 수리 결정 3차 (07-15, 사용자 확정): 4차 = from-scratch 재학습** — confound ②를 직접 절단:
+- **설계**: env = 원 런 `36829403` submit line 동일 + `CHECKPOINT_SUFFIX=fulldata_comp_mae_s_7ep_fs`(신규 ckpt dir → auto-resume 미발동, **fresh random init = 독립 초기조건**. pretrain.py는 init seed 미고정, sampler seed 0 유지 = 데이터 순서는 통제 변수) + `SPIKE_GUARD_K=4.0`(보험 — 가중치 보호용, 판정엔 skip 수 각주).
+- **판별 사전 등록**: 청정 완주(skip ≤ ~1%) → 1차 런 고유 손상(하드웨어 등) 쪽으로 무게 + **그 런 자체가 §4-b 유효 compute-matched 측정**(측정 1·2 그대로 진행) / ep6 부근 재발 → 초기조건 독립 조건에서 시스템적 불안정 **진짜 확정** → 옵션 (ii) 서랍 or (iii) 스케줄 변경으로 종결(추가 재시도 금지).
+- 잡: 본 잡 `36837641`(AIP_long, ~16h ≈ 127 GPU·h 예상) + orchestrator `36837669` — **skip-게이트 신설**(로그 guard summary 합 > 2,000이면 후속 15잡 차단, 3차의 exit-0 구멍 봉합; 음성·양성 테스트 PASS). 누적 비용: 132+44+44+127 ≈ **347 GPU·h**.
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.

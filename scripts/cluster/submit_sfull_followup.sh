@@ -24,7 +24,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="/proj/home/mrg/bys724/action-agnostic-visual-rl"
-CKPT_BASE="/proj/external_group/mrg/checkpoints/two_stream_v15b_fulldata_comp_mae_s_7ep"
+CKPT_BASE="${CKPT_BASE:-/proj/external_group/mrg/checkpoints/two_stream_v15b_fulldata_comp_mae_s_7ep}"
 SSV2_COMP_ANN="/proj/external_group/mrg/datasets/ssv2/splits_something_else/compositional"
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -39,6 +39,22 @@ if [ "$DRY_RUN" = 0 ] && [ ! -f "$RUN_DIR/checkpoint_epoch0007.pt" ]; then
   log "ERROR: checkpoint_epoch0007.pt missing in $RUN_DIR — 7ep 미완주, 제출 중단"; exit 1
 fi
 log "CKPT=$CKPT"
+
+# spike-guard skip 게이트: exit 0이어도 guard가 대량 skip한 런(36835715: ep6-7의 67%/92%
+# skip = 학습 정지 상태)은 비청정 완주 — 학습 로그의 epoch末 summary 합계로 차단.
+# TRAIN_LOG_GLOB 미설정 시 게이트 생략 (guard 없는 런 호환).
+TRAIN_LOG_GLOB="${TRAIN_LOG_GLOB:-}"
+MAX_SKIPS="${MAX_SKIPS:-2000}"   # ~1% of 7ep×30,745 steps
+if [ -n "$TRAIN_LOG_GLOB" ]; then
+  TRAIN_LOG=$(ls -t $TRAIN_LOG_GLOB 2>/dev/null | head -1)
+  [ -n "$TRAIN_LOG" ] || { log "ERROR: train log not found: $TRAIN_LOG_GLOB"; exit 1; }
+  # grep 무매치(guard 미발동 청정 런)는 정상 → pipefail 예외 처리
+  SKIPS=$(grep -oE '[0-9]+ step\(s\) skipped' "$TRAIN_LOG" | awk '{s+=$1} END{print s+0}' || true)
+  log "spike-guard skip total = $SKIPS (log: $TRAIN_LOG, max allowed: $MAX_SKIPS)"
+  if [ "$SKIPS" -gt "$MAX_SKIPS" ]; then
+    log "ERROR: skip $SKIPS > $MAX_SKIPS — 비청정 완주(guard 개입 과다), 후속 제출 중단"; exit 1
+  fi
+fi
 
 cd "$PROJECT_ROOT"
 SUBMITTED=()
