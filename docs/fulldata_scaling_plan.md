@@ -124,6 +124,12 @@
 - **판별 사전 등록**: 청정 완주(skip ≤ ~1%) → 1차 런 고유 손상(하드웨어 등) 쪽으로 무게 + **그 런 자체가 §4-b 유효 compute-matched 측정**(측정 1·2 그대로 진행) / ep6 부근 재발 → 초기조건 독립 조건에서 시스템적 불안정 **진짜 확정** → 옵션 (ii) 서랍 or (iii) 스케줄 변경으로 종결(추가 재시도 금지).
 - 잡: 본 잡 `36837641`(AIP_long, ~16h ≈ 127 GPU·h 예상) + orchestrator `36837669` — **skip-게이트 신설**(로그 guard summary 합 > 2,000이면 후속 15잡 차단, 3차의 exit-0 구멍 봉합; 음성·양성 테스트 PASS). 누적 비용: 132+44+44+127 ≈ **347 GPU·h**.
 
+**🔴 4차 결과 (07-16): guard 오발동 대량 skip — 판별 실험 불성립 (spike 무죄/유죄 판정 못 함)**:
+- 17h09m 완주(137.2 GPU·h)했으나 ep1 b12,990부터 skip 시작, 총 **167,295/215,215 (78%)**. 유효 업데이트 ~48k ≈ 1.5ep 상당, eval 0.0412(1차 ep5 0.0288 하회) → compute-matched 측정 무효. skip-게이트는 정상 작동(후속 15잡 차단).
+- **핵심 판독 — skip norm 분포가 K=4.0의 오보정을 입증**: max norm 5.58 · max ratio **41×** · 99.8%가 10× 미만. **1차 spike 서명(norm 84+, ~400×)은 한 번도 발생하지 않음.** 즉 이 skip들은 spike 차단이 아니라 from-scratch 자연 grad tail(4~10×)의 오차단 + EMA-freeze ratchet(skip norm 미반영 → EMA가 bulk에 고정 → tail 전부 초과 판정)이다. sanity #1의 "자연 변동 1.05× 미초과" 관찰은 976-batch 초반 구간 한정이라 일반화가 틀렸음.
+- 함의: ① ep6 재발 여부는 여전히 미판별(guard가 궤적 자체를 바꿈 — 판별 실험은 실행되지 못한 것) ② 3차(36835715)의 67~92% skip도 상당 부분 동일 오발동+ratchet이었을 가능성(그 EMA 0.037은 ep5-재개 저norm 구간 수집치) ③ **부산물: guard 보정 데이터 확보** — 자연 tail 상한 ~41× vs 진짜 spike ~400×+ 는 한 자릿수 이상 분리 → **K=64~100이면 평시 무개입·재난 이벤트만 차단**이 실측 근거로 성립.
+- **5차 옵션 (미결, 사용자 결정 대기)**: (i′) **from-scratch 재시도 + K=100** (env만 변경, 코드 수정 없음) — 판별 실험을 실제로 실행. 청정 완주 시 그 자체가 §4-b 유효 측정, spike 재발 시 skip 로그가 이벤트 기록 + 게이트가 후속 차단. ~137 GPU·h(누적 ~490) / (ii) 서랍(§4-b attach-only라 spine 무피해) / (iii) 스케줄 변경.
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
