@@ -47,7 +47,7 @@ def ssim_loss(pred, target, window_size=11, C1=0.01**2, C2=0.03**2):
     A Gaussian window computes local luminance/contrast/structure statistics.
     Forced FP32 to avoid BF16 precision issues (negative variance under AMP).
     """
-    with torch.cuda.amp.autocast(enabled=False):
+    with torch.amp.autocast("cuda", enabled=False):
         pred = pred.float()
         target = target.float()
 
