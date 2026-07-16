@@ -4,9 +4,9 @@
 Reproduces the reported CoMP-MAE-S / plain-control runs (see train/config_*.yaml
 and the paper's Appendix A). This is a clean single-file training script:
 argument parsing mirrors the config, and the training loop uses the exact recipe
-of the reported runs (Fused AdamW, weight decay 0.01 with no-decay on
-norms/biases/tokens, linear LR warmup over ~10% of epochs + cosine decay, BF16
-autocast, gradient clipping at 1.0).
+of the reported runs (Fused AdamW, uniform weight decay 0.01, AdamW default betas
+(0.9, 0.999), linear LR warmup over ~10% of epochs + cosine decay, BF16 autocast,
+gradient clipping at 1.0).
 
 The reported runs used 8 GPUs with DistributedDataParallel (global batch 1024,
 per-GPU batch 128). This script runs single-GPU by default; wrap the model in
@@ -100,19 +100,17 @@ class EgoDexPairDataset(Dataset):
 # ---------------------------------------------------------------------------
 
 def build_optimizer(model, lr, weight_decay=0.01):
-    """Fused AdamW with no weight decay on norms/biases/tokens (standard for ViT)."""
-    decay, no_decay = [], []
-    for name, p in model.named_parameters():
-        if not p.requires_grad:
-            continue
-        if p.ndim <= 1 or name.endswith(".bias") or "token" in name or "pos_embed" in name:
-            no_decay.append(p)
-        else:
-            decay.append(p)
+    """Fused AdamW with uniform weight decay and AdamW default betas (0.9, 0.999).
+
+    This matches the reported CoMP-MAE / plain-control recipe (paper Appendix A):
+    a single param group with uniform weight decay 0.01 and the default betas.
+    There is no norm/bias/token no-decay split -- that split is used only for the
+    VideoMAE baseline, which is not shipped in this supplement.
+    """
+    trainable = [p for p in model.parameters() if p.requires_grad]
     return torch.optim.AdamW(
-        [{"params": decay, "weight_decay": weight_decay},
-         {"params": no_decay, "weight_decay": 0.0}],
-        lr=lr, betas=(0.9, 0.95), fused=torch.cuda.is_available(),
+        trainable, lr=lr, weight_decay=weight_decay,
+        fused=torch.cuda.is_available(),
     )
 
 

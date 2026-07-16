@@ -190,6 +190,12 @@ Paired LIBERO rollout: comp-mae-s  vs  plain-xmae-s
   -> within noise (no significant difference)
 ```
 
+The paper reports `p = 0.76` for this comparison; that value pools the paired
+differences at a different granularity (episode-pooled). This script pairs on
+seed-averaged per-task success (n = 30), which gives `p = 0.70`. The exact
+p-value depends on the pairing granularity, but the pooled delta and the verdict
+(within-noise parity) are the same either way -- both are non-significant.
+
 CoMP-MAE's representation-level signature (the probing gap above) does not
 translate into a value-level rollout advantage over the matched control — the two
 are within noise on LIBERO success rate.

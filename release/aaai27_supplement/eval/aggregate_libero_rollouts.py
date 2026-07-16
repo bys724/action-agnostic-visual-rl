@@ -33,14 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # supplement root 
 
 
 # Extracts the seed from a ckpt path
-# (dir name form: <encoder>_libero_spatial_seed0_<YYYYMMDD>_<HHMMSS>_<suffix>).
+# (dir name form: <encoder>_<suite>_seed<N>_<YYYYMMDD>_<HHMMSS>).
 SEED_RE = re.compile(r"_seed(\d+)_")
-# Extracts the suffix (last token of the dir name, after _seed N_ TIMESTAMP_).
-CKPT_SUFFIX_RE = re.compile(r"_seed\d+_\d{8}_\d{6}_([^/]+?)/best\.pt$")
-# "main" suffixes are not merged into the encoder name (keeps the main-table row
-# names stable). Ablation suffixes are merged into the encoder name as a
-# separate row.
-MAIN_CKPT_SUFFIXES = {"v3", "v15ep50"}
 
 
 def extract_seed_from_ckpt(ckpt_path: str) -> int | None:
@@ -49,20 +43,13 @@ def extract_seed_from_ckpt(ckpt_path: str) -> int | None:
 
 
 def encoder_name_for(md: dict) -> str:
-    """encoder name = encoder_type (+ suffix if this is an ablation run).
+    """Encoder name = encoder_type from the run metadata.
 
-    A main suffix -> encoder_type unchanged (main-table row).
-    An ablation suffix -> "encoder_type_suffix" as a separate row.
-    If no suffix can be extracted, fall back to encoder_type.
+    finetune_libero_bct.py writes result dirs as
+    "<encoder>_<suite>_seed<N>_<timestamp>/", so the encoder identity is taken
+    directly from the recorded encoder_type.
     """
-    base = md.get("encoder_type", "unknown")
-    m = CKPT_SUFFIX_RE.search(md.get("checkpoint", "") or "")
-    if not m:
-        return base
-    suffix = m.group(1)
-    if suffix in MAIN_CKPT_SUFFIXES:
-        return base
-    return f"{base}_{suffix}"
+    return md.get("encoder_type", "unknown")
 
 
 def load_jsons(

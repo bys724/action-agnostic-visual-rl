@@ -88,6 +88,13 @@ grep -rn "bys724\|/Users/\|/home/\|/proj/external_group\|/mnt/data\|mrg\|IBS\|ol
 
 **논문 최종 네이밍 정리 (2026-07-16, 후속)**: supplement 트리 한정 rename(메인 repo는 deferred 정책 유지). `two_stream_v15.py/TwoStreamV15Model`→`comp_mae.py/CoMPMAE`, `two_stream_v11.py/TwoStreamV11Model`→`two_stream_base.py/TwoStreamBase`, `parvo_pt_ptk.py/ParvoPtPtkAdapter`→`comp_mae_adapter.py/CoMPMAEAdapter`, 인코더 키 `parvo`/`parvo-ptptk`→`comp-mae`, CLI `--parvo-mode`→`--stream-mode`, config `two-stream-v15b`→`comp-mae`, 아티팩트 `parvo-ptptk_*`→`*-s`, v15/v16/v11 태그 제거. **state_dict 키(attribute명)는 불변 → ckpt 로드 유지**; rename 후 parity ALL PASS(bit-exact)·리뷰어 시뮬 재확인. 최종 grep: parvo/v15/v16/v11/경로/Hangul 0.
 
+**사후 정합성 수정 (2026-07-16)**: 릴리스판 코드 감사에서 발견한 3건 수정 (`release/aaai27_supplement/`, zip 재생성 완료).
+1. **[확실] train/pretrain.py optimizer가 보고 run과 불일치** — `build_optimizer`가 VideoMAE 전용 레시피(betas 0.95 + norm/bias/token no-decay param group split)를 잘못 적용. dev 정본(`src/training/pretrain.py:1046`, TwoStreamV15 else-분기)은 **uniform wd 0.01 + 기본 betas(0.9,0.999)**. App A·config "matches App A" 주장과도 모순 → dev 원본 레시피로 환원(단일 param group, betas 제거). 모듈/함수 docstring도 정정.
+2. **[확실] 내부 codename `v15ep50` 잔존** — `aggregate_libero_rollouts.py:43 MAIN_CKPT_SUFFIXES={"v3","v15ep50"}` (4-c "grep v15 0" 주장과 모순). 릴리스 finetune는 `{encoder}_{suite}_seed{N}_{ts}` (suffix 미부착)이라 suffix 머징 로직 전체가 **release 재현 흐름에서 dead code** → `CKPT_SUFFIX_RE`·`MAIN_CKPT_SUFFIXES` 삭제, `encoder_name_for`=encoder_type 반환으로 단순화. codename 제거 + 실제 출력 네이밍과 정합.
+3. **[경미] Wilcoxon p 무주석** — 본문 0.76(episode-pooled) vs supplement 스크립트 0.70(seed-avg per-task n=30). 결론(비유의) 동일. README Expected 블록에 granularity 차이 한 줄 설명 추가(스크립트 산출 방식은 불변).
+
+재검증: 편집 파일 py_compile OK · encoder_name_for/extract_seed 스모크 PASS · §3 grep(경로·codename) 0건 · stats 출력 README 일치.
+
 **ckpt 동봉 결정 (2026-07-16, 사용자 확정 = 코드-only)**: 체크리스트는 *source code*만 약속(ckpt 문항 없음) → ckpt 미동봉이 형식적 모순 아님. 실측: full 56.1M/225MB; **P+M 인코더 fp16 = 65MB**(헤드라인 P_t⊕M 재현), **P-only fp16 = 43MB**(P_t⊕P_tk만). fp16 무손실 확인(인코더 출력 cosine=1.000000 vs fp32-full). BC policy ckpt=개당 236MB(full policy 저장)라 부적합. **결정 = ckpt 전부 미동봉**: 코드 zip = `release/aaai27_supplement_code.zip` (85K, ckpt 없음). checkpoints/=README(upon-publication 프레이밍+재현비용 ~110 GPU·h)+SHA256+meta만. README에 사전학습 비용 명시. **weights 없이 재현되는 것**: efficiency 표(build_step0, shipped 아티팩트) + rollout 유의성(stats, per_task.csv). camera-ready에서 실명 GitHub/HF로 full fp32 공개 = "upon publication yes" 이행.
 
 ## 5. Cross-refs
