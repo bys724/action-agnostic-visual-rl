@@ -97,6 +97,16 @@ grep -rn "bys724\|/Users/\|/home/\|/proj/external_group\|/mnt/data\|mrg\|IBS\|ol
 
 **ckpt 동봉 결정 (2026-07-16, 사용자 확정 = 코드-only)**: 체크리스트는 *source code*만 약속(ckpt 문항 없음) → ckpt 미동봉이 형식적 모순 아님. 실측: full 56.1M/225MB; **P+M 인코더 fp16 = 65MB**(헤드라인 P_t⊕M 재현), **P-only fp16 = 43MB**(P_t⊕P_tk만). fp16 무손실 확인(인코더 출력 cosine=1.000000 vs fp32-full). BC policy ckpt=개당 236MB(full policy 저장)라 부적합. **결정 = ckpt 전부 미동봉**: 코드 zip = `release/aaai27_supplement_code.zip` (85K, ckpt 없음). checkpoints/=README(upon-publication 프레이밍+재현비용 ~110 GPU·h)+SHA256+meta만. README에 사전학습 비용 명시. **weights 없이 재현되는 것**: efficiency 표(build_step0, shipped 아티팩트) + rollout 유의성(stats, per_task.csv). camera-ready에서 실명 GitHub/HF로 full fp32 공개 = "upon publication yes" 이행.
 
+## 4-d. 🔴 paper 세션 전수 감사 후속 TODO (2026-07-16, paper commit `58ce790`)
+
+paper 세션에서 논문↔dev 수치 전수 대조(~130건) 완료 — 수치 전부 정확, 논문 측 서술 3건은 paper repo에서 정정 완료(CALVIN ABCD→D·P_t Δ+0.126·App A ancillary 차이 공개). **dev 측 잔여 3건**:
+
+1. **supplement README 정정 ①**: M 입력을 "|ΔL| absolute"로 표기 — 코드는 **signed ΔL** 반입(`model/common/preprocessing.py`, App A 표기가 정확). |ΔL|는 loss weighting(0.02+|ΔL|)에만 해당 → README 문구 정정.
+2. **supplement README 정정 ②**: "~110 GPU-hours per encoder" 일반화 — 실측 CoMP-S ~109.7 / plain ~154.2 GPU·h(`cluster_sessions.md` 36177296·36652564) → 인코더별 구분 기재.
+3. **`docs/factorization_crossover_plan.md` §4.2 Δ 동기화**: scalpel M motion **+0.332→+0.331** · plain P_t identity **+0.507→+0.508** — 3dp 선반올림 뺄셈이 원인, raw summary.json 전정밀 재계산 기준(paper 표·본문은 07-16 정정 완료). 동기화 후 두 저장소 수치 일치.
+
+1·2 반영 후 **zip 재생성**(`release/aaai27_supplement_code.zip`) + §3 익명화 grep 재확인.
+
 ## 5. Cross-refs
 
 - 계약·형식·주의점 원문: paper repo `notes/code_release_prep.md` (07-15)
