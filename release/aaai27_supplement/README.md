@@ -8,8 +8,9 @@ representation pretrained on unlabeled first-person video (EgoDex) via a
 derived from each frame pair `(t, t+k)`:
 
 - **P** (appearance) = RGB of frame `t` — a semantic backbone (ViT depth 12).
-- **M** (motion) = `|ΔL|`, the absolute luminance difference — a small motion
-  sensor (ViT depth 6).
+- **M** (motion) = `ΔL`, the signed luminance difference `L(t+k) − L(t)` in
+  `[-1, 1]` — a small motion sensor (ViT depth 6). (The absolute value `|ΔL|`
+  enters only as the per-patch weight of the M-recon loss, not as the input.)
 
 A shared motion-routing decoder reconstructs masked patches of **both** streams
 using **value-ownership routing**: the routing pattern (Q/K) comes from one
@@ -34,7 +35,7 @@ model/                         Model definition + training objective
   comp_mae.py            CoMP-MAE model (comp_mae) + plain control (pixel_pred)
   two_stream_base.py            Shared base (encoders, masking, decoder modules)
   common/blocks.py             TransformerBlock, MotionRoutingBlock (value-ownership routing)
-  common/preprocessing.py      M (|ΔL|) / P (RGB) channel preprocessing
+  common/preprocessing.py      M (signed ΔL) / P (RGB) channel preprocessing
 train/
   pretrain.py                  Single-file pretraining script (EgoDex frame pairs)
   config_comp_mae_s.yaml       CoMP-MAE-S hyperparameters (reported run)
@@ -105,7 +106,8 @@ The two headline ViT-S encoders (CoMP-MAE-S, plain control; 32.3M params each,
 50 epochs on EgoDex part1) are **released upon publication** — this anonymized
 supplement ships the full source, configs, and evaluation artifacts, not the
 weight files. See `checkpoints/README.md` for the training cost (~110 GPU-hours
-per encoder), SHA-256 sums for the upon-publication release, and loading.
+for CoMP-MAE-S, ~154 for the plain control), SHA-256 sums for the
+upon-publication release, and loading.
 
 The headline **efficiency table** and the **rollout significance test** below
 reproduce *without* the weights, from the shipped aggregated artifacts. The
@@ -218,8 +220,9 @@ python3 train/pretrain.py --frames-root <EGODEX_FRAMES_ROOT> --pixel-pred \
 ```
 
 The reported runs used 8x H100 with DistributedDataParallel (global batch 1024),
-costing roughly **~13.7 h wall-clock (~110 GPU-hours)** per encoder. Full
-hyperparameters are in `train/config_{comp_mae_s,plain_control}.yaml`.
+costing roughly **~13.7 h wall-clock (~110 GPU-hours)** for CoMP-MAE-S and
+**~19.3 h (~154 GPU-hours)** for the plain control. Full hyperparameters are in
+`train/config_{comp_mae_s,plain_control}.yaml`.
 
 ---
 

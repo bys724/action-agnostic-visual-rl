@@ -6,7 +6,7 @@
 > - **🚫 EgoDex clean arena 조사 = 불가**: repo의 EgoDex는 hand-pose HDF5(transforms/confidences)만 추출 → object/scene identity label 부재, task=폴더명이나 motion-confounded, video-id는 k-NN proxy뿐. **EgoDex 단일 arena clean 2×2는 신규 annotation 필요**(값싼 경로 아님). 재조사 불필요.
 > - **Phase B(readout-free) 강등**: 남은 gap = arena(데이터 얽힘)지 readout 아님 → k-NN도 이 confound 못 고침(별개 문제).
 > - **① 통계 de-confound = ✅ 완료** (2026-07-02, 위치 partial-out beyond-position 2×2, git 5bfcf9c): aug 경로(P 0.851/M 0.278)와 통계 경로가 독립 수렴 → **directional 이중분리 확정**. → **다음 = ② STEP 1 인과**. 실행 우선순위·저비용 선결·구현 TODO = **§4.1**(2026-07-04 결정).
-> - **② STEP 1 인과 = ✅ 실행·판정 완료** (2026-07-08, 2런 학습 36652563/564 + same-probe 16잡 36785365~380): **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107 붕괴) · **V 소유는 인과 아님**(V_P 스칼펠서 M signature 생존 0.829/Δ+0.332) · **대신 V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 설계의 인과적 정당화**. 판정 상세 = **§4.1 말미** · 수치 로그 = `cluster_sessions.md`(2026-07-08). **다음 = plain을 value 지표로 연장**(3b 효율 표·LIBERO BC-T에 plain 추가 = headline control 완결).
+> - **② STEP 1 인과 = ✅ 실행·판정 완료** (2026-07-08, 2런 학습 36652563/564 + same-probe 16잡 36785365~380): **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107 붕괴) · **V 소유는 인과 아님**(V_P 스칼펠서 M signature 생존 0.829/Δ+0.331) · **대신 V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 설계의 인과적 정당화**. 판정 상세 = **§4.1 말미** · 수치 로그 = `cluster_sessions.md`(2026-07-08). **다음 = plain을 value 지표로 연장**(3b 효율 표·LIBERO BC-T에 plain 추가 = headline control 완결).
 > **결정 출처**: Obsidian Vault `Projects/Action-Agnostic Visual Representation (AAAI)/2. Experiments.md §4 남은 게이트 A` / `README.md §다음 수` / `History.md`(2026-07-02).
 > **관련 dev docs**: [`restart_plan.md`](restart_plan.md) §3.3(cross-leakage TODO), [`comp_mae_plan.md`](comp_mae_plan.md) §6(dissociation probe·§6.1 M 배포 무효), [`eval_protocols.md`](eval_protocols.md), [`PROBING_GUIDE.md`](PROBING_GUIDE.md).
 
@@ -98,9 +98,9 @@ Phase A/B는 상관("표현이 factored 되어 있다")까지. 인과("M-recon �
 
 | 셀 (raw / Δ=⊕pos−ctrl) | CoMP-MAE-S (기준) | #1 V_P 스칼펠 | #2 plain |
 |---|---|---|---|
-| M motion | 0.835 / +0.338 | **0.829 / +0.332** (생존) | 🚨 **0.107 / +0.016** (붕괴) |
+| M motion | 0.835 / +0.338 | **0.829 / +0.331** (생존) | 🚨 **0.107 / +0.016** (붕괴) |
 | M identity | 0.526 / +0.307 | 0.497 / +0.274 | 0.134 / +0.029 |
-| P_t identity | 0.999 (ceiling) | 🚨 **0.224** (붕괴) | 0.800 / +0.507 |
+| P_t identity | 0.999 (ceiling) | 🚨 **0.224** (붕괴) | 0.800 / +0.508 |
 | P_t motion | 0.547 | 0.055 | 0.014 |
 
 **판정 3항**:

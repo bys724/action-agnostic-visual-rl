@@ -17,8 +17,9 @@ EgoDex part1 (4.62M frame-pair samples, 50 epochs, 8x H100, global batch 1024).
 
 ## Reproducing the weights
 
-Pretraining one encoder costs roughly **~13.7 h wall-clock on 8x H100 (~110
-GPU-hours)** at the config above. See the top-level `README.md` (Pretraining) and
+Pretraining costs roughly **~13.7 h wall-clock on 8x H100 (~110 GPU-hours)** for
+CoMP-MAE-S and **~19.3 h (~154 GPU-hours)** for the plain control at the config
+above. See the top-level `README.md` (Pretraining) and
 `train/config_{comp_mae_s,plain_control}.yaml` for the exact commands and
 hyperparameters. The reported final losses were: CoMP-MAE-S train 0.0143 / eval
 0.0180; plain control train 0.0609 / eval 0.0619 (loss scales differ by

@@ -107,6 +107,12 @@ paper 세션에서 논문↔dev 수치 전수 대조(~130건) 완료 — 수치 
 
 1·2 반영 후 **zip 재생성**(`release/aaai27_supplement_code.zip`) + §3 익명화 grep 재확인.
 
+**✅ 완료 (2026-07-16)**: 3건 전부 반영.
+- ①: README M 입력 `signed ΔL (L(t+k)−L(t), [-1,1])`로 정정 + `|ΔL|`은 M-recon loss per-patch 가중에만 쓰인다고 명시. 채널 표(structure)도 `M (signed ΔL)`로. (line 11-12·37)
+- ②: 인코더별 구분 — CoMP-MAE-S ~13.7h/~110 GPU·h, plain ~19.3h/~154 GPU·h. README(2곳)·checkpoints/README(1곳) 반영.
+- ③: **전 저장소 동기화**(사용자 지시) — `factorization_crossover_plan.md`(§4.2 표 line 101·103 + 요약 line 9) + `cluster_sessions.md`(36785365~372·373~380 로그 line 229·230) 모두 +0.332→+0.331 / +0.507→+0.508. archive의 무관 수치(gap40 +0.331·dinov2 +0.508)는 미변경.
+- zip 재생성(87KB)·§3 grep 재확인: 경로·codename·parvo·Hangul 0건. 유일 github.com 매치 = requirements.txt의 공식 LIBERO repo URL(공개 의존성, 식별정보 아님·재현 필요).
+
 ## 5. Cross-refs
 
 - 계약·형식·주의점 원문: paper repo `notes/code_release_prep.md` (07-15)
