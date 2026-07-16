@@ -907,6 +907,8 @@ def train(
     v15_lambda_compose_target=None,
     v15_lambda_gate_epochs=0,
     spike_guard_k=0.0,
+    adam_beta2=0.999,
+    adam_eps=1e-8,
     lr_warmup_epochs=None,
 ):
     """
@@ -1039,11 +1041,12 @@ def train(
         optimizer = torch.optim.AdamW([
             {'params': decay_params, 'weight_decay': 0.01},
             {'params': no_decay_params, 'weight_decay': 0.0},
-        ], lr=lr, fused=True)
+        ], lr=lr, betas=(0.9, adam_beta2), eps=adam_eps, fused=True)
     else:
         # requires_grad=True 파라미터만 옵티마이저에 등록 (v12 teacher params 제외)
         trainable_params = [p for p in model.parameters() if p.requires_grad]
-        optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=0.01, fused=True)
+        optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=0.01,
+                                      betas=(0.9, adam_beta2), eps=adam_eps, fused=True)
 
     # LR schedule: linear warmup (10% of epochs) + cosine decay
     # Warmup은 EMA 기반 모델(V-JEPA)의 초기 안정성에 필수.
@@ -1066,7 +1069,8 @@ def train(
     # AMP BF16 — H100 Tensor Core 기준 FP32 대비 ~2배 throughput
     # BF16은 FP32와 동일한 exponent range → GradScaler 불필요 (FP16만 필요)
     use_bf16 = True
-    log(f"AMP: BF16 autocast enabled, Fused AdamW enabled")
+    log(f"AMP: BF16 autocast enabled, Fused AdamW enabled "
+        f"(betas=(0.9, {adam_beta2}), eps={adam_eps})")
 
     # Resume from checkpoint if specified
     start_epoch = 1

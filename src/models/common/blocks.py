@@ -82,6 +82,13 @@ def apply_rope(x: torch.Tensor, freqs_cis: torch.Tensor, has_cls: bool = True) -
     return patches
 
 
+# QK-LayerNorm 전역 스위치 (S-full 안정화, fulldata_scaling_plan §4-b iii′-a).
+# 모델 생성 전에 한 번 True로 설정하면 이후 생성되는 모든 attention block에 적용.
+# 생성자 인자 대신 module-global인 이유: v11/v15 legacy 생성자 체인 전체를 관통하는
+# 배선 없이 모든 block 인스턴스 커버 보장 (기본 False = 기존 ckpt·모델 무영향).
+QK_NORM_DEFAULT = False
+
+
 class TransformerBlock(nn.Module):
     """RoPE 지원 Transformer block (Pre-norm, ViT style)."""
 
@@ -94,6 +101,13 @@ class TransformerBlock(nn.Module):
         self.norm1 = nn.LayerNorm(embed_dim)
         self.qkv = nn.Linear(embed_dim, embed_dim * 3)
         self.proj = nn.Linear(embed_dim, embed_dim)
+
+        # QK-norm (ViT-22B): attention logit 성장 → softmax 포화 → grad spike 경로 차단.
+        # per-head LayerNorm, RoPE 적용 전 (timm 관례).
+        self.qk_norm = QK_NORM_DEFAULT
+        if self.qk_norm:
+            self.q_norm = nn.LayerNorm(self.head_dim)
+            self.k_norm = nn.LayerNorm(self.head_dim)
 
         self.norm2 = nn.LayerNorm(embed_dim)
         self.mlp = nn.Sequential(
@@ -119,6 +133,10 @@ class TransformerBlock(nn.Module):
         B, N, D = h.shape
         qkv = self.qkv(h).reshape(B, N, 3, self.num_heads, self.head_dim)
         q, k, v = qkv.unbind(dim=2)  # each: [B, N, H, D_head]
+
+        if self.qk_norm:
+            q = self.q_norm(q)
+            k = self.k_norm(k)
 
         if freqs_cis is not None:
             q = apply_rope(q, freqs_cis, has_cls=True)
@@ -207,6 +225,12 @@ class MotionRoutingBlock(nn.Module):
                 "Expected 'v_from_p' (default) or 'v_from_m' (ablation)."
             )
 
+        # QK-norm (TransformerBlock과 동일 스위치 — cross-stream 경로도 커버)
+        self.qk_norm = QK_NORM_DEFAULT
+        if self.qk_norm:
+            self.q_norm = nn.LayerNorm(self.head_dim)
+            self.k_norm = nn.LayerNorm(self.head_dim)
+
         # 두 모드 모두 동일한 proj_out + FFN — parameter count 일치
         self.proj_out = nn.Linear(embed_dim, embed_dim)
 
@@ -256,6 +280,10 @@ class MotionRoutingBlock(nn.Module):
                 B, N, 2, self.num_heads, self.head_dim,
             )
             k, v = kv.unbind(dim=2)
+
+        if self.qk_norm:
+            q = self.q_norm(q)
+            k = self.k_norm(k)
 
         # SDPA
         q = q.transpose(1, 2)  # [B, H, N, D_head]

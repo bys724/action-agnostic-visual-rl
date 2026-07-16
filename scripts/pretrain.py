@@ -82,6 +82,13 @@ def main():
     parser.add_argument('--init-from', type=str, default=None,
                         help='가중치만 로드(strict=False) + fresh schedule. 다른 구조 ckpt에서 '
                              'encoder/routing 가중치 init용 (예: 3-frame ep8 → 2-frame pair).')
+    parser.add_argument('--qk-norm', action='store_true',
+                        help='모든 attention block에 QK-LayerNorm (ViT-22B 안정화). '
+                             'S-full 시스템적 spike 대응 (fulldata_scaling_plan §4-b)')
+    parser.add_argument('--adam-beta2', type=float, default=0.999,
+                        help='AdamW beta2 (spike 대응 0.95 — 2차 모멘트 추종 가속)')
+    parser.add_argument('--adam-eps', type=float, default=1e-8,
+                        help='AdamW eps (spike 대응 1e-6 — 유효 스텝 상한)')
 
     # Multi-gap sampling parameters
     parser.add_argument('--max-gap', type=int, default=30,
@@ -255,6 +262,12 @@ def main():
                         help='Shutdown EC2 instance after training completes')
 
     args = parser.parse_args()
+
+    # QK-norm 전역 스위치 — 반드시 모델 생성 전에 설정 (blocks.py 참조)
+    if args.qk_norm:
+        from src.models.common import blocks as _blocks
+        _blocks.QK_NORM_DEFAULT = True
+        print("[stability] QK-LayerNorm enabled for all attention blocks")
 
     # 분산 학습 환경 감지 (SLURM_PROCID 또는 RANK 존재 시)
     import os as _os
@@ -515,6 +528,8 @@ def main():
         use_ssim=args.ssim,
         num_workers=args.num_workers,
         spike_guard_k=args.spike_guard_k,
+        adam_beta2=args.adam_beta2,
+        adam_eps=args.adam_eps,
         **v12_kwargs,
     )
 

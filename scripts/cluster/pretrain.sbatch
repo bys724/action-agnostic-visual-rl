@@ -279,6 +279,8 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ "${V15_ROUTING_SOURCE:-m}" = "p" ] && MODEL_ARGS+=(--v15-routing-source p)  # SiamMAE-analog 대조군(RGB-routed)
     # CoMP-MAE (code v16): 대칭 cross-recon. no-Sobel·pair·routing=m 전제 (NO_SOBEL=1 PAIR_MODE=1 함께).
     [ "${V15_COMP_MAE:-0}" = "1" ] && MODEL_ARGS+=(--v15-comp-mae)
+    # S-full 안정화: QK-LayerNorm (fulldata_scaling_plan §4-b)
+    [ "${QK_NORM:-0}" = "1" ] && MODEL_ARGS+=(--qk-norm)
     [ -n "${V15_LAMBDA_M_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-m-recon "$V15_LAMBDA_M_RECON")
     [ -n "${V15_MASK_RATIO_M_RECON:-}" ] && MODEL_ARGS+=(--v15-mask-ratio-m-recon "$V15_MASK_RATIO_M_RECON")
     [ -n "${V15_M_RECON_ITERS:-}" ] && MODEL_ARGS+=(--v15-m-recon-iters "$V15_M_RECON_ITERS")
@@ -353,6 +355,9 @@ fi
 [ -n "${RESUME:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --resume $RESUME"
 # spike-guard: grad-norm > k×EMA step skip (S-full 말단 저LR spike 사고 대응)
 [ -n "${SPIKE_GUARD_K:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --spike-guard-k $SPIKE_GUARD_K"
+# AdamW 안정화 (S-full spike 대응 권장: BETA2=0.95, EPS=1e-6)
+[ -n "${ADAM_BETA2:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --adam-beta2 $ADAM_BETA2"
+[ -n "${ADAM_EPS:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --adam-eps $ADAM_EPS"
 
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
 # CRITICAL: srun이 새 shell을 띄우면서 PATH 전파 안 됨 → 절대 경로 사용.
