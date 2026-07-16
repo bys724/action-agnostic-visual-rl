@@ -1,0 +1,53 @@
+encoder,params_M,pretrain_data,benchmark,pos_r2,n_eval
+CoMP-MAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",calvin_xfold_gap30,0.4054,32183
+CoMP-MAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_spatial_gap20,0.8090,9690
+CoMP-MAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_object_gap20,0.8378,12710
+CoMP-MAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_goal_gap20,0.7084,11100
+CoMP-MAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",calvin_xfold_gap30,0.4868,32183
+CoMP-MAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_spatial_gap20,0.8140,9690
+CoMP-MAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_object_gap20,0.8510,12710
+CoMP-MAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_goal_gap20,0.7511,11100
+CoMP-MAE-S  P_t⊕P_tk (mean),21.6,"EgoDex part1 subset (~46k, unlabeled)",calvin_xfold_gap30,0.2571,32183
+CoMP-MAE-S  P_t⊕P_tk (mean),21.6,"EgoDex part1 subset (~46k, unlabeled)",libero_spatial_gap20,0.7409,9690
+CoMP-MAE-S  P_t⊕P_tk (mean),21.6,"EgoDex part1 subset (~46k, unlabeled)",libero_object_gap20,0.8112,12710
+CoMP-MAE-S  P_t⊕P_tk (mean),21.6,"EgoDex part1 subset (~46k, unlabeled)",libero_goal_gap20,0.7015,11100
+CoMP-MAE-S  P_t⊕P_tk (attn),21.6,"EgoDex part1 subset (~46k, unlabeled)",calvin_xfold_gap30,0.1747,32183
+CoMP-MAE-S  P_t⊕P_tk (attn),21.6,"EgoDex part1 subset (~46k, unlabeled)",libero_spatial_gap20,0.7656,9690
+CoMP-MAE-S  P_t⊕P_tk (attn),21.6,"EgoDex part1 subset (~46k, unlabeled)",libero_object_gap20,0.8294,12710
+CoMP-MAE-S  P_t⊕P_tk (attn),21.6,"EgoDex part1 subset (~46k, unlabeled)",libero_goal_gap20,0.7092,11100
+CoMP-MAE-B-full  P_t⊕M  (mean),114.5,"EgoDex full (~314k, unlabeled)",calvin_xfold_gap30,0.5318,32183
+CoMP-MAE-B-full  P_t⊕M  (mean),114.5,"EgoDex full (~314k, unlabeled)",libero_spatial_gap20,0.8127,9690
+CoMP-MAE-B-full  P_t⊕M  (mean),114.5,"EgoDex full (~314k, unlabeled)",libero_object_gap20,0.8568,12710
+CoMP-MAE-B-full  P_t⊕M  (mean),114.5,"EgoDex full (~314k, unlabeled)",libero_goal_gap20,0.7532,11100
+CoMP-MAE-B-full  P_t⊕M  (attn),114.5,"EgoDex full (~314k, unlabeled)",calvin_xfold_gap30,0.5709,32183
+CoMP-MAE-B-full  P_t⊕M  (attn),114.5,"EgoDex full (~314k, unlabeled)",libero_spatial_gap20,0.8503,9690
+CoMP-MAE-B-full  P_t⊕M  (attn),114.5,"EgoDex full (~314k, unlabeled)",libero_object_gap20,0.8811,12710
+CoMP-MAE-B-full  P_t⊕M  (attn),114.5,"EgoDex full (~314k, unlabeled)",libero_goal_gap20,0.7028,11100
+Plain xMAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",calvin_xfold_gap30,0.0142,32183
+Plain xMAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_spatial_gap20,0.1232,9690
+Plain xMAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_object_gap20,0.1116,12710
+Plain xMAE-S  P_t⊕M  (mean),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_goal_gap20,0.0179,11100
+Plain xMAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",calvin_xfold_gap30,0.0304,32183
+Plain xMAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_spatial_gap20,0.1270,9690
+Plain xMAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_object_gap20,0.1086,12710
+Plain xMAE-S  P_t⊕M  (attn),32.3,"EgoDex part1 subset (~46k, unlabeled)",libero_goal_gap20,0.0585,11100
+"VideoMAE-ours (mean, vla)",86.0,EgoDex full (~314k),calvin_xfold_gap30,0.5290,32183
+"VideoMAE-ours (mean, vla)",86.0,EgoDex full (~314k),libero_spatial_gap20,0.8532,9690
+"VideoMAE-ours (mean, vla)",86.0,EgoDex full (~314k),libero_object_gap20,0.8671,12710
+"VideoMAE-ours (mean, vla)",86.0,EgoDex full (~314k),libero_goal_gap20,0.7912,11100
+"VideoMAE-ours (attn, vla)",86.0,EgoDex full (~314k),calvin_xfold_gap30,0.6104,32183
+"VideoMAE-ours (attn, vla)",86.0,EgoDex full (~314k),libero_spatial_gap20,0.8786,9690
+"VideoMAE-ours (attn, vla)",86.0,EgoDex full (~314k),libero_object_gap20,0.9028,12710
+"VideoMAE-ours (attn, vla)",86.0,EgoDex full (~314k),libero_goal_gap20,0.8299,11100
+VC-1 (frozen),86.0,Ego4D+ (internet),calvin_xfold_gap30,0.5356,
+VC-1 (frozen),86.0,Ego4D+ (internet),libero_spatial_gap20,0.8913,9690
+VC-1 (frozen),86.0,Ego4D+ (internet),libero_object_gap20,0.9049,12710
+VC-1 (frozen),86.0,Ego4D+ (internet),libero_goal_gap20,0.8355,11100
+DINOv2 (frozen),86.0,LVD-142M (internet),calvin_xfold_gap30,0.2231,
+DINOv2 (frozen),86.0,LVD-142M (internet),libero_spatial_gap20,0.7660,9690
+DINOv2 (frozen),86.0,LVD-142M (internet),libero_object_gap20,0.6767,12710
+DINOv2 (frozen),86.0,LVD-142M (internet),libero_goal_gap20,0.4890,11100
+SigLIP (frozen),86.0,WebLI (internet),calvin_xfold_gap30,-0.3143,
+SigLIP (frozen),86.0,WebLI (internet),libero_spatial_gap20,0.7869,9690
+SigLIP (frozen),86.0,WebLI (internet),libero_object_gap20,0.7494,12710
+SigLIP (frozen),86.0,WebLI (internet),libero_goal_gap20,0.5465,11100

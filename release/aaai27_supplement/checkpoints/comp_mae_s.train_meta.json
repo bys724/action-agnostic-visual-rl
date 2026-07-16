@@ -1,0 +1,13 @@
+{
+  "num_epochs": 50,
+  "batch_size": 128,
+  "global_batch_size": 1024,
+  "world_size": 8,
+  "distributed": true,
+  "lr": 0.00028,
+  "eval_interval": 5,
+  "save_interval": 4,
+  "train_dataset_size": 4623400,
+  "eval_dataset_size": 324300,
+  "start_time": "2026-06-29T10:16:34.620825"
+}

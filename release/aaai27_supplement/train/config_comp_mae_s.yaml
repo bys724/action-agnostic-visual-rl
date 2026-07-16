@@ -2,8 +2,8 @@
 # Transcribed from the launched command line (resolved flags below); matches
 # the paper's Appendix A table. Data paths are placeholders.
 
-model: two-stream-v15b        # internal code id; paper name: CoMP-MAE (ViT-S)
-comp_mae: true                # symmetric cross-reconstruction branch (v16)
+model: comp-mae        # internal code id; paper name: CoMP-MAE (ViT-S)
+comp_mae: true                # symmetric cross-reconstruction (M-recon) branch
 
 data:
   dataset: egodex
@@ -26,18 +26,12 @@ architecture:
   routing_mode: v_from_p      # value-ownership routing (V from P)
 
 objective:
-  pair_mode: true             # 2-frame pairs, no compose triple
+  pair_mode: true             # 2-frame pairs
   no_sobel: true              # P = RGB(3ch), M = |ΔL|(1ch)
   mask_ratio_p: 0.75
-  mask_ratio_m_jepa: 0.5
-  m_recon_floor: 0.02         # |ΔL|-weighted M-recon floor
-  lambda_pred: 1.0
-  lambda_m_jepa: 1.0
-  lambda_compose: 1.0
-  composition_mode: linear_residual
-  ema_momentum_init: 0.996
-  ema_momentum_final: 0.9999
-  lambda_gate_epochs: 0
+  m_recon_floor: 0.02         # |ΔL|-weighted M-recon loss floor
+  lambda_pred: 1.0            # future-prediction P-recon weight
+  lambda_m_recon: 1.0         # M-recon (grounding) weight
   rotation_aug: true
 
 sampling:
@@ -45,14 +39,8 @@ sampling:
   sample_dist: triangular
   sample_center: 15
 
-# Exact CLI as launched (paths redacted):
-# python scripts/pretrain.py --model two-stream-v15b --train-data egodex \
-#   --egodex-root <EGODEX_FRAMES_ROOT> --egodex-splits part1 --epochs 50 \
-#   --batch-size 128 --lr 2.8e-4 --num-workers 8 --depth 12 --v11-m-depth 6 \
-#   --v11-routing-mode v_from_p --rotation-aug --mask-ratio-p 0.75 \
-#   --max-gap 30 --sample-dist triangular --sample-center 15 \
-#   --v15-lambda-pred 1.0 --v15-lambda-m-jepa 1.0 --v15-lambda-compose 1.0 \
-#   --v15-mask-ratio-m-jepa 0.5 --v15-composition-mode linear_residual \
-#   --v15-ema-momentum-init 0.996 --v15-ema-momentum-final 0.9999 \
-#   --v15-lambda-gate-epochs 0 --no-sobel --pair-mode --v15-comp-mae \
-#   --v15-m-recon-floor 0.02 --embed-dim 384 --num-heads 6 --eval-interval 5
+# Equivalent command with the shipped training script (paths redacted):
+# python train/pretrain.py --frames-root <EGODEX_FRAMES_ROOT> --comp-mae \
+#   --embed-dim 384 --num-heads 6 --depth 12 --m-depth 6 --routing-mode v_from_p \
+#   --epochs 50 --batch-size 128 --lr 2.8e-4 --num-workers 8 --rotation-aug \
+#   --mask-ratio-p 0.75 --max-gap 30 --sample-center 15 --m-recon-floor 0.02

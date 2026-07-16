@@ -1,15 +1,18 @@
-# Core dependencies — versions pinned from the training environment
-# (Python 3.11). DRAFT: finalize against actual imports of the shipped code
-# tree; BC evaluation extras (LIBERO benchmark, robosuite) are installed
-# separately per their official instructions and are not pinned here.
+# Core dependencies for pretraining, action probing, and the aggregation/stats
+# scripts. Versions are pinned to the training/evaluation environment (Python 3.11);
+# nearby versions should also work.
 torch==2.6.0
-torchvision==0.21.0
 numpy==1.26.4
-opencv-python==4.13.0.92
-pillow==12.1.1
-einops==0.8.2
 scipy==1.17.1
 h5py==3.14.0
-PyYAML==6.0.3
-tqdm==4.67.3
-tensorboard==2.16.2
+imageio==2.37.0
+pillow==12.1.1
+omegaconf==2.3.0
+
+# BC-Transformer finetuning + LIBERO rollout additionally require the LIBERO
+# benchmark and its simulator (robosuite / MuJoCo). Install them separately per
+# the official LIBERO instructions -- they are not pinned here:
+#   https://github.com/Lifelong-Robot-Learning/LIBERO
+#
+# CALVIN action probing requires the CALVIN dataset loader dependencies; see the
+# official CALVIN repository for environment setup.

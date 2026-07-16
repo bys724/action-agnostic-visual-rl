@@ -75,6 +75,21 @@ grep -rn "bys724\|/Users/\|/home/\|/proj/external_group\|/mnt/data\|mrg\|IBS\|ol
 4. 재현 검증(§4) — probing 헤드라인: efficiency 표 CoMP-S·plain 행 재현 / BC 스팟 체크 1 suite × 1 seed
 5. README(루트)·LICENSE 작성, requirements 확정 → zip 생성·용량 확인
 
+## 4-c. 로컬 완료 (2026-07-16)
+
+`release/aaai27_supplement/` 전체 채움·검증 완료. 코드 zip = `release/aaai27_supplement_code.zip` (85KB, 46파일). ckpt 2종은 `checkpoints/`에 배치(*.pt는 .gitignore, 401MB — AAAI supplementary 한도 초과 가능 → 코드 zip + ckpt 별도 익명 링크 권장).
+
+- **model (#1·#2)**: `two_stream_v15.py`(v16 comp_mae + plain pixel_pred 두 objective만; JEPA/3-frame/teacher/compose dead 제거, 영어 상세주석, ssim inline) + `two_stream_v11.py`(shared base, `TwoStreamV11Encoder`·구 dual-target forward 제거) + `common/{blocks,preprocessing}`. **parity: 두 ckpt 모두 원본과 bit-exact**(0 missing/unexpected, loss 완전일치) — `golden_ref` 대비.
+- **eval (#4)**: probe_action_{libero,calvin}·finetune_libero_bct·eval_libero·aggregate_libero_rollouts·build_step0 + adapters(parvo-ptptk=CoMP-MAE)·datasets/calvin·policies/bc_transformer_adapted. baseline encoder 로더(videomae/dinov2/siglip/vc1/v11)는 NotImplementedError 스텁+README 안내. import `src.*`→`model`/`eval` 재배선, 전 파일 py_compile OK, adapter/probe encode smoke PASS.
+- **train (#3)**: `train/pretrain.py` 단일파일 클린 재작성(실제 레시피: Fused AdamW wd0.01·warmup10%+cosine·BF16·grad clip1.0·compute_loss) + config 2종(objective 섹션 comp/pixel 실사용 HP로 트림, CLI 주석 릴리스 스크립트로 갱신). compute_loss+backward smoke 양 objective PASS.
+- **stats (#6)**: `stats_libero_rollout.py` 자족 재작성(하드코딩 경로 없음) + `per_task.csv`(헤드라인 2인코더로 필터, 내부 ablation 태그 제거). **pooled Δ=−0.91pt 정확 재현**, Wilcoxon p=0.699(보고 0.763 근접·동일 비유의 결론; p는 페어링 granularity 의존, 결론 강건).
+- **익명화(§3)**: 경로·유저명·infra·Hangul·`src.*` import 전부 0건. `parvo`/`parvo-ptptk`는 CoMP-MAE 인코더 CLI 식별자로 README에 매핑 문서화.
+- **재현(§4, 축소+문서화 — 사용자 승인)**: LIBERO/CALVIN raw probing 데이터 로컬 부재 → build_step0가 shipped 아티팩트에서 efficiency 표 재생성(ours·control 행 논문 일치) + 릴리스 어댑터로 ckpt encode smoke. 전체 probing 재실행은 데이터 다운로드 안내로 대체. **리뷰어 시뮬(추출 zip)에서 build_step0·stats·ckpt 로드(0/0·56.1M) 전부 정상**.
+
+**논문 최종 네이밍 정리 (2026-07-16, 후속)**: supplement 트리 한정 rename(메인 repo는 deferred 정책 유지). `two_stream_v15.py/TwoStreamV15Model`→`comp_mae.py/CoMPMAE`, `two_stream_v11.py/TwoStreamV11Model`→`two_stream_base.py/TwoStreamBase`, `parvo_pt_ptk.py/ParvoPtPtkAdapter`→`comp_mae_adapter.py/CoMPMAEAdapter`, 인코더 키 `parvo`/`parvo-ptptk`→`comp-mae`, CLI `--parvo-mode`→`--stream-mode`, config `two-stream-v15b`→`comp-mae`, 아티팩트 `parvo-ptptk_*`→`*-s`, v15/v16/v11 태그 제거. **state_dict 키(attribute명)는 불변 → ckpt 로드 유지**; rename 후 parity ALL PASS(bit-exact)·리뷰어 시뮬 재확인. 최종 grep: parvo/v15/v16/v11/경로/Hangul 0.
+
+**ckpt 동봉 결정 (2026-07-16, 사용자 확정 = 코드-only)**: 체크리스트는 *source code*만 약속(ckpt 문항 없음) → ckpt 미동봉이 형식적 모순 아님. 실측: full 56.1M/225MB; **P+M 인코더 fp16 = 65MB**(헤드라인 P_t⊕M 재현), **P-only fp16 = 43MB**(P_t⊕P_tk만). fp16 무손실 확인(인코더 출력 cosine=1.000000 vs fp32-full). BC policy ckpt=개당 236MB(full policy 저장)라 부적합. **결정 = ckpt 전부 미동봉**: 코드 zip = `release/aaai27_supplement_code.zip` (85K, ckpt 없음). checkpoints/=README(upon-publication 프레이밍+재현비용 ~110 GPU·h)+SHA256+meta만. README에 사전학습 비용 명시. **weights 없이 재현되는 것**: efficiency 표(build_step0, shipped 아티팩트) + rollout 유의성(stats, per_task.csv). camera-ready에서 실명 GitHub/HF로 full fp32 공개 = "upon publication yes" 이행.
+
 ## 5. Cross-refs
 
 - 계약·형식·주의점 원문: paper repo `notes/code_release_prep.md` (07-15)
