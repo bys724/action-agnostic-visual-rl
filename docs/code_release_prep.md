@@ -54,6 +54,27 @@ grep -rn "bys724\|/Users/\|/home/\|/proj/external_group\|/mnt/data\|mrg\|IBS\|ol
 - **parity 주의**: eval 시 `docs/eval_protocols.md` §0 preprocessing parity 체크 그대로 적용 (`[0,1]` raw, ImageNet Normalize 금지).
 - 특정 수치 재현 실패 시: 그 항목만 paper checklist "partial"로 강등 + 범위 명시 (paper 세션에 전달).
 
+## 4-b. 진행 상황 — 클러스터측 완료분 (2026-07-16)
+
+**머지 전략**: supplement 트리 = **`release/aaai27_supplement/`** (repo 내 전용 디렉토리, 양측이 서로 다른 파일을 채워 conflict 없음 — 코드·텍스트는 git, ckpt 바이너리만 tar 채널). 최종 zip = 이 디렉토리를 압축 (git history 미포함 = §1 "새 트리" 조건 자동 충족). 익명화 grep(§3)도 이 디렉토리 대상.
+
+**클러스터 완료 (git으로 수령)**:
+- `release/aaai27_supplement/train/config_{comp_mae_s,plain_control}.yaml` — 보고 run HP를 sacct SubmitLine(36177296·36652564 실측)에서 전사. deliverable #3의 "plain config" 실물. **로컬 할 일: paper App A 표와 대조**.
+- `release/aaai27_supplement/requirements.txt` — 학습 env(pip freeze) 기반 초안. **로컬 할 일: 실제 shipped 코드 import 기준으로 확정** (LIBERO/robosuite는 별도 안내로).
+- `release/aaai27_supplement/checkpoints/README.md` — ckpt 목록·sha256·로딩 스니펫·parity 경고. zip 동봉 최종본 후보.
+
+**ckpt 반출 (tar 채널, deliverable #5)**: repo root **`aaai27_supplement_ckpt.tar`** (420MB) = weights-only 사본 2종 + train_meta.json 2종 + SHA256SUMS.
+- strip 내역: `latest.pt`(ep50)에서 optimizer/scheduler/history 제거 → `{epoch, model_state_dict, train_loss, eval_loss}`만. state_dict 키 익명화 grep 0건·reload 검증 완료. **로컬 §3 ckpt 메타 확인 항목은 사실상 선처리됨**(경로 문자열의 주 서식지였던 optimizer state 제거).
+- 원본 매핑(불변): `comp_mae_s.pt` ← `two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt` · `plain_xmae_s.pt` ← `two_stream_v15b_step1_plain_xmae_s/20260708_012539/latest.pt` (STEP 2(A) probe 잡이 쓴 바로 그 파일 — 재현 검증 §4와 정합).
+- 수령: `rsync --partial --progress <cluster>:<repo>/aaai27_supplement_ckpt.tar .` → `tar -xf` → `sha256sum -c SHA256SUMS` → `release/aaai27_supplement/checkpoints/`에 배치(*.pt는 .gitignore 대상).
+
+**로컬 워크스테이션 남은 작업 (§2 순서 기준)**:
+1. git pull + ckpt tar 수령·검증 (위)
+2. §1 매핑대로 코드 발췌 → `release/aaai27_supplement/{model,eval,stats}/` — model: `two_stream_v15.py`의 v16 분기(`_forward_pair_comp`)+`common/{blocks,preprocessing}.py` (v9–v15 dead 분기 제거, 동작 보존은 §4가 검증) / train: `scripts/pretrain.py` 정리본 / eval: §1 #4 목록 / stats: `stats_libero_rollout.py`(🔴 `DEFAULT_CSV` `/Users/` 하드코딩 상대경로화) + `per_task.csv`
+3. 익명화 pass — §3 grep을 `release/aaai27_supplement/` 대상 0건까지 (한국어 주석 제거 포함)
+4. 재현 검증(§4) — probing 헤드라인: efficiency 표 CoMP-S·plain 행 재현 / BC 스팟 체크 1 suite × 1 seed
+5. README(루트)·LICENSE 작성, requirements 확정 → zip 생성·용량 확인
+
 ## 5. Cross-refs
 
 - 계약·형식·주의점 원문: paper repo `notes/code_release_prep.md` (07-15)

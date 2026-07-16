@@ -1,0 +1,64 @@
+# Plain cross-modal MAE-S (matched control) — exact hyperparameters of the
+# reported run. Identical to CoMP-MAE-S except the three ablation knobs below
+# (same params, same data, same schedule).
+
+model: two-stream-v15b
+comp_mae: false               # M-recon OFF (pixel-pred objective instead)
+
+# Differences vs config_comp_mae_s.yaml — everything else identical:
+ablation_knobs:
+  pixel_pred: true            # replaces symmetric M-recon
+  routing_mode: v_from_m      # standard cross-attention (V from M)
+  masked_anchor: true         # complete-first anchor, matching CoMP P-recon
+  independent_rotation_prob: 0.0
+
+data:
+  dataset: egodex
+  splits: [part1]
+  frames_root: <EGODEX_FRAMES_ROOT>
+  input_range: "[0,1] raw (/255.0); no ImageNet normalization"
+
+optimization:
+  epochs: 50
+  batch_size_per_gpu: 128     # 8 GPUs -> global batch 1024
+  lr: 2.8e-4
+  num_workers: 8
+  eval_interval: 5
+
+architecture:
+  embed_dim: 384
+  num_heads: 6
+  depth: 12
+  m_depth: 6
+
+objective:
+  pair_mode: true
+  no_sobel: true
+  mask_ratio_p: 0.75
+  mask_ratio_m_jepa: 0.5
+  lambda_pred: 1.0
+  lambda_m_jepa: 1.0
+  lambda_compose: 1.0
+  composition_mode: linear_residual
+  ema_momentum_init: 0.996
+  ema_momentum_final: 0.9999
+  lambda_gate_epochs: 0
+  rotation_aug: true
+
+sampling:
+  max_gap: 30
+  sample_dist: triangular
+  sample_center: 15
+
+# Exact CLI as launched (paths redacted):
+# python scripts/pretrain.py --model two-stream-v15b --train-data egodex \
+#   --egodex-root <EGODEX_FRAMES_ROOT> --egodex-splits part1 --epochs 50 \
+#   --batch-size 128 --lr 2.8e-4 --num-workers 8 --depth 12 --v11-m-depth 6 \
+#   --v11-routing-mode v_from_m --rotation-aug --mask-ratio-p 0.75 \
+#   --max-gap 30 --sample-dist triangular --sample-center 15 \
+#   --v15-lambda-pred 1.0 --v15-lambda-m-jepa 1.0 --v15-lambda-compose 1.0 \
+#   --v15-mask-ratio-m-jepa 0.5 --v15-composition-mode linear_residual \
+#   --v15-ema-momentum-init 0.996 --v15-ema-momentum-final 0.9999 \
+#   --v15-lambda-gate-epochs 0 --no-sobel --pair-mode --v15-pixel-pred \
+#   --v15-masked-anchor --v15-independent-rotation-prob 0 \
+#   --embed-dim 384 --num-heads 6 --eval-interval 5
