@@ -132,6 +132,13 @@
 
 **🟢 수리 결정 4차 (07-16, 사용자 확정): 옵션 (i′) 채택 — 5차 from-scratch + K=100 제출**. 잡 `36841352`(본, `_fs2` 신규 dir) + `36841353`(orchestrator, skip-게이트). 판별 기준은 4차 사전 등록 그대로: **청정 완주(skip≈0) → §4-b 유효 측정으로 측정 1·2 진행 / ep6 부근 진짜 spike(skip 로그에 ~400× 이벤트) → 초기조건-독립 시스템적 불안정 확정, 추가 재시도 없이 (ii)/(iii)로 종결**.
 
+**🔴 5차 결과 (07-16): 진짜 spike 재발 — 판별 실험 완결, 시스템적 불안정 확정 (5/5)**:
+- ep1 skip 0(K=100 평시 무개입 입증, 4차 오발동 문제 해결 확인) → **ep2 b19,766부터 grad 40~97 ≈ EMA(0.177)의 200~500× — 1차 spike(84+, ~400×)와 동일 서명** → 에폭 잔여 10,979 스텝 전부 skip(norm 78%>50, 무감쇠 지속) → ep3 warmup 스텝(clip 1.0)으로 벼랑 이탈, 3 skip 후 정상 복귀. guard의 가중치 보호는 작동.
+- **판정**: fresh init·다른 노드에서 재발 = **초기조건-독립 S(32M)×part1-5 시스템적 불안정 확정**. 신규 정보 2건: ① **고LR(2.6e-4)·ep2에서 발생 → "저LR 말단" 조건부 기각** — 학습 전반에 잠복 ② 1차 런 고유 손상(하드웨어 과열 등) 가설 기각. spike 후 11k 스텝 내내 전 배치 grad 40~97(가중치 frozen 상태) = 특정 배치가 아니라 도달 지점 자체가 전-배치 공통 벼랑 → 병인 = 지형(용량-다양성 갈등), 방아쇠 = heavy-tail 배치(추정).
+- **기전 정리 (2×2 정황)**: S×part1 무사·B×full 무사·S×full만 5/5 발병 = 크기 아닌 **용량 대비 분포 폭**의 병. 대규모 transformer loss-spike 문헌(PaLM batch-skip·ViT-22B QK-norm)과 phenomenology 일치.
+- skip 10,982 > 게이트 2,000 = 비청정 확정 → 잔여 ~15h는 관찰 가치만이라 **ep3 중 취소**(55.9 GPU·h 소진, 사용자 결정). 사전 등록대로 same-config 재시도는 종결. 누적 ~465 GPU·h.
+- **종결 옵션 (재설계 축)**: (ii) **서랍** — §4-b attach-only라 spine 무피해, "S-full 확보 실패 = 용량-다양성 불안정(5/5)" 기록. B-full(§3)로 full-data 축은 기확보 / (iii′) **재설계 재학습** — (a) 같은 32M + QK-norm 등 안정화(효율 서사 보존, 단 S-part1과 아키 각주) or (b) 최소 용량 증가(S′, 예: embed 448 ≈ 1.36×) — 단 어느 쪽도 S-part1 앵커와의 엄밀 matched 비교는 깨짐(각주 필수) + S′는 part1 참조 없어 data 효과 분리 불가.
+
 **측정 순서 (학습 완료 후)**:
 0. sanity — loss curve·collapse 여부·recon 품질 (분 단위).
 1. **action probing 매트릭스** (same-probe 규율, §3 B-full 판정과 동일 프로토콜): in-domain deployed-P/M/P_t⊕M + OOD 4벤치(CALVIN xfold + LIBERO 3 suite, mean+attn). 아래 사전 등록 기준으로 판독.
