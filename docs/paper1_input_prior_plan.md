@@ -1,5 +1,7 @@
 # Paper 1 — Input-Prior Robot Representation (ICRA)
 
+> **🚚 이관·동결 (2026-07-21)**: Paper 1은 전용 저장소 **`github.com/bys724/input-prior-mae`** 로 **완전 분리** (타깃도 ICRA → **ICTC 2026**으로 변경, 실로봇 제외). 이 문서는 이관 시점 기록으로 동결 — **정본 = `input-prior-mae/docs/{ictc26_plan.md, shared_assets.md}`**, 상위 결정 = Vault `Projects/Input-Prior Robot Representation (ICTC)/`. CortexBench 결과(`paper_artifacts/cortexbench/`)는 @dca7347 기준 이관 완료 (원본은 여기 보존).
+
 > **정규 출처**: Obsidian `Projects/Input-Prior Robot Representation (ICRA)/`. 모델 명명·2논문 구조는 [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조".
 > **상태 (2026-06-11)**: 신설. P단독 image MAE > VideoMAE = **좁게 입증** → ablation·실로봇 필요.
 > **작업 분담**: 코드 편집(standalone image MAE 학습 경로 등)은 **클러스터 세션**. 이 문서는 계획·근거 정리 (문서 전용).
