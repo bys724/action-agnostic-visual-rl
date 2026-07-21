@@ -5,7 +5,7 @@
 ## 핵심 문서 (업데이트 우선)
 
 1. **`docs/RESEARCH_PLAN.md`** — 전체 연구 계획 및 현재 phase (마스터 문서)
-2. **`docs/paper1_input_prior_plan.md`** — **Paper 1 (ICRA, Input-Prior)** 계획·근거
+2. **`docs/paper1_input_prior_plan.md`** — Paper 1 (Input-Prior) 구 계획 — **🚚 2026-07-21 전용 repo `input-prior-mae`로 완전 분리·문서 동결** (ICTC 2026 재타깃, 정본 = 그 repo `docs/ictc26_plan.md`)
 3. **`docs/PROBING_GUIDE.md`** — Action probing 실험 가이드 + 결과
 4. **`docs/eval_protocols.md`** — **평가 프로토콜 단일 출처** (6벤치 정규 조건 + parity 체크리스트 + 오류 이력). 새 모델 비교 전 필독
 5. **`docs/setup/LIBERO_TEST_GUIDE.md`** — LIBERO 평가
@@ -35,11 +35,11 @@ EgoDex로 action-agnostic 시각 표현 사전학습 → LIBERO 로봇 조작으
 - **`MS-JEPA`** (code `v15b`) — CoMP-MAE 직전 축(student-anchor, M→P gradient 연결, no-Sobel). LIBERO BC 0.785 = 현상 유지(scaffold 이점 미입증) → CoMP-MAE로 승격. `main` 브랜치.
 - **v15** = 그 이전 divergent 버전. motion routing이 student P에 **gradient=0 (no-op)** → **paper-main 아님**, `paper-corl2026` 동결. ⚠️ v15의 `+0.390(P_t⊕P_tk)`을 motion routing 인과로 귀속한 것은 **철회됨**(no-op, artifact 의심) — 재귀속 금지.
 
-| | **Paper 1 (ICRA)** — Input-Prior | **Paper 2 (AAAI)** — Action-Agnostic |
+| | **Paper 1 (ICTC)** — Input-Prior | **Paper 2 (AAAI)** — Action-Agnostic |
 |---|---|---|
 | 핵심 모델 | 단일프레임 image MAE (Sobel+RGB) = P stream 단독 | **CoMP-MAE** (code v16) |
 | 주장 | image MAE(Sobel+RGB) **> VideoMAE** | M/P 구조적 cross-stream bias가 factored·효율적 표현을 만든다 (3-claim) |
-| 상태 | **좁지만 입증** (matched 아님, ablation 필요) | **표현 레벨 인과까지 확보** (3b 효율·directional factorization·**STEP 1 인과 ✅**; 남은 것 = value 레벨 headline control) |
+| 상태 | 🚚 **전용 repo `input-prior-mae`로 완전 분리 (2026-07-21)** — ICTC 2026 재타깃(마감 07-31)·sim-only. 이 repo는 결과 원산지(읽기 참조)만 | **표현 레벨 인과까지 확보** (3b 효율·directional factorization·**STEP 1 인과 ✅**; 남은 것 = value 레벨 headline control) |
 
 - **검증 질문** (CoMP-MAE, **STEP 1 판정 완료 2026-07-08**): ① M-recon grounding이 factorization의 **인과**인가 → **✅ M-recon 존재 = 인과**(plain에서 M motion 0.835→0.107 붕괴; 단 V 소유 `V_M/V_P`는 인과 아님 — 대신 V_P는 P를 오염 0.999→0.224 = V_M 설계 정당화) ② plain cross-modal MAE를 이기나 → **✅ 표현 signature 레벨 성립**(value 레벨은 미완). 판정 상세 = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
 - catalyst→scaffold 용어 전환·인과 철회·slope 폐기 history: `docs/RESEARCH_PLAN.md` · `docs/factorization_crossover_plan.md`.
@@ -111,11 +111,11 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 새 데이터셋은 샘플 테스트 → 결정 기록(`docs/preprocessing/`) → 전체 추출 → 검증. 절차·기존 사례(EgoDex/DROID/Ego4D) → [docs/preprocessing/README.md](docs/preprocessing/README.md).
 
-## 현재 상태 (2026-07-12)
+## 현재 상태 (2026-07-21)
 
 > 2논문 분리. 상세 phase·이력은 마스터 문서로 위임 — 본 섹션은 스냅샷. 명명 정규 출처 = 위 "명명 · 2논문 구조".
 
-- **Paper 1 (ICRA)**: 단일프레임 image MAE(Sobel+RGB) > VideoMAE = **좁지만 입증**. 남은 일 = ablation(RGB-only vs Sobel+RGB, VideoMAE fairness) + real-robot.
+- **Paper 1 (ICTC)**: 🚚 **전용 repo `input-prior-mae`로 완전 분리 (2026-07-21)** — ICTC 2026 재타깃(마감 07-31)·sim-only·실로봇 제외. 결과(@dca7347)·eval 코드·도커·가이드·로그 이관 완료(CSV 재생성 byte-identical 검증), 이 repo 문서는 동결(`paper1_input_prior_plan.md` 배너). CortexBench 코드·`paper_artifacts/cortexbench/`는 공유 인프라로 여기도 보존(eval_protocols §5 — 향후 CoMP 행 추가 가능).
 - **Paper 2 (AAAI)** — ours 축 = **CoMP-MAE(v16)**, S/B 학습 완료·collapse 없음. 논문 spine = **3-claim**(① factorization ② dissociation ③ 도메인-robust 효율).
   - **✅ STEP 0**: 🚨 slope(3a) **폐기**(regression-to-ceiling confound) → **3b 절대 효율만 생존** — ~32M CoMP-MAE-S(P_t⊕M)가 86M DINOv2/SigLIP 이기고 same-data VideoMAE 근접(`paper_artifacts/ood_efficiency/`).
   - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(상관).

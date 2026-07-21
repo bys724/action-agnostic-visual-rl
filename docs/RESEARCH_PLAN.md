@@ -1,7 +1,7 @@
 # Action-Agnostic Visual RL Research Plan
 
 **마지막 업데이트**: 2026-06-11
-**투고 목표**: Paper 1 = **ICRA** (Input-Prior), Paper 2 = **AAAI** (Action-Agnostic). (CoRL 2026 미제출)
+**투고 목표**: Paper 1 = **ICTC 2026** (Input-Prior — 🚚 2026-07-21 전용 repo `input-prior-mae`로 완전 분리, 구 타깃 ICRA), Paper 2 = **AAAI** (Action-Agnostic). (CoRL 2026 미제출)
 **연구 질문**: **구조적 inductive bias를 가진 시각 표현 학습이, action label 없이도 시각-행동 연결 태스크에 유용한 표현을 만드는가?**
 
 > 🔴 **2026-06-11 재편**: 모델 명명(`Parvo`)·2논문 분리·catalyst→scaffold 인과 철회는 [`CLAUDE.md`](../CLAUDE.md) "명명 · 2논문 구조" 섹션이 정규 출처. 본 문서 본문의 v11/v15 "paper main"·"catalyst" 표현은 그 이전 시점 기록 — **개발 narrative로만 유효**. 진행 상태/체크포인트/로그는 [`CLAUDE.md`](../CLAUDE.md)·[`cluster_sessions.md`](cluster_sessions.md)·[`v15b_retraining_status.md`](v15b_retraining_status.md) 참고.
