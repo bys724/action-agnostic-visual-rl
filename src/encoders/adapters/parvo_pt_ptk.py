@@ -43,6 +43,7 @@ class ParvoPtPtkAdapter(EncoderAdapter):
         embed_dim: Optional[int] = None,
         m_depth: Optional[int] = None,
         comp_mae: Optional[bool] = None,
+        qk_norm: Optional[bool] = None,
         **kwargs,  # build_adapter가 넘기는 잉여 인자 무시
     ):
         super().__init__(freeze=freeze)
@@ -57,6 +58,7 @@ class ParvoPtPtkAdapter(EncoderAdapter):
             _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
             _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
             _comp = any("m_recon" in k for k in sd)
+            _qk = any(".q_norm." in k for k in sd)
         else:
             # rollout 등 self-contained 경로: arch를 명시 kwargs로 받고 가중치는
             # 외부(policy_state_dict)에서 덮어씀. 추론 규약은 finetune과 동일.
@@ -66,6 +68,11 @@ class ParvoPtPtkAdapter(EncoderAdapter):
             )
             sd = None
             _ed, _md, _comp = embed_dim, m_depth, comp_mae
+            _qk = bool(qk_norm)
+        # qk-norm 전역 스위치 — 모델 생성 전 설정 (pretrain --qk-norm parity).
+        # 미설정 시 strict=False가 q_norm/k_norm 가중치를 조용히 드랍 → 아키 불일치 inference.
+        from src.models.common import blocks as _blocks
+        _blocks.QK_NORM_DEFAULT = _qk
         self.base_dim = _ed
         self.use_m = use_m
         # P_t ⊕ P_tk (⊕ M) — use_m 시 M(ΔL 현재−직전) stream 추가. instance(ckpt별 384/768)
@@ -78,10 +85,12 @@ class ParvoPtPtkAdapter(EncoderAdapter):
             pair_mode=True, use_sobel=False, masked_anchor=True,
         ).to(device)
         if sd is not None:
-            missing, _ = self.model.load_state_dict(sd, strict=False)
+            missing, unexpected = self.model.load_state_dict(sd, strict=False)
             enc_missing = [k for k in missing
                            if k.startswith(("blocks_p", "patch_embed_p", "cls_token_p", "pos_embed_p"))]
             assert not enc_missing, f"Parvo: P encoder 가중치 미로드 {enc_missing[:5]}"
+            _qk_dropped = [k for k in unexpected if ".q_norm." in k or ".k_norm." in k]
+            assert not _qk_dropped, f"Parvo: qk-norm 가중치 드랍 {_qk_dropped[:5]}"
         self.model.eval()
 
         # attentive pooling: stream별(P_t, P_tk[, M]) learnable query 1개씩 (single-head, 최소 capacity)

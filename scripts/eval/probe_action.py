@@ -373,6 +373,10 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
         _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
         _comp = any("m_recon" in k for k in sd)  # CoMP-MAE = M-recon 분기 보유
+        # qk-norm ckpt 자동 감지 — 모델 생성 전 전역 스위치 (pretrain --qk-norm parity).
+        # 미설정 시 strict=False가 q_norm/k_norm 가중치를 조용히 드랍 → 아키 불일치 inference.
+        from src.models.common import blocks as _blocks
+        _blocks.QK_NORM_DEFAULT = any(".q_norm." in k for k in sd)
         encoder = TwoStreamV15Model(
             embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
             pair_mode=True, use_sobel=False, masked_anchor=True,
@@ -381,6 +385,8 @@ def load_encoder(name: str, checkpoint: str = None, device: str = "cuda",
         # P/M encoder 가중치가 실제로 로드됐는지 확인 (random이면 probe 무의미)
         _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]
         assert not _enc_missing, f"parvo: P/M encoder 가중치 미로드 {_enc_missing[:5]}"
+        _qk_dropped = [k for k in unexpected if ".q_norm." in k or ".k_norm." in k]
+        assert not _qk_dropped, f"parvo: qk-norm 가중치 드랍 {_qk_dropped[:5]}"
         encoder.to(device).eval()
         base_dim = encoder.embed_dim
         embed_dim = base_dim * 2 if cls_mode in ("patch_mean_concat_p_t_p_tk",

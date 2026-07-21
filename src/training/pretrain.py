@@ -1096,6 +1096,10 @@ def train(
         _miss, _unexp = _mdl.load_state_dict(_sd, strict=False)
         log(f"  init loaded: missing={len(_miss)} unexpected={len(_unexp)} "
             f"(composition_head 등 pair model 미사용 키 무시)")
+        # qk ckpt를 --qk-norm 없이 init_from 하면 q_norm/k_norm이 조용히 드랍 → 즉사 가드
+        _qk_dropped = [k for k in _unexp if '.q_norm.' in k or '.k_norm.' in k]
+        assert not _qk_dropped, (
+            f"init_from ckpt에 qk-norm 가중치 존재하나 모델에 미배선 — --qk-norm 필요: {_qk_dropped[:5]}")
 
     if resume_from:
         log(f"Resuming from {resume_from}")

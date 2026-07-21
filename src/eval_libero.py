@@ -148,6 +148,8 @@ class BCTransformerClient:
                                  for k in psd if "adapter.model.blocks_m." in k})
             ak["comp_mae"] = any(k.startswith("adapter.model.") and "m_recon" in k
                                  for k in psd)
+            ak["qk_norm"] = any(k.startswith("adapter.model.") and ".q_norm." in k
+                                for k in psd)
             cfg.encoder.adapter_kwargs = ak
 
         self.policy = AdaptedBCTransformerPolicy(cfg, libero_shape_meta()).to(device)
@@ -158,6 +160,8 @@ class BCTransformerClient:
             logging.warning(f"Missing keys ({len(missing)}): {missing[:3]}...")
         if unexpected:
             logging.warning(f"Unexpected keys ({len(unexpected)}): {unexpected[:3]}...")
+        _qk_dropped = [k for k in unexpected if ".q_norm." in k or ".k_norm." in k]
+        assert not _qk_dropped, f"qk-norm 가중치 드랍 (adapter qk_norm 미배선?) {_qk_dropped[:5]}"
         self.policy.eval()
         self.img_size = self.policy.adapter.img_size
         self.encoder_type = str(cfg.encoder.type)

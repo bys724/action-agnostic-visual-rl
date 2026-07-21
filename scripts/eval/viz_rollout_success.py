@@ -52,14 +52,19 @@ def build_bct_p_patcher(bct_ckpt: str, device):
     ed = sd["pos_embed_p"].shape[-1]
     md = len({k.split("blocks_m.")[1].split(".")[0] for k in sd if "blocks_m." in k})
     comp = any("m_recon" in k for k in sd)
+    # qk-norm ckpt 자동 감지 — 모델 생성 전 전역 스위치 (pretrain --qk-norm parity)
+    from src.models.common import blocks as _blocks
+    _blocks.QK_NORM_DEFAULT = any(".q_norm." in k for k in sd)
     model = TwoStreamV15Model(
         embed_dim=ed, num_heads=ed // 64, m_depth=md, comp_mae=comp,
         pair_mode=True, use_sobel=False, masked_anchor=True,
     ).to(device).eval()
-    missing, _ = model.load_state_dict(sd, strict=False)
+    missing, unexpected = model.load_state_dict(sd, strict=False)
     enc_missing = [k for k in missing
                    if k.startswith(("blocks_p", "patch_embed_p", "pos_embed_p"))]
     assert not enc_missing, f"P encoder 가중치 미로드 {enc_missing[:3]}"
+    _qk_dropped = [k for k in unexpected if ".q_norm." in k or ".k_norm." in k]
+    assert not _qk_dropped, f"qk-norm 가중치 드랍 {_qk_dropped[:3]}"
     print(f"[bct-encoder] {bct_ckpt}: embed_dim={ed} m_depth={md} comp_mae={comp}")
 
     def patcher(ft):
