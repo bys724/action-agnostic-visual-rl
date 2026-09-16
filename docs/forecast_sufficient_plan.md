@@ -5,9 +5,14 @@
 > config). 새 파일·새 클래스 아님 — `TwoStreamV15Model`(`src/models/two_stream_v15.py`)의 config
 > variant로 추가한다 (v16이 `comp_mae: bool` 플래그로 추가된 것과 동일한 패턴).
 
-> 설계 출처: Vault `Projects/Forecast-Sufficient Representation/1. 설계.md`.
+> 설계 출처: Vault `Projects/Forecast-Sufficient Representation/1. 설계.md` (2026-09-16 대화
+> 세션에서 배포 대상·항 1 포함 여부·항 2 타깃 확정, 이 문서도 그 결정 반영).
 > 본 문서는 **조기 게이트 범위로 한정한 구현 참고**(계획·주의·pseudocode)다. 전체 항1+항2
-> 이중목적 학습은 게이트 통과 후 범위. 실제 코드는 dev 세션에서 작성.
+> 이중목적 학습(λ 최종 값 튜닝 포함)은 게이트 통과 후 범위. 실제 코드는 dev 세션에서 작성.
+
+> **배포 대상 (확정)**: `p_teacher + m_teacher + m_student` 이어붙임. `p_student`는 학습 중
+> M_student에 gradient를 나르는 라우팅 통로일 뿐 배포에는 안 쓴다. 조기 게이트가 재는 것도
+> 정확히 이 `m_student`.
 
 > ⚠️ **README 경로 정정**: Vault README와 구 메모가 "`src/models/comp_mae.py`의 `CoMPMAE`"를
 > 언급하나, 그 파일은 `release/aaai27_supplement/model/comp_mae.py`(AAAI 논문 supplement용 동결
@@ -34,7 +39,7 @@ Table I) = **0.52~0.70**. 이 밑이면 다음 단계(전체 이중목적 학습
 |---|---|---|
 | P teacher | `TeacherPv15` — **EMA** copy of student P encoder (`update()` 메서드, momentum) | 다른 것: **동결**(freeze, EMA 아님) `P_teacher` — 세션 1(현행 CoMP 학습 완료본)에서 가져와 파라미터 고정. `TeacherPv15`를 그대로 쓰지 말 것 (EMA는 학생을 따라가므로 "닿기에 충분"의 고정 타깃이 못 됨) |
 | M teacher | `TeacherMv15` — EMA copy, `forward_unmasked_encoder_only()` | 조기 게이트에는 **불필요** — 비교 기준은 `M_teacher`(=현재 학습된 v15/v16 체크포인트의 M encoder, 그대로 동결 로드)면 충분. 새 EMA 클래스 필요 없음 |
-| M encoder 학습 신호 | routing helper로만 gradient 수령 (`v_from_p`+`src='m'`, comp_mae_plan.md guard 1) → v15에서 no-op 이력 | **항 2**(`routing(P_s(a), M_s(a→b)) → P_teacher(a+W)`)를 M_student의 유일한 학습 신호로 둔다 — 이게 조기 게이트가 재는 대상 |
+| M encoder 학습 신호 | routing helper로만 gradient 수령 (`v_from_p`+`src='m'`, comp_mae_plan.md guard 1) → v15에서 no-op 이력 | **항 2**(`routing(P_s(a), M_s(a→b)) → P_teacher(a+W) − P_teacher(b)`, 변위)만 켜고 **항 1은 λ1=0**으로 배선은 두되 끔 — M_student의 forecast 능력 상한선부터 본다 |
 | 릿지 프로브 연동 | 없음 (v15/v16은 SFA 쪽 `ENCODERS` 화이트리스트에 없음) | `M_student` 체크포인트를 SFA `repr_score.py` 파이프라인이 읽을 수 있는 형태로 export (§5) |
 
 ---
@@ -50,17 +55,20 @@ Table I) = **0.52~0.70**. 이 밑이면 다음 단계(전체 이중목적 학습
 - **라우팅**: 기존 `MotionRoutingBlock`(`common/blocks.py`) + `RoutingInterpreterStep`
   (`decode_first=True`) 재사용. comp_mae_plan.md guard 1의 "V=owner, Q/K=helper" 규약을 그대로
   따른다 — 새 routing_mode 불필요.
-- **항 2 타깃**: `P_teacher(a+W)` — **동결** 교사로 인코딩한 실제 미래 프레임. 1.설계.md 미결 3번
-  ("상태 vs 변위")은 조기 게이트에서는 **상태로 고정**한다(구현을 단순하게 시작 — 변위 버전은
-  게이트 통과 후 판단). 이 선택은 게이트 결과에 영향 없음(상태냐 변위냐는 M_student 학습 신호의
-  존재 여부를 안 바꾼다).
+- **항 2 타깃 (확정 = 변위)**: `P_teacher(a+W) − P_teacher(b)`, 둘 다 **동결** 교사로 인코딩한
+  실제 프레임(a+W, b). 상태가 아니라 변위인 이유: 설계 문서의 SFA 가산성(`h_S+h_M=h_S'`) 유비와
+  정합적 + 라우팅이 "고르고 옮길 뿐 변형 못한다"는 한계에 덜 물림(§근거는 1.설계.md §확정 3).
 - **M-recon은 그대로 유지** (건드리지 않음 — 1.설계.md "건드리지 말 것", STEP 1 인과 확정 사항).
   조기 게이트 학습에서도 M-recon loss는 켜둔다. 껐을 때와 비교하는 것은 **M 제거 게이트**(별도,
   이 문서 범위 밖)의 몫이다.
-- **항 1은 조기 게이트에서 생략 가능**: 항 1(짧은 지평·교사 공간 고정)은 M no-op 위험을 낮추는
-  안전장치이지 게이트가 재는 신호 자체는 아니다. 최소 구현으로 시작한다면 항 2 + M-recon만으로
-  먼저 돌리고, M_student 릿지 R²가 기준을 넘는지부터 본다 — 넘으면 항 1을 마저 붙여 완전한
-  이중목적으로 확장. **결정 필요**(미결 4번, 아래 §4 추가).
+- **항 1은 배선은 하되 λ1=0 (조기 게이트 한정)**: 항 1(짧은 지평·교사 공간 고정)은 최종 설계에
+  포함되는 게 확정됐다(안전장치가 아니라 세션1→세션2 커리큘럼의 일부). 하지만 조기 게이트는
+  M_student의 forecast 능력 **상한선**부터 싸게 보는 게 목적이라, 항 1의 코드 경로는 만들어두고
+  가중치만 `λ1=0`으로 꺼서 돌린다. 여기서 기준(R² > M_teacher)을 못 넘으면 λ1을 얼마로 줘도
+  no-op 쪽으로만 가므로 그대로 킬 — 넘으면 λ1 값 자체는 본 학습 튜닝 과제로 이월.
+- **타이밍 (확정)**: `a→b ∈ [0.5, 1.0]초`(세션 2 한정 — 세션 1의 M 자체 학습은 기존 다양한 gap
+  pair 그대로 불변), `a+W`는 a 기준 고정 1.5초. 데이터는 pair가 아니라 (a, b, a+W) triple
+  샘플링 필요.
 
 ---
 
@@ -74,12 +82,11 @@ Table I) = **0.52~0.70**. 이 밑이면 다음 단계(전체 이중목적 학습
    먼저 의심.
 3. **M-recon 목적함수는 손대지 않는다** — ΔL 픽셀 복구 그대로. 인과가 잡힌 유일한 조각
    (comp_mae_plan.md, CoMP STEP 1: M-recon 제거 시 M motion 0.835→0.107).
-4. **미결(1.설계.md §미결) 중 "배포 대상"·"λ 밸런스"는 조기 게이트 판정에 영향 없음** — 릿지
-   프로브는 `M_student` 인코더 출력 자체를 재므로, 다운스트림에 뭘 배포할지(`P_s(a)` vs 예측기
-   출력)나 λ 튜닝과 무관하게 먼저 답이 나온다. 순서: **조기 게이트 → 미결 정리 → 본 학습.**
-5. **(신규, 이 문서에서 추가) 항 1 포함 여부** — §3 마지막 항목. 결정 안 되면 **항 1 제외 최소
-   버전**으로 조기 게이트 먼저 돌리는 쪽을 기본값으로 한다(적은 구현으로 빨리 죽이거나 살릴 수
-   있음). 항 1 포함 버전과 결과가 다르면 그때 항 1의 안전장치 효과를 별도로 잰다.
+4. **λ 밸런스 최종 값은 조기 게이트 판정에 영향 없음** — 릿지 프로브는 `M_student` 인코더 출력
+   자체를 재므로(λ1=0 고정 실행), 본 학습에서 λ1을 얼마로 줄지와 무관하게 먼저 답이 나온다.
+   순서: **조기 게이트(λ1=0) → 통과 시 λ 스윕(본 학습) → 최종 판정.**
+5. **항 1을 코드에서 아예 빼지 말 것** — λ1=0으로 끄더라도 배선(routing → `P_teacher(b)` 비교)은
+   구현해둔다. 게이트 통과 후 λ 스윕이 바로 이 경로를 켜는 것이라, 나중에 다시 짤 필요 없게.
 
 ---
 
@@ -101,23 +108,31 @@ Table I) = **0.52~0.70**. 이 밑이면 다음 단계(전체 이중목적 학습
 
 ## 6. 조기 게이트 실행 체크리스트 (TODO — 미구현)
 
-- [ ] 세션 1 체크포인트에서 P encoder 가중치 로드 → 동결 `P_teacher` 모듈 작성 (`TeacherPv15`
-      상속하지 않고 별도, guard 1)
+- [ ] 세션 1 체크포인트에서 P·M encoder 가중치 로드 → 동결 `P_teacher`/`M_teacher` 모듈 작성
+      (`TeacherPv15`/`TeacherMv15` 상속하지 않고 별도, guard 1 — EMA 아님)
 - [ ] `TwoStreamV15Model`에 v17 config 분기 추가 (`forecast_sufficient: bool` 플래그, v16의
       `comp_mae: bool` 패턴을 그대로 따름)
-- [ ] 항 2 loss 배선: `routing(P_s(a), M_s(a→b))` → 동결 `P_teacher(a+W)`와 비교 (거리 함수는
-      기존 `loss_pred`류 재사용 가능한지 확인 — 실현 ΔL을 안 주는 버전인지 검증 필수, §3)
+- [ ] 데이터 샘플러: pair → (a, b, a+W) triple로 확장. `a→b`는 [0.5, 1.0]초 범위 샘플, `a+W`는
+      a 기준 고정 1.5초 오프셋 (세션 1의 기존 pair 샘플링은 건드리지 않음 — 이 triple 샘플러는
+      v17 전용 신규 경로)
+- [ ] 항 1 loss 배선 (구현은 하되 λ1=0으로 실행): `routing(P_s(a), M_s(a→b))` → 동결
+      `P_teacher(b)`와 비교
+- [ ] 항 2 loss 배선: `routing(P_s(a), M_s(a→b))` → 동결 `P_teacher(a+W) − P_teacher(b)`(변위)와
+      비교 (거리 함수는 기존 `loss_pred`류 재사용 가능한지 확인 — 실현 ΔL을 안 주는 버전인지
+      검증 필수, §3)
   - stub 형태 예 (실제 구현은 dev 세션):
     ```python
     def forecast_sufficient_loss(
-        self, p_visible_a, m_completed_ab, p_teacher_target_bw,
+        self, p_visible_a, m_completed_ab, p_teacher_b, p_teacher_target_bw,
+        lambda_1: float = 0.0,  # 조기 게이트 = 0.0 고정, 본 학습에서 스윕
     ) -> torch.Tensor:
-        """항 2: routing(P_s(a), M_s(a→b)) → P_teacher(a+W). raw ΔL(b→a+W) 절대 주지 말 것
-        (guard, 1.설계.md '진짜 예측이다' 문단). 타깃은 §미결 3 결정 전까지 상태 고정."""
-        raise NotImplementedError("TODO: forecast-sufficient v17 항 2 loss — dev session")
+        """항 1: routing(P_s(a), M_s(a→b)) → P_teacher(b) (동결, EMA 아님).
+        항 2: 같은 routing → P_teacher(a+W) − P_teacher(b) (변위). raw ΔL(b→a+W)을
+        타깃에 절대 섞지 말 것 (guard, 1.설계.md '진짜 예측이다' 문단)."""
+        raise NotImplementedError("TODO: forecast-sufficient v17 항1+항2 loss — dev session")
     ```
-- [ ] 짧은 학습 실행(하루 예산 — 정확한 step/epoch 수는 dev 세션에서 기존 sanity-run 관행 참고해
-      결정, 이 문서에서 임의로 못 박지 않음)
+- [ ] 짧은 학습 실행(하루 예산, `lambda_1=0.0` 고정 — 정확한 step/epoch 수는 dev 세션에서 기존
+      sanity-run 관행 참고해 결정, 이 문서에서 임의로 못 박지 않음)
 - [ ] `M_student` 체크포인트 → SFA repo로 export
 - [ ] SFA `repr_score.py` 경로로 말단 변위 릿지 R² 측정 (§5, 화이트리스트 등록 없이 단발 실행)
 - [ ] `M_student` R² vs `M_teacher` R² vs SFA 기준선(0.52~0.70) 3자 비교 → 게이트 판정 기록
