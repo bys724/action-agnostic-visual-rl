@@ -4,6 +4,7 @@
 
 ## 핵심 문서 (업데이트 우선)
 
+0. **`docs/STATUS.md`** — 현재 상태 (아래 절에서 자동 로드) · **`docs/GLOSSARY.md`** — 압축 용어·코드명 풀이
 1. **`docs/RESEARCH_PLAN.md`** — 전체 연구 계획 및 현재 phase (마스터 문서)
 2. **`docs/paper1_input_prior_plan.md`** — Paper 1 (Input-Prior) 구 계획 — **🚚 2026-07-21 전용 repo `input-prior-mae`로 완전 분리·문서 동결** (ICTC 2026 재타깃, 정본 = 그 repo `docs/ictc26_plan.md`)
 3. **`docs/PROBING_GUIDE.md`** — Action probing 실험 가이드 + 결과
@@ -111,24 +112,10 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 
 새 데이터셋은 샘플 테스트 → 결정 기록(`docs/preprocessing/`) → 전체 추출 → 검증. 절차·기존 사례(EgoDex/DROID/Ego4D) → [docs/preprocessing/README.md](docs/preprocessing/README.md).
 
-## 현재 상태 (2026-07-21)
+## 현재 상태 (매 세션 자동 로드)
 
-> 2논문 분리. 상세 phase·이력은 마스터 문서로 위임 — 본 섹션은 스냅샷. 명명 정규 출처 = 위 "명명 · 2논문 구조".
-
-- **Paper 1 (ICTC)**: 🚚 **전용 repo `input-prior-mae`로 완전 분리 (2026-07-21)** — ICTC 2026 재타깃(마감 07-31)·sim-only·실로봇 제외. 결과(@dca7347)·eval 코드·도커·가이드·로그 이관 완료(CSV 재생성 byte-identical 검증), 이 repo 문서는 동결(`paper1_input_prior_plan.md` 배너). CortexBench 코드·`paper_artifacts/cortexbench/`는 공유 인프라로 여기도 보존(eval_protocols §5 — 향후 CoMP 행 추가 가능).
-- **Paper 2 (AAAI)** — ours 축 = **CoMP-MAE(v16)**, S/B 학습 완료·collapse 없음. 논문 spine = **3-claim**(① factorization ② dissociation ③ 도메인-robust 효율).
-  - **✅ STEP 0**: 🚨 slope(3a) **폐기**(regression-to-ceiling confound) → **3b 절대 효율만 생존** — ~32M CoMP-MAE-S(P_t⊕M)가 86M DINOv2/SigLIP 이기고 same-data VideoMAE 근접(`paper_artifacts/ood_efficiency/`).
-  - **✅ factorization Phase A**: aug + 위치 partial-out 두 경로 독립 수렴 → **directional 이중분리 확정**(상관).
-  - **✅ STEP 1 인과 (2026-07-08)**: 2런(V_P 스칼펠·plain) same-probe 판정 — **M-recon 존재 = M grounding의 인과**(plain에서 M motion 0.835→0.107) · V 소유는 인과 아님(스칼펠 M 생존) · **V_P는 P를 오염**(P_t identity 0.999→0.224) = **V_M 대칭 설계의 인과적 정당화**. 판정·caveat = [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.2.
-  - **🚨 P+M 배포 유해**(causal confusion, LIBERO P-only 68.7 vs P+M 2.0) → 정식 배포 = **P-only**.
-- **STEP 2 value-level headline control** ([factorization_crossover_plan.md](docs/factorization_crossover_plan.md) §4.3) 진행 중:
-  - **✅ (A) 완료 (2026-07-09)**: plain `P_t⊕M` OOD probing = 4벤치 전부 붕괴 수준(CALVIN 0.030/spatial 0.127/object 0.109/goal 0.059, attn — CoMP-S 0.487/0.814/0.851/0.751) → **게이트 PASS**, efficiency = CoMP mechanism의 산물(same 32.3M·same data). `step0_ood_efficiency/` plain 2행 추가.
-  - **✅ (B) 완료 (2026-07-10, 게이트 FAIL → 사전등록 스코핑 발동)**: CoMP-S vs plain rollout(3suite × seed012, 500ep/seed) = pooled Δ−0.9pt(Wilcoxon p=0.763, std 내 parity) — "signature 인과는 확정, control-level value 이득은 미입증" 스코핑으로 paper 반영 완료(paper `notes/aaai27_revision_guide.md` §5.1). `libero_rollout/summary.csv` 2행 + `per_task.csv`(통계 근거) 커밋 `60132b5`.
-- **✅ Full-data scaling 게이트 (2026-07-12)**: CoMP-B × part1-5 compute-matched 7ep → same-probe 판정 = **완화 확정(데이터 기아, 구조 무죄)** — B-part1 deployed-P 발산(−0.49)이 B-full **+0.375**(S 0.329 상회)로 소멸, M 단조 지속(0.352→**0.401**). OOD 효율은 S 대비 +0.03~0.08에 그침(3.5×params+6.8×data) = **3b 효율 headline 강화**, same-data VideoMAE는 여전히 전 벤치 하회("small but close" 유지). efficiency 표 B-full 2행 추가. 50ep 연장 불채택. 판정·수치 = [docs/fulldata_scaling_plan.md](docs/fulldata_scaling_plan.md) §3.
-- **🔴 AAAI-27 Code & Data Supplement 준비 (마감 7/31 AoE)**: reproducibility checklist 4.2–4.5 "yes"가 전제하는 익명 코드+ckpt 실물 — dev 실행 가이드 = [docs/code_release_prep.md](docs/code_release_prep.md) (계약 원문 = paper repo `notes/code_release_prep.md`). 작업 = 로컬 워크스테이션(정리·익명화·재현검증) 중심.
-
-상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).
-
-## STATUS (매 세션 자동 로드)
+현재 상태의 정본 = `docs/STATUS.md` (본문 = 최신만 · 결과 보고 턴과 세션 종료 시 갱신). 2026-07-21 스냅샷은 git 이력(`git show 8772c78:CLAUDE.md`)에.
 
 @docs/STATUS.md
+
+상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).
