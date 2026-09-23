@@ -128,3 +128,7 @@ Python 코드(`scripts/pretrain.py`, `src/` 등)는 환경 무관, bash launcher
 - **🔴 AAAI-27 Code & Data Supplement 준비 (마감 7/31 AoE)**: reproducibility checklist 4.2–4.5 "yes"가 전제하는 익명 코드+ckpt 실물 — dev 실행 가이드 = [docs/code_release_prep.md](docs/code_release_prep.md) (계약 원문 = paper repo `notes/code_release_prep.md`). 작업 = 로컬 워크스테이션(정리·익명화·재현검증) 중심.
 
 상세: [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md)(마스터) · [docs/comp_mae_plan.md](docs/comp_mae_plan.md) · [docs/factorization_crossover_plan.md](docs/factorization_crossover_plan.md) · [docs/eval_protocols.md](docs/eval_protocols.md) · [docs/cluster_sessions.md](docs/cluster_sessions.md).
+
+## STATUS (매 세션 자동 로드)
+
+@docs/STATUS.md

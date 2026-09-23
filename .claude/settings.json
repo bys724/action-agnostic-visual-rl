@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/bys72/vault_YS/Projects/Action-Agnostic Paper/**)",
+      "Read(//c/Users/bys72/vault_YS/Concepts/Two-Stream Architecture/**)"
+    ]
+  },
+  "outputStyle": "ys-research:research-dev",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "statusMessage": "보고 형식 검사",
+            "prompt": "You are a gate between a research assistant and its user. Hook input: $ARGUMENTS. Read `last_assistant_message`.\n\nFirst decide: does the message report experiment or measurement results, cluster job outcomes, or ask the user to make a decision? If NOT (e.g. it only edits code, answers a question, or narrates setup work), return {\"ok\": true} immediately.\n\nIf it does, check four things:\n1. It opens with a state block (where things stand now / what changed / what is open) before listing events.\n2. Every empirical claim carries a confidence tag [확정], [잠정] or [미검증] and names what is missing (control, holdout, n, seeds). No emphasis (★, bold conclusion, '직접적 증거') without a tag.\n3. Code names, instruction numbers, arm labels and job IDs are preceded by a plain description of what was changed, compared and measured.\n4. Any decision request contains exactly one recommendation with a reason and a condition under which it would be wrong — not a bare menu of options.\n\nIf all four hold, return {\"ok\": true}. Otherwise return {\"ok\": false, \"reason\": \"<in Korean: one line per failed item, saying what to add>\"}. Judge only these four items; do not fail the message for length or tone."
+          }
+        ]
+      }
+    ]
+  }
+}
