@@ -22,3 +22,10 @@
 
 - **compute-matched** — 데이터가 커지면 epoch을 줄여 총 샘플 수를 맞춘 비교 (B × part1-5 = 7ep)
 - **GPFS 병목** — full-data 학습 시 랜덤 액세스 I/O로 throughput 2.3× 저하. 후속 full-data 잡 전 필수 점검
+
+## Refinement-floor (정의 정본 = `refinement_floor_plan.md` 용어 절)
+
+- **C0 / C1** — C0 = 제출본 CoMP-S(증강 없음) · C1 = C0 + 프레임별 독립 밝기 증강(`--bright-aug`), 이후 연구의 기준 모델
+- **F1 / `raw-dl`** — 학습 없는 바닥선: CoMP M 입력과 같은 raw ΔL을 16×16 패치로 자른 것을 그대로 토큰으로 (196×256). probe 인코더 이름 `raw-dl`
+- **M 단독 / `m_only`** — probe에 M 스트림 토큰만 넣는 판독 (P_t⊕M과 구분)
+- **ⓘ / ⓢ 시험** — probe 학습과 시험이 같은 분포(참조용) / probe 학습에 없는 조건(판정용: 교란·suite 간 무재학습 전이)
