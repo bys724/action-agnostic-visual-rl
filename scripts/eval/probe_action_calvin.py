@@ -46,6 +46,8 @@ from scripts.eval.probe_action_libero import (
     compute_metrics,
     encode_pairs_parvo,
     encode_pairs_raw_dl,
+    build_parvo_random_encoder,
+    RAW_DL_VARIANTS,
     encode_pairs_v11,
     encode_pairs_via_adapter,
     encode_pairs_videomae_vla,
@@ -89,6 +91,11 @@ def main():
     parser.add_argument("--probe-lr", type=float, default=1e-3)
     parser.add_argument("--encode-batch", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--raw-dl-variant", default="raw", choices=list(RAW_DL_VARIANTS),
+                        help="raw-dl 팔: raw(F1) / proj(F1′ 384 투영) / aug(F1-aug, probe 학습 split만 밝기 증강) / "
+                             "norm(F2 전역평균 제거+패치 표준화). refinement_floor_plan §5.2")
+    parser.add_argument("--random-init-seed", type=int, default=None,
+                        help="parvo-random(F3) 전용 init seed — 필수")
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
                              "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
@@ -152,6 +159,7 @@ def main():
 
     # ── Build encoder ────────────────────────────────────────────────────
     n_streams = 1
+    phase = {"train": True}  # encode_fn이 현재 split을 알게 함 (raw-dl aug 전용)
     if args.encoder == "two-stream-v11":
         if args.checkpoint is None:
             raise ValueError("v11 encoder requires --checkpoint")
@@ -172,6 +180,17 @@ def main():
             return encode_pairs_parvo(model, prev, curr, device,
                                       mode=args.parvo_mode, readout=args.readout,
                                       batch=args.encode_batch)
+    elif args.encoder == "parvo-random":
+        assert args.checkpoint is None and args.random_init_seed is not None, \
+            "parvo-random은 --random-init-seed 필수, --checkpoint 불가"
+        model = build_parvo_random_encoder(args.random_init_seed, device)
+        img_size = 224
+        n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo(model, prev, curr, device,
+                                      mode=args.parvo_mode, readout=args.readout,
+                                      batch=args.encode_batch)
     elif args.encoder == "raw-dl":
         # F1: 인코더 = 항등. ckpt 경로가 오면 설정 실수이므로 거부 (우연한 팔 혼동 차단).
         assert args.checkpoint is None, "raw-dl은 checkpoint를 받지 않는다"
@@ -179,7 +198,8 @@ def main():
 
         def encode_fn(prev, curr):
             return encode_pairs_raw_dl(prev, curr, device, readout=args.readout,
-                                       batch=args.encode_batch)
+                                       batch=args.encode_batch, variant=args.raw_dl_variant,
+                                       augment=phase["train"])
     elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
         model = build_videomae_token_encoder(args.checkpoint, device)
         img_size = 224
@@ -256,8 +276,10 @@ def main():
             )
 
         print("  encoding train ...")
+        phase["train"] = True    # F1-aug: probe 학습 split만 증강
         emb_tr, tgt_tr, _ = collect_embed(train_segs, "train", train_dir)
         print("  encoding eval ...")
+        phase["train"] = False
         emb_ev, tgt_ev, _ = collect_embed(eval_segs, "eval", eval_dir)
         print(f"  pairs: train={len(tgt_tr)} eval={len(tgt_ev)}")
 
@@ -286,7 +308,9 @@ def main():
                 "gap": gap,
                 "gap_seconds": gap / 30.0,
                 "readout": args.readout,
-                "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
+                "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
+                "raw_dl_variant": args.raw_dl_variant if args.encoder == "raw-dl" else None,
+                "random_init_seed": args.random_init_seed,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
                 "n_train_episodes": len(train_segs),
                 "n_eval_episodes": len(eval_segs),

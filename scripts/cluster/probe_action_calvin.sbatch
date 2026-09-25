@@ -84,6 +84,8 @@ if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
 if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi
 if [[ -n "$CROSS_FOLDER" ]]; then ARGS+=(--cross-folder); fi
+if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
+if [[ "$ENCODER" == "raw-dl" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
 if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi  # 데이터 고정·probe만 재시드
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"

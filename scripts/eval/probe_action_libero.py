@@ -49,6 +49,7 @@ SUPPORTED_ENCODERS = (
     "siglip",
     "vc1",
     "raw-dl",          # refinement_floor_plan §5.2 F1: 학습 없는 raw ΔL 패치 (인코더 = 항등)
+    "parvo-random",    # refinement_floor_plan §5.2 F3: CoMP-S 구조, 미학습 (명시 init seed 필수)
 )
 DEFAULT_GAPS = [1, 13, 20, 40]
 ACTION_DIM = 7  # 3 pos + 3 rotvec + 1 gripper
@@ -247,26 +248,76 @@ def encode_pairs_parvo(
     return torch.cat(out, dim=0)
 
 
+RAW_DL_VARIANTS = ("raw", "proj", "aug", "norm")
+RAW_DL_PROJ_SEED = 0  # F1′ 고정 랜덤 투영 seed (모든 run 공통 = 같은 투영)
+
+
 @torch.no_grad()
 def encode_pairs_raw_dl(
     frames_prev: torch.Tensor, frames_curr: torch.Tensor, device: torch.device,
     readout: str = "mean", batch: int = 64, patch_size: int = 16,
+    variant: str = "raw", augment: bool = False, embed_dim: int = 384,
 ) -> torch.Tensor:
-    """F1 raw ΔL 바닥선 (refinement_floor_plan §5.2): CoMP M 입력과 동일한 ΔL(BT.709 휘도 차,
-    정규화 없음)을 16×16 패치로 자른 raw 픽셀 = 토큰 (n, 196, 256). 학습 파라미터 0.
-    readout mean → (n, 256) / attentive → (n, 196, 256) fp16 — parvo 단일 stream 규약과 동일.
+    """학습 없는 ΔL 바닥선 팔 (refinement_floor_plan §5.2). 학습 파라미터 0.
+
+    ΔL = CoMP M 입력과 동일(BT.709 휘도 차, 정규화 없음) → 16×16 패치 raw 픽셀 = 토큰 (n, 196, 256).
+    variant:
+      raw  = F1  그대로
+      proj = F1′ 고정 가우시안 투영 256→embed_dim(384, CoMP M과 같은 차원), N(0, 1/256)
+      aug  = F1-aug  augment=True(probe **학습** split)일 때만 프레임별 독립 밝기 증강 후 ΔL 재계산
+             (C1 사전학습 증강과 동일 함수·동일 파라미터). eval split은 깨끗한 ΔL
+      norm = F2  이미지 전역 평균 제거 → 패치별 (x−μ)/sqrt(σ²+1e-6)
+    readout mean → (n, D) / attentive → (n, 196, D) fp16 — parvo 단일 stream 규약과 동일.
     """
+    assert variant in RAW_DL_VARIANTS, variant
     from src.models.common.preprocessing import TwoStreamPreprocessing
     prep = TwoStreamPreprocessing(use_sobel=False).to(device)
+    proj = None
+    if variant == "proj":
+        g = torch.Generator().manual_seed(RAW_DL_PROJ_SEED)
+        proj = (torch.randn(patch_size * patch_size, embed_dim, generator=g)
+                / (patch_size * patch_size) ** 0.5).to(device)
+    aug = None
+    if variant == "aug" and augment:
+        # C1 학습 증강(two_stream_v15._photometric_aug)을 그대로 호출 — 파라미터는 학습 기본값
+        from types import SimpleNamespace
+        from src.models.two_stream_v15 import TwoStreamV15Model
+        _cfg = SimpleNamespace(bright_gain_range=(0.8, 1.2), bright_ramp_prob=0.5, bright_ramp_amp=0.15)
+        aug = lambda x: TwoStreamV15Model._photometric_aug(_cfg, x)[0]
     out = []
     for s in range(0, frames_prev.shape[0], batch):
         p = frames_prev[s:s + batch].to(device, non_blocking=True)
         c = frames_curr[s:s + batch].to(device, non_blocking=True)
+        if aug is not None:
+            p, c = aug(p), aug(c)                                           # 프레임별 독립
         dl = prep.compute_m_channel(p, c)                                   # (n, 1, H, W)
+        if variant == "norm":
+            dl = dl - dl.mean(dim=(1, 2, 3), keepdim=True)
         tok = F.unfold(dl, kernel_size=patch_size, stride=patch_size).transpose(1, 2)  # (n, N, ps²)
+        if variant == "norm":
+            mu, var = tok.mean(dim=-1, keepdim=True), tok.var(dim=-1, keepdim=True)
+            tok = (tok - mu) / (var + 1e-6) ** 0.5
+        if proj is not None:
+            tok = tok @ proj                                                # (n, N, embed_dim)
         tok = tok.mean(dim=1) if readout == "mean" else tok.half()
         out.append(tok.cpu())
     return torch.cat(out, dim=0)
+
+
+def build_parvo_random_encoder(init_seed: int, device: torch.device,
+                               embed_dim: int = 384, m_depth: int = 6):
+    """F3 random-init (refinement_floor_plan §5.2): C0/C1과 같은 CoMP-S 구조, 가중치 미학습.
+    ckpt 경로를 받지 않는다 — 로드 실패로 우연히 random이 되는 경로와 분리 (plan §2.2)."""
+    from src.models.two_stream_v15 import TwoStreamV15Model
+    torch.manual_seed(init_seed)
+    model = TwoStreamV15Model(
+        embed_dim=embed_dim, num_heads=embed_dim // 64, m_depth=m_depth, comp_mae=True,
+        pair_mode=True, use_sobel=False, masked_anchor=True,
+    )
+    for p in model.parameters():
+        p.requires_grad = False
+    model.to(device).eval()
+    return model
 
 
 # ─────────────────────────────────────────────────────────────────────────
