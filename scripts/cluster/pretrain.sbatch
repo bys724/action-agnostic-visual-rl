@@ -293,6 +293,11 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     # §4.1 선결: 0 = joint rotation만 (교차회전 ΔL 아티팩트 방지). 미설정 시 기존 default 0.1
     [ -n "${V15_INDEP_ROT_PROB:-}" ] && MODEL_ARGS+=(--v15-independent-rotation-prob "$V15_INDEP_ROT_PROB")
     [ -n "${V15_LAMBDA_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-recon "$V15_LAMBDA_RECON")  # §9 복구 가중치
+    # refinement_floor_plan §3: 프레임 쌍 독립 밝기 증강 (C1 base, comp_mae 전용)
+    [ "${BRIGHT_AUG:-0}" = "1" ] && MODEL_ARGS+=(--bright-aug)
+    [ -n "${BRIGHT_GAIN_RANGE:-}" ] && MODEL_ARGS+=(--bright-gain-range $BRIGHT_GAIN_RANGE)  # "0.8 1.2"
+    [ -n "${BRIGHT_RAMP_PROB:-}" ] && MODEL_ARGS+=(--bright-ramp-prob "$BRIGHT_RAMP_PROB")
+    [ -n "${BRIGHT_RAMP_AMP:-}" ] && MODEL_ARGS+=(--bright-ramp-amp "$BRIGHT_RAMP_AMP")
     [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
     [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6
     [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)

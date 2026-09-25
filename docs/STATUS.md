@@ -1,7 +1,7 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-09-23 — Vault 세션에서 `docs/forecast_sufficient_plan.md`(09-15/16)·`CLAUDE.md` 현재 상태(07-21)·Vault 메모리(08-30·09-20 확인분)를 근거로 쓴 **초안**. dev 세션이 첫 실행 때 검증·수정할 것. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-09-25 dev 세션 — refinement-floor 1단계(C1 구현·sanity·본학습 제출) 반영. 이전: 2026-09-23 Vault 세션에서 `docs/forecast_sufficient_plan.md`(09-15/16)·`CLAUDE.md` 현재 상태(07-21)·Vault 메모리(08-30·09-20 확인분)를 근거로 쓴 **초안**. dev 세션이 첫 실행 때 검증·수정할 것. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
@@ -23,14 +23,15 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 - **사용자가 정할 것 (먼저)**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.
-- **진행 중 검증**: 없음. 실행 전 필수 점검 = **full-data 데이터 로딩 2.3× 병목(GPFS 랜덤 액세스) 미해결** — 후속 full-data 잡을 내기 전에 먼저 봐야 함.
+- **진행 중 검증**: refinement-floor 1단계 — 밝기 증강 구현(`--bright-aug`, 기본 off) [확정] 증강 off 시 수정 전 코드와 전 loss 항 소수 8자리 일치(C0 ckpt, CPU smoke) · sanity 1ep [확정 · 게이트 PASS] L_mB C0 동 step 대비 +20%·L_mA 0 붕괴 없음·증강 오프셋 0.051 vs motion |ΔL| 0.080 같은 자릿수 → C1 본학습 대기 중. 다음 = plan §7 2단계(학습 없는 바닥선 probe 배선: raw ΔL·random-init·DINOv2+ΔL 등 + C0 선측정). part1 학습이라 아래 full-data I/O 병목과 무관.
+- 실행 전 필수 점검(full-data 잡 한정) = **full-data 데이터 로딩 2.3× 병목(GPFS 랜덤 액세스) 미해결** — 후속 full-data 잡을 내기 전에 먼저 봐야 함.
 - **형제 프로젝트 Cross-View**(09-18 개시, 제목 잠정): head/wrist 뷰 충분성 + action 조건화. DROID 3뷰 페어링 로더 신규 필요. 구현 0.
 
 ## 돌아가는 잡
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| (없음 — 2026-07-12 이후 정지. 누적 ~465 GPU·h) | | | |
+| 40275371 | C1 새 base = 제출본 CoMP-S + 프레임별 독립 밝기 증강, 50ep 본학습 (AIP_long 2×4 H100, ~110 GPU·h) | PD — 예상 시작 09-26 02:03 | `tail /proj/external_group/mrg/logs/pretrain_refine_comp_s_bright_40275371.out` 의 `[bright]`·`[v14]` 줄 / ckpt `two_stream_v15b_refine_comp_s_bright/` |
 
 ## 이 문서의 용어
 

@@ -337,6 +337,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 # CoMP-MAE(v16): M-recon Case A/B
                 buf['loss_m_caseA'] = buf.get('loss_m_caseA', 0.0) + loss_m_caseA.item()
                 buf['loss_m_caseB'] = buf.get('loss_m_caseB', 0.0) + loss_m_caseB.item()
+                # refinement_floor_plan §3.2: 밝기 증강 샘플 통계 + DC 오프셋 (bright_aug 켤 때만 키 존재)
+                for _k, _v in out.items():
+                    if _k.startswith('bright_'):
+                        buf[_k] = buf.get(_k, 0.0) + _v.mean().item()
                 buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
                 buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
                 buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
@@ -1392,6 +1396,11 @@ def train(
                         f"cos(pred,tgt)={v14buf['cos_pred_target']/n:.3f} | "
                         f"||center||={v14buf['norm_center']/n:.2f}"
                     )
+                    _bright = {k: v / n for k, v in v14buf.items() if k.startswith('bright_')}
+                    if _bright:
+                        for k, v in _bright.items():
+                            writer.add_scalar(f'bright/{k[len("bright_"):]}', v, epoch)
+                        log("  [bright] " + " ".join(f"{k[len('bright_'):]}={v:.4f}" for k, v in _bright.items()))
                 train_epoch._v14_metrics_buf = {}
             writer.flush()
 

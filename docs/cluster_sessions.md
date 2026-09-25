@@ -89,6 +89,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-09-25 Refinement-floor C1 — 밝기 증강 CoMP-S ([refinement_floor_plan.md](refinement_floor_plan.md))
+
+**목적**: 새 base C1 = 제출본 CoMP-S(36177296) + 프레임 쌍 독립 밝기 증강(`BRIGHT_AUG=1`). CPU smoke PASS(증강 off = 수정 전 코드와 전 loss 항 소수 8자리 일치, C0 latest.pt strict load). AIP 20/20 점유(+g003 타 2노드 잡 예약) → sanity는 mig-3g.40gb.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 40275368 | mig-3g.40gb 1×1 | 00:40:00 | **sanity 1ep** (plan §3.4-2) — C0 submit line(part1·384/6·m6·no-Sobel·pair·comp·floor0.02·LR2.8e-4) + `BRIGHT_AUG=1`, MAX_VIDEOS=1000·**batch64**(40GB slice 선례). SUFFIX=sanity_refine_bright. 점검: L_mB 자리·L_mA 양수·`[bright] dc_offset` vs `motion_absdl` 자릿수 | ✅ COMPLETED 6m17s (~0.05 GPU·h, MIG 1/2). **게이트 PASS**: L_mB step500/1000 = 0.044/0.040 (C0 36177296 동 step 0.038/0.033 — 깨끗한 타깃 복원이라 +20%, 같은 자리) · L_mA 0.0008→0.0003 (0 붕괴 없음) · `[bright]` dc_offset **0.051** vs motion_absdl **0.080** (같은 자릿수, plan 기대 0.05–0.1) · gain std 0.115(=U[0.8,1.2] 이론 0.1155)·ramp_frac 0.499. params 56,109,568 = C0 일치. `--bright-aug` Model args 전달 확인 |
+| 40275371 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 C1 본학습** — C0 submit line 그대로(part1·50ep·batch128/GPU eff1024·LR2.8e-4·384/6·m6·no-Sobel·pair·comp·floor0.02, caseA1.0·indep_rot0.1·qk off 기본값) + `BRIGHT_AUG=1`. SUFFIX=refine_comp_s_bright. 예상 ~14h wall ≈ 110 GPU·h (C0 실측 13h42m). `--test-only` 예상 시작 09-26 02:03 (AIP 전 노드 점유) | ⏳ PD 제출 09-25 13:50 |
+
 ### 2026-07-10 Full-data scaling — CoMP-B × part1-5 compute-matched ([fulldata_scaling_plan.md](fulldata_scaling_plan.md))
 
 **목적**: B deployed-P 병리의 원인 판정(데이터 기아 vs 구조적 병리). 기준런 `36186569`(part1 50ep)과 config 완전 동일, 변경 = DATA(part1-5)·EPOCHS만.
