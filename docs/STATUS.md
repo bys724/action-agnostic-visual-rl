@@ -5,7 +5,7 @@
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-27에 제출 완료**(full 7/28, arXiv 7/24)이고 rebuttal은 11월 하순 예상이라 이 저장소의 논문 작업은 대기 상태다. 지금의 활성 축은 후속 **Forecast-Sufficient Representation**(v17) — 동결 교사 + 학생 구조로 "예측에 충분한 표현"을 목적함수로 만드는 연구인데, 조기 게이트 구현 계획(09-15/16)만 있고 **구현은 0**이며, 게이트 스펙의 미결 5건이 사용자 판단을 기다린다. 클러스터 잡은 7/12 이후 돌지 않았다.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-27 Reject (2026-09-25)**. 리뷰 수렴 지적 = raw ΔL 바닥선 부재·거울 ablation 미학습·ΔL≠물리 motion → 후속 = `refinement_floor_plan.md`. (아래 문단은 제출 시점 서술) 이 저장소의 논문 작업은 대기 상태다. 지금의 활성 축은 후속 **Forecast-Sufficient Representation**(v17) — 동결 교사 + 학생 구조로 "예측에 충분한 표현"을 목적함수로 만드는 연구인데, 조기 게이트 구현 계획(09-15/16)만 있고 **구현은 0**이며, 게이트 스펙의 미결 5건이 사용자 판단을 기다린다. 클러스터 잡은 7/12 이후 돌지 않았다.
 
 ## 확정된 것
 
@@ -18,6 +18,8 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 | qk-norm 버그 재측정 후 EgoDex 기준② FAIL→PASS, OOD 확대 4/4→2/4 반전 (07-20) | [잠정] | probe 로더 qk-norm silent drop 수정 후 15잡 재측정: EgoDex P 0.328 / M 0.333 | **서랍 재판정 여부 미결** (attach-only라 spine 무피해) |
 
 ## 열린 것 · 다음 결정
+
+- **🔴 최우선 (2026-09-25 Vault 세션 지시)**: AAAI-27 **Reject**(리뷰어 2명 5/3). 후속 실험 계획 = [`docs/refinement_floor_plan.md`](refinement_floor_plan.md) — **자족적 문서(09-25 재작성본). §1 논리 → §2 행동 규칙(변경 금지·허용 범위·멈추고 물을 것) → §7 순서로 집행.** 새 base C1(밝기 증강 CoMP-S) 학습 → 바닥선 팔·시험(§5) → C2·C3·C4(§4). 판정 기준 §6 사전 등록(사후 수정 금지). 문서와 충돌하는 판단이 서면 코드를 고치지 말고 여기 "열린 것"에 적고 멈춘다.
 
 - **사용자가 정할 것 (먼저)**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.
