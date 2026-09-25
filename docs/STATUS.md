@@ -1,7 +1,7 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-09-25 dev 세션 — refinement-floor 1단계(C1 구현·sanity·본학습 제출) 반영. 이전: 2026-09-23 Vault 세션에서 `docs/forecast_sufficient_plan.md`(09-15/16)·`CLAUDE.md` 현재 상태(07-21)·Vault 메모리(08-30·09-20 확인분)를 근거로 쓴 **초안**. dev 세션이 첫 실행 때 검증·수정할 것. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-09-25 dev 세션 — refinement-floor 1–3단계(C1 학습 중·바닥선 표·교란 시험 파일럿) 반영. 이전: 2026-09-23 Vault 세션에서 `docs/forecast_sufficient_plan.md`(09-15/16)·`CLAUDE.md` 현재 상태(07-21)·Vault 메모리(08-30·09-20 확인분)를 근거로 쓴 **초안**. dev 세션이 첫 실행 때 검증·수정할 것. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
@@ -32,6 +32,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
+| 40277161~163 | 밝기 교란 강건성 파일럿 (판정축): C0 M·raw ΔL·정규화 ΔL, CALVIN, 교란 4종 13단계 | 09-25 19:1x | `paper_artifacts/calvin_action_probing/*refine_pert_*/gap30/summary.json` 의 `perturb` |
 | 40275371 | C1 새 base = 제출본 CoMP-S + 프레임별 독립 밝기 증강, 50ep 본학습 (AIP_long 2×4 H100, ~110 GPU·h) | RUNNING 09-25 16:33~ · 완료 예상 09-26 ~14:00 (C0 대비 34% 느림, 원인 미확인) | `tail /proj/external_group/mrg/logs/pretrain_refine_comp_s_bright_40275371.out` 의 `[bright]`·`[v14]` 줄 / ckpt `two_stream_v15b_refine_comp_s_bright/` |
 
 ## 이 문서의 용어

@@ -47,6 +47,9 @@ from scripts.eval.probe_action_libero import (
     encode_pairs_parvo,
     encode_pairs_raw_dl,
     build_parvo_random_encoder,
+    eval_probe,
+    perturb_pair,
+    PERTURB_KINDS,
     RAW_DL_VARIANTS,
     encode_pairs_v11,
     encode_pairs_via_adapter,
@@ -96,6 +99,9 @@ def main():
                              "norm(F2 전역평균 제거+패치 표준화). refinement_floor_plan §5.2")
     parser.add_argument("--random-init-seed", type=int, default=None,
                         help="parvo-random(F3) 전용 init seed — 필수")
+    parser.add_argument("--eval-perturb-list", nargs="*", default=None,
+                        help="nuisance 강건성 (plan §5.3-e): 'kind:l1,l2,..' 목록. 예) gain:0.9,1.1 shadow:0.2,0.4 "
+                             "noise:0.01. 깨끗한 train으로 probe 1회 fit(best epoch 고정) → eval 프레임 교란 후 재인코딩·평가")
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
                              "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
@@ -248,7 +254,7 @@ def main():
         print(f"\n=== gap={gap} ({seconds:.2f}s @ raw 30Hz) ===")
         t0 = time.time()
 
-        def collect_embed(seg_list, label, base_dir):
+        def collect_embed(seg_list, label, base_dir, perturb=None):
             embed_chunks, tgt_chunks, ep_ids = [], [], []
             for ei, (s, e, task) in enumerate(seg_list):
                 frames, robot_obs, actions = load_segment_frames(
@@ -263,6 +269,8 @@ def main():
                 ])
                 prev = preprocess_frames(frames[:T - gap], img_size)
                 curr = preprocess_frames(frames[gap:], img_size)
+                if perturb is not None:   # (kind, level, generator) — 프레임 교란 후 ΔL은 인코더가 재계산
+                    prev, curr = perturb_pair(prev, curr, *perturb)
                 emb = encode_fn(prev, curr)  # (T-gap, D)
                 embed_chunks.append(emb)
                 tgt_chunks.append(tgts)
@@ -290,8 +298,25 @@ def main():
                            epochs=args.probe_epochs, batch_size=args.probe_batch,
                            lr=args.probe_lr, device=str(device),
                            readout=args.readout, n_streams=n_streams,
-                           weight_decay=args.probe_weight_decay)
+                           weight_decay=args.probe_weight_decay,
+                           return_probe=bool(args.eval_perturb_list))
         m = best["metrics"]
+        perturb_results = {}
+        if args.eval_perturb_list:
+            for ki, spec in enumerate(args.eval_perturb_list):
+                kind, levels = spec.split(":")
+                assert kind in PERTURB_KINDS, kind
+                perturb_results[kind] = {}
+                for li, lv in enumerate(float(x) for x in levels.split(",")):
+                    # 교란 난수 = (kind, level) 고정 seed → 모든 팔 동일 교란
+                    gen = torch.Generator().manual_seed(10_000 + 100 * PERTURB_KINDS.index(kind) + li)
+                    emb_p, tgt_p, _ = collect_embed(eval_segs, f"eval/{kind}={lv}", eval_dir,
+                                                    perturb=(kind, lv, gen))
+                    mp = eval_probe(best["probe"], emb_p, tgt_p, device, args.probe_batch)
+                    perturb_results[kind][str(lv)] = mp
+                    print(f"    perturb {kind}={lv}: pos R² = {np.mean(mp['r2_per_dim'][:3]):+.4f} "
+                          f"(clean {np.mean(m['r2_per_dim'][:3]):+.4f})")
+                    del emb_p
         elapsed = time.time() - t0
         print(f"  R² agg = {m['r2_aggregate']:+.4f}  per-dim = " +
               " ".join(f"{r:+.3f}" for r in m["r2_per_dim"]) +
@@ -318,6 +343,7 @@ def main():
                 "n_eval_pairs": int(len(tgt_ev)),
                 "best_epoch": best["epoch"],
                 "probe_seed": args.probe_seed,
+                "perturb": perturb_results or None,
                 **m,
             }, f, indent=2)
 

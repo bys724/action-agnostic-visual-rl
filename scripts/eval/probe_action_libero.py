@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import sys
 import time
@@ -304,6 +305,53 @@ def encode_pairs_raw_dl(
     return torch.cat(out, dim=0)
 
 
+PERTURB_KINDS = ("gain", "ramp", "shadow", "noise")
+SHADOW_AXIS_RANGE = (0.15, 0.35)   # 타원 반축 (이미지 한 변 대비 비율) — plan 미기재, 이 구현의 선택
+SHADOW_SOFTNESS = 0.1              # 경계 sigmoid 폭 (반경 단위)
+
+
+@torch.no_grad()
+def perturb_pair(prev: torch.Tensor, curr: torch.Tensor, kind: str, level: float,
+                 gen: torch.Generator) -> tuple:
+    """nuisance 교란 (refinement_floor_plan §5.3-e). 프레임 [0,1] 공간에서 교란 → ΔL은 인코더가 재계산.
+
+    gain/ramp/shadow = t+k 프레임(curr)만 · noise = 양 프레임 독립. 결과 clamp [0,1].
+    gen: 호출 순서만 같으면 모든 팔에서 같은 교란 (방향·타원 위치·노이즈 샘플 동일).
+    """
+    N, _, H, W = curr.shape
+    if kind == "gain":
+        return prev, (curr * level).clamp(0, 1)
+    if kind == "noise":
+        return ((prev + level * torch.randn(prev.shape, generator=gen)).clamp(0, 1),
+                (curr + level * torch.randn(curr.shape, generator=gen)).clamp(0, 1))
+    v = torch.linspace(-1.0, 1.0, H).view(1, H, 1)
+    u = torch.linspace(-1.0, 1.0, W).view(1, 1, W)
+    if kind == "ramp":   # 학습 증강과 같은 형태, 진폭 = level 고정, 방향 랜덤
+        th = torch.rand(N, generator=gen) * (2 * math.pi)
+        c, s = th.cos().view(N, 1, 1), th.sin().view(N, 1, 1)
+        field = 1.0 + level * (u * c + v * s) / (c.abs() + s.abs())
+    elif kind == "shadow":   # 임의 위치·크기·회전 타원 내부 ×(1−b), soft 경계
+        cx, cy = [(torch.rand(N, generator=gen) * 1.6 - 0.8).view(N, 1, 1) for _ in range(2)]
+        lo, hi = SHADOW_AXIS_RANGE
+        ax, ay = [(lo + (hi - lo) * torch.rand(N, generator=gen)).mul(2).view(N, 1, 1) for _ in range(2)]
+        th = (torch.rand(N, generator=gen) * math.pi).view(N, 1, 1)
+        du, dv = u - cx, v - cy
+        pu, pv = du * th.cos() + dv * th.sin(), -du * th.sin() + dv * th.cos()
+        r = ((pu / ax) ** 2 + (pv / ay) ** 2).sqrt()
+        field = 1.0 - level * torch.sigmoid((1.0 - r) / SHADOW_SOFTNESS)
+    else:
+        raise ValueError(kind)
+    return prev, (curr * field.unsqueeze(1)).clamp(0, 1)
+
+
+@torch.no_grad()
+def eval_probe(probe, emb, tgt, device, batch_size: int = 256) -> dict:
+    """고정 probe로 (교란된) eval 임베딩 평가 — compute_metrics 동일 지표."""
+    probe.eval()
+    preds = [probe(emb[i:i + batch_size].to(device).float()).cpu() for i in range(0, len(emb), batch_size)]
+    return compute_metrics(torch.cat(preds).numpy(), tgt.numpy())
+
+
 def build_parvo_random_encoder(init_seed: int, device: torch.device,
                                embed_dim: int = 384, m_depth: int = 6):
     """F3 random-init (refinement_floor_plan §5.2): C0/C1과 같은 CoMP-S 구조, 가중치 미학습.
@@ -460,7 +508,7 @@ def train_probe(
     device: str = "cuda",
     readout: str = "mean", n_streams: int = 1, weight_decay: float = 0.0,
     task: str = "regression", out_dim: int = ACTION_DIM,
-    extra_train=None, extra_eval=None,
+    extra_train=None, extra_eval=None, return_probe: bool = False,
 ):
     """readout="mean": LinearProbe([N, D]) / readout="attentive": AttentivePoolProbe([N, S*n_patch, D]).
 
@@ -516,6 +564,11 @@ def train_probe(
             m = compute_metrics(pred.numpy(), eval_tgt.numpy())
             if m["r2_aggregate"] > best["r2"]:
                 best = {"r2": m["r2_aggregate"], "epoch": ep + 1, "metrics": m}
+                if return_probe:  # best epoch 가중치 보존 (교란 시험용 고정 probe)
+                    best_state = {k: v.detach().clone() for k, v in probe.state_dict().items()}
+    if return_probe:
+        probe.load_state_dict(best_state)
+        best["probe"] = probe
     return best
 
 
