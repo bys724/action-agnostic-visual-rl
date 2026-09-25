@@ -1,0 +1,12 @@
+# refinement_floor_plan §7 step 2 — CALVIN cross-folder (train=training/ 200 seg, eval=validation/ 1087 seg; pairs 6114/32183), gap30
+# probe = AttentivePoolProbe (1 query + linear), 20ep, lr1e-3, batch256; probe seeds {42,1,2} (data fixed; seed42 = no --probe-seed for F1/C0 rows, explicit for others); V100
+# test type (i) same-distribution reference (plan §5.1) — NOT a verdict axis. M-alone column = plan primary. F4 DINOv2+dL pending (input convention undecided)
+# C0 ckpt = two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt ; F3 init seeds 0/1/2 paired with probe seeds 42/1/2 ; pos_r2 = mean(r2_per_dim[0:3])
+arm,pos_r2_mean,pos_r2_std,seed42,seed1,seed2,best_epochs
+"F1 raw dL",0.2178,0.0241,0.2254,0.1908,0.2372,20/20/20
+"F1' fixed random proj 256->384",0.2393,0.0106,0.2353,0.2313,0.2513,20/20/20
+"F1-aug (probe train split brightness-aug)",0.0524,0.0044,0.0554,0.0544,0.0474,20/20/19
+"F2 normalized dL",0.1302,0.0098,0.1226,0.1266,0.1413,18/20/20
+"F3 random-init CoMP-S M",0.2455,0.0143,0.2423,0.2331,0.2612,17/17/18
+"C0 CoMP-S M",0.4699,0.0489,0.4441,0.4393,0.5263,17/20/17
+"C0 CoMP-S P_t+M (2-stream reference)",0.4883,0.0429,0.5351,0.4510,0.4788,20/19/20

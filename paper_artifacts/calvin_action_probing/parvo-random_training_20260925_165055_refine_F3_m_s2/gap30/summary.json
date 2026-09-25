@@ -1,0 +1,31 @@
+{
+  "encoder": "parvo-random",
+  "checkpoint": null,
+  "split": "training",
+  "view": "rgb_static",
+  "gap": 30,
+  "gap_seconds": 1.0,
+  "readout": "attentive",
+  "parvo_mode": "m_only",
+  "raw_dl_variant": null,
+  "random_init_seed": 2,
+  "v11_mode": null,
+  "n_train_episodes": 200,
+  "n_eval_episodes": 1087,
+  "n_train_pairs": 6114,
+  "n_eval_pairs": 32183,
+  "best_epoch": 18,
+  "probe_seed": 2,
+  "r2_aggregate": 0.011228086965790474,
+  "r2_per_dim": [
+    0.38508697986664997,
+    0.12615259633081488,
+    0.27228272672595855,
+    0.07381432490781814,
+    0.07711248008523652,
+    0.0008134870188580834,
+    0.005797476764447196
+  ],
+  "mse": 0.14976513385772705,
+  "cosine_sim": 0.42827239632606506
+}

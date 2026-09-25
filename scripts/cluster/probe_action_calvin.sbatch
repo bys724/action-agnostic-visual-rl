@@ -86,6 +86,7 @@ if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_M
 if [[ -n "$CROSS_FOLDER" ]]; then ARGS+=(--cross-folder); fi
 if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
 if [[ "$ENCODER" == "raw-dl" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
+[[ -n "${PROBE_EPOCHS:-}" ]] && ARGS+=(--probe-epochs "$PROBE_EPOCHS")  # 진단용 (정규 = 20)
 if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi  # 데이터 고정·probe만 재시드
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"
