@@ -45,6 +45,7 @@ from scripts.eval.probe_action_libero import (
     build_videomae_token_encoder,
     compute_metrics,
     encode_pairs_parvo,
+    encode_pairs_raw_dl,
     encode_pairs_v11,
     encode_pairs_via_adapter,
     encode_pairs_videomae_vla,
@@ -99,8 +100,10 @@ def main():
     # STEP 0 게이트 (restart_plan §3.1): CoMP-MAE / VideoMAE readout 축
     parser.add_argument("--readout", default="mean", choices=["mean", "attentive"],
                         help="mean = patch_mean concat (LinearProbe) / attentive = stream별 query pool (AttentivePoolProbe)")
-    parser.add_argument("--parvo-mode", default="p_t_p_tk", choices=["p_t_p_tk", "p_t_m"],
-                        help="parvo 2-stream: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion)")
+    parser.add_argument("--parvo-mode", default="p_t_p_tk",
+                        choices=["p_t_p_tk", "p_t_m", "m_only", "p_t_only"],
+                        help="parvo: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion) 2-stream | "
+                             "m_only / p_t_only = 단일 stream (refinement_floor_plan M 단독 열)")
     parser.add_argument("--videomae-encoder", default="adapter", choices=["adapter", "vla"],
                         help="adapter = legacy(mean 전용) / vla = VideoMAEEncoderForVLA(mean+attentive self-consistent)")
     parser.add_argument("--probe-weight-decay", type=float, default=0.0,
@@ -160,12 +163,20 @@ def main():
     elif args.encoder == "parvo":
         model = build_parvo_encoder(args.checkpoint, device)
         img_size = 224
-        n_streams = 2
+        n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
 
         def encode_fn(prev, curr):
             return encode_pairs_parvo(model, prev, curr, device,
                                       mode=args.parvo_mode, readout=args.readout,
                                       batch=args.encode_batch)
+    elif args.encoder == "raw-dl":
+        # F1: 인코더 = 항등. ckpt 경로가 오면 설정 실수이므로 거부 (우연한 팔 혼동 차단).
+        assert args.checkpoint is None, "raw-dl은 checkpoint를 받지 않는다"
+        img_size = 224
+
+        def encode_fn(prev, curr):
+            return encode_pairs_raw_dl(prev, curr, device, readout=args.readout,
+                                       batch=args.encode_batch)
     elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
         model = build_videomae_token_encoder(args.checkpoint, device)
         img_size = 224

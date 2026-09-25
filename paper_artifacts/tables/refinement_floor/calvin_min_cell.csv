@@ -1,0 +1,7 @@
+# refinement_floor_plan §7 step 2 minimal cell — CALVIN cross-folder (train=training/ 200 seg, eval=validation/ 1087 seg), gap30, attentive probe, 20ep, probe seed 42 (n_seed=1), V100
+# C0 ckpt = two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt ; test type = (i) same-distribution reference (plan §5.1), not a verdict axis
+# jobs 40275526/527/528 ; pos_r2 = mean(r2_per_dim[0:3])
+arm,pos_r2,r2_dim0,r2_dim1,r2_dim2,gripper_r2,r2_aggregate,n_train_pairs,n_eval_pairs,best_epoch,source_dir
+F1 raw dL (M alone),0.2254,0.3310,0.0936,0.2517,0.0018,0.0037,6114,32183,20,paper_artifacts/calvin_action_probing/raw-dl_training_20260925_144037_refine_F1_m
+C0 CoMP-S M (M alone),0.4441,0.6232,0.3277,0.3815,0.0578,0.0503,6114,32183,17,paper_artifacts/calvin_action_probing/parvo_training_20260925_144037_refine_C0_m
+C0 CoMP-S P_t+M,0.5351,0.6137,0.4532,0.5386,0.0370,0.0313,6114,32183,20,paper_artifacts/calvin_action_probing/parvo_training_20260925_144037_refine_C0_ptm

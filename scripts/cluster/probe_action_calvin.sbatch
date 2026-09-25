@@ -44,7 +44,7 @@ VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
 CROSS_FOLDER="${CROSS_FOLDER:-}"           # 0이 아닌 임의 값이면 --cross-folder flag 추가
 READOUT="${READOUT:-mean}"                 # mean | attentive (STEP 0 게이트)
-PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m
+PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m | m_only | p_t_only
 VIDEOMAE_ENCODER="${VIDEOMAE_ENCODER:-adapter}"  # videomae-ours: adapter(legacy) | vla
 PROBE_WEIGHT_DECAY="${PROBE_WEIGHT_DECAY:-0.0}"
 

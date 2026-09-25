@@ -48,6 +48,7 @@ SUPPORTED_ENCODERS = (
     "dinov2",
     "siglip",
     "vc1",
+    "raw-dl",          # refinement_floor_plan §5.2 F1: 학습 없는 raw ΔL 패치 (인코더 = 항등)
 )
 DEFAULT_GAPS = [1, 13, 20, 40]
 ACTION_DIM = 7  # 3 pos + 3 rotvec + 1 gripper
@@ -242,6 +243,28 @@ def encode_pairs_parvo(
             tok = torch.cat(toks, dim=1).half()                      # (n, len(toks)*n_patch, D)
         else:
             raise ValueError(f"readout: {readout}")
+        out.append(tok.cpu())
+    return torch.cat(out, dim=0)
+
+
+@torch.no_grad()
+def encode_pairs_raw_dl(
+    frames_prev: torch.Tensor, frames_curr: torch.Tensor, device: torch.device,
+    readout: str = "mean", batch: int = 64, patch_size: int = 16,
+) -> torch.Tensor:
+    """F1 raw ΔL 바닥선 (refinement_floor_plan §5.2): CoMP M 입력과 동일한 ΔL(BT.709 휘도 차,
+    정규화 없음)을 16×16 패치로 자른 raw 픽셀 = 토큰 (n, 196, 256). 학습 파라미터 0.
+    readout mean → (n, 256) / attentive → (n, 196, 256) fp16 — parvo 단일 stream 규약과 동일.
+    """
+    from src.models.common.preprocessing import TwoStreamPreprocessing
+    prep = TwoStreamPreprocessing(use_sobel=False).to(device)
+    out = []
+    for s in range(0, frames_prev.shape[0], batch):
+        p = frames_prev[s:s + batch].to(device, non_blocking=True)
+        c = frames_curr[s:s + batch].to(device, non_blocking=True)
+        dl = prep.compute_m_channel(p, c)                                   # (n, 1, H, W)
+        tok = F.unfold(dl, kernel_size=patch_size, stride=patch_size).transpose(1, 2)  # (n, N, ps²)
+        tok = tok.mean(dim=1) if readout == "mean" else tok.half()
         out.append(tok.cpu())
     return torch.cat(out, dim=0)
 
