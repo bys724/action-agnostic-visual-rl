@@ -101,6 +101,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 40275526 | normal V100 1×1 | 01:30:00 | **2단계 최소 칸 ① F1 raw ΔL 단독** — CALVIN xfold gap30 attentive (`ENCODER=raw-dl`, 토큰 196×256, 학습 파라미터 0). SUFFIX=refine_F1_m | ✅ 7m12s (~0.12 GPU·h V100). pos R² **0.225** (dim 0.331/0.094/0.252), best_ep=20(=마지막 → probe 미수렴 가능) |
 | 40275527 | normal V100 1×1 | 01:30:00 | **② C0 M 단독** (`PARVO_MODE=m_only`, C0 latest.pt) — ①과 같은 조건. SUFFIX=refine_C0_m | ✅ 7m47s (~0.13 GPU·h). pos R² **0.444** (0.623/0.328/0.382), best_ep=17 |
 | 40275528 | normal V100 1×1 | 01:30:00 | **③ C0 P_t⊕M** (`p_t_m`) — 파이프라인·V100 parity 점검 (기존 H100 값 pos 0.487 재현 기대). SUFFIX=refine_C0_ptm | ✅ 8m18s (~0.14 GPU·h). pos R² **0.535** — 기존 H100 0.487 대비 **+0.048** (같은 segment·pair 6,114/32,183·seed42) → run-to-run/하드웨어 변동 폭 미확인, seed 반복 필요. 세 잡 설정 동일 확인(중간 점검 에이전트). CSV `paper_artifacts/tables/refinement_floor/calvin_min_cell.csv` |
+| 40275837~842 | normal V100 1×1 ×6 | 01:00:00 | **seed 변동 폭 측정** — 위 ①F1 raw ΔL·③C0 P_t⊕M 두 팔 × {같은 설정 재실행(837/838, 재현성) · probe seed 1(839/840) · probe seed 2(841/842)}. 신규 `PROBE_SEED`(데이터 segment 고정·probe 초기화/셔플만 변경). 판정: seed std<0.05면 나머지 5팔 seed3 확장, ≥0.1이면 seed 수/probe 안정화 재검토. SUFFIX=refine_{F1_m,C0_ptm}_s{rep,1,2} | ⏳ 제출 09-25 15:4x |
 
 ### 2026-07-10 Full-data scaling — CoMP-B × part1-5 compute-matched ([fulldata_scaling_plan.md](fulldata_scaling_plan.md))
 

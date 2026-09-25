@@ -89,6 +89,9 @@ def main():
     parser.add_argument("--probe-lr", type=float, default=1e-3)
     parser.add_argument("--encode-batch", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--probe-seed", type=int, default=None,
+                        help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
+                             "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--v11-p-depth", type=int, default=12)
@@ -259,6 +262,8 @@ def main():
         print(f"  pairs: train={len(tgt_tr)} eval={len(tgt_ev)}")
 
         print(f"  training probe (epoch={args.probe_epochs}, lr={args.probe_lr}) ...")
+        if args.probe_seed is not None:
+            torch.manual_seed(args.probe_seed)  # 데이터 고정·probe 변동만
         best = train_probe(emb_tr, tgt_tr, emb_ev, tgt_ev,
                            epochs=args.probe_epochs, batch_size=args.probe_batch,
                            lr=args.probe_lr, device=str(device),
@@ -288,6 +293,7 @@ def main():
                 "n_train_pairs": int(len(tgt_tr)),
                 "n_eval_pairs": int(len(tgt_ev)),
                 "best_epoch": best["epoch"],
+                "probe_seed": args.probe_seed,
                 **m,
             }, f, indent=2)
 
