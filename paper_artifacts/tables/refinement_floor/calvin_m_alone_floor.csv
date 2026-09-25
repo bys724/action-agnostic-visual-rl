@@ -10,3 +10,4 @@ arm,pos_r2_mean,pos_r2_std,seed42,seed1,seed2,best_epochs
 "F3 random-init CoMP-S M",0.2455,0.0143,0.2423,0.2331,0.2612,17/17/18
 "C0 CoMP-S M",0.4699,0.0489,0.4441,0.4393,0.5263,17/20/17
 "C0 CoMP-S P_t+M (2-stream reference)",0.4883,0.0429,0.5351,0.4510,0.4788,20/19/20
+# convergence diagnostic (jobs 40276371-376, PROBE_EPOCHS=60, not canonical): F1 raw 0.2231+-0.0051 (best_ep 30/44/58, plateau) ; C0 M 0.5759+-0.0329 (best_ep 59/56/56, still rising)
