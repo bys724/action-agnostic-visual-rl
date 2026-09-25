@@ -597,6 +597,89 @@ def compute_metrics(pred: np.ndarray, tgt: np.ndarray) -> dict:
 # Main
 # ─────────────────────────────────────────────────────────────────────────
 
+def _suite_split(suite: str, data_root: str, seed: int, train_ratio: float, pct: float):
+    """main()과 동일한 규칙의 demo-level split (길이 percentile cutoff → seed permutation).
+    전이 행렬의 대각(같은 suite)이 표준 probing split과 일치하도록 로직을 그대로 옮김."""
+    from libero.libero.benchmark import get_benchmark
+    bm = get_benchmark(suite)(0)
+    suite_dir = os.path.join(data_root, suite)
+    paths = [os.path.join(suite_dir, bm.get_task_demonstration(i).split("/")[-1]) for i in range(bm.n_tasks)]
+    lens, keys = [], []
+    for tid, hp in enumerate(paths):
+        with h5py.File(hp, "r") as f:
+            for d in sorted(k for k in f["data"].keys() if k.startswith("demo_")):
+                T = f[f"data/{d}/obs/ee_pos"].shape[0]
+                lens.append(T)
+                keys.append((hp, d, tid, T))
+    cutoff = float(np.percentile(np.array(lens), pct))
+    kept = [(hp, d, tid) for hp, d, tid, T in keys if T <= cutoff]
+    perm = np.random.default_rng(seed).permutation(len(kept))
+    n_train = int(len(perm) * train_ratio)
+    return [kept[i] for i in perm[:n_train]], [kept[i] for i in perm[n_train:]]
+
+
+def run_transfer(args, encode_fn, n_streams, img_size, device, phase):
+    """probe 무재학습 suite 간 전이 (refinement_floor_plan §5.3-d, 판정축 ⓢ-(A)).
+
+    suite마다: 표준 split train으로 probe fit(best epoch = 같은 suite eval, 기존 규칙) → 고정.
+    행렬 R[src][tgt] = src probe를 tgt eval split에 재학습 없이 적용. 대각 = 같은 suite(ⓘ 참조),
+    비대각 6칸 평균 = 전이 점수. 같은 카메라·로봇 = 좌표계 공유 (CALVIN↔LIBERO는 제외).
+    """
+    assert len(args.gaps) == 1, "transfer 모드는 gap 하나만"
+    gap = args.gaps[0]
+    suites = args.transfer_suites
+
+    def embed(demos, train):
+        phase["train"] = train
+        E, Y = [], []
+        for hp, d, _ in demos:
+            frames, eef_pos, ee_ori, actions = load_demo(hp, d, view=args.view)
+            T = frames.shape[0]
+            if T <= gap + 1:
+                continue
+            Y.append(np.stack([libero_action_target(eef_pos, ee_ori, actions, t, gap) for t in range(T - gap)]))
+            E.append(encode_fn(preprocess_frames(frames[:T - gap], img_size),
+                               preprocess_frames(frames[gap:], img_size)))
+        return torch.cat(E, 0), torch.from_numpy(np.concatenate(Y, 0))
+
+    pos = lambda m: float(np.mean(m["r2_per_dim"][:3]))
+    probes, evals, info = {}, {}, {}
+    for s in suites:
+        tr, ev = _suite_split(s, args.data_root, args.seed, args.train_ratio, args.max_length_percentile)
+        emb_tr, tgt_tr = embed(tr, True)
+        evals[s] = embed(ev, False)
+        if args.probe_seed is not None:
+            torch.manual_seed(args.probe_seed)
+        best = train_probe(emb_tr, tgt_tr, *evals[s], epochs=args.probe_epochs,
+                           batch_size=args.probe_batch, lr=args.probe_lr, device=str(device),
+                           readout=args.readout, n_streams=n_streams,
+                           weight_decay=args.probe_weight_decay, return_probe=True)
+        probes[s] = best["probe"]
+        info[s] = {"n_train_demos": len(tr), "n_eval_demos": len(ev), "n_train_pairs": int(len(tgt_tr)),
+                   "n_eval_pairs": int(len(evals[s][1])), "best_epoch": best["epoch"]}
+        print(f"  [{s}] fit: pairs train={len(tgt_tr)} eval={len(evals[s][1])} "
+              f"in-suite pos R²={pos(best['metrics']):+.4f} best_ep={best['epoch']}")
+        del emb_tr, tgt_tr
+    matrix = {s: {t: eval_probe(probes[s], *evals[t], device, args.probe_batch) for t in suites} for s in suites}
+    off = [pos(matrix[s][t]) for s in suites for t in suites if s != t]
+    diag = [pos(matrix[s][s]) for s in suites]
+    for s in suites:
+        print(f"  {s:>15s} → " + "  ".join(f"{t.split('_')[1]} {pos(matrix[s][t]):+.4f}" for t in suites))
+    print(f"  transfer (off-diag 6) mean pos R² = {np.mean(off):+.4f} | in-suite mean = {np.mean(diag):+.4f}")
+    out = Path(args.output_dir) / f"transfer_gap{gap}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    json.dump({"encoder": args.encoder, "checkpoint": args.checkpoint, "gap": gap, "readout": args.readout,
+               "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
+               "raw_dl_variant": args.raw_dl_variant if args.encoder == "raw-dl" else None,
+               "random_init_seed": args.random_init_seed, "probe_seed": args.probe_seed,
+               "split": {"seed": args.seed, "train_ratio": args.train_ratio,
+                         "max_length_percentile": args.max_length_percentile, "view": args.view},
+               "suites": suites, "info": info, "matrix": matrix,
+               "transfer_pos_r2_mean": float(np.mean(off)), "insuite_pos_r2_mean": float(np.mean(diag))},
+              open(out, "w"), indent=2)
+    print(f"  saved {out}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--encoder", required=True, choices=SUPPORTED_ENCODERS)
@@ -653,6 +736,13 @@ def main():
                         help="pos = ee_pos(t) 3d | pos_delta = [ee_pos(t), Δpos(t→t+k)] 6d — "
                              "M-identity가 기하+실현운동 너머(=appearance 누수)인지 격리. "
                              "🔴 identity 타깃 전용 (action 타깃엔 Δpos=타깃 그 자체 → 누수)")
+    # ── refinement_floor_plan §5.2·§5.3-d: 바닥선 팔 + suite 간 전이 ──
+    parser.add_argument("--transfer-suites", nargs="+", default=None, choices=LIBERO_SUITES,
+                        help="probe 무재학습 전이 모드: suite별 probe fit 후 3×3 행렬 (--task-suite 무시)")
+    parser.add_argument("--probe-seed", type=int, default=None,
+                        help="probe 초기화·셔플 전용 seed (demo split은 --seed 고정)")
+    parser.add_argument("--raw-dl-variant", default="raw", choices=list(RAW_DL_VARIANTS))
+    parser.add_argument("--random-init-seed", type=int, default=None, help="parvo-random 전용 (필수)")
     args = parser.parse_args()
 
     if args.readout == "attentive" and args.view == "both":
@@ -702,6 +792,7 @@ def main():
 
     # ── Build encoder ────────────────────────────────────────────────────
     n_streams = 1
+    phase = {"train": True}  # raw-dl aug 변형: probe 학습 split만 증강
     if args.position_control == "only":
         encode_fn, img_size = None, None  # 위치 control: ee_pos(t)가 곧 feature — 인코더 불필요
     elif args.encoder == "two-stream-v11":
@@ -726,6 +817,25 @@ def main():
             return encode_pairs_parvo(model, prev, curr, device,
                                       mode=args.parvo_mode, readout=args.readout,
                                       batch=args.encode_batch)
+    elif args.encoder == "parvo-random":
+        assert args.checkpoint is None and args.random_init_seed is not None, \
+            "parvo-random은 --random-init-seed 필수, --checkpoint 불가"
+        model = build_parvo_random_encoder(args.random_init_seed, device)
+        img_size = 224
+        n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo(model, prev, curr, device,
+                                      mode=args.parvo_mode, readout=args.readout,
+                                      batch=args.encode_batch)
+    elif args.encoder == "raw-dl":
+        assert args.checkpoint is None, "raw-dl은 checkpoint를 받지 않는다"
+        img_size = 224
+
+        def encode_fn(prev, curr):
+            return encode_pairs_raw_dl(prev, curr, device, readout=args.readout,
+                                       batch=args.encode_batch, variant=args.raw_dl_variant,
+                                       augment=phase["train"])
     elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
         model = build_videomae_token_encoder(args.checkpoint, device)
         img_size = 224
@@ -747,6 +857,10 @@ def main():
             return encode_pairs_via_adapter(adapter, prev, curr, device, batch=args.encode_batch)
 
     print(f"  img_size={img_size}  readout={args.readout}  n_streams={n_streams}")
+
+    if args.transfer_suites:
+        run_transfer(args, encode_fn, n_streams, img_size, device, phase)
+        return
 
     # ── Demo-level train/test split ─────────────────────────────────────
     all_demo_keys = []  # list of (hdf5_path, demo_key, task_id)
@@ -852,8 +966,10 @@ def main():
             )
 
         print(f"  encoding train (streaming per demo) ...")
+        phase["train"] = True    # raw-dl aug 변형: probe 학습 split만 증강
         emb_tr, tgt_tr, demo_tr, pos_tr = collect_embed(train_demos, "train")
         print(f"  encoding eval  (streaming per demo) ...")
+        phase["train"] = False
         emb_ev, tgt_ev, demo_ev, pos_ev = collect_embed(eval_demos, "eval")
         print(f"  pairs: train={len(tgt_tr)} eval={len(tgt_ev)}")
 
@@ -877,6 +993,8 @@ def main():
         # NOTE: R²은 scale-invariant이지만 MSE와 학습 안정성 위해 옵션 — skip
         # Linear probe
         print(f"  training probe (epoch={args.probe_epochs}, lr={args.probe_lr}, batch={args.probe_batch}) ...")
+        if args.probe_seed is not None:
+            torch.manual_seed(args.probe_seed)  # 데이터 고정·probe 변동만
         best = train_probe(
             emb_tr, tgt_tr, emb_ev, tgt_ev,
             epochs=args.probe_epochs, batch_size=args.probe_batch,

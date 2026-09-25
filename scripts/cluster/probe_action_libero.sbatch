@@ -39,6 +39,7 @@ CHECKPOINT="${CHECKPOINT:-}"
 TASK_SUITE="${TASK_SUITE:?TASK_SUITE required}"
 VIEW="${VIEW:-agentview_rgb}"
 GAPS="${GAPS:-1 13 20 40}"
+[[ "${TRANSFER:-0}" == "1" && "$GAPS" == "1 13 20 40" ]] && GAPS="20"  # 전이 모드는 gap 하나 (canonical 1.0s)
 TASK_IDS="${TASK_IDS:-}"
 MAX_DEMOS="${MAX_DEMOS:-}"
 V11_MODE="${V11_MODE:-abd_prime}"
@@ -92,6 +93,11 @@ if [[ -n "$TASK_IDS" ]]; then ARGS+=(--task-ids $TASK_IDS); fi
 if [[ -n "$MAX_DEMOS" ]]; then ARGS+=(--max-demos-per-task "$MAX_DEMOS"); fi
 if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
 if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
+# refinement_floor_plan §5.2·§5.3-d: 바닥선 팔 + suite 간 무재학습 전이 (TRANSFER=1 → 3 suite 행렬, TASK_SUITE 무시)
+if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
+if [[ "$ENCODER" == "raw-dl" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
+if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi
+if [[ "${TRANSFER:-0}" == "1" ]]; then ARGS+=(--transfer-suites libero_spatial libero_object libero_goal); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_libero.py "${ARGS[@]}"
