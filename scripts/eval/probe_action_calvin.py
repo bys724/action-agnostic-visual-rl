@@ -102,6 +102,9 @@ def main():
     parser.add_argument("--eval-perturb-list", nargs="*", default=None,
                         help="nuisance 강건성 (plan §5.3-e): 'kind:l1,l2,..' 목록. 예) gain:0.9,1.1 shadow:0.2,0.4 "
                              "noise:0.01. 깨끗한 train으로 probe 1회 fit(best epoch 고정) → eval 프레임 교란 후 재인코딩·평가")
+    parser.add_argument("--label-fracs", type=float, nargs="+", default=None,
+                        help="라벨 효율 (plan §5.3-b): probe 학습 pair를 비율별로 무작위 부분표본 → fit → 같은 전체 eval. "
+                             "비율마다 재샘플(seed=probe seed 기반). 예) 1.0 0.2 0.05 0.02")
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
                              "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
@@ -301,6 +304,28 @@ def main():
                            weight_decay=args.probe_weight_decay,
                            return_probe=bool(args.eval_perturb_list))
         m = best["metrics"]
+        label_results = {}
+        if args.label_fracs:
+            base = args.probe_seed if args.probe_seed is not None else args.seed
+            for fi, frac in enumerate(args.label_fracs):
+                # pair 단위 무작위 부분표본 (구현 선택: plan 미기재). 비율·seed마다 독립 재샘플
+                g = torch.Generator().manual_seed(1_000 * base + fi)
+                n = max(1, int(round(frac * len(tgt_tr))))
+                idx = torch.randperm(len(tgt_tr), generator=g)[:n]
+                torch.manual_seed(base)
+                # optimizer step 수를 100%와 맞춤 (구현 선택: 고정 epoch면 2%는 step이 1/24 → 라벨 부족과
+                # 학습 부족이 섞임). 평가는 ~probe_epochs회로 제한
+                steps_full = args.probe_epochs * -(-len(tgt_tr) // args.probe_batch)
+                ep_f = max(args.probe_epochs, -(-steps_full // -(-n // args.probe_batch)))
+                bf = train_probe(emb_tr[idx], tgt_tr[idx], emb_ev, tgt_ev,
+                                 epochs=ep_f, batch_size=args.probe_batch,
+                                 eval_every=max(1, ep_f // args.probe_epochs),
+                                 lr=args.probe_lr, device=str(device), readout=args.readout,
+                                 n_streams=n_streams, weight_decay=args.probe_weight_decay)
+                label_results[str(frac)] = {"n_train_pairs": n, "epochs": ep_f, "best_epoch": bf["epoch"],
+                                            **bf["metrics"]}
+                print(f"    label_frac={frac}: n={n} pos R² = {np.mean(bf['metrics']['r2_per_dim'][:3]):+.4f} "
+                      f"best_ep={bf['epoch']}")
         perturb_results = {}
         if args.eval_perturb_list:
             for ki, spec in enumerate(args.eval_perturb_list):
@@ -344,6 +369,7 @@ def main():
                 "best_epoch": best["epoch"],
                 "probe_seed": args.probe_seed,
                 "perturb": perturb_results or None,
+                "label_frac": label_results or None,
                 **m,
             }, f, indent=2)
 

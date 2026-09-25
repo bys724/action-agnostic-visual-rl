@@ -508,7 +508,7 @@ def train_probe(
     device: str = "cuda",
     readout: str = "mean", n_streams: int = 1, weight_decay: float = 0.0,
     task: str = "regression", out_dim: int = ACTION_DIM,
-    extra_train=None, extra_eval=None, return_probe: bool = False,
+    extra_train=None, extra_eval=None, return_probe: bool = False, eval_every: int = 1,
 ):
     """readout="mean": LinearProbe([N, D]) / readout="attentive": AttentivePoolProbe([N, S*n_patch, D]).
 
@@ -545,6 +545,8 @@ def train_probe(
             pred = probe(x, batch[1].to(device).float()) if has_extra else probe(x)
             loss = F.cross_entropy(pred, y) if is_cls else F.mse_loss(pred, y)
             optimizer.zero_grad(); loss.backward(); optimizer.step()
+        if (ep + 1) % eval_every and ep + 1 != epochs:
+            continue  # 라벨 효율 step 매칭 시 평가 횟수 제한 (기본 1 = 매 epoch, 기존 동작)
         probe.eval()
         preds = []
         with torch.no_grad():
