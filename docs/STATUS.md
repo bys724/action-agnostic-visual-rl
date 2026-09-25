@@ -32,7 +32,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40275371 | C1 새 base = 제출본 CoMP-S + 프레임별 독립 밝기 증강, 50ep 본학습 (AIP_long 2×4 H100, ~110 GPU·h) | PD — 예상 시작 09-26 02:03 | `tail /proj/external_group/mrg/logs/pretrain_refine_comp_s_bright_40275371.out` 의 `[bright]`·`[v14]` 줄 / ckpt `two_stream_v15b_refine_comp_s_bright/` |
+| 40275371 | C1 새 base = 제출본 CoMP-S + 프레임별 독립 밝기 증강, 50ep 본학습 (AIP_long 2×4 H100, ~110 GPU·h) | RUNNING 09-25 16:33~ (ep4 도달 18:1x) | `tail /proj/external_group/mrg/logs/pretrain_refine_comp_s_bright_40275371.out` 의 `[bright]`·`[v14]` 줄 / ckpt `two_stream_v15b_refine_comp_s_bright/` |
 
 ## 이 문서의 용어
 
