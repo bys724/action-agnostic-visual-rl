@@ -26,7 +26,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.
 - **진행 중 검증**: refinement-floor 1단계 — 밝기 증강 구현(`--bright-aug`, 기본 off) [확정] 증강 off 시 수정 전 코드와 전 loss 항 소수 8자리 일치(C0 ckpt, CPU smoke) · sanity 1ep [확정 · 게이트 PASS] L_mB C0 동 step 대비 +20%·L_mA 0 붕괴 없음·증강 오프셋 0.051 vs motion |ΔL| 0.080 같은 자릿수 → C1 본학습 대기 중. 2단계 최소 칸(CALVIN, gap30, attentive, seed 1개) [잠정]: M 단독 위치 R² = raw ΔL 0.225 vs 제출본 M 0.444 — 같은 분포 참조 시험이라 판정축 아님, raw probe가 20ep 마지막 epoch에 best(미수렴 가능), 같은 설정 P_t⊕M이 기존 0.487→0.535로 흔들려 변동 폭 미확인. seed 변동 [확정 · V100 결정론·seed 3]: raw ΔL 0.218±0.024 / P_t⊕M 0.488±0.043 (0.535는 유리한 seed, 기존 0.487과 정합). M 단독 바닥선 표(seed 3, 같은 분포 참조 시험) [잠정]: 제출본 M 0.470±0.049 vs random-init M 0.246 · 투영 raw 0.239 · raw 0.218 · 정규화 0.130 · 증강 raw 0.052 (`paper_artifacts/tables/refinement_floor/calvin_m_alone_floor.csv`). 60ep 수렴 진단 [확정 · seed 3]: raw 0.223±0.005(평탄) / 제출본 M 0.576±0.033(아직 상승) → 20ep는 raw가 아니라 학습된 M에 불리, 격차 유지·확대. 전 팔 best epoch = 마지막(20) → probe 미수렴 공통 이슈. **교란 파일럿 (판정축 ⓢ, seed 1)**: 구현 [확정](교란 0 = clean 정확 재현). 제출본 M [잠정 · seed 1·CALVIN만]은 모든 교란에서 raw ΔL보다 크게 붕괴 — 노이즈 σ0.01(8bit 2.5단계)에 0.496→−2.0(raw 0.225 불변), 그림자 0.6에 −2.95(raw −0.31), 밝기 배율 0.9에 −9.9(raw −0.80). C1 판정의 조기 경보(중지 판단은 C1 측정 때 1회). CSV `calvin_perturb_pilot.csv`. 교란 시험 절차 [확정 · 2중 검증] = eval_protocols §4-b. part1 학습이라 아래 full-data I/O 병목과 무관.
 - **🔴 방법론 문제 (사용자 판단 필요, 09-26)**: 판정 기준 (C)의 기준점 = "증강 raw(F1-aug)의 R²가 절반이 되는 그림자 강도 s*"인데, F1-aug는 **깨끗한 조건부터 0.05**(probe가 증강 데이터에서 거의 못 배움)라 그림자 0.6에서도 0.04 → **s*가 정의되지 않음**. 계획서 §6 사후 수정 금지 → 코드·기준 건드리지 않고 대기.
-- **🔴 계획서 전제 불일치 (사용자 판단 필요, 09-26 05:40)**: 판정 기준 (A) suite 간 전이는 "같은 카메라·로봇 = 좌표계 공유" 전제로 6방향 평균을 씀. 그러나 libero_object = Floor 장면(agentview 높이 0.65), spatial·goal = Tabletop(높이 1.61) [확정 · bddl·env 코드 확인] → 같은 카메라 쌍은 spatial↔goal 2방향뿐. **전이 측정 전**이라 지금 정하면 사후 수정 아님. 전이 코드는 구현·리뷰 완료(커밋), 최소 잡 미제출.
+- **기준 (A) 전이 범위 = 계획서대로 6방향 평균 (사용자 결정 09-26 05:41, 결과 보기 전)**: object(Floor 장면·카메라 높이 0.65)와 spatial·goal(Tabletop·1.61)의 시점 차이 [확정]를 알고도 유지 — "기대 밖 수확 가능". spatial↔goal 2방향·object 관련 4방향 분해는 참고 열로 함께 보고(판정 = 6방향).
 - **교란 비교군 seed 3 [잠정 · CALVIN만]**: 학습된 제출본 M은 noise σ0.01에 0.49→−2.57인데 **같은 구조 random-init M은 +0.24(불변)** → 노이즈 취약성은 구조가 아니라 학습이 만든 것. 그림자 0.6: C0 −2.59 vs raw −0.32 vs random-init −4.93.
 - **재개 시 할 일**: ① C1(40275371) 완료 확인 → C1 M 단독으로 CALVIN 바닥선(20ep)·교란 시험 seed 3 ③ LIBERO suite 간 무재학습 전이 구현(판정 (A), 구현 0) ④ 결정 대기: DINOv2+ΔL 입력 규약.
 - 실행 전 필수 점검(full-data 잡 한정) = **full-data 데이터 로딩 2.3× 병목(GPFS 랜덤 액세스) 미해결** — 후속 full-data 잡을 내기 전에 먼저 봐야 함.
@@ -53,6 +53,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 ## 결정 이력
 
+- 2026-09-26 · refinement-floor 기준 (A) 전이 = 계획서대로 6방향 평균 유지 (object 시점 차이 확인 후, 전이 결과 보기 전 사용자 결정)
 - 2026-09-16 · 조기 게이트 계획에 배포 대상(`p_teacher + m_teacher + m_student`)·항 1 포함·항 2 변위 타깃 확정 반영 (Vault 세션 결정)
 - 2026-07-21 · Paper 1(input-prior)은 전용 repo로 분리, 이 저장소 문서 동결
 - 2026-07-10 · STEP 2-B 게이트 FAIL → 사전 등록 스코핑 발동, "signature 인과 확정·control-level value 미입증"으로 논문 반영
