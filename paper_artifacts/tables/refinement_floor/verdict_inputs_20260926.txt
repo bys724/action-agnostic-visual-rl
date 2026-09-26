@@ -1,5 +1,5 @@
-# refinement_floor_plan §6 verdict inputs (09-26 14:5x) — M-alone column, probe seeds {42,1,2}, 95% CI = mean ± 4.303·sd/√3. C1 pert seed 2 pending at write time.
-# (A) LIBERO frozen-probe cross-suite transfer gap20 (6-dir mean = user-fixed criterion); (B) CALVIN label fraction, step-matched (labelfix = 20ep fixed reference, not for verdict); (C) CALVIN perturbation — criterion C uncomputable (F1-aug R2 never halves)
+# refinement_floor_plan §6 verdict inputs (final 09-26 14:54, 64/64) — M-alone column, probe seeds {42,1,2}, 95% CI = mean ± 4.303·sd/√3.
+# (A) LIBERO frozen-probe cross-suite transfer gap20 (6-dir mean); (B) CALVIN label fraction step-matched (labelfix = 20ep fixed reference, not for verdict); (C) uncomputable. Batch check: 64/64 PASS (subagent)
 == (A) LIBERO transfer: 6-dir mean pos R2 | same-suite mean | spatial<->goal mean
 C1 transfer6                 -0.329±0.064  CI[-0.489,-0.169]
 C1 insuite                   +0.712±0.004  CI[+0.703,+0.721]
@@ -81,11 +81,11 @@ F3 0.2                       +0.162±0.016  CI[+0.121,+0.202]
 F3 0.05                      -0.089±0.142  CI[-0.440,+0.263]
 F3 0.02                      -1.177±0.568  CI[-2.587,+0.233]
 == (C) CALVIN perturbation (C1 + comparison) clean / shadow0.6 / noise0.01 / noise0.04
-C1 clean                     n=2 [0.4663513517015043, 0.45088541562863105]
-C1 shadow0.6                 n=2 [-2.104784732839169, -2.7287379873439903]
-C1 noise0.01                 n=2 [-2.2052460936835123, -1.2666323006299263]
-C1 noise0.04                 n=2 [-5.837802523519156, 0.13381426556050732]
-C1 gain1.3                   n=2 [-14.364105999331185, -14.740625683329526]
+C1 clean                     +0.462±0.009  CI[+0.438,+0.485]
+C1 shadow0.6                 -2.708±0.594  CI[-4.184,-1.233]
+C1 noise0.01                 -1.427±0.711  CI[-3.194,+0.339]
+C1 noise0.04                 -2.425±3.076  CI[-10.067,+5.217]
+C1 gain1.3                   -15.773±2.122  CI[-21.044,-10.501]
 C0 clean                     +0.487±0.044  CI[+0.377,+0.597]
 C0 shadow0.6                 -2.585±0.558  CI[-3.971,-1.200]
 C0 noise0.01                 -2.567±1.931  CI[-7.365,+2.230]
