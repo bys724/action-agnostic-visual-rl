@@ -51,6 +51,7 @@ SUPPORTED_ENCODERS = (
     "vc1",
     "raw-dl",          # refinement_floor_plan §5.2 F1: 학습 없는 raw ΔL 패치 (인코더 = 항등)
     "parvo-random",    # refinement_floor_plan §5.2 F3: CoMP-S 구조, 미학습 (명시 init seed 필수)
+    "parvo-raw",       # §5.3-a 사다리 1단: P_t(체크포인트의 P) ⊕ raw ΔL 토큰 (attentive 전용)
 )
 DEFAULT_GAPS = [1, 13, 20, 40]
 ACTION_DIM = 7  # 3 pos + 3 rotvec + 1 gripper
@@ -302,6 +303,24 @@ def encode_pairs_raw_dl(
             tok = tok @ proj                                                # (n, N, embed_dim)
         tok = tok.mean(dim=1) if readout == "mean" else tok.half()
         out.append(tok.cpu())
+    return torch.cat(out, dim=0)
+
+
+@torch.no_grad()
+def encode_pairs_parvo_raw(model, frames_prev, frames_curr, device, batch: int = 64,
+                           variant: str = "raw", augment: bool = False) -> torch.Tensor:
+    """P_t ⊕ raw ΔL (refinement_floor_plan §5.3-a 1단). 토큰 축 concat → (n, 2·196, D).
+    raw ΔL(256d)은 0-padding으로 D(384)에 맞춤: AttentivePoolProbe가 stream별로 pool한 뒤 linear head라
+    padding 차원은 쿼리·head에 기여 0 → "raw 256d pooled ⊕ P 384d pooled → linear"와 동치(추가 용량 없음)."""
+    out = []
+    for s in range(0, frames_prev.shape[0], batch):
+        p = frames_prev[s:s + batch].to(device, non_blocking=True)
+        c = frames_curr[s:s + batch].to(device, non_blocking=True)
+        tok_p = model._encode_p_unmasked(model.preprocessing.compute_p_channel(p))[:, 1:]   # (n, 196, D)
+        tok_x = encode_pairs_raw_dl(p, c, device, readout="attentive", batch=p.shape[0],
+                                    variant=variant, augment=augment).to(device).float()
+        tok_x = F.pad(tok_x, (0, tok_p.shape[-1] - tok_x.shape[-1]))                      # 256 → D
+        out.append(torch.cat([tok_p, tok_x], dim=1).half().cpu())
     return torch.cat(out, dim=0)
 
 
@@ -672,7 +691,7 @@ def run_transfer(args, encode_fn, n_streams, img_size, device, phase):
     out.parent.mkdir(parents=True, exist_ok=True)
     json.dump({"encoder": args.encoder, "checkpoint": args.checkpoint, "gap": gap, "readout": args.readout,
                "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
-               "raw_dl_variant": args.raw_dl_variant if args.encoder == "raw-dl" else None,
+               "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
                "random_init_seed": args.random_init_seed, "probe_seed": args.probe_seed,
                "split": {"seed": args.seed, "train_ratio": args.train_ratio,
                          "max_length_percentile": args.max_length_percentile, "view": args.view},
@@ -838,6 +857,15 @@ def main():
             return encode_pairs_raw_dl(prev, curr, device, readout=args.readout,
                                        batch=args.encode_batch, variant=args.raw_dl_variant,
                                        augment=phase["train"])
+    elif args.encoder == "parvo-raw":
+        assert args.readout == "attentive", "parvo-raw는 attentive 전용"
+        model = build_parvo_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo_raw(model, prev, curr, device, batch=args.encode_batch,
+                                          variant=args.raw_dl_variant, augment=phase["train"])
     elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
         model = build_videomae_token_encoder(args.checkpoint, device)
         img_size = 224

@@ -95,7 +95,7 @@ if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
 if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
 # refinement_floor_plan §5.2·§5.3-d: 바닥선 팔 + suite 간 무재학습 전이 (TRANSFER=1 → 3 suite 행렬, TASK_SUITE 무시)
 if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
-if [[ "$ENCODER" == "raw-dl" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
+if [[ "$ENCODER" == "raw-dl" || "$ENCODER" == "parvo-raw" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
 if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi
 if [[ "${TRANSFER:-0}" == "1" ]]; then ARGS+=(--transfer-suites libero_spatial libero_object libero_goal); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi

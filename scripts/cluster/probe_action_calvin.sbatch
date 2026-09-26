@@ -85,7 +85,7 @@ if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi
 if [[ -n "$CROSS_FOLDER" ]]; then ARGS+=(--cross-folder); fi
 if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
-if [[ "$ENCODER" == "raw-dl" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
+if [[ "$ENCODER" == "raw-dl" || "$ENCODER" == "parvo-raw" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
 [[ "${LABEL_FIXED_EPOCHS:-0}" == "1" ]] && ARGS+=(--label-fixed-epochs)
 [[ -n "${LABEL_FRACS:-}" ]] && ARGS+=(--label-fracs $LABEL_FRACS)  # 공백 구분, 예 "1.0 0.2 0.05 0.02"
 [[ -n "${EVAL_PERTURB:-}" ]] && ARGS+=(--eval-perturb-list $EVAL_PERTURB)  # 공백 구분 'kind:l1,l2'

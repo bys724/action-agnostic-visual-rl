@@ -47,6 +47,7 @@ from scripts.eval.probe_action_libero import (
     encode_pairs_parvo,
     encode_pairs_raw_dl,
     build_parvo_random_encoder,
+    encode_pairs_parvo_raw,
     eval_probe,
     perturb_pair,
     PERTURB_KINDS,
@@ -202,6 +203,15 @@ def main():
             return encode_pairs_parvo(model, prev, curr, device,
                                       mode=args.parvo_mode, readout=args.readout,
                                       batch=args.encode_batch)
+    elif args.encoder == "parvo-raw":
+        assert args.readout == "attentive", "parvo-raw는 attentive 전용"
+        model = build_parvo_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo_raw(model, prev, curr, device, batch=args.encode_batch,
+                                          variant=args.raw_dl_variant, augment=phase["train"])
     elif args.encoder == "raw-dl":
         # F1: 인코더 = 항등. ckpt 경로가 오면 설정 실수이므로 거부 (우연한 팔 혼동 차단).
         assert args.checkpoint is None, "raw-dl은 checkpoint를 받지 않는다"
@@ -363,7 +373,7 @@ def main():
                 "gap_seconds": gap / 30.0,
                 "readout": args.readout,
                 "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
-                "raw_dl_variant": args.raw_dl_variant if args.encoder == "raw-dl" else None,
+                "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
                 "random_init_seed": args.random_init_seed,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
                 "n_train_episodes": len(train_segs),

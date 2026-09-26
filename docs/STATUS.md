@@ -41,7 +41,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40285696~40285765 | C1 측정 + 판정 (A)·(B) 비교군 64잡 (CALVIN 교란·라벨 효율, LIBERO 전이; 7팔 × seed 3) | 09-26 13:4x | `paper_artifacts/{calvin,libero}_action_probing/*refine_{pert,label,labelfix,xfer}_*` |
+| 40298731~748 | P_t⊕C1 M vs P_t⊕raw ΔL (중지 조건 1차 기준 열) × 교란·전이·라벨 효율 × seed 3 | 09-26 | `*refine_{pert,xfer,label}_{PtC1M,PtRaw}_*` |
 
 ## 이 문서의 용어
 
