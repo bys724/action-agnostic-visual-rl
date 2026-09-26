@@ -33,7 +33,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
   - (C) 계산 불가(기준점 부재). C1 교란(seed 3): 그림자 0.6 −2.71 CI[−4.18,−1.23], 노이즈 0.01 −1.43 CI[−3.19,+0.34] vs raw −0.32/+0.22 → 밝기 증강으로도 C0와 같은 붕괴. 경사(ramp)만 개선(0.3에서 +0.05/0.15 vs C0 −0.40/−0.58).
   - 중지 신호(§6): ⓢ 전부(그림자·노이즈·전이)에서 C1 M ≤ raw → **해당**. 단 계획서 1차 기준인 P_t⊕C1 M 열은 ⓢ에서 미측정.
 - **교란 비교군 seed 3 [잠정 · CALVIN만]**: 학습된 제출본 M은 noise σ0.01에 0.49→−2.57인데 **같은 구조 random-init M은 +0.24(불변)** → 노이즈 취약성은 구조가 아니라 학습이 만든 것. 그림자 0.6: C0 −2.59 vs raw −0.32 vs random-init −4.93.
-- **재개 시 할 일**: ① C1(40275371) 완료 확인 → C1 M 단독으로 CALVIN 바닥선(20ep)·교란 시험 seed 3 ③ LIBERO suite 간 무재학습 전이 구현(판정 (A), 구현 0) ④ 결정 대기: DINOv2+ΔL 입력 규약.
+- **재개 시 할 일 (09-26 세션 중단 대비)**: ① P_t⊕X 18잡(40298731~748, 목록 `paper_artifacts/tables/refinement_floor/jobs_pt_20260926.txt`) 완료 확인 → `/proj/external_group/mrg/conda_envs/aavrl-train/bin/python`이 아닌 시스템 `python3 paper_artifacts/tables/refinement_floor/agg_pt.py`로 집계(PtC1M vs PtRaw: 전이·교란·라벨) ② 사전 결정대로: PtC1M이 교란 또는 전이에서 PtRaw를 95% CI로 이기면 나머지 비교군 P_t⊕X(약 45잡) 진행, 아니면 중지 확정(효율 주장 폐기) — 단 증강 raw가 더 강할 가능성 시 P_t⊕증강raw 1팔 추가 확인 ③ M 단독 판정 표 재집계 = `python3 paper_artifacts/tables/refinement_floor/agg_verdict.py` ④ 결정 대기: DINOv2+ΔL 입력 규약(보류).
 - 실행 전 필수 점검(full-data 잡 한정) = **full-data 데이터 로딩 2.3× 병목(GPFS 랜덤 액세스) 미해결** — 후속 full-data 잡을 내기 전에 먼저 봐야 함.
 - **형제 프로젝트 Cross-View**(09-18 개시, 제목 잠정): head/wrist 뷰 충분성 + action 조건화. DROID 3뷰 페어링 로더 신규 필요. 구현 0.
 
