@@ -26,7 +26,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
   - P_t⊕X 열: P_t⊕C1 M이 P_t⊕raw를 전이(−1.29 vs −10.15)·그림자(−1.99 vs −3.75)에서 CI로 이기나, **raw 단독(−0.32/−0.32)이 둘 다보다 강건** — 우위는 P를 붙인 raw의 악화(P 외형 과적합 추정) 탓. 노이즈는 raw 우위. object suite만 카메라 다름(Floor)이 전이 음수의 주 원인.
   - 밝기 증강(C1 vs C0): 경사(ramp)만 개선, 배율·그림자·노이즈 불변성 없음. 노이즈 취약성은 학습이 만든 것(random-init M은 불변; CALVIN 정지 ΔL 73%가 정확히 0).
   - 보류: P_t⊕X 비교군 4개 확장(코드 `git stash` 'WIP parvo-randm', 미검증) · C2–C4 학습 · DINOv2+ΔL 팔(입력 규약 미정).
-- **라운드 2 진행 (09-26 23시)**: R2-4 진단 완료 · R2-2/R2-3 최소 3칸 완료 → **전체 제출 사용자 확인 대기** · R2-1 1/18 완료, 17 대기. 요약 = `paper_artifacts/tables/refinement_floor/agg_round2.py`.
+- **라운드 2 진행 (09-26 23시)**: R2-4 진단 완료 · R2-2/R2-3 최소 3칸 완료 → 전체 102잡 제출(09-27, 사용자 승인) · R2-1 1/18 완료, 17 대기. 요약 = `paper_artifacts/tables/refinement_floor/agg_round2.py`.
   - R2-3 최소 [잠정·seed 1·노이즈 조건 raw 대조 없음]: probe 학습·시험 양쪽 노이즈 σ0.01에서 C1 M CALVIN 0.469(깨끗 0.466)·LIBERO 같은 suite 0.666(0.716). → 라운드 1 노이즈 붕괴(−2.21, s42)는 probe 학습·시험 불일치. 같은 분포 우위(raw 깨끗 0.22·0.16)는 정확히-0 산물이 아닐 가능성↑.
   - R2-2 최소 [잠정·seed 1·전이 미측정]: 학습 투영으로 P_t⊕raw 그림자0.6 −3.49→−1.71, 깨끗 0.208→0.237, best_ep 3 불변. raw 단독(−0.31)보다 여전히 나쁨 → zero-pad는 악화의 일부, P 결합 자체가 판독기를 흔듦.
   - R2-1 첫 칸 [잠정·seed 1/3]: P_t⊕P_tk(C1) 깨끗 0.369 · 노이즈 σ0.04까지 불변(+0.37) · 그림자0.6 −0.24(raw −0.31과 비슷). → 노이즈 취약성은 M 국한, 배포 P는 무사(배율 1.3은 −5.15로 취약).
@@ -44,6 +44,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
 | 40310547~563 (17) | R2-1 P_t⊕P_tk × {C1,C0} × {교란·라벨·전이} × seed 3 — 배포 P가 분포 이동에서 버티나 | 09-26 21:33 제출, 대기 | `python paper_artifacts/tables/refinement_floor/agg_round2.py` (env aavrl-train) |
+| 40310996~311097 (102) | R2-2 나머지 8 + R2-3 전체 94 (노이즈 양쪽 조건 × 팔 8 × σ2 × 벤치 2 × seed 3) — Q1 판정에 필요한 raw 노이즈 조건값 포함 | 09-27 00시 제출 | 같은 스크립트 |
 
 ## 이 문서의 용어
 

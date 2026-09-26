@@ -31,4 +31,24 @@ min)  # R2-2·R2-3 최소 칸 (새 코드)
   pert PtRawLin 42 "$CAL,ENCODER=parvo-raw,CHECKPOINT=$C1,RAW_DL_VARIANT=raw,RAW_PAD=linear"
   plain noise01 C1 42 "$CAL,ENCODER=parvo,CHECKPOINT=$C1,PARVO_MODE=m_only,PROBE_NOISE_SIGMA=0.01" probe_action_calvin.sbatch
   plain xnoise01 C1 42 "$LIB,ENCODER=parvo,CHECKPOINT=$C1,PARVO_MODE=m_only,PROBE_NOISE_SIGMA=0.01" probe_action_libero.sbatch ;;
+full)  # R2-2 나머지 + R2-3 전체 (사용자 승인 09-27, 최소 칸 보고 후). 최소 칸 2개(noise01/xnoise01 C1 s42)는 건너뜀
+  for s in 42 1 2; do
+    [ $s != 42 ] && pert PtRawLin $s "$CAL,ENCODER=parvo-raw,CHECKPOINT=$C1,RAW_DL_VARIANT=raw,RAW_PAD=linear"
+    label PtRawLin $s "$CAL,ENCODER=parvo-raw,CHECKPOINT=$C1,RAW_DL_VARIANT=raw,RAW_PAD=linear"
+    xfer PtRawLin $s "$LIB,ENCODER=parvo-raw,CHECKPOINT=$C1,RAW_DL_VARIANT=raw,RAW_PAD=linear"
+  done
+  declare -A ARM=(  # §9.1 R2-3 팔 8개 (P_t = C1의 P)
+    [C1]="ENCODER=parvo,CHECKPOINT=$C1,PARVO_MODE=m_only"
+    [C0]="ENCODER=parvo,CHECKPOINT=$C0,PARVO_MODE=m_only"
+    [F1]="ENCODER=raw-dl,RAW_DL_VARIANT=raw"
+    [F1proj]="ENCODER=raw-dl,RAW_DL_VARIANT=proj"
+    [F3]="ENCODER=parvo-random,PARVO_MODE=m_only,RANDOM_INIT_SEED=0"
+    [PtPtkC1]="ENCODER=parvo,CHECKPOINT=$C1,PARVO_MODE=p_t_p_tk"
+    [PtC1M]="ENCODER=parvo,CHECKPOINT=$C1,PARVO_MODE=p_t_m"
+    [PtRawLin]="ENCODER=parvo-raw,CHECKPOINT=$C1,RAW_DL_VARIANT=raw,RAW_PAD=linear" )
+  for sg in 01 02; do for s in 42 1 2; do for a in C1 C0 F1 F1proj F3 PtPtkC1 PtC1M PtRawLin; do
+    [[ $a == C1 && $s == 42 && $sg == 01 ]] && continue
+    plain noise$sg $a $s "$CAL,${ARM[$a]},PROBE_NOISE_SIGMA=0.$sg" probe_action_calvin.sbatch
+    plain xnoise$sg $a $s "$LIB,${ARM[$a]},PROBE_NOISE_SIGMA=0.$sg" probe_action_libero.sbatch
+  done; done; done ;;
 esac
