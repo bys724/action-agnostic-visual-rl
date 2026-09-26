@@ -1,11 +1,11 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-09-25 dev 세션 — refinement-floor 1–3단계(C1 학습 중·바닥선 표·교란 시험 파일럿) 반영. 이전: 2026-09-23 Vault 세션에서 `docs/forecast_sufficient_plan.md`(09-15/16)·`CLAUDE.md` 현재 상태(07-21)·Vault 메모리(08-30·09-20 확인분)를 근거로 쓴 **초안**. dev 세션이 첫 실행 때 검증·수정할 것. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-09-26 dev 세션 — refinement-floor C1 학습·바닥선·판정 측정 완료, 결과 정리. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-27 Reject (2026-09-25)**. 리뷰 수렴 지적 = raw ΔL 바닥선 부재·거울 ablation 미학습·ΔL≠물리 motion → 후속 = `refinement_floor_plan.md`. (아래 문단은 제출 시점 서술) 이 저장소의 논문 작업은 대기 상태다. 지금의 활성 축은 후속 **Forecast-Sufficient Representation**(v17) — 동결 교사 + 학생 구조로 "예측에 충분한 표현"을 목적함수로 만드는 연구인데, 조기 게이트 구현 계획(09-15/16)만 있고 **구현은 0**이며, 게이트 스펙의 미결 5건이 사용자 판단을 기다린다. 클러스터 잡은 7/12 이후 돌지 않았다.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-27 Reject (2026-09-25)**. 리뷰 수렴 지적(raw ΔL 바닥선 부재 등)에 답하는 `refinement_floor_plan.md`의 측정을 09-26 마쳤다: **같은 분포에선 학습된 M이 raw의 2–4배, 분포 이동(다른 suite·그림자·노이즈)에선 raw 단독이 가장 강건** → §6 판정상 효율(정제) 주장 불성립·중지 신호. C2–C4 학습과 P_t⊕X 비교군 확장은 보류, 논문 방향 판단(Vault) 대기. 결과 요약 = `paper_artifacts/tables/refinement_floor/README.md`. 별도 활성 축 Forecast-Sufficient Representation(v17)은 구현 0, 게이트 스펙 5건 사용자 판단 대기.
 
 ## 확정된 것
 
@@ -19,31 +19,23 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 ## 열린 것 · 다음 결정
 
-- **🔴 최우선 (2026-09-25 Vault 세션 지시)**: AAAI-27 **Reject**(리뷰어 2명 5/3). 후속 실험 계획 = [`docs/refinement_floor_plan.md`](refinement_floor_plan.md) — **자족적 문서(09-25 재작성본). §1 논리 → §2 행동 규칙(변경 금지·허용 범위·멈추고 물을 것) → §7 순서로 집행.** 새 base C1(밝기 증강 CoMP-S) 학습 → 바닥선 팔·시험(§5) → C2·C3·C4(§4). 판정 기준 §6 사전 등록(사후 수정 금지). 문서와 충돌하는 판단이 서면 코드를 고치지 말고 여기 "열린 것"에 적고 멈춘다.
-
-- **사용자가 정할 것 (refinement-floor)**: DINOv2+ΔL 팔(F4)의 입력 규약 — 부호 있는 ΔL([-1,1])을 DINOv2 [0,1] 이미지로 넣는 방식이 계획서에 없음. 추천 = (ΔL+1)/2 3채널 복제 후 ImageNet 정규화(0=중간 회색).
-- **사용자가 정할 것 (먼저)**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
+- **🔴 refinement-floor 결론 (09-26, M 단독·P_t⊕X 열, probe seed 3, 표현 학습 1회) [잠정]** — 표·파일 = `paper_artifacts/tables/refinement_floor/README.md`
+  - 같은 분포(ⓘ): C1 M 0.46(CALVIN)·0.71(LIBERO suite 내) vs raw 0.22·0.16. random-init M ≈ raw → 차이는 학습된 가중치.
+  - §6 (A) 전이 6방향: C1 −0.33 ≈ raw −0.32 → 불성립. (B) 라벨 5%: 0.39 vs 0.22, CI 겹침 → 불성립. (C) 계산 불가(증강 raw가 절반 강도 없음). ⇒ 중지 신호(M 단독 열).
+  - P_t⊕X 열: P_t⊕C1 M이 P_t⊕raw를 전이(−1.29 vs −10.15)·그림자(−1.99 vs −3.75)에서 CI로 이기나, **raw 단독(−0.32/−0.32)이 둘 다보다 강건** — 우위는 P를 붙인 raw의 악화(P 외형 과적합 추정) 탓. 노이즈는 raw 우위. object suite만 카메라 다름(Floor)이 전이 음수의 주 원인.
+  - 밝기 증강(C1 vs C0): 경사(ramp)만 개선, 배율·그림자·노이즈 불변성 없음. 노이즈 취약성은 학습이 만든 것(random-init M은 불변; CALVIN 정지 ΔL 73%가 정확히 0).
+  - 보류: P_t⊕X 비교군 4개 확장(코드 `git stash` 'WIP parvo-randm', 미검증) · C2–C4 학습 · DINOv2+ΔL 팔(입력 규약 미정).
+- **사용자가 정할 것 (먼저)**: refinement-floor 결과를 재투고 주장으로 쓸지·논문 방향(Vault 세션). 판정 기준 (C) 처리는 "계산 불가"로 기록(사후 수정 금지 준수).
+- **사용자가 정할 것**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.
-- **진행 중 검증**: refinement-floor 1단계 — 밝기 증강 구현(`--bright-aug`, 기본 off) [확정] 증강 off 시 수정 전 코드와 전 loss 항 소수 8자리 일치(C0 ckpt, CPU smoke) · sanity 1ep [확정 · 게이트 PASS] L_mB C0 동 step 대비 +20%·L_mA 0 붕괴 없음·증강 오프셋 0.051 vs motion |ΔL| 0.080 같은 자릿수 → C1 본학습 대기 중. 2단계 최소 칸(CALVIN, gap30, attentive, seed 1개) [잠정]: M 단독 위치 R² = raw ΔL 0.225 vs 제출본 M 0.444 — 같은 분포 참조 시험이라 판정축 아님, raw probe가 20ep 마지막 epoch에 best(미수렴 가능), 같은 설정 P_t⊕M이 기존 0.487→0.535로 흔들려 변동 폭 미확인. seed 변동 [확정 · V100 결정론·seed 3]: raw ΔL 0.218±0.024 / P_t⊕M 0.488±0.043 (0.535는 유리한 seed, 기존 0.487과 정합). M 단독 바닥선 표(seed 3, 같은 분포 참조 시험) [잠정]: 제출본 M 0.470±0.049 vs random-init M 0.246 · 투영 raw 0.239 · raw 0.218 · 정규화 0.130 · 증강 raw 0.052 (`paper_artifacts/tables/refinement_floor/calvin_m_alone_floor.csv`). 60ep 수렴 진단 [확정 · seed 3]: raw 0.223±0.005(평탄) / 제출본 M 0.576±0.033(아직 상승) → 20ep는 raw가 아니라 학습된 M에 불리, 격차 유지·확대. 전 팔 best epoch = 마지막(20) → probe 미수렴 공통 이슈. **교란 파일럿 (판정축 ⓢ, seed 1)**: 구현 [확정](교란 0 = clean 정확 재현). 제출본 M [잠정 · seed 1·CALVIN만]은 모든 교란에서 raw ΔL보다 크게 붕괴 — 노이즈 σ0.01(8bit 2.5단계)에 0.496→−2.0(raw 0.225 불변), 그림자 0.6에 −2.95(raw −0.31), 밝기 배율 0.9에 −9.9(raw −0.80). C1 판정의 조기 경보(중지 판단은 C1 측정 때 1회). CSV `calvin_perturb_pilot.csv`. 교란 시험 절차 [확정 · 2중 검증] = eval_protocols §4-b. part1 학습이라 아래 full-data I/O 병목과 무관.
-- **🔴 방법론 문제 (사용자 판단 필요, 09-26)**: 판정 기준 (C)의 기준점 = "증강 raw(F1-aug)의 R²가 절반이 되는 그림자 강도 s*"인데, F1-aug는 **깨끗한 조건부터 0.05**(probe가 증강 데이터에서 거의 못 배움)라 그림자 0.6에서도 0.04 → **s*가 정의되지 않음**. 계획서 §6 사후 수정 금지 → 코드·기준 건드리지 않고 대기.
-- **기준 (A) 전이 범위 = 계획서대로 6방향 평균 (사용자 결정 09-26 05:41, 결과 보기 전)**: object(Floor 장면·카메라 높이 0.65)와 spatial·goal(Tabletop·1.61)의 시점 차이 [확정]를 알고도 유지 — "기대 밖 수확 가능". spatial↔goal 2방향·object 관련 4방향 분해는 참고 열로 함께 보고(판정 = 6방향).
-- **🔴 §6 판정 (09-26, C1 측정 완료 · M 단독 · seed 3) — 중지 신호 발동, 사용자 결정 대기 (C2–C4 미제출)**
-  - (A) LIBERO suite 간 전이 6방향 [잠정 · seed 3]: C1 −0.33 CI[−0.49,−0.17] vs raw −0.32 · 증강 raw −0.22 · 정규화 −0.31 · random-init −0.73 → **불성립**(raw 계열과 겹치거나 낮음). 같은 suite(ⓘ)에선 C1 0.71 vs raw 0.16.
-  - (B) CALVIN 라벨 효율(step 매칭) [잠정 · seed 3]: 5% C1 0.39 CI[0.30,0.49] vs raw 0.22 CI상한 0.34 → CI 겹침 **불성립**(평균은 C1 우위), 2% C1 0.18 CI 넓음. 고정 epoch 참고 열: 학습된 M이 저라벨에서 붕괴(5% −0.07) — step 매칭은 raw가 아니라 학습된 M에 유리했음.
-  - (C) 계산 불가(기준점 부재). C1 교란(seed 3): 그림자 0.6 −2.71 CI[−4.18,−1.23], 노이즈 0.01 −1.43 CI[−3.19,+0.34] vs raw −0.32/+0.22 → 밝기 증강으로도 C0와 같은 붕괴. 경사(ramp)만 개선(0.3에서 +0.05/0.15 vs C0 −0.40/−0.58).
-  - 중지 신호(§6): ⓢ 전부(그림자·노이즈·전이)에서 C1 M ≤ raw → **해당**. 단 계획서 1차 기준인 P_t⊕C1 M 열은 ⓢ에서 미측정.
-- **교란 비교군 seed 3 [잠정 · CALVIN만]**: 학습된 제출본 M은 noise σ0.01에 0.49→−2.57인데 **같은 구조 random-init M은 +0.24(불변)** → 노이즈 취약성은 구조가 아니라 학습이 만든 것. 그림자 0.6: C0 −2.59 vs raw −0.32 vs random-init −4.93.
-- **P_t⊕X 결과 (09-26 16시, C1 P 공유, seed 3) [잠정]**: P_t⊕C1 M이 P_t⊕raw를 CI 비겹침으로 이김 — 전이 6방향 −1.29[−2.26,−0.31] vs −10.15[−13.28,−7.02], 그림자 0.6 −1.99 vs −3.75, 밝기배율 1.3 −11.9 vs −19.6. 노이즈에선 raw 우위(−1.28 vs +0.22), 라벨 5%는 CI 겹침(0.33 vs 0.19). ⇒ 이 열에서는 중지 신호 **불해당**(ⓢ 전부 열위가 아님). 단 전이는 두 팔 모두 음수(판독기가 suite 밖으로 못 옮김), PtRaw는 probe가 epoch 2–3에서 최고점 후 악화(P 외형에 과적합 의심, [미검증]). 사전 결정상 다음 = 나머지 비교군 P_t⊕X(약 45잡) — 사용자 확인 후 제출.
-- **P_t⊕X 재분석 (09-26, 저장 결과만) [잠정]**: C1의 "우위"는 C1이 강해서가 아니라 **P를 붙인 raw가 raw 단독보다 약해진 탓**이 큼 — 그림자 0.6: raw 단독 −0.32 > P_t⊕C1 M −1.99 > P_t⊕raw −3.75; 전이 6방향: raw 단독 −0.32 > P_t⊕C1 M −1.29 > P_t⊕raw −10.15(object→다른 suite −25가 평균 지배, object만 카메라 다름). raw 계열 최선 구성이 C1 계열 최선 구성을 ⓢ 두 시험 모두에서 이김. 같은 카메라 2방향(spatial↔goal)만 보면 P_t⊕C1 M +0.10이 전 팔 중 최고(raw 단독 −0.10). CALVIN에서 P_t⊕raw probe는 epoch 2–3에서 최고점(= P 외형 과적합), clean 0.22로 P 기여 0. cosine 지표는 그리퍼 차원(±1)이 지배해 위치 방향 보존 판단에 못 씀. 비교군 확장 보류(사용자 09-26).
-- **재개 시 할 일 (09-26 세션 중단 대비)**: ① P_t⊕X 18잡(40298731~748, 목록 `paper_artifacts/tables/refinement_floor/jobs_pt_20260926.txt`) 완료 확인 → `/proj/external_group/mrg/conda_envs/aavrl-train/bin/python`이 아닌 시스템 `python3 paper_artifacts/tables/refinement_floor/agg_pt.py`로 집계(PtC1M vs PtRaw: 전이·교란·라벨) ② 사전 결정대로: PtC1M이 교란 또는 전이에서 PtRaw를 95% CI로 이기면 나머지 비교군 P_t⊕X(약 45잡) 진행, 아니면 중지 확정(효율 주장 폐기) — 단 증강 raw가 더 강할 가능성 시 P_t⊕증강raw 1팔 추가 확인 ③ M 단독 판정 표 재집계 = `python3 paper_artifacts/tables/refinement_floor/agg_verdict.py` ④ 결정 대기: DINOv2+ΔL 입력 규약(보류).
-- 실행 전 필수 점검(full-data 잡 한정) = **full-data 데이터 로딩 2.3× 병목(GPFS 랜덤 액세스) 미해결** — 후속 full-data 잡을 내기 전에 먼저 봐야 함.
+- 운영 메모: C1 학습이 C0 대비 34% 느렸음(원인 미확인, 노드 전용) — C2–C4 재개 시 비용 +60 GPU·h/셀 가능. full-data 잡은 GPFS 랜덤 액세스 2.3× 병목 미해결.
 - **형제 프로젝트 Cross-View**(09-18 개시, 제목 잠정): head/wrist 뷰 충분성 + action 조건화. DROID 3뷰 페어링 로더 신규 필요. 구현 0.
 
 ## 돌아가는 잡
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40298731~748 | P_t⊕C1 M vs P_t⊕raw ΔL (중지 조건 1차 기준 열) × 교란·전이·라벨 효율 × seed 3 | 09-26 | `*refine_{pert,xfer,label}_{PtC1M,PtRaw}_*` |
+| (없음 — 09-26 16시 이후 정지. refinement-floor 누적: H100 ~165 GPU·h(C1) + V100 ~50 GPU·h) | | | |
 
 ## 이 문서의 용어
 
@@ -59,6 +51,8 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 ## 결정 이력
 
+- 2026-09-26 · refinement-floor P_t⊕X 비교군 확장 보류 — raw 단독이 C1 계열 최선보다 분포 이동에 강건해 확장해도 결론 불변 (사용자 결정, 결과 정리 후 방향 판단)
+- 2026-09-26 · 판정 기준 (C) = "계산 불가"로 기록 (증강 raw 기준점 부재, 사후 수정 금지)
 - 2026-09-26 · refinement-floor 기준 (A) 전이 = 계획서대로 6방향 평균 유지 (object 시점 차이 확인 후, 전이 결과 보기 전 사용자 결정)
 - 2026-09-16 · 조기 게이트 계획에 배포 대상(`p_teacher + m_teacher + m_student`)·항 1 포함·항 2 변위 타깃 확정 반영 (Vault 세션 결정)
 - 2026-07-21 · Paper 1(input-prior)은 전용 repo로 분리, 이 저장소 문서 동결
