@@ -91,6 +91,8 @@ if [[ "$ENCODER" == "raw-dl" || "$ENCODER" == "parvo-raw" ]]; then ARGS+=(--raw-
 [[ -n "${EVAL_PERTURB:-}" ]] && ARGS+=(--eval-perturb-list $EVAL_PERTURB)  # 공백 구분 'kind:l1,l2'
 [[ -n "${PROBE_EPOCHS:-}" ]] && ARGS+=(--probe-epochs "$PROBE_EPOCHS")  # 진단용 (정규 = 20)
 if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi  # 데이터 고정·probe만 재시드
+[[ -n "${RAW_PAD:-}" ]] && ARGS+=(--raw-pad "$RAW_PAD")                          # parvo-raw: zero | linear (§9 R2-2)
+[[ -n "${PROBE_NOISE_SIGMA:-}" ]] && ARGS+=(--probe-noise-sigma "$PROBE_NOISE_SIGMA")  # §9 R2-3 학습·시험 양쪽 노이즈
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"
 

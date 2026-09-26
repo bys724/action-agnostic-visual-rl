@@ -363,6 +363,9 @@ def perturb_pair(prev: torch.Tensor, curr: torch.Tensor, kind: str, level: float
     return prev, (curr * field.unsqueeze(1)).clamp(0, 1)
 
 
+PROBE_NOISE_SEED = 20_000  # §9 R2-3: split별 generator seed = 이 값 + split 번호 (train 0 · eval 1, LIBERO는 + 10·suite 번호)
+
+
 @torch.no_grad()
 def eval_probe(probe, emb, tgt, device, batch_size: int = 256) -> dict:
     """고정 probe로 (교란된) eval 임베딩 평가 — compute_metrics 동일 지표."""
@@ -497,10 +500,14 @@ class AttentivePoolProbe(nn.Module):
     patch 토큰을 softmax-weighted pool → stream pooled concat → linear head.
     capacity를 linear와 맞춰 'structure vs probe capacity' 혼동 차단.
     입력 x: [B, n_streams * n_patch, D] (encode_pairs_*의 attentive 출력).
-    extra_dim > 0 이면 pooled 뒤에 covariate(예: ee_pos(t) z-score)를 concat — 위치 partial-out."""
+    extra_dim > 0 이면 pooled 뒤에 covariate(예: ee_pos(t) z-score)를 concat — 위치 partial-out.
+    proj_stream = i 이면 stream i 토큰에 학습 선형 투영(D→D, bias 없음)을 pool 전에 적용 —
+    parvo-raw의 zero-pad raw 토큰에 걸면 "학습 256→D 투영"과 동치(pad 차원 입력 0, plan §5.2·§9 R2-2)."""
     def __init__(self, embed_dim: int, n_streams: int = 1, n_patch: int = 196,
-                 action_dim: int = ACTION_DIM, extra_dim: int = 0):
+                 action_dim: int = ACTION_DIM, extra_dim: int = 0, proj_stream: int | None = None):
         super().__init__()
+        self.proj_stream = proj_stream
+        self.proj = nn.Linear(embed_dim, embed_dim, bias=False) if proj_stream is not None else None
         self.n_streams = n_streams
         self.n_patch = n_patch
         self.embed_dim = embed_dim
@@ -512,6 +519,9 @@ class AttentivePoolProbe(nn.Module):
     def forward(self, x, extra=None):
         B = x.shape[0]
         x = x.view(B, self.n_streams, self.n_patch, self.embed_dim)
+        if self.proj is not None:
+            i = self.proj_stream
+            x = torch.cat([x[:, :i], self.proj(x[:, i:i + 1]), x[:, i + 1:]], dim=1)
         attn = torch.einsum("bsnd,sd->bsn", x, self.query) * self.scale
         attn = attn.softmax(dim=-1)
         pooled = torch.einsum("bsn,bsnd->bsd", attn, x)
@@ -528,6 +538,7 @@ def train_probe(
     readout: str = "mean", n_streams: int = 1, weight_decay: float = 0.0,
     task: str = "regression", out_dim: int = ACTION_DIM,
     extra_train=None, extra_eval=None, return_probe: bool = False, eval_every: int = 1,
+    proj_stream: int | None = None,
 ):
     """readout="mean": LinearProbe([N, D]) / readout="attentive": AttentivePoolProbe([N, S*n_patch, D]).
 
@@ -544,9 +555,11 @@ def train_probe(
         base_dim = eval_emb.shape[2]
         probe = AttentivePoolProbe(base_dim, n_streams=n_streams, n_patch=n_patch,
                                    action_dim=out_dim,
-                                   extra_dim=(int(extra_train.shape[1]) if has_extra else 0)).to(device)
+                                   extra_dim=(int(extra_train.shape[1]) if has_extra else 0),
+                                   proj_stream=proj_stream).to(device)
     else:
         assert not has_extra, "mean readout의 covariate는 호출부에서 입력 concat으로 처리"
+        assert proj_stream is None, "proj_stream은 attentive 전용"
         probe = LinearProbe(train_emb.shape[1], action_dim=out_dim).to(device)
     optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)
     train_loader = DataLoader(
@@ -639,7 +652,7 @@ def _suite_split(suite: str, data_root: str, seed: int, train_ratio: float, pct:
     return [kept[i] for i in perm[:n_train]], [kept[i] for i in perm[n_train:]]
 
 
-def run_transfer(args, encode_fn, n_streams, img_size, device, phase):
+def run_transfer(args, encode_fn, n_streams, img_size, device, phase, proj_stream=None):
     """probe 무재학습 suite 간 전이 (refinement_floor_plan §5.3-d, 판정축 ⓢ-(A)).
 
     suite마다: 표준 split train으로 probe fit(best epoch = 같은 suite eval, 기존 규칙) → 고정.
@@ -650,8 +663,9 @@ def run_transfer(args, encode_fn, n_streams, img_size, device, phase):
     gap = args.gaps[0]
     suites = args.transfer_suites
 
-    def embed(demos, train):
+    def embed(demos, train, si):
         phase["train"] = train
+        gen = torch.Generator().manual_seed(PROBE_NOISE_SEED + 10 * si + (0 if train else 1))
         E, Y = [], []
         for hp, d, _ in demos:
             frames, eef_pos, ee_ori, actions = load_demo(hp, d, view=args.view)
@@ -659,22 +673,25 @@ def run_transfer(args, encode_fn, n_streams, img_size, device, phase):
             if T <= gap + 1:
                 continue
             Y.append(np.stack([libero_action_target(eef_pos, ee_ori, actions, t, gap) for t in range(T - gap)]))
-            E.append(encode_fn(preprocess_frames(frames[:T - gap], img_size),
-                               preprocess_frames(frames[gap:], img_size)))
+            prev, curr = preprocess_frames(frames[:T - gap], img_size), preprocess_frames(frames[gap:], img_size)
+            if args.probe_noise_sigma > 0:   # §9 R2-3: probe 학습·시험 양쪽 동일 조건
+                prev, curr = perturb_pair(prev, curr, "noise", args.probe_noise_sigma, gen)
+            E.append(encode_fn(prev, curr))
         return torch.cat(E, 0), torch.from_numpy(np.concatenate(Y, 0))
 
     pos = lambda m: float(np.mean(m["r2_per_dim"][:3]))
     probes, evals, info = {}, {}, {}
-    for s in suites:
+    for si, s in enumerate(suites):
         tr, ev = _suite_split(s, args.data_root, args.seed, args.train_ratio, args.max_length_percentile)
-        emb_tr, tgt_tr = embed(tr, True)
-        evals[s] = embed(ev, False)
+        emb_tr, tgt_tr = embed(tr, True, si)
+        evals[s] = embed(ev, False, si)
         if args.probe_seed is not None:
             torch.manual_seed(args.probe_seed)
         best = train_probe(emb_tr, tgt_tr, *evals[s], epochs=args.probe_epochs,
                            batch_size=args.probe_batch, lr=args.probe_lr, device=str(device),
                            readout=args.readout, n_streams=n_streams,
-                           weight_decay=args.probe_weight_decay, return_probe=True)
+                           weight_decay=args.probe_weight_decay, return_probe=True,
+                           proj_stream=proj_stream)
         probes[s] = best["probe"]
         info[s] = {"n_train_demos": len(tr), "n_eval_demos": len(ev), "n_train_pairs": int(len(tgt_tr)),
                    "n_eval_pairs": int(len(evals[s][1])), "best_epoch": best["epoch"]}
@@ -693,6 +710,8 @@ def run_transfer(args, encode_fn, n_streams, img_size, device, phase):
                "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
                "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
                "random_init_seed": args.random_init_seed, "probe_seed": args.probe_seed,
+               "raw_pad": args.raw_pad if args.encoder == "parvo-raw" else None,
+               "probe_noise_sigma": args.probe_noise_sigma,
                "split": {"seed": args.seed, "train_ratio": args.train_ratio,
                          "max_length_percentile": args.max_length_percentile, "view": args.view},
                "suites": suites, "info": info, "matrix": matrix,
@@ -764,6 +783,10 @@ def main():
                         help="probe 초기화·셔플 전용 seed (demo split은 --seed 고정)")
     parser.add_argument("--raw-dl-variant", default="raw", choices=list(RAW_DL_VARIANTS))
     parser.add_argument("--random-init-seed", type=int, default=None, help="parvo-random 전용 (필수)")
+    parser.add_argument("--raw-pad", default="zero", choices=["zero", "linear"],
+                        help="parvo-raw: raw 토큰 256→384 zero-pad(라운드 1) | linear = probe 안 학습 선형 투영(§9 R2-2)")
+    parser.add_argument("--probe-noise-sigma", type=float, default=0.0,
+                        help="§9 R2-3 현실적 sim: probe 학습·시험 양쪽 프레임에 가우시안 픽셀 노이즈 σ (0=끔)")
     args = parser.parse_args()
 
     if args.readout == "attentive" and args.view == "both":
@@ -888,9 +911,11 @@ def main():
 
     print(f"  img_size={img_size}  readout={args.readout}  n_streams={n_streams}")
 
+    proj_stream = 1 if (args.encoder == "parvo-raw" and args.raw_pad == "linear") else None
     if args.transfer_suites:
-        run_transfer(args, encode_fn, n_streams, img_size, device, phase)
+        run_transfer(args, encode_fn, n_streams, img_size, device, phase, proj_stream)
         return
+    assert args.probe_noise_sigma == 0, "--probe-noise-sigma는 전이 모드(LIBERO)에만 배선됨"
 
     # ── Demo-level train/test split ─────────────────────────────────────
     all_demo_keys = []  # list of (hdf5_path, demo_key, task_id)
@@ -1033,7 +1058,7 @@ def main():
             weight_decay=args.probe_weight_decay,
             task=("classification" if is_cls else "regression"),
             out_dim=(n_classes if is_cls else ACTION_DIM),
-            extra_train=extra_tr, extra_eval=extra_ev,
+            extra_train=extra_tr, extra_eval=extra_ev, proj_stream=proj_stream,
         )
         m = best["metrics"]
         elapsed = time.time() - t0

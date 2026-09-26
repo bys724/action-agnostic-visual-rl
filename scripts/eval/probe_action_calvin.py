@@ -47,6 +47,7 @@ from scripts.eval.probe_action_libero import (
     encode_pairs_parvo,
     encode_pairs_raw_dl,
     build_parvo_random_encoder,
+    PROBE_NOISE_SEED,
     encode_pairs_parvo_raw,
     eval_probe,
     perturb_pair,
@@ -111,6 +112,10 @@ def main():
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
                              "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
+    parser.add_argument("--raw-pad", default="zero", choices=["zero", "linear"],
+                        help="parvo-raw: raw 토큰 256→384 zero-pad(라운드 1) | linear = probe 안 학습 선형 투영(§9 R2-2)")
+    parser.add_argument("--probe-noise-sigma", type=float, default=0.0,
+                        help="§9 R2-3 현실적 sim: probe 학습·시험(교란 시험 포함) 양쪽 프레임에 가우시안 픽셀 노이즈 σ (0=끔)")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--v11-p-depth", type=int, default=12)
@@ -242,6 +247,7 @@ def main():
             return encode_pairs_via_adapter(adapter, prev, curr, device, batch=args.encode_batch)
 
     print(f"  img_size={img_size}  readout={args.readout}  n_streams={n_streams}")
+    proj_stream = 1 if (args.encoder == "parvo-raw" and args.raw_pad == "linear") else None
 
     # ── Segment-level train/eval split ───────────────────────────────────
     if args.cross_folder:
@@ -271,6 +277,7 @@ def main():
 
         def collect_embed(seg_list, label, base_dir, perturb=None):
             embed_chunks, tgt_chunks, ep_ids = [], [], []
+            ngen = torch.Generator().manual_seed(PROBE_NOISE_SEED + (0 if label == "train" else 1))
             for ei, (s, e, task) in enumerate(seg_list):
                 frames, robot_obs, actions = load_segment_frames(
                     base_dir, s, e, view=args.view,
@@ -284,6 +291,8 @@ def main():
                 ])
                 prev = preprocess_frames(frames[:T - gap], img_size)
                 curr = preprocess_frames(frames[gap:], img_size)
+                if args.probe_noise_sigma > 0:   # §9 R2-3: 기저 조건 노이즈 (교란보다 먼저)
+                    prev, curr = perturb_pair(prev, curr, "noise", args.probe_noise_sigma, ngen)
                 if perturb is not None:   # (kind, level, generator) — 프레임 교란 후 ΔL은 인코더가 재계산
                     prev, curr = perturb_pair(prev, curr, *perturb)
                 emb = encode_fn(prev, curr)  # (T-gap, D)
@@ -314,7 +323,7 @@ def main():
                            lr=args.probe_lr, device=str(device),
                            readout=args.readout, n_streams=n_streams,
                            weight_decay=args.probe_weight_decay,
-                           return_probe=bool(args.eval_perturb_list))
+                           return_probe=bool(args.eval_perturb_list), proj_stream=proj_stream)
         m = best["metrics"]
         label_results = {}
         if args.label_fracs:
@@ -335,7 +344,8 @@ def main():
                                  epochs=ep_f, batch_size=args.probe_batch,
                                  eval_every=max(1, ep_f // args.probe_epochs),
                                  lr=args.probe_lr, device=str(device), readout=args.readout,
-                                 n_streams=n_streams, weight_decay=args.probe_weight_decay)
+                                 n_streams=n_streams, weight_decay=args.probe_weight_decay,
+                                 proj_stream=proj_stream)
                 label_results[str(frac)] = {"n_train_pairs": n, "epochs": ep_f, "best_epoch": bf["epoch"],
                                             **bf["metrics"]}
                 print(f"    label_frac={frac}: n={n} pos R² = {np.mean(bf['metrics']['r2_per_dim'][:3]):+.4f} "
@@ -375,6 +385,8 @@ def main():
                 "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
                 "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
                 "random_init_seed": args.random_init_seed,
+                "raw_pad": args.raw_pad if args.encoder == "parvo-raw" else None,
+                "probe_noise_sigma": args.probe_noise_sigma,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
                 "n_train_episodes": len(train_segs),
                 "n_eval_episodes": len(eval_segs),
