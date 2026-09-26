@@ -105,6 +105,8 @@ def main():
     parser.add_argument("--label-fracs", type=float, nargs="+", default=None,
                         help="라벨 효율 (plan §5.3-b): probe 학습 pair를 비율별로 무작위 부분표본 → fit → 같은 전체 eval. "
                              "비율마다 재샘플(seed=probe seed 기반). 예) 1.0 0.2 0.05 0.02")
+    parser.add_argument("--label-fixed-epochs", action="store_true",
+                        help="라벨 효율 참고 열: step 매칭 대신 --probe-epochs 고정 (편향 점검용, 판정 미사용)")
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
                              "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
@@ -317,6 +319,8 @@ def main():
                 # 학습 부족이 섞임). 평가는 ~probe_epochs회로 제한
                 steps_full = args.probe_epochs * -(-len(tgt_tr) // args.probe_batch)
                 ep_f = max(args.probe_epochs, -(-steps_full // -(-n // args.probe_batch)))
+                if args.label_fixed_epochs:
+                    ep_f = args.probe_epochs
                 bf = train_probe(emb_tr[idx], tgt_tr[idx], emb_ev, tgt_ev,
                                  epochs=ep_f, batch_size=args.probe_batch,
                                  eval_every=max(1, ep_f // args.probe_epochs),
@@ -370,6 +374,7 @@ def main():
                 "probe_seed": args.probe_seed,
                 "perturb": perturb_results or None,
                 "label_frac": label_results or None,
+                "label_fixed_epochs": bool(args.label_fixed_epochs),
                 **m,
             }, f, indent=2)
 

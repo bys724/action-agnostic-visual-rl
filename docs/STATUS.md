@@ -37,8 +37,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40278188~202 | 교란 강건성 비교군 전체 seed 3 (판정축 ⓢ 기준값) — C1 완료 시 C1 3잡만 추가하면 판정 | 09-26 01:4x | `paper_artifacts/calvin_action_probing/*refine_pert_*/gap30/summary.json` |
-| 40275371 | C1 새 base = 제출본 CoMP-S + 프레임별 독립 밝기 증강, 50ep 본학습 (AIP_long 2×4 H100, ~110 GPU·h) | RUNNING 09-25 16:33~ · 완료 예상 09-26 ~14:00 (C0 대비 34% 느림, 원인 미확인) | `tail /proj/external_group/mrg/logs/pretrain_refine_comp_s_bright_40275371.out` 의 `[bright]`·`[v14]` 줄 / ckpt `two_stream_v15b_refine_comp_s_bright/` |
+| 40285696~40285765 | C1 측정 + 판정 (A)·(B) 비교군 64잡 (CALVIN 교란·라벨 효율, LIBERO 전이; 7팔 × seed 3) | 09-26 13:4x | `paper_artifacts/{calvin,libero}_action_probing/*refine_{pert,label,labelfix,xfer}_*` |
 
 ## 이 문서의 용어
 
