@@ -19,13 +19,14 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 ## 열린 것 · 다음 결정
 
+- **🔴 라운드 2 지시 (2026-09-26 Vault 세션, 사용자 확정)** — [`refinement_floor_plan.md` §9](refinement_floor_plan.md). **학습 없음.** ① P_t⊕P_tk 팔을 ⓢ 시험(전이·perturbation)에 추가 ② P_t⊕raw의 zero-pad를 계획대로 학습 선형 투영으로 고쳐 재측정(옛 행 보존) ③ probe 학습·시험 양쪽에 σ0.01/0.02 노이즈를 넣은 "현실적 sim" 조건에서 같은 분포 표 재측정 ④ 진단: CALVIN·LIBERO·EgoDex 정확히-0 ΔL 비율 ⑤(선택) probe weight decay. 답할 질문 = 정확히-0 의존이 원인인가 / P가 어디까지 짐인가 / P 두 장은 버티나. Case A 입력 노이즈 수정 **학습은 결과 후 사용자 결정**.
 - **🔴 refinement-floor 결론 (09-26, M 단독·P_t⊕X 열, probe seed 3, 표현 학습 1회) [잠정]** — 표·파일 = `paper_artifacts/tables/refinement_floor/README.md`
   - 같은 분포(ⓘ): C1 M 0.46(CALVIN)·0.71(LIBERO suite 내) vs raw 0.22·0.16. random-init M ≈ raw → 차이는 학습된 가중치.
   - §6 (A) 전이 6방향: C1 −0.33 ≈ raw −0.32 → 불성립. (B) 라벨 5%: 0.39 vs 0.22, CI 겹침 → 불성립. (C) 계산 불가(증강 raw가 절반 강도 없음). ⇒ 중지 신호(M 단독 열).
   - P_t⊕X 열: P_t⊕C1 M이 P_t⊕raw를 전이(−1.29 vs −10.15)·그림자(−1.99 vs −3.75)에서 CI로 이기나, **raw 단독(−0.32/−0.32)이 둘 다보다 강건** — 우위는 P를 붙인 raw의 악화(P 외형 과적합 추정) 탓. 노이즈는 raw 우위. object suite만 카메라 다름(Floor)이 전이 음수의 주 원인.
   - 밝기 증강(C1 vs C0): 경사(ramp)만 개선, 배율·그림자·노이즈 불변성 없음. 노이즈 취약성은 학습이 만든 것(random-init M은 불변; CALVIN 정지 ΔL 73%가 정확히 0).
   - 보류: P_t⊕X 비교군 4개 확장(코드 `git stash` 'WIP parvo-randm', 미검증) · C2–C4 학습 · DINOv2+ΔL 팔(입력 규약 미정).
-- **사용자가 정할 것 (먼저)**: refinement-floor 결과를 재투고 주장으로 쓸지·논문 방향(Vault 세션). 판정 기준 (C) 처리는 "계산 불가"로 기록(사후 수정 금지 준수).
+- ~~사용자가 정할 것 (먼저)~~ → **09-26 답: 라운드 2(위) 먼저, 논문 방향은 그 결과 후.** (원문: refinement-floor 결과를 재투고 주장으로 쓸지·논문 방향.) 판정 기준 (C) 처리는 "계산 불가"로 기록(사후 수정 금지 준수).
   - Vault 논의용 해석 (09-26 dev 세션, 측정 아님): ① 노이즈 σ0.01(≈2.5/255)은 실제 센서 수준 → sim→real 제한점으로 무게 높임, 그림자 0.6(1초 내 화면 1/5 ×0.4 급출현)은 극한 스트레스로 무게 낮춤 — 판정 자체는 불변. ② 인코더 주장은 "작은 고정 헤드에서의 접근성"까지만 성립, 큰 헤드(BC-T)에선 CoMP≈plain → 논문을 결과물(인코더)보다 방법·메커니즘(M-recon 인과) 프레임으로. 인코더 주장을 살리려면 raw ΔL + 큰 헤드 대조가 필요 [미검증].
 - **사용자가 정할 것**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.

@@ -1,6 +1,6 @@
 # Refinement-Floor Plan — CoMP M은 raw ΔL을 얼마나 정제하는가
 
-> **상태**: 설계 확정(Vault 세션 2026-09-25, 한 번에 재작성) · 구현 0 · 학습 0 · 클러스터 미반영.
+> **상태**: 라운드 1(§3–§7) **완료 2026-09-26** — C1 학습·바닥선·판정 측정 끝, §6 중지 신호(M 단독 열) → C2–C4 보류. **현재 = 라운드 2(§9, 2026-09-26 지시): 학습 없음, probe 3건 + 진단.** 라운드 1 결과 = `paper_artifacts/tables/refinement_floor/README.md`.
 > **읽는 법**: 이 문서는 **자족적**이다. dev/클러스터 세션은 Vault를 볼 수 없으므로 목적·논리·금지 사항을 전부 여기에 담았다. §1을 읽고 나서 §2를 **행동 규칙**으로 삼고, §7 순서대로 집행한다. 결과는 이 문서에 쓰지 않는다(결과 = `cluster_sessions.md`·`STATUS.md`·`paper_artifacts/`).
 > **이 문서와 충돌하는 판단이 서면**: 코드를 고치지 말고 `docs/STATUS.md` "열린 것"에 질문을 적고 **멈춘다**. 사용자가 답한다.
 > **결정 출처**: AAAI-27 리뷰(Reject 2026-09-25) · Vault `Projects/Action-Agnostic Visual Representation (AAAI)/{AAAI-27 Reviews, 2. Experiments}.md` · 사용자 결정(09-25).
@@ -58,7 +58,7 @@ AAAI-27 리뷰어 3명이 같은 구멍을 봤다. CoMP의 M 스트림 입력은
 - 모든 새 플래그·팔은 **명시적으로 켜야만** 동작. ckpt 로드 실패로 우연히 random이 되는 경로 차단(strict load 실패 = 즉시 에러).
 
 ### 2.3 금지 행동
-새 loss 항 · 가중치 스케줄 변경 · 정규화 추가 · 마스크 비율 조정 · "나을 것 같은" 아키텍처 변경 · §6 기준 사후 수정 · 결과 본 뒤 팔 추가/삭제 · 회전·translation을 nuisance 시험에 사용(§5.3-e) · STEP 1 plain/스칼펠 수치를 새 표에 혼입(설정 불일치, §3.3 ②).
+새 loss 항 · 가중치 스케줄 변경 · 정규화 추가 · 마스크 비율 조정 · "나을 것 같은" 아키텍처 변경 · §6 기준 사후 수정 · 결과 본 뒤 팔 추가/삭제 · 회전·translation을 nuisance 시험에 사용(§5.3-e) · STEP 1 plain/스칼펠 수치를 새 표에 혼입(설정 불일치, §3.3 ②). · **커밋 메시지에 `Co-Authored-By` 라인 추가 금지**(사용자 전역 규칙; 라운드 1 커밋에 붙어 있었음) · 기존 결과 행 삭제·덮어쓰기 금지(구현이 바뀌면 새 행으로 추가하고 옛 행에 라벨).
 
 ### 2.4 멈추고 물을 것 (STATUS "열린 것"에 적고 대기)
 - §3.4 sanity에서 DC 오프셋 자릿수가 motion |ΔL|와 다를 때 — gain 범위를 임의 조정하지 않는다.
@@ -243,3 +243,32 @@ P_t⊕X 형식: P_t 토큰(C1의 P, 384)과 X 토큰을 **토큰 축 concat** �
 - **value-ownership routing** = `routing_mode=v_from_p`: Q·K는 helper, V·residual은 owner. **표준 cross-attn** = `v_from_m`: Q=owner, K·V=helper. 정의 = `src/models/common/blocks.py` MotionRoutingBlock docstring.
 - **거울 ablation**(C2) = routing 유지·M-recon 제거. **스칼펠**(V_P) = V 소유만 뒤집은 다른 실험 — 이번엔 안 쓴다.
 - **guard 7/8** = comp_mae_plan의 per-patch |ΔL| 가중(floor) / M 마스크 비율 < P.
+
+---
+
+## 9. 라운드 2 (2026-09-26 지시) — 학습 없음. probe 3건 + 진단 2건
+
+### 9.0 왜
+라운드 1이 남긴 질문 셋에 학습 전에 답한다. **§2 행동 규칙 전부 그대로 적용.** 학습(Case A 입력 노이즈 수정 등)은 라운드 2 결과를 본 뒤 사용자가 정한다 — dev가 먼저 학습을 제출하지 않는다.
+
+- **Q1 정확히-0 의존이 진짜 원인인가.** 라운드 1: 학습된 M이 σ0.01 노이즈에 붕괴, raw·random-init은 불변. CALVIN 정지 ΔL의 73%가 정확히 0 → Case A(ΔL≡0→0)로 배운 sim 전용 단서 의심. 이게 맞으면 **같은 분포의 0.46–0.71도 그 단서에 기대 있을 수 있다.**
+- **Q2 P가 어디까지 짐인가.** P_t⊕raw 전이 −10 vs raw 단독 −0.32. 그러나 (i) 전이 시험은 전 팔 음수(변별력 없음) (ii) raw 토큰을 **zero-pad**로 384에 맞췄음(계획 §5.2는 학습 선형 투영) → 노름 불균형 의심 (iii) CALVIN P_t⊕X probe best epoch 2–3 = 즉시 과적합(wd 0).
+- **Q3 P 두 장은 어떤가.** 사다리 0단 P_t⊕P_tk가 ⓢ 시험에 없다. P는 z-score라 gain 불변이고 정확히-0에 의존하지 않으므로, **noise·shadow에서 P_t⊕P_tk가 버티면 취약성은 M에 국한**(배포 P-only는 무사)이고, 같이 무너지면 인코더 전체 문제.
+
+### 9.1 작업 (전부 probe, V100)
+| # | 작업 | 팔 | 시험 | 비고 |
+|---|---|---|---|---|
+| R2-1 | **P_t⊕P_tk 팔을 ⓢ 시험에 추가** | C1의 P (`attentive_concat_p_t_p_tk`), 참조로 C0의 P | LIBERO 전이 6방향 · CALVIN perturbation 전 종(gain·ramp·shadow·noise 전 강도) · CALVIN clean · 라벨 sweep | 기존 readout 경로, 새 코드 없음. 결과 표에 사다리 0단 행으로 |
+| R2-2 | **P_t⊕raw 패딩 수정 재측정** | P_t⊕raw ΔL — raw 토큰 256→384 **probe 안 학습 선형 투영**(§5.2 명세) | 라운드 1과 동일 전 시험(ⓘ·전이·perturbation·라벨) | zero-pad 결과는 **삭제하지 말고** `pad=zero` 라벨로 보존, 새 행 `pad=linear`. 같은 방식으로 P_t⊕C1 M도 재측정 불필요(D=384) |
+| R2-3 | **"현실적 sim" 조건 — 같은 분포 표 재측정** | C1 M · C0 M · raw · F1′ · F3 random-init · P_t⊕P_tk · P_t⊕C1 M · P_t⊕raw(linear) | CALVIN clean(ⓘ) + LIBERO suite 내(ⓘ) · **probe 학습·시험 양쪽 프레임에 Gaussian σ∈{0.01, 0.02} 독립 주입 후 ΔL 재계산** | 새 플래그 `--probe-noise-sigma`(기본 0), 픽셀 프레임에 적용 → 모든 팔 같은 파이프라인. seed 고정. 이것은 §5.3-e(시험만 교란)와 **다른 시험** — 학습·시험 분포가 같으니 ⓘ로 라벨 |
+| R2-4 | **진단: 정확히-0 비율** | — | CALVIN·LIBERO 3suite·EgoDex part1(Case B 실제 쌍) 각 500쌍에서 `ΔL == 0` 픽셀 비율, 패치 단위 "전부 0" 비율 | GPU 불필요. EgoDex는 실제 영상이라 ~0%여야 함 — 그러면 "정확히 0"은 Case A에서만 본 단서라는 진단이 확정 |
+| R2-5 | **진단(선택): probe 정칙화** | P_t⊕raw(linear) · P_t⊕C1 M | CALVIN clean + LIBERO 전이, `PROBE_WEIGHT_DECAY∈{0.01, 0.1}` | "P에 즉시 과적합" 가설 확인. 판정 아님, 참고 |
+
+### 9.2 사전 해석 (결과 전 고정 — 판정 기준이 아니라 읽는 법)
+- **R2-3**: 노이즈 양쪽 주입에서 C1 M이 raw의 **2배 이상 유지** → 같은 분포 우위는 정확히-0 산물이 아니고, 노이즈 취약성은 분포 이동 문제로 국한. C1 M이 **raw 수준으로 하락** → 라운드 1과 제출본의 probe 수치가 sim 단서의 산물 → 논문의 모든 probe 표가 현실적 조건 재측정 대상.
+- **R2-1**: P_t⊕P_tk가 noise·shadow에서 버팀(raw 수준 이상) → 취약성은 M 국한, 배포 표상 무사. 같이 무너짐 → 인코더 전체.
+- **R2-2**: linear 투영 후 P_t⊕raw 전이가 raw 단독에 근접 → −10은 패딩 인공물. 여전히 크게 나쁨 → "P가 판독기를 무너뜨림"이 실재(제출본 BC causal confusion과 같은 현상으로 서술).
+- **R2-4**: EgoDex Case B 쌍의 정확히-0 비율 ≈ 0% 확인 시 → Case A 입력을 정확히 0으로 준 것이 sim 전용 단서 학습의 원인 [진단 확정] → 다음 학습 수정 후보 = Case A 입력에 센서 노이즈. **이 학습은 사용자 결정 후.**
+
+### 9.3 순서·기록
+R2-4(즉시, CPU) → R2-1·R2-2·R2-3 잡 일괄 제출(같은 날) → R2-5(여유 시). 결과 = `paper_artifacts/tables/refinement_floor/round2_*.{csv,txt}` + README에 라운드 2 절 추가. STATUS "열린 것"에 Q1–Q3 답을 한 줄씩. **학습 제출 없음.**
