@@ -154,3 +154,9 @@ pert PilotM 2 40315483
 pert C1M 2 40315484
 pert F1 2 40315485
 xfer PilotM 2 40315486
+pert PilotM10 42 40321093
+xfer PilotM10 42 40321094
+pert PilotM10 1 40321095
+xfer PilotM10 1 40321096
+pert PilotM10 2 40321097
+xfer PilotM10 2 40321098
