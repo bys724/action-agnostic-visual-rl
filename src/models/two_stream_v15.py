@@ -280,6 +280,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         bright_gain_range: Tuple[float, float] = (0.8, 1.2),
         bright_ramp_prob: float = 0.5,
         bright_ramp_amp: float = 0.15,
+        m_noise_max: float = 0.0,             # §10 센서 노이즈: M 입력 프레임에 RGB 가우시안 σ~U[0, max] (0=off)
+        bright_scene_gain_range: Optional[Tuple[float, float]] = None,  # §10 장면 조명 수준: 쌍 공유 gain (None=off)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -447,6 +449,9 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.bright_gain_range = tuple(bright_gain_range)
         self.bright_ramp_prob = bright_ramp_prob
         self.bright_ramp_amp = bright_ramp_amp
+        self.m_noise_max = m_noise_max
+        self.bright_scene_gain_range = tuple(bright_scene_gain_range) if bright_scene_gain_range else None
+        assert m_noise_max == 0 or bright_aug, "m_noise_max는 bright_aug 경로 전용"
         if bright_aug:
             assert comp_mae, "bright_aug는 comp_mae(_forward_pair_comp) 전용"
         if comp_mae:
@@ -969,13 +974,29 @@ class TwoStreamV15Model(TwoStreamV11Model):
         bright_stats = {}
         if self.bright_aug and self.training:
             with torch.no_grad():
-                img_t_aug, g_t, a_t = self._photometric_aug(image_current)
-                img_tk_aug, g_tk, a_tk = self._photometric_aug(image_future)
-                img_t_aug2, _, _ = self._photometric_aug(image_current)
+                # §10 장면 조명 수준: 쌍의 모든 프레임이 공유하는 gain(광원 세기, 포화 clamp = 과노출).
+                #   가짜 motion은 만들지 않고 motion 대비만 바꿈. 타깃은 원래 조명의 깨끗한 ΔL(아래 m_tgt_*) → 조명 불변 압력.
+                src_t, src_tk = image_current, image_future
+                if self.bright_scene_gain_range is not None:
+                    lo_s, hi_s = self.bright_scene_gain_range
+                    g_s = torch.empty(B, 1, 1, 1, device=device).uniform_(lo_s, hi_s)
+                    src_t, src_tk = (src_t * g_s).clamp(0.0, 1.0), (src_tk * g_s).clamp(0.0, 1.0)
+                img_t_aug, g_t, a_t = self._photometric_aug(src_t)
+                img_tk_aug, g_tk, a_tk = self._photometric_aug(src_tk)
+                img_t_aug2, _, _ = self._photometric_aug(src_t)
                 m_tgt_real = self.preprocessing.compute_m_channel(image_current, image_future)
                 m_tgt_null = self.preprocessing.compute_m_channel(image_current, image_current)
-                m_chan_real = self.preprocessing.compute_m_channel(img_t_aug, img_tk_aug)
-                m_chan_null = self.preprocessing.compute_m_channel(img_t_aug, img_t_aug2)
+                # §10 센서 노이즈 (M 입력만, P는 무노이즈): 샘플별 σ~U[0, m_noise_max]를 쌍의 두 프레임이 공유,
+                #   노이즈 샘플은 프레임마다 독립 (RGB 채널·픽셀 독립 = 고주파 측정 잡음). 타깃은 깨끗한 ΔL 그대로
+                #   → Case A(타깃 0)가 "잡음은 motion이 아니다"를 직접 가르침.
+                if self.m_noise_max > 0:
+                    sig = torch.empty(B, 1, 1, 1, device=device).uniform_(0.0, self.m_noise_max)
+                    nz = lambda x: (x + sig * torch.randn_like(x)).clamp(0.0, 1.0)
+                    m_chan_real = self.preprocessing.compute_m_channel(nz(img_t_aug), nz(img_tk_aug))
+                    m_chan_null = self.preprocessing.compute_m_channel(nz(img_t_aug), nz(img_t_aug2))
+                else:
+                    m_chan_real = self.preprocessing.compute_m_channel(img_t_aug, img_tk_aug)
+                    m_chan_null = self.preprocessing.compute_m_channel(img_t_aug, img_t_aug2)
                 gains = torch.cat([g_t, g_tk])
                 amps = torch.cat([a_t, a_tk])
                 bright_stats = {
@@ -983,6 +1004,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
                     "bright_ramp_frac": (amps > 0).float().mean(), "bright_ramp_amp": amps.mean(),
                     "bright_dc_offset": (m_chan_real - m_tgt_real).abs().mean(),  # |ΔL_in − ΔL_tgt|
                     "bright_motion_absdl": m_tgt_real.abs().mean(),               # 비교 기준 |ΔL|
+                    "bright_null_absdl": m_chan_null.abs().mean(),                # Case A 입력 |ΔL| (노이즈+밝기)
                 }
             image_current, image_future = img_t_aug, img_tk_aug
         else:

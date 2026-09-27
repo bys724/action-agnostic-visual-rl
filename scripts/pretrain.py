@@ -252,6 +252,10 @@ def main():
                         help='[bright-aug] 공간 ramp 적용 확률 (default 0.5).')
     parser.add_argument('--bright-ramp-amp', type=float, default=0.15,
                         help='[bright-aug] ramp 진폭 a~U[0, amp] (default 0.15).')
+    parser.add_argument('--bright-scene-gain-range', type=float, nargs=2, default=None,
+                        help='[bright-aug] 쌍 공유 장면 조명 gain U[lo, hi] (예 0.73 1.37 = ±1 stop). None=off. §10.')
+    parser.add_argument('--m-noise-max', type=float, default=0.0,
+                        help='[bright-aug] M 입력 프레임 RGB 센서 노이즈 σ~U[0, max] (0=off). refinement_floor_plan §10.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -407,6 +411,8 @@ def main():
             bright_gain_range=tuple(args.bright_gain_range),
             bright_ramp_prob=args.bright_ramp_prob,
             bright_ramp_amp=args.bright_ramp_amp,
+            m_noise_max=args.m_noise_max,
+            bright_scene_gain_range=args.bright_scene_gain_range,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.
