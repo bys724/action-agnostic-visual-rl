@@ -44,6 +44,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
 | 40312857~873 (17) | R2-1 재제출: P_t⊕P_tk × {C1,C0} × {교란·라벨·전이} × seed 3 (완료된 C1 교란 s42 제외) — 배포 P가 분포 이동에서 버티나 | 09-27 09시 | `python paper_artifacts/tables/refinement_floor/agg_round2.py` (env aavrl-train) |
+| 40313093~096 (4) | 데이터 다양성 → 교란 강건성 파일럿: 기존 ckpt S×{p13,full}·B×{part1,full} M 단독 CALVIN 교란 s42 (판독 규칙 = cluster_sessions 해당 행) | 09-27 | 같은 스크립트 (arm Sp13M·SfullM·Bp1M·BfullM) |
 
 ## 이 문서의 용어
 

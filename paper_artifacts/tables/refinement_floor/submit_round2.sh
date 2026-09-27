@@ -52,4 +52,10 @@ full)  # R2-2 나머지 + R2-3 전체 (사용자 승인 09-27, 최소 칸 보고
     plain noise$sg $a $s "$CAL,${ARM[$a]},PROBE_NOISE_SIGMA=0.$sg" probe_action_calvin.sbatch
     plain xnoise$sg $a $s "$LIB,${ARM[$a]},PROBE_NOISE_SIGMA=0.$sg" probe_action_libero.sbatch
   done; done; done ;;
+scale)  # 데이터 다양성 → 교란 강건성 검증 제안 (09-27 사용자 승인). 라운드 1 교란 시험 × M 단독 × s42 최소 칸. 기준 = C0(S×part1) 라운드 1 값
+  CK=/proj/external_group/mrg/checkpoints
+  for a in Sp13:two_stream_v15b_comp_mae_s_p13_50ep_qk/20260718_172013 Sfull:two_stream_v15b_fulldata_comp_mae_s_7ep_qk/20260717_195118 \
+           Bp1:two_stream_v15b_step1_comp_mae_b/20260630_073500 Bfull:two_stream_v15b_fulldata_comp_mae_b_7ep/20260710_143730; do
+    pert ${a%%:*}M 42 "$CAL,ENCODER=parvo,CHECKPOINT=$CK/${a#*:}/latest.pt,PARVO_MODE=m_only"
+  done ;;
 esac
