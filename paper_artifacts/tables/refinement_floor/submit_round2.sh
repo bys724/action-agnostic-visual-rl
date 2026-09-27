@@ -22,7 +22,8 @@ case "$1" in
 r21)  # R2-1: P_t⊕P_tk (사다리 0단) — 기존 경로, 새 코드 없음
   for s in 42 1 2; do
     for A in C1 C0; do CK=$([ $A = C1 ] && echo $C1 || echo $C0)
-      pert PtPtk$A $s "$CAL,ENCODER=parvo,CHECKPOINT=$CK,PARVO_MODE=p_t_p_tk"
+      # 재제출(09-27): hold/release로 요청 자원이 노드 전체(V100 8)로 부풀어 취소 → 완료된 pert C1 s42(40310546)는 건너뜀
+      [[ "${RESUB:-0}" == 1 && $A == C1 && $s == 42 ]] || pert PtPtk$A $s "$CAL,ENCODER=parvo,CHECKPOINT=$CK,PARVO_MODE=p_t_p_tk"
       label PtPtk$A $s "$CAL,ENCODER=parvo,CHECKPOINT=$CK,PARVO_MODE=p_t_p_tk"
       xfer PtPtk$A $s "$LIB,ENCODER=parvo,CHECKPOINT=$CK,PARVO_MODE=p_t_p_tk"
     done
