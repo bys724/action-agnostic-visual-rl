@@ -45,7 +45,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| (없음 — 09-28 07시 정지. §10 파일럿 누적: H100 ~43 GPU·h + V100 ~9 GPU·h) | | | |
+| 40321404 | eval hang 수정 검증 sanity (3×H100, 6ep·5ep eval) — 장기 학습 전 필수 | 09-28 | COMPLETED + 로그 `[Eval]` 후 Epoch 6 |
 
 ## 이 문서의 용어
 
@@ -60,6 +60,8 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 ---
 
 ## 결정 이력
+
+- 2026-09-28 · **논문 주장 모델 = §10 파일럿(C1 + 10ep, 센서 노이즈 제거·밝기 보존 타깃, ckpt `two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)** — C1 대비 잡음 붕괴 해소(−1.4 → raw 동급), 같은 분포 유지 (사용자 결정. 사전 등록 ① 불통과와 별개로 C1 대비 개선 근거)
 
 - 2026-09-26 · refinement-floor P_t⊕X 비교군 확장 보류 — raw 단독이 C1 계열 최선보다 분포 이동에 강건해 확장해도 결론 불변 (사용자 결정, 결과 정리 후 방향 판단)
 - 2026-09-26 · 판정 기준 (C) = "계산 불가"로 기록 (증강 raw 기준점 부재, 사후 수정 금지)
