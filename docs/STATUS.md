@@ -44,7 +44,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40313666 | §10 센서 노이즈·조명 수준 사전학습 파일럿 (C1 + 10ep) — 잡음·조명과 motion을 구분하도록 학습하면 분포 이동에서 raw를 넘나 | 09-27 12:4x (예상 ~8h) | 로그 `pretrain_refine_denoise_pilot_40313666.out` → 이후 §10.2 probe |
+| 40313842 | §10 파일럿 (밝기 보존·노이즈 제거 타깃, C1 + 10ep, LR 2.8e-5) — 잡음과 motion을 구분하도록 학습하면 분포 이동에서 raw를 넘나 | 09-27 제출, H100 대기(~10h 예상) | 로그 `pretrain_refine_denoise_augtgt_40313842.out` → 체인이 §10.2 평가 자동 제출 |
 
 ## 이 문서의 용어
 
