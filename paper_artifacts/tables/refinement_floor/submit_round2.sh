@@ -67,4 +67,11 @@ pilot)  # §10.2 파일럿 평가. PILOT_CK = 파일럿 latest.pt (체인이 전
     pert F1 $s "$CAL,ENCODER=raw-dl,RAW_DL_VARIANT=raw"
     xfer PilotM $s "$LIB,ENCODER=parvo,CHECKPOINT=$PILOT_CK,PARVO_MODE=m_only"
   done ;;
+pilotonly)  # §10 재개 후 평가 — 파일럿 팔만 (C1M·F1은 같은 교란 문자열로 기평가). PILOT_ARM으로 5ep 결과와 이름 분리
+  : "${PILOT_CK:?}" "${PILOT_ARM:?}"
+  PERT="shot:0.005,0.01 corr:0.005,0.01 jpeg:90,75 noise:0.01 shadow:0.6 gain:1.3"
+  for s in 42 1 2; do
+    pert $PILOT_ARM $s "$CAL,ENCODER=parvo,CHECKPOINT=$PILOT_CK,PARVO_MODE=m_only"
+    xfer $PILOT_ARM $s "$LIB,ENCODER=parvo,CHECKPOINT=$PILOT_CK,PARVO_MODE=m_only"
+  done ;;
 esac
