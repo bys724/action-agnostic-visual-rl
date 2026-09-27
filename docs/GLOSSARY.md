@@ -26,6 +26,9 @@
 ## Refinement-floor (정의 정본 = `refinement_floor_plan.md` 용어 절)
 
 - **C0 / C1** — C0 = 제출본 CoMP-S(증강 없음) · C1 = C0 + 프레임별 독립 밝기 증강(`--bright-aug`), 이후 연구의 기준 모델
+- **C1-DN** — 논문 주장 모델(09-28). C1 + 10ep: M 입력 RGB 센서 노이즈 σ~U[0,0.01](P는 무노이즈) + 쌍 공유 장면 밝기 ±1 stop, M-recon 타깃 = 밝기 보존·노이즈 제거 ΔL. 평가 팔 `PilotM10`(5ep ckpt 평가 = `PilotM`). 계획서 §10
+- **R2-1~R2-4** — 라운드 2 probe 시험(§9): R2-1 배포 P(P_t⊕P_tk) 분포 이동 · R2-2 P_t⊕raw 학습 투영(`--raw-pad linear`) · R2-3 probe 학습·시험 양쪽 노이즈(`--probe-noise-sigma`) · R2-4 정확히-0 ΔL 비율
+- **held-out 잡음** — 학습에 쓰지 않은 잡음 종류로 시험: `shot`(밝기 의존)·`corr`(σ=1px 블러된 상관 잡음)·`jpeg`(품질 q, 정확히-0 보존이라 참고값)
 - **F1 / `raw-dl`** — 학습 없는 바닥선: CoMP M 입력과 같은 raw ΔL을 16×16 패치로 자른 것을 그대로 토큰으로 (196×256). probe 인코더 이름 `raw-dl`
 - **M 단독 / `m_only`** — probe에 M 스트림 토큰만 넣는 판독 (P_t⊕M과 구분)
 - **ⓘ / ⓢ 시험** — probe 학습과 시험이 같은 분포(참조용) / probe 학습에 없는 조건(판정용: 교란·suite 간 무재학습 전이)

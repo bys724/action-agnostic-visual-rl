@@ -59,6 +59,27 @@ Aggregate: `round2_agg.txt` (`agg_round2.py`); exact-zero diagnostic: `round2_ex
 | Q2 — is P_t⊕raw's collapse a zero-pad artifact? | R2-2: learned 256→384 projection in the probe | No: transfer −7.8±3.8 (zero-pad −10.2), shadow 0.6 −2.9, gain 1.3 −17.4, best epoch still 3. Adding P makes the readout latch onto appearance |
 | Q3 — does the deployed P (two frames) hold up? | R2-1: P_t⊕P_tk on all shift tests | C1's P: noise-invariant (0.33 at σ0.01–0.04), shadow 0.6 −0.13±0.37 (raw −0.32±0.58, C1 M −2.71), gain 1.3 −4.4±5.6 (raw −3.9, C1 M −15.8); LIBERO in-suite 0.80, transfer −0.56±0.24 (raw −0.32±0.01). C0's P transfers worse (−1.94±0.36). → Photometric fragility is local to M; deployed P ≈ raw on shift tests |
 
+## §10 pilot — sensor-noise / illumination pretraining (2026-09-27/28, plan §10)
+
+C1 + 10 epochs (`--init-from` C1, LR 2.8e-5, 3×H100, effective batch 1023): M input gets per-pixel RGB Gaussian
+noise σ~U[0, 0.01] (P input clean) and a pair-shared scene gain U[0.73, 1.37] (±1 stop); M-recon target =
+brightness-preserved, **noise-free** ΔL (`--bright-target aug --m-noise-max 0.01 --bright-scene-gain-range 0.73 1.37`).
+Checkpoint `two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt` (= **C1-DN**, adopted as the paper model 09-28).
+Probe fit on clean CALVIN, tested on held-out noise types (never used in training); probe seeds {42,1,2}.
+
+| Test | C1-DN (10 ep) | C1 M | raw ΔL |
+|---|---:|---:|---:|
+| clean | 0.43 | 0.46 | 0.22 |
+| shot noise 0.01 / 0.005 | 0.21 / 0.40 | −1.47 / 0.07 | 0.22 / 0.22 |
+| correlated noise 0.01 / 0.005 | 0.00 / 0.34 | −1.40 / 0.05 | 0.22 / 0.22 |
+| JPEG q75 (keeps exact zeros; reference only) | 0.40 | 0.44 | 0.22 |
+| shadow 0.6 / gain 1.3 | −2.9 / −12.2 | −2.7 / −15.8 | −0.3 / −3.9 |
+| LIBERO in-suite / transfer | 0.68 / −0.32 | 0.71 / −0.33 | 0.16 / −0.32 |
+
+Pre-registered verdict: ① (≥ raw on both shot and corr at 0.01) **not met** — collapse removed down to raw parity,
+not beyond; ② CALVIN 0.43 (≥ 0.40, just under 2× raw), LIBERO 0.68 → no 50-ep main training. Epoch-5 checkpoint gave
+the same picture (`pilot10_ep5_20260927.txt`). Files: `pilot10_ep10_20260928.txt`.
+
 ## Files
 
 | File | Content |

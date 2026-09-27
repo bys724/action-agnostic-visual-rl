@@ -1,11 +1,11 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-09-26 dev 세션 — refinement-floor C1 학습·바닥선·판정 측정 완료, 결과 정리. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-27 Reject (2026-09-25)**. 리뷰 수렴 지적(raw ΔL 바닥선 부재 등)에 답하는 `refinement_floor_plan.md`의 측정을 09-26 마쳤다: **같은 분포에선 학습된 M이 raw의 2–4배, 분포 이동(다른 suite·그림자·노이즈)에선 raw 단독이 가장 강건** → §6 판정상 효율(정제) 주장 불성립·중지 신호. C2–C4 학습과 P_t⊕X 비교군 확장은 보류, 논문 방향 판단(Vault) 대기. 결과 요약 = `paper_artifacts/tables/refinement_floor/README.md`. 별도 활성 축 Forecast-Sufficient Representation(v17)은 구현 0, 게이트 스펙 5건 사용자 판단 대기.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. 돌아가는 잡 없음.
 
 ## 확정된 것
 
@@ -19,26 +19,15 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 ## 열린 것 · 다음 결정
 
-- **🔴 라운드 2 지시 (2026-09-26 Vault 세션, 사용자 확정)** — [`refinement_floor_plan.md` §9](refinement_floor_plan.md). **학습 없음.** ① P_t⊕P_tk 팔을 ⓢ 시험(전이·perturbation)에 추가 ② P_t⊕raw의 zero-pad를 계획대로 학습 선형 투영으로 고쳐 재측정(옛 행 보존) ③ probe 학습·시험 양쪽에 σ0.01/0.02 노이즈를 넣은 "현실적 sim" 조건에서 같은 분포 표 재측정 ④ 진단: CALVIN·LIBERO·EgoDex 정확히-0 ΔL 비율 ⑤(선택) probe weight decay. 답할 질문 = 정확히-0 의존이 원인인가 / P가 어디까지 짐인가 / P 두 장은 버티나. Case A 입력 노이즈 수정 **학습은 결과 후 사용자 결정**.
-- **🔴 refinement-floor 결론 (09-26, M 단독·P_t⊕X 열, probe seed 3, 표현 학습 1회) [잠정]** — 표·파일 = `paper_artifacts/tables/refinement_floor/README.md`
-  - 같은 분포(ⓘ): C1 M 0.46(CALVIN)·0.71(LIBERO suite 내) vs raw 0.22·0.16. random-init M ≈ raw → 차이는 학습된 가중치.
-  - §6 (A) 전이 6방향: C1 −0.33 ≈ raw −0.32 → 불성립. (B) 라벨 5%: 0.39 vs 0.22, CI 겹침 → 불성립. (C) 계산 불가(증강 raw가 절반 강도 없음). ⇒ 중지 신호(M 단독 열).
-  - P_t⊕X 열: P_t⊕C1 M이 P_t⊕raw를 전이(−1.29 vs −10.15)·그림자(−1.99 vs −3.75)에서 CI로 이기나, **raw 단독(−0.32/−0.32)이 둘 다보다 강건** — 우위는 P를 붙인 raw의 악화(P 외형 과적합 추정) 탓. 노이즈는 raw 우위. object suite만 카메라 다름(Floor)이 전이 음수의 주 원인.
-  - 밝기 증강(C1 vs C0): 경사(ramp)만 개선, 배율·그림자·노이즈 불변성 없음. 노이즈 취약성은 학습이 만든 것(random-init M은 불변; CALVIN 정지 ΔL 73%가 정확히 0).
-  - 보류: P_t⊕X 비교군 4개 확장(코드 `git stash` 'WIP parvo-randm', 미검증) · C2–C4 학습 · DINOv2+ΔL 팔(입력 규약 미정).
-- **§10 파일럿 판정 (10ep, 09-28) [잠정·probe seed 3·표현 학습 1회] = ① 불통과 → 사전 등록대로 50ep 본학습 없음**. 깨끗한 probe + 학습에 없던 잡음 0.01: shot 0.21 · corr 0.00 vs raw 0.22 (C1 −1.47/−1.40에서 raw 동급까지 회복, 초과 못 함). 약한 잡음 0.005는 raw 초과(0.40/0.34). ② CALVIN 0.43(raw 2배선 0.436 근소 미달)·LIBERO 0.68. 그림자·배율·전이 불변. → 논문에는 판독기 쪽 해결(R2-3)을 제한점으로, 파일럿은 "denoising 증강이 붕괴를 raw 수준까지 없앰" 관찰로만. 결과 = `paper_artifacts/tables/refinement_floor/pilot10_ep10_20260928.txt`. 학습 코드 hang(3-GPU, eval epoch마다 NCCL 정지) = `evaluate()`의 rank 0 단독 DDP forward가 원인 → `model.module`로 수정·sanity 통과(09-28, 40321404).
-- **논문 뼈대 합의 (09-27 dev)**: 중심 = 메커니즘(M-recon → factorization 인과), 보조 = 같은 분포 접근성(노이즈 조건 판독기 포함), 분포 이동·제어 성능 = 한계. 빈칸("실제 이득") 확인용 §10 파일럿 실행 중.
-- **라운드 2 완료 (09-27 10시)**: R2-1~R2-4 전부 (V100 ~28 GPU·h + CPU). 데이터 다양성 → 강건성 파일럿 [잠정·seed 1] = **지지 없음**(사전 고정 규칙: S는 데이터↑로 그림자·배율 개선, B는 반대로 악화 → 한쪽만). S 개선은 qk 구조 교란과 분리 불가. "장면 교란은 데이터 다양성으로 해결" 서술은 내부 증거 없이 문헌(Fang et al. 2022) 기반 가설로만. **다음 = Vault 세션에서 논문 주장 결정** (denoising 사전학습 셀 여부 포함, 09-27 dev 논의: "motion 압력 분명·노이즈는 denoising 증강·장면 교란은 데이터 다양성·시점 이동은 판독기 기하 문제"). 집계 = `paper_artifacts/tables/refinement_floor/round2_agg.txt` (`agg_round2.py`).
-  - **Q1 답 (R2-3) [잠정·probe seed 3·표현 학습 1회]**: probe 학습·시험 양쪽 노이즈에서도 같은 분포 우위 유지. CALVIN σ0.01 C1 0.44±0.08 vs raw 0.22±0.06 (2.0×, CI 비겹침) · σ0.02 0.41 vs 0.22 (1.9×) · LIBERO 같은 suite σ0.01 0.66 vs 0.16 (4.1×) · σ0.02 0.64 vs 0.16. F1′·F3 ≈ raw. → 라운드 1 노이즈 붕괴는 probe 학습·시험 불일치, 같은 분포 우위는 정확히-0 산물 아님. C0 ≥ C1(0.48, 0.71) — 밝기 증강 이득 없음. 전이는 노이즈 조건에서도 전 팔 음수(C1 −0.37 vs raw −0.32) — 라운드 1 결론 불변.
-  - **Q2 답 (R2-2) [잠정·seed 3]**: 학습 투영으로 바꿔도 P_t⊕raw 전이 −7.8±3.8(zero-pad −10.15)·그림자0.6 −2.9±2.5·배율1.3 −17.4 → zero-pad 인공물 아님, **P를 붙이면 판독기가 무너지는 현상 실재**. best_ep 3 조기 과적합 그대로.
-  - **Q3 답 (R2-1) [잠정·seed 3·표현 1회]**: 배포 P(C1, P_t⊕P_tk)는 노이즈 불변(σ0.04까지 0.33) · 그림자0.6 −0.13±0.37(raw −0.32, C1 M −2.71) · 배율1.3 −4.4(raw −3.9, M −15.8) · LIBERO 같은 suite 0.80·전이 −0.56±0.24(raw −0.32, CI 경계). → **photometric 취약성은 M 국한, 배포 P는 분포 이동에서 raw 수준.** C0의 P는 전이 −1.94 → 밝기 증강이 P 전이를 개선(추정). 라운드 2 표 = README "Round 2".
-  - R2-4 [확정·500쌍]: 1초 간격 정확히-0 픽셀 CALVIN 77% · LIBERO 80–85% vs **EgoDex 2.3%**(전부-0 패치 0%). 1프레임 간격 EgoDex 16%/1.3%.
-  - ⚠️ 해석 제약 [확정·코드]: C1의 Case A 입력은 독립 밝기 배율 두 벌(`two_stream_v15.py` `_photometric_aug` ×2) → 정확히 0이 아님. 즉 C1은 사전학습에서 정확히-0 패치를 거의 못 봤는데도 노이즈에 무너짐(−1.43; C0 −2.57) → §9.2 "Case A 정확히-0이 원인" 사슬은 C1에 성립 안 함. 남는 후보 = probe가 깨끗한 sim의 정확히-0에 기댐(→ R2-3가 판별).
-- ~~사용자가 정할 것 (먼저)~~ → **09-26 답: 라운드 2(위) 먼저, 논문 방향은 그 결과 후.** (원문: refinement-floor 결과를 재투고 주장으로 쓸지·논문 방향.) 판정 기준 (C) 처리는 "계산 불가"로 기록(사후 수정 금지 준수).
-  - Vault 논의용 해석 (09-26 dev 세션, 측정 아님): ① 노이즈 σ0.01(≈2.5/255)은 실제 센서 수준 → sim→real 제한점으로 무게 높임, 그림자 0.6(1초 내 화면 1/5 ×0.4 급출현)은 극한 스트레스로 무게 낮춤 — 판정 자체는 불변. ② 인코더 주장은 "작은 고정 헤드에서의 접근성"까지만 성립, 큰 헤드(BC-T)에선 CoMP≈plain → 논문을 결과물(인코더)보다 방법·메커니즘(M-recon 인과) 프레임으로. 인코더 주장을 살리려면 raw ΔL + 큰 헤드 대조가 필요 [미검증].
+- **🔴 다음 (제안, 미결정)**: C1-DN으로 **factorization 지표 재측정** — 메커니즘 결과(STEP 1)는 C0에서 잰 것이라 주장 모델로 쓰려면 같은 지표(M motion·P identity, same-probe) 확인 필요. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
+- **사용자가 정할 것 (Vault)**: 재투고 논문 주장 확정 — 재료 = README 라운드 1·2·§10 절. 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
+- 요약 [잠정·probe seed 3·표현 학습 1회]:
+  - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.
+  - 라운드 2 (09-27): 노이즈 붕괴 = probe 학습·시험 불일치(R2-3) · P를 붙이면 판독기 붕괴는 실재(R2-2) · 배포 P는 분포 이동에서 raw 수준, 취약성은 M 국한(R2-1) · 정확히-0 ΔL: sim 77–85% vs EgoDex 2.3%(R2-4).
+  - §10 파일럿 (09-28, 10ep): 사전 등록 ① 불통과(학습에 없던 잡음 0.01에서 raw 동급, 0.005에선 초과) → 50ep 본학습 없음. ② CALVIN 0.43·LIBERO 0.68.
 - **사용자가 정할 것**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.
-- 운영 메모: C1 학습이 C0 대비 34% 느렸음(원인 미확인, 노드 전용) — C2–C4 재개 시 비용 +60 GPU·h/셀 가능. full-data 잡은 GPFS 랜덤 액세스 2.3× 병목 미해결.
+- 운영 메모: H100 1노드×3 GPU 학습 = 배치 341(유효 1023), ~81분/ep. eval hang(rank 0 단독 DDP forward)은 09-28 수정·검증. 대기 잡 `scontrol hold/release` 금지(자원 요청이 노드 전체로 부풂). full-data GPFS 랜덤 액세스 2.3× 병목 미해결.
 - **형제 프로젝트 Cross-View**(09-18 개시, 제목 잠정): head/wrist 뷰 충분성 + action 조건화. DROID 3뷰 페어링 로더 신규 필요. 구현 0.
 
 ## 돌아가는 잡
@@ -54,6 +43,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 - **STEP 0/1/2** — 논문 게이트: 0 = 효율 headline, 1 = factorization 인과, 2 = control-level value (A 효율 / B BC)
 - **서랍** — 본문에 넣지 않고 supplement에 두는 결과(attach-only). "서랍 재판정" = 그 결과를 다시 판정할지
 - **조기 게이트** — 후속 연구를 하루 안에 싸게 죽일 수 있는 선행 조건 (v17: M_student 릿지 프로브 R² > M_teacher)
+- **C1-DN** — 주장 모델(09-28): C1 + 10ep, M 입력에 RGB 센서 노이즈(σ~U[0,0.01]) + 쌍 공유 장면 밝기(±1 stop), M-recon 타깃 = 밝기 보존·노이즈 제거 ΔL(`--bright-target aug`). 평가 팔 이름 `PilotM10`
 - **v15 / v16 / v17** — `src/models/two_stream_v15.py`의 config 계보. v16 = comp_mae 플래그, v17 = forecast-sufficient (새 파일 아님)
 - 전체 사전: `docs/GLOSSARY.md` (없으면 `docs/FILE_INDEX.md`·`RESEARCH_PLAN.md`)
 
@@ -61,8 +51,11 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 ## 결정 이력
 
-- 2026-09-28 · **논문 주장 모델 = §10 파일럿(C1 + 10ep, 센서 노이즈 제거·밝기 보존 타깃, ckpt `two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)** — C1 대비 잡음 붕괴 해소(−1.4 → raw 동급), 같은 분포 유지 (사용자 결정. 사전 등록 ① 불통과와 별개로 C1 대비 개선 근거)
-
+- 2026-09-28 · **논문 주장 모델 C1-DN = §10 파일럿(C1 + 10ep, 센서 노이즈 제거·밝기 보존 타깃, ckpt `two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)** — C1 대비 잡음 붕괴 해소(−1.4 → raw 동급), 같은 분포 유지 (사용자 결정. 사전 등록 ① 불통과와 별개로 C1 대비 개선 근거)
+- 2026-09-28 · §10 파일럿 사전 등록 ① 불통과 → 50ep scratch 본학습 없음 (계획서 §10.3 규칙)
+- 2026-09-27 · §10 파일럿 LR = 2.8e-5 (B) — 적응 부족은 1ep loss로 바로 보이고 표현 손상은 평가 후에야 보임 (사용자 선택; 실제 1ep에 적응 확인)
+- 2026-09-27 · 밝기 증강 타깃 = 밝기 보존(aug), 노이즈만 제거 — 사용자 원래 의도 (원래 조명 복원 파일럿 1ep에서 취소)
+- 2026-09-27 · 논문 뼈대 = 메커니즘 중심·같은 분포 접근성 보조·분포 이동/제어는 한계 (사용자 합의)
 - 2026-09-26 · refinement-floor P_t⊕X 비교군 확장 보류 — raw 단독이 C1 계열 최선보다 분포 이동에 강건해 확장해도 결론 불변 (사용자 결정, 결과 정리 후 방향 판단)
 - 2026-09-26 · 판정 기준 (C) = "계산 불가"로 기록 (증강 raw 기준점 부재, 사후 수정 금지)
 - 2026-09-26 · refinement-floor 기준 (A) 전이 = 계획서대로 6방향 평균 유지 (object 시점 차이 확인 후, 전이 결과 보기 전 사용자 결정)
