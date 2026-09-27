@@ -89,6 +89,14 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-09-28 C1-DN factorization 재측정 (STEP 1 same-probe 재현)
+
+**목적**: 주장 모델 C1-DN(`…_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)이 STEP 1 메커니즘 지표(M motion·P identity 이중분리)를 C0 수준으로 유지하는지. 프로토콜 = 07-08 STEP 1 판정(36785365~380) 그대로: libero_object·attentive·gap20·parvo `m_only`/`p_t_only` × action/identity × raw / ⊕pos(POSCTRL=concat). 추가로 C0(`step1_comp_mae_s/20260629_101634/latest.pt`) raw 2×2 재측정 = 07-02 이후 probe 코드 변경에 의한 drift 점검(기준 0.835/0.526/0.547/0.999). motion 지표 = 위치 3축 R² 평균(07-08 표 규약). AIP 대신 mig-3g.40gb(유휴 8 slice, 단가 절반).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 40321645~656 | mig-3g.40gb 1×1 ×12 | 00:40:00 | C1-DN 8잡(`fdn_{m,pt}_{act,id}{,_pos}`) + C0 drift 4잡(`fc0_{m,pt}_{act,id}`) | 진행 중 |
+
 ### 2026-09-25 Refinement-floor C1 — 밝기 증강 CoMP-S ([refinement_floor_plan.md](refinement_floor_plan.md))
 
 **목적**: 새 base C1 = 제출본 CoMP-S(36177296) + 프레임 쌍 독립 밝기 증강(`BRIGHT_AUG=1`). CPU smoke PASS(증강 off = 수정 전 코드와 전 loss 항 소수 8자리 일치, C0 latest.pt strict load). AIP 20/20 점유(+g003 타 2노드 잡 예약) → sanity는 mig-3g.40gb.
