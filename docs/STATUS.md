@@ -26,7 +26,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
   - P_t⊕X 열: P_t⊕C1 M이 P_t⊕raw를 전이(−1.29 vs −10.15)·그림자(−1.99 vs −3.75)에서 CI로 이기나, **raw 단독(−0.32/−0.32)이 둘 다보다 강건** — 우위는 P를 붙인 raw의 악화(P 외형 과적합 추정) 탓. 노이즈는 raw 우위. object suite만 카메라 다름(Floor)이 전이 음수의 주 원인.
   - 밝기 증강(C1 vs C0): 경사(ramp)만 개선, 배율·그림자·노이즈 불변성 없음. 노이즈 취약성은 학습이 만든 것(random-init M은 불변; CALVIN 정지 ΔL 73%가 정확히 0).
   - 보류: P_t⊕X 비교군 4개 확장(코드 `git stash` 'WIP parvo-randm', 미검증) · C2–C4 학습 · DINOv2+ΔL 팔(입력 규약 미정).
-- **§10 파일럿 판정 (10ep, 09-28) [잠정·probe seed 3·표현 학습 1회] = ① 불통과 → 사전 등록대로 50ep 본학습 없음**. 깨끗한 probe + 학습에 없던 잡음 0.01: shot 0.21 · corr 0.00 vs raw 0.22 (C1 −1.47/−1.40에서 raw 동급까지 회복, 초과 못 함). 약한 잡음 0.005는 raw 초과(0.40/0.34). ② CALVIN 0.43(raw 2배선 0.436 근소 미달)·LIBERO 0.68. 그림자·배율·전이 불변. → 논문에는 판독기 쪽 해결(R2-3)을 제한점으로, 파일럿은 "denoising 증강이 붕괴를 raw 수준까지 없앰" 관찰로만. 결과 = `paper_artifacts/tables/refinement_floor/pilot10_ep10_20260928.txt`. 🔴 학습 코드 hang: 3-GPU 두 실행 모두 같은 NCCL SeqNum 203358에서 정지(프로세스당 5ep 후) — 장기 학습 재개 전 수정 필요.
+- **§10 파일럿 판정 (10ep, 09-28) [잠정·probe seed 3·표현 학습 1회] = ① 불통과 → 사전 등록대로 50ep 본학습 없음**. 깨끗한 probe + 학습에 없던 잡음 0.01: shot 0.21 · corr 0.00 vs raw 0.22 (C1 −1.47/−1.40에서 raw 동급까지 회복, 초과 못 함). 약한 잡음 0.005는 raw 초과(0.40/0.34). ② CALVIN 0.43(raw 2배선 0.436 근소 미달)·LIBERO 0.68. 그림자·배율·전이 불변. → 논문에는 판독기 쪽 해결(R2-3)을 제한점으로, 파일럿은 "denoising 증강이 붕괴를 raw 수준까지 없앰" 관찰로만. 결과 = `paper_artifacts/tables/refinement_floor/pilot10_ep10_20260928.txt`. 학습 코드 hang(3-GPU, eval epoch마다 NCCL 정지) = `evaluate()`의 rank 0 단독 DDP forward가 원인 → `model.module`로 수정·sanity 통과(09-28, 40321404).
 - **논문 뼈대 합의 (09-27 dev)**: 중심 = 메커니즘(M-recon → factorization 인과), 보조 = 같은 분포 접근성(노이즈 조건 판독기 포함), 분포 이동·제어 성능 = 한계. 빈칸("실제 이득") 확인용 §10 파일럿 실행 중.
 - **라운드 2 완료 (09-27 10시)**: R2-1~R2-4 전부 (V100 ~28 GPU·h + CPU). 데이터 다양성 → 강건성 파일럿 [잠정·seed 1] = **지지 없음**(사전 고정 규칙: S는 데이터↑로 그림자·배율 개선, B는 반대로 악화 → 한쪽만). S 개선은 qk 구조 교란과 분리 불가. "장면 교란은 데이터 다양성으로 해결" 서술은 내부 증거 없이 문헌(Fang et al. 2022) 기반 가설로만. **다음 = Vault 세션에서 논문 주장 결정** (denoising 사전학습 셀 여부 포함, 09-27 dev 논의: "motion 압력 분명·노이즈는 denoising 증강·장면 교란은 데이터 다양성·시점 이동은 판독기 기하 문제"). 집계 = `paper_artifacts/tables/refinement_floor/round2_agg.txt` (`agg_round2.py`).
   - **Q1 답 (R2-3) [잠정·probe seed 3·표현 학습 1회]**: probe 학습·시험 양쪽 노이즈에서도 같은 분포 우위 유지. CALVIN σ0.01 C1 0.44±0.08 vs raw 0.22±0.06 (2.0×, CI 비겹침) · σ0.02 0.41 vs 0.22 (1.9×) · LIBERO 같은 suite σ0.01 0.66 vs 0.16 (4.1×) · σ0.02 0.64 vs 0.16. F1′·F3 ≈ raw. → 라운드 1 노이즈 붕괴는 probe 학습·시험 불일치, 같은 분포 우위는 정확히-0 산물 아님. C0 ≥ C1(0.48, 0.71) — 밝기 증강 이득 없음. 전이는 노이즈 조건에서도 전 팔 음수(C1 −0.37 vs raw −0.32) — 라운드 1 결론 불변.
@@ -45,7 +45,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40321404 | eval hang 수정 검증 sanity (3×H100, 6ep·5ep eval) — 장기 학습 전 필수 | 09-28 | COMPLETED + 로그 `[Eval]` 후 Epoch 6 |
+| (없음 — 09-28 eval hang 수정 검증 완료 후 정지) | | | |
 
 ## 이 문서의 용어
 
