@@ -324,9 +324,32 @@ def encode_pairs_parvo_raw(model, frames_prev, frames_curr, device, batch: int =
     return torch.cat(out, dim=0)
 
 
-PERTURB_KINDS = ("gain", "ramp", "shadow", "noise")
+PERTURB_KINDS = ("gain", "ramp", "shadow", "noise", "shot", "corr", "jpeg")  # 뒤 3종 = §10 held-out 잡음 (append만 — 기존 seed 불변)
 SHADOW_AXIS_RANGE = (0.15, 0.35)   # 타원 반축 (이미지 한 변 대비 비율) — plan 미기재, 이 구현의 선택
 SHADOW_SOFTNESS = 0.1              # 경계 sigmoid 폭 (반경 단위)
+
+
+_BLUR1 = None
+
+
+def _sensor_noise(x: torch.Tensor, kind: str, level: float, gen: torch.Generator) -> torch.Tensor:
+    global _BLUR1
+    if kind == "shot":
+        return (x + (2 * level ** 2 * x).sqrt() * torch.randn(x.shape, generator=gen)).clamp(0, 1)
+    if kind == "corr":
+        if _BLUR1 is None:
+            k = torch.exp(-torch.arange(-3, 4, dtype=torch.float32) ** 2 / 2); k = k / k.sum()
+            _BLUR1 = (k[:, None] * k[None, :]).view(1, 1, 7, 7)
+        n = torch.randn(x.shape, generator=gen)
+        n = F.conv2d(n.view(-1, 1, *x.shape[-2:]), _BLUR1, padding=3).view(x.shape)
+        return (x + level * n / n.std()).clamp(0, 1)
+    import io
+    from PIL import Image
+    out = []
+    for im in (x.clamp(0, 1) * 255).round().byte().permute(0, 2, 3, 1).numpy():
+        buf = io.BytesIO(); Image.fromarray(im).save(buf, format="JPEG", quality=int(level))
+        out.append(torch.from_numpy(np.asarray(Image.open(buf).convert("RGB"))).permute(2, 0, 1))
+    return torch.stack(out).float() / 255.0
 
 
 @torch.no_grad()
@@ -338,6 +361,11 @@ def perturb_pair(prev: torch.Tensor, curr: torch.Tensor, kind: str, level: float
     gen: 호출 순서만 같으면 모든 팔에서 같은 교란 (방향·타원 위치·노이즈 샘플 동일).
     """
     N, _, H, W = curr.shape
+    # §10.2 held-out 센서 잡음 (양 프레임 독립, 학습 증강의 가우시안과 다른 구조):
+    #   shot = 밝기 의존 σ(x)=√(a·x), level = σ(0.5) → a = 2·level² / corr = 가우시안을 σ=1px 블러 후 std=level로 재조정
+    #   jpeg = 품질 level로 인코딩·디코딩 (PIL, 224 해상도)
+    if kind in ("shot", "corr", "jpeg"):
+        return tuple(_sensor_noise(x, kind, level, gen) for x in (prev, curr))
     if kind == "gain":
         return prev, (curr * level).clamp(0, 1)
     if kind == "noise":

@@ -58,4 +58,13 @@ scale)  # 데이터 다양성 → 교란 강건성 검증 제안 (09-27 사용�
            Bp1:two_stream_v15b_step1_comp_mae_b/20260630_073500 Bfull:two_stream_v15b_fulldata_comp_mae_b_7ep/20260710_143730; do
     pert ${a%%:*}M 42 "$CAL,ENCODER=parvo,CHECKPOINT=$CK/${a#*:}/latest.pt,PARVO_MODE=m_only"
   done ;;
+pilot)  # §10.2 파일럿 평가. PILOT_CK = 파일럿 latest.pt (체인이 전달). held-out 잡음 문자열 = 3팔 공통
+  : "${PILOT_CK:?}"
+  PERT="shot:0.005,0.01 corr:0.005,0.01 jpeg:90,75 noise:0.01 shadow:0.6 gain:1.3"
+  for s in 42 1 2; do
+    pert PilotM $s "$CAL,ENCODER=parvo,CHECKPOINT=$PILOT_CK,PARVO_MODE=m_only"
+    pert C1M $s "$CAL,ENCODER=parvo,CHECKPOINT=$C1,PARVO_MODE=m_only"
+    pert F1 $s "$CAL,ENCODER=raw-dl,RAW_DL_VARIANT=raw"
+    xfer PilotM $s "$LIB,ENCODER=parvo,CHECKPOINT=$PILOT_CK,PARVO_MODE=m_only"
+  done ;;
 esac
