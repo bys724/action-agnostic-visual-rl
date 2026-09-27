@@ -282,6 +282,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         bright_ramp_amp: float = 0.15,
         m_noise_max: float = 0.0,             # §10 센서 노이즈: M 입력 프레임에 RGB 가우시안 σ~U[0, max] (0=off)
         bright_scene_gain_range: Optional[Tuple[float, float]] = None,  # §10 장면 조명 수준: 쌍 공유 gain (None=off)
+        bright_target: str = "clean",         # §10 M-recon 타깃: clean = 원래 조명 ΔL(C1) / aug = 밝기 바꾼 그대로의 ΔL(노이즈만 제거)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -451,6 +452,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.bright_ramp_amp = bright_ramp_amp
         self.m_noise_max = m_noise_max
         self.bright_scene_gain_range = tuple(bright_scene_gain_range) if bright_scene_gain_range else None
+        assert bright_target in ("clean", "aug"), bright_target
+        self.bright_target = bright_target
         assert m_noise_max == 0 or bright_aug, "m_noise_max는 bright_aug 경로 전용"
         if bright_aug:
             assert comp_mae, "bright_aug는 comp_mae(_forward_pair_comp) 전용"
@@ -984,8 +987,12 @@ class TwoStreamV15Model(TwoStreamV11Model):
                 img_t_aug, g_t, a_t = self._photometric_aug(src_t)
                 img_tk_aug, g_tk, a_tk = self._photometric_aug(src_tk)
                 img_t_aug2, _, _ = self._photometric_aug(src_t)
-                m_tgt_real = self.preprocessing.compute_m_channel(image_current, image_future)
-                m_tgt_null = self.preprocessing.compute_m_channel(image_current, image_current)
+                if self.bright_target == "aug":   # 밝기 변화는 신호로 보존, 노이즈만 제거 (§10, 사용자 의도 09-27)
+                    m_tgt_real = self.preprocessing.compute_m_channel(img_t_aug, img_tk_aug)
+                    m_tgt_null = self.preprocessing.compute_m_channel(img_t_aug, img_t_aug2)
+                else:                             # C1: 밝기·노이즈 모두 제거한 원래 조명 ΔL
+                    m_tgt_real = self.preprocessing.compute_m_channel(image_current, image_future)
+                    m_tgt_null = self.preprocessing.compute_m_channel(image_current, image_current)
                 # §10 센서 노이즈 (M 입력만, P는 무노이즈): 샘플별 σ~U[0, m_noise_max]를 쌍의 두 프레임이 공유,
                 #   노이즈 샘플은 프레임마다 독립 (RGB 채널·픽셀 독립 = 고주파 측정 잡음). 타깃은 깨끗한 ΔL 그대로
                 #   → Case A(타깃 0)가 "잡음은 motion이 아니다"를 직접 가르침.
