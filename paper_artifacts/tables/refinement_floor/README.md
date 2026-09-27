@@ -47,6 +47,18 @@ Evaluation protocol for the perturbation test: `docs/eval_protocols.md` §4-b.
   overlap), (C) uncomputable (F1-aug never halves) → stop signal. Floor expansion on the P_t⊕X
   column deferred (2026-09-26).
 
+## Round 2 (2026-09-26/27, probe-only, plan §9)
+
+Three follow-up questions, no representation training. Mean ± 95% CI over probe seeds {42,1,2}; representation n = 1.
+Aggregate: `round2_agg.txt` (`agg_round2.py`); exact-zero diagnostic: `round2_exact_zero.txt`.
+
+| Question | Test | Result |
+|---|---|---|
+| Q1 — is M's noise collapse an exact-zero artifact? | R2-4: fraction of ΔL == 0 (1 s gap) | CALVIN 77% · LIBERO 80–85% · EgoDex 2.3% (0% all-zero patches). C1's Case A input is not exactly zero (independent brightness gains), so the pretraining exact-zero chain does not apply to C1 |
+| | R2-3: pixel noise on probe-train **and** test | Same-distribution gap survives: CALVIN σ0.01 C1 M 0.44±0.08 vs raw 0.22±0.06 (σ0.02: 0.41 vs 0.22); LIBERO in-suite 0.66 vs 0.16 (σ0.02: 0.64 vs 0.16). F1′, F3 ≈ raw. C0 ≥ C1. → Round-1 noise collapse = clean-probe/noisy-test mismatch. Transfer stays negative for all arms (C1 −0.37 vs raw −0.32) |
+| Q2 — is P_t⊕raw's collapse a zero-pad artifact? | R2-2: learned 256→384 projection in the probe | No: transfer −7.8±3.8 (zero-pad −10.2), shadow 0.6 −2.9, gain 1.3 −17.4, best epoch still 3. Adding P makes the readout latch onto appearance |
+| Q3 — does the deployed P (two frames) hold up? | R2-1: P_t⊕P_tk on all shift tests | C1's P: noise-invariant (0.33 at σ0.01–0.04), shadow 0.6 −0.13±0.37 (raw −0.32±0.58, C1 M −2.71), gain 1.3 −4.4±5.6 (raw −3.9, C1 M −15.8); LIBERO in-suite 0.80, transfer −0.56±0.24 (raw −0.32±0.01). C0's P transfers worse (−1.94±0.36). → Photometric fragility is local to M; deployed P ≈ raw on shift tests |
+
 ## Files
 
 | File | Content |

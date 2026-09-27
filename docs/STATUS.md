@@ -26,10 +26,10 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
   - P_t⊕X 열: P_t⊕C1 M이 P_t⊕raw를 전이(−1.29 vs −10.15)·그림자(−1.99 vs −3.75)에서 CI로 이기나, **raw 단독(−0.32/−0.32)이 둘 다보다 강건** — 우위는 P를 붙인 raw의 악화(P 외형 과적합 추정) 탓. 노이즈는 raw 우위. object suite만 카메라 다름(Floor)이 전이 음수의 주 원인.
   - 밝기 증강(C1 vs C0): 경사(ramp)만 개선, 배율·그림자·노이즈 불변성 없음. 노이즈 취약성은 학습이 만든 것(random-init M은 불변; CALVIN 정지 ΔL 73%가 정확히 0).
   - 보류: P_t⊕X 비교군 4개 확장(코드 `git stash` 'WIP parvo-randm', 미검증) · C2–C4 학습 · DINOv2+ΔL 팔(입력 규약 미정).
-- **라운드 2 진행 (09-27 09시)**: R2-4 · R2-2 · R2-3 **완료** (102잡, 19.9 V100 GPU·h) · R2-1 17잡 재제출 실행 중(hold/release 사고로 부풀어 취소·재제출). 집계 = `paper_artifacts/tables/refinement_floor/round2_agg.txt` (`agg_round2.py`).
+- **라운드 2 완료 (09-27 10시)**: R2-1~R2-4 전부 (V100 ~28 GPU·h + CPU). 데이터 다양성 → 강건성 파일럿 4잡 실행 중(아래 잡 표). **다음 = Vault 세션에서 논문 주장 결정** (denoising 사전학습 셀 여부 포함, 09-27 dev 논의: "motion 압력 분명·노이즈는 denoising 증강·장면 교란은 데이터 다양성·시점 이동은 판독기 기하 문제"). 집계 = `paper_artifacts/tables/refinement_floor/round2_agg.txt` (`agg_round2.py`).
   - **Q1 답 (R2-3) [잠정·probe seed 3·표현 학습 1회]**: probe 학습·시험 양쪽 노이즈에서도 같은 분포 우위 유지. CALVIN σ0.01 C1 0.44±0.08 vs raw 0.22±0.06 (2.0×, CI 비겹침) · σ0.02 0.41 vs 0.22 (1.9×) · LIBERO 같은 suite σ0.01 0.66 vs 0.16 (4.1×) · σ0.02 0.64 vs 0.16. F1′·F3 ≈ raw. → 라운드 1 노이즈 붕괴는 probe 학습·시험 불일치, 같은 분포 우위는 정확히-0 산물 아님. C0 ≥ C1(0.48, 0.71) — 밝기 증강 이득 없음. 전이는 노이즈 조건에서도 전 팔 음수(C1 −0.37 vs raw −0.32) — 라운드 1 결론 불변.
   - **Q2 답 (R2-2) [잠정·seed 3]**: 학습 투영으로 바꿔도 P_t⊕raw 전이 −7.8±3.8(zero-pad −10.15)·그림자0.6 −2.9±2.5·배율1.3 −17.4 → zero-pad 인공물 아님, **P를 붙이면 판독기가 무너지는 현상 실재**. best_ep 3 조기 과적합 그대로.
-  - Q3 (R2-1) [잠정·부분]: 배포 P 두 장(C1) — LIBERO 같은 suite 0.80(노이즈 조건, 전 팔 최고)·전이 −0.55±0.25(raw −0.32보다 나쁘나 P_t⊕raw −7.8보다 훨씬 나음) · CALVIN 교란 seed 1개만: 노이즈 불변·그림자0.6 −0.24·배율1.3 −5.15. 3-seed 교란·C0 쪽·라벨은 재제출 잡 대기.
+  - **Q3 답 (R2-1) [잠정·seed 3·표현 1회]**: 배포 P(C1, P_t⊕P_tk)는 노이즈 불변(σ0.04까지 0.33) · 그림자0.6 −0.13±0.37(raw −0.32, C1 M −2.71) · 배율1.3 −4.4(raw −3.9, M −15.8) · LIBERO 같은 suite 0.80·전이 −0.56±0.24(raw −0.32, CI 경계). → **photometric 취약성은 M 국한, 배포 P는 분포 이동에서 raw 수준.** C0의 P는 전이 −1.94 → 밝기 증강이 P 전이를 개선(추정). 라운드 2 표 = README "Round 2".
   - R2-4 [확정·500쌍]: 1초 간격 정확히-0 픽셀 CALVIN 77% · LIBERO 80–85% vs **EgoDex 2.3%**(전부-0 패치 0%). 1프레임 간격 EgoDex 16%/1.3%.
   - ⚠️ 해석 제약 [확정·코드]: C1의 Case A 입력은 독립 밝기 배율 두 벌(`two_stream_v15.py` `_photometric_aug` ×2) → 정확히 0이 아님. 즉 C1은 사전학습에서 정확히-0 패치를 거의 못 봤는데도 노이즈에 무너짐(−1.43; C0 −2.57) → §9.2 "Case A 정확히-0이 원인" 사슬은 C1에 성립 안 함. 남는 후보 = probe가 깨끗한 sim의 정확히-0에 기댐(→ R2-3가 판별).
 - ~~사용자가 정할 것 (먼저)~~ → **09-26 답: 라운드 2(위) 먼저, 논문 방향은 그 결과 후.** (원문: refinement-floor 결과를 재투고 주장으로 쓸지·논문 방향.) 판정 기준 (C) 처리는 "계산 불가"로 기록(사후 수정 금지 준수).
@@ -43,7 +43,6 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문은 **AAAI-2
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40312857~873 (17) | R2-1 재제출: P_t⊕P_tk × {C1,C0} × {교란·라벨·전이} × seed 3 (완료된 C1 교란 s42 제외) — 배포 P가 분포 이동에서 버티나 | 09-27 09시 | `python paper_artifacts/tables/refinement_floor/agg_round2.py` (env aavrl-train) |
 | 40313093~096 (4) | 데이터 다양성 → 교란 강건성 파일럿: 기존 ckpt S×{p13,full}·B×{part1,full} M 단독 CALVIN 교란 s42 (판독 규칙 = cluster_sessions 해당 행) | 09-27 | 같은 스크립트 (arm Sp13M·SfullM·Bp1M·BfullM) |
 
 ## 이 문서의 용어
