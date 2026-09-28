@@ -95,7 +95,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 40321645~656 | mig-3g.40gb 1×1 ×12 | 00:40:00 | C1-DN 8잡(`fdn_{m,pt}_{act,id}{,_pos}`) + C0 drift 4잡(`fc0_{m,pt}_{act,id}`) | 진행 중 |
+| 40321645~656 | mig-3g.40gb 1×1 ×12 | 00:40:00 | C1-DN 8잡(`fdn_{m,pt}_{act,id}{,_pos}`) + C0 drift 4잡(`fc0_{m,pt}_{act,id}`) | ✅ 12/12 COMPLETED 2~3m/잡 (~0.3 GPU·h, MIG 1/2). **C0 drift 없음**(0.835/0.526/0.547/0.999 정확 재현). C1-DN raw/Δ: M motion 0.785/+0.320 · M identity 0.448/+0.241 · P_t motion 0.621/+0.209 · P_t identity 1.000 → 방향성 이중분리 유지, 단 M−P motion Δ 격차 축소(C0 2.7× → 1.5×, P가 motion을 더 담음). 표 = refinement_floor README |
 
 ### 2026-09-25 Refinement-floor C1 — 밝기 증강 CoMP-S ([refinement_floor_plan.md](refinement_floor_plan.md))
 

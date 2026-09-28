@@ -1,11 +1,11 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. 돌아가는 잡 없음.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. 돌아가는 잡 없음.
 
 ## 확정된 것
 
@@ -15,11 +15,12 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 | 효율은 CoMP 구조의 산물 (STEP 2-A, 07-09) | [확정] | same param(32.3M)·same data plain의 OOD probing이 4벤치 붕괴(CALVIN 0.030 등 vs CoMP-S 0.487) | — |
 | 폐루프 BC에서는 CoMP ≈ plain (STEP 2-B, 07-10) | [확정 · 사전 등록대로 FAIL] | LIBERO 3suite × seed 0/1/2, 500ep/seed, pooled Δ−0.9pt (Wilcoxon p=0.763) | control-level value 이득은 미입증 — 논문에선 dissociation 근거로 흡수 |
 | B 모델의 deployed-P 발산은 데이터 기아 (07-12) | [확정 · attach-only] | CoMP-B × part1-5 compute-matched 7ep: deployed-P −0.49 → +0.375, M 0.352→0.401 | 논문 spine 밖 |
+| C1-DN(주장 모델)도 M/P 방향성 이중분리 유지 (09-28) | [잠정] | STEP 1 same-probe 그대로(LIBERO-object·attentive·gap20), C0 재측정 정확 재현(drift 0): 위치 너머 motion Δ M +0.320 vs P +0.209 · P identity 1.000 · M identity 잔여 +0.241 (C0 +0.307) | probe 1회 · **M−P motion 격차 축소**(C0 2.7× → 1.5×, P_t motion 0.547→0.621) · C1 단계 vs denoise 단계 기여 미분리 · plain 대조(인과)는 C0 기반만 |
 | qk-norm 버그 재측정 후 EgoDex 기준② FAIL→PASS, OOD 확대 4/4→2/4 반전 (07-20) | [잠정] | probe 로더 qk-norm silent drop 수정 후 15잡 재측정: EgoDex P 0.328 / M 0.333 | **서랍 재판정 여부 미결** (attach-only라 spine 무피해) |
 
 ## 열린 것 · 다음 결정
 
-- **🔴 다음 (제안, 미결정)**: C1-DN으로 **factorization 지표 재측정** — 메커니즘 결과(STEP 1)는 C0에서 잰 것이라 주장 모델로 쓰려면 같은 지표(M motion·P identity, same-probe) 확인 필요. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
+- **🔴 다음 (제안, 미결정)**: C1 같은 8칸 재측정(~0.3 GPU·h) — C1-DN에서 P가 motion을 더 담게 된 것이 밝기 증강 50ep(C1) 때문인지 denoise 10ep 때문인지 분리. 논문에서 C1-DN 메커니즘 표를 쓸 때 설명 근거. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
 - **사용자가 정할 것 (Vault)**: 재투고 논문 주장 확정 — 재료 = README 라운드 1·2·§10 절. 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
 - 요약 [잠정·probe seed 3·표현 학습 1회]:
   - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.

@@ -80,6 +80,24 @@ Pre-registered verdict: ① (≥ raw on both shot and corr at 0.01) **not met** 
 not beyond; ② CALVIN 0.43 (≥ 0.40, just under 2× raw), LIBERO 0.68 → no 50-ep main training. Epoch-5 checkpoint gave
 the same picture (`pilot10_ep5_20260927.txt`). Files: `pilot10_ep10_20260928.txt`.
 
+## Factorization re-measure on C1-DN (2026-09-28)
+
+STEP 1 same-probe protocol unchanged (LIBERO-object, attentive readout, gap 20, one probe run per cell; motion = mean R² of the
+3 position dims, identity = 10-way task accuracy, chance 0.10; Δ = (feature ⊕ ee_pos) − ee_pos alone, controls 0.579 / 0.314).
+C0 raw cells re-run on current code reproduce the 07-02 values exactly (0.835 / 0.526 / 0.547 / 0.999) → no probe drift.
+Jobs 40321645–656; dirs `paper_artifacts/libero_action_probing/parvo_libero_object_20260928_*_f{dn,c0}_*`.
+
+| cell (raw / Δ) | C0 | C1-DN |
+|---|---|---|
+| M motion | 0.835 / +0.338 | 0.785 / +0.320 |
+| M identity | 0.526 / +0.307 | 0.448 / +0.241 |
+| P_t motion | 0.547 / +0.126 | 0.621 / +0.209 |
+| P_t identity | 0.999 | 1.000 |
+
+Directional double dissociation holds (M ≫ P on beyond-position motion, P at identity ceiling, M identity residual lower),
+but the M–P motion gap narrows (Δ ratio 2.7× → 1.5×) because P_t carries more motion. Single probe run; C1 vs denoise
+contribution not separated.
+
 ## Files
 
 | File | Content |
