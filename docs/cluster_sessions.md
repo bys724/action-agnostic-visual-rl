@@ -89,6 +89,14 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-09-28 C2 거울 ablation — M-recon만 제거, routing 유지 (사용자 승인 09-28)
+
+**목적**: STEP 1 caveat ① 해소 + 리뷰어 공통 요구. 기존 plain(36652564)은 M-recon off + routing `v_from_m` 두 노브를 동시에 바꿈 → C2 = plain submit line에서 **`V11_ROUTING_MODE=v_from_p` 하나만** 되돌림(= CoMP에서 M-recon만 제거). config = plain Model args 그대로(part1·50ep·batch128/GPU eff1024·LR2.8e-4·384/6·m6·no-Sobel·pair·pixel_pred·masked_anchor·indep_rot0). **판정(사전 등록, 결과 전 고정)**: STEP 1 same-probe 8칸. M motion 위치 너머 Δ ≤ +0.05(plain +0.016 수준) → M-recon 단독 인과 · C0 수준(~+0.3) 생존 → routing도 grounding 기여, 주장 = "M-recon + routing 결합"으로 수정. 중간 → 중간값 그대로 보고.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 40323989 | AIP 1×1 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000·batch64) SUFFIX=sanity_c2_mirror. 점검: Model args에 `--v11-routing-mode v_from_p --v15-pixel-pred --v15-masked-anchor`·loss finite·L_mj=0(M-recon off)·params = plain 48,834,432 | 진행 중 |
+
 ### 2026-09-28 C1-DN factorization 재측정 (STEP 1 same-probe 재현)
 
 **목적**: 주장 모델 C1-DN(`…_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)이 STEP 1 메커니즘 지표(M motion·P identity 이중분리)를 C0 수준으로 유지하는지. 프로토콜 = 07-08 STEP 1 판정(36785365~380) 그대로: libero_object·attentive·gap20·parvo `m_only`/`p_t_only` × action/identity × raw / ⊕pos(POSCTRL=concat). 추가로 C0(`step1_comp_mae_s/20260629_101634/latest.pt`) raw 2×2 재측정 = 07-02 이후 probe 코드 변경에 의한 drift 점검(기준 0.835/0.526/0.547/0.999). motion 지표 = 위치 3축 R² 평균(07-08 표 규약). AIP 대신 mig-3g.40gb(유휴 8 slice, 단가 절반).
