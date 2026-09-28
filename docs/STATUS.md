@@ -5,7 +5,7 @@
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. 돌아가는 잡 없음.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. C2 거울 ablation 대기 중.
 
 ## 확정된 것
 
@@ -20,7 +20,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 열린 것 · 다음 결정
 
-- **🔴 다음 (제안, 미결정)**: **거울 ablation(C2) 1런** — C0와 같은 학습 설정에서 routing(value 소유 구조)은 그대로 두고 M-recon만 제거. 기존 plain 대조는 M-recon과 routing을 동시에 꺼서 "M-recon 단독이 인과"를 분리 못 함(STEP 1 caveat ①) + 리뷰어 3명 공통 요구. 비용 110–165 GPU·h. 판정 = STEP 1 same-probe 8칸. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
+- **🔴 진행 중**: C2 거울 ablation(사용자 승인 09-28) — 기존 plain 대조가 M-recon과 routing을 동시에 꺼서 "M-recon 단독이 인과"를 분리 못 한 것(STEP 1 caveat ①)의 해소 + 리뷰어 공통 요구. 결과 오면 판정 후 C3(표준 cross-attn) 필요 여부 판단. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
 - **사용자가 정할 것 (Vault)**: 재투고 논문 주장 확정 — 재료 = README 라운드 1·2·§10 절. 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
 - 요약 [잠정·probe seed 3·표현 학습 1회]:
   - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.
@@ -35,7 +35,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| (없음 — 09-28 eval hang 수정 검증 완료 후 정지) | | | |
+| 40329601 | C2 거울 ablation 본학습 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-28 제출, PENDING (Slurm 예상 시작 10-06) | 로그인 노드 체인 `c2_chain.sh`가 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
 
 ## 이 문서의 용어
 
