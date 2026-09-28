@@ -52,6 +52,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-09-28 · C2 본학습은 2노드 8 GPU 대기 유지, 1노드 3 GPU 전환 안 함 (사용자 결정 — plain과 배치·구성 동일 유지)
 - 2026-09-28 · C1-DN의 P motion 증가 원인(C1 단계 vs denoise 단계) 분리 안 함 (사용자 결정)
 - 2026-09-28 · **논문 주장 모델 C1-DN = §10 파일럿(C1 + 10ep, 센서 노이즈 제거·밝기 보존 타깃, ckpt `two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)** — C1 대비 잡음 붕괴 해소(−1.4 → raw 동급), 같은 분포 유지 (사용자 결정. 사전 등록 ① 불통과와 별개로 C1 대비 개선 근거)
 - 2026-09-28 · §10 파일럿 사전 등록 ① 불통과 → 50ep scratch 본학습 없음 (계획서 §10.3 규칙)
