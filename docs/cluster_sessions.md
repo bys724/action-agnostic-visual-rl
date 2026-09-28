@@ -95,7 +95,8 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 40323989 | AIP 1×1 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000·batch64) SUFFIX=sanity_c2_mirror. 점검: Model args에 `--v11-routing-mode v_from_p --v15-pixel-pred --v15-masked-anchor`·loss finite·L_mj=0(M-recon off)·params = plain 48,834,432 | 진행 중 |
+| 40323989 | AIP 1×1 H100 | 00:40:00 | **sanity 1ep** (MAX_VIDEOS=1000·batch64) SUFFIX=sanity_c2_mirror. 점검: Model args에 `--v11-routing-mode v_from_p --v15-pixel-pred --v15-masked-anchor`·loss finite·L_mj=0(M-recon off)·params = plain 48,834,432 | ✅ COMPLETED 6m33s (~0.11 GPU·h). **4항목 PASS**: Model args = plain 36652564와 routing 한 곳만 다름 · params 48,834,432 일치 · L_mj=0 전 구간 · ep1 loss 0.2275 (batch500/1000 L_t 0.069/0.044, plain 0.075/0.048 동급) |
+| 40329601 | AIP_long 2×4 H100 | 2-00:00:00 | **🚀 C2 본학습** — sanity 동일 env, EPOCHS=50·batch128/GPU(eff1024). SUFFIX=refine_c2_mirror_s. 예상 13–21h ≈ 110–165 GPU·h (plain 실측 19h16m). 완료 후 STEP 1 same-probe 8칸 | 진행 중 |
 
 ### 2026-09-28 C1-DN factorization 재측정 (STEP 1 same-probe 재현)
 
