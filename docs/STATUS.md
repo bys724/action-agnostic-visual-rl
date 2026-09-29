@@ -35,7 +35,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40329601 | C2 거울 ablation 본학습 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-28 제출, PENDING (Slurm 예상 시작 10-06) | 로그인 노드 체인 `c2_chain.sh`가 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
+| 40343290 | C2 거울 ablation 본학습 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain.sh`가 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
 
 ## 이 문서의 용어
 
@@ -52,6 +52,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-09-29 · C2 본학습 파티션 AIP_long → AIP (설정 동일; AIP_long은 AIP보다 우선순위 등급이 낮아 AIP 대기열이 있는 한 시작 불가) (사용자 승인)
 - 2026-09-28 · C2 본학습은 2노드 8 GPU 대기 유지, 1노드 3 GPU 전환 안 함 (사용자 결정 — plain과 배치·구성 동일 유지)
 - 2026-09-28 · C1-DN의 P motion 증가 원인(C1 단계 vs denoise 단계) 분리 안 함 (사용자 결정)
 - 2026-09-28 · **논문 주장 모델 C1-DN = §10 파일럿(C1 + 10ep, 센서 노이즈 제거·밝기 보존 타깃, ckpt `two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`)** — C1 대비 잡음 붕괴 해소(−1.4 → raw 동급), 같은 분포 유지 (사용자 결정. 사전 등록 ① 불통과와 별개로 C1 대비 개선 근거)
