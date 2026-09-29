@@ -115,6 +115,7 @@ SCRATCH_DIR="/scratch/tmp/$USER/$SLURM_JOB_ID"
 if [ "$USE_SCRATCH" = "1" ]; then
     SCRATCH_DATA="$SCRATCH_DIR/egodex_frames"
     mkdir -p "$SCRATCH_DATA"
+    trap 'rm -rf "$SCRATCH_DIR"' EXIT  # node-local 복사본(~100 GB급) 잡 종료 시 정리
 
     # 모든 task 중 rank 0만 stage-in. 나머지는 대기.
     # 멀티노드에서는 각 노드의 rank 0 (SLURM_LOCALID=0)이 각각 복사.
@@ -123,12 +124,14 @@ if [ "$USE_SCRATCH" = "1" ]; then
         log "  src: $DATA_ROOT → dst: $SCRATCH_DATA"
         STAGE_IN_START=$(date +%s)
 
-        # rsync로 프레임만 복사 (raw mp4, zips는 불필요)
+        # 프레임만 복사 (raw mp4, zips는 불필요). 구조 = split/task/video/frame_*.jpg (part1 ≈ 1,300만 파일)
+        # → 순차 cp는 GPFS 메타데이터 왕복이 병목이라 video 디렉터리 단위로 STAGE_IN_JOBS개 병렬 복사.
         for SPLIT in $(echo "$SPLITS" | tr ',' ' ') test; do
             SRC="$DATA_ROOT/$SPLIT"
             if [ -d "$SRC" ]; then
-                log "  copying $SPLIT ..."
-                cp -a "$SRC" "$SCRATCH_DATA/" 2>&1 || {
+                log "  copying $SPLIT (parallel ${STAGE_IN_JOBS:-32}) ..."
+                (cd "$SRC" && find . -mindepth 2 -maxdepth 2 -type d -print0 \
+                    | xargs -0 -P "${STAGE_IN_JOBS:-32}" -I{} sh -c 'mkdir -p "$0/$(dirname "$1")" && cp -a "$1" "$0/$1"' "$SCRATCH_DATA/$SPLIT" {}) 2>&1 || {
                     log "  WARNING: cp failed for $SPLIT, falling back to GPFS"
                     USE_SCRATCH=0
                     break
