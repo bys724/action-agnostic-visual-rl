@@ -110,7 +110,9 @@ export MASTER_PORT=${MASTER_PORT:-$((29500 + SLURM_JOB_ID % 1000))}
 #
 # Usage: sbatch --export=ALL,...,USE_SCRATCH=1 scripts/cluster/pretrain.sbatch
 USE_SCRATCH="${USE_SCRATCH:-0}"
-SCRATCH_DIR="/scratch/tmp/$USER/$SLURM_JOB_ID"
+# /scratch/tmp는 노드마다 유무가 다름(g012 없음, 09-30 확인) → 없으면 /tmp(노드 로컬 7 TB 디스크)
+SCRATCH_BASE="/scratch/tmp"; [ -w "$SCRATCH_BASE" ] || SCRATCH_BASE="/tmp"
+SCRATCH_DIR="$SCRATCH_BASE/$USER/$SLURM_JOB_ID"
 
 if [ "$USE_SCRATCH" = "1" ]; then
     SCRATCH_DATA="$SCRATCH_DIR/egodex_frames"
