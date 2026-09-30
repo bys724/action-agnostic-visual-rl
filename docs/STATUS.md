@@ -28,14 +28,14 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
   - §10 파일럿 (09-28, 10ep): 사전 등록 ① 불통과(학습에 없던 잡음 0.01에서 raw 동급, 0.005에선 초과) → 50ep 본학습 없음. ② CALVIN 0.43·LIBERO 0.68.
 - **사용자가 정할 것**: Forecast-Sufficient **조기 게이트 스펙 5건** (09-20 제기) — ① 기준선 0.52~0.70은 32-d 헤더 출력값인데 게이트는 M_student 인코더 출력을 잼 ② 상대선(> M_teacher)과 절대선(≥ 0.52) 공존 ③ M_teacher 정본값 = Table I `ours` 0.576 ④ seed 수·마진 미명시 ⑤ 최종 판정 RAW-MOVE 1,536-d vs FSR 배포 2,304-d 차원 비대조. 이게 정해져야 v17 구현 착수.
 - **사용자가 정할 것 (다음)**: qk-norm 재측정 결과로 **서랍(supplement 부록) 재판정**을 할지.
-- 운영 메모: H100 1노드×3 GPU 학습 = 배치 341(유효 1023), ~81분/ep. eval hang(rank 0 단독 DDP forward)은 09-28 수정·검증. 대기 잡 `scontrol hold/release` 금지(자원 요청이 노드 전체로 부풂). full-data GPFS 랜덤 액세스 2.3× 병목 미해결.
+- 운영 메모: H100 1노드×3 GPU 학습 = 배치 341(유효 1023), ~81분/ep. eval hang(rank 0 단독 DDP forward)은 09-28 수정·검증. 대기 잡 `scontrol hold/release` 금지(자원 요청이 노드 전체로 부풂). GPFS 랜덤 읽기 병목: 노드 로컬 복사(`USE_SCRATCH=1`, part1 72분)로 1 GPU 처리량 2.0× (09-30 sanity) — `/scratch/tmp` 없는 노드는 `/tmp` fallback.
 - **형제 프로젝트 Cross-View**(09-18 개시, 제목 잠정): head/wrist 뷰 충분성 + action 조건화. DROID 3뷰 페어링 로더 신규 필요. 구현 0.
 
 ## 돌아가는 잡
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40343290 | C2 거울 ablation 본학습 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain.sh`가 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
+| 40343290 / 40374065 | C2 거울 ablation 본학습 — 2노드(8 GPU) / 1노드(4 GPU·batch256·로컬 NVMe 복사) 두 사본, 먼저 시작한 쪽 채택 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain2.sh`가 채택·취소 후 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
 
 ## 이 문서의 용어
 
