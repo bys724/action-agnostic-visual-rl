@@ -35,7 +35,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40343290 / 40374065 | C2 거울 ablation 본학습 — 2노드(8 GPU) / 1노드(4 GPU·batch256·로컬 NVMe 복사) 두 사본, 먼저 시작한 쪽 채택 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain2.sh`가 채택·취소 후 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
+| 40374065 | C2 거울 ablation 본학습 — 1노드 4 GPU·batch256(유효 1024)·로컬 NVMe 복사 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain2.sh`가 채택·취소 후 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
 
 ## 이 문서의 용어
 
@@ -52,6 +52,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-09-30 · C2 2노드 사본 취소, 1노드 4 GPU 사본만 유지 (사용자 결정 — 2노드가 우선순위상 1노드 시작을 막을 수 있고 1노드가 GPU·h·속도 우위; plain과 GPU 수·데이터 순서 차이는 각주)
 - 2026-09-30 · 대량 학습 시 손목 카메라는 별도 인코더·시점 토큰 없이 **함께 학습, 손목 쌍만 프레임 간격을 짧게**(초 단위 간격, 카메라 종류별 최대 간격) — 긴 간격 손목 쌍은 ΔL이 움직임이 아닌 두 장면 겹침이 됨(교차 회전 ΔL 아티팩트와 같은 종류) (사용자 결정)
 - 2026-09-29 · C2 본학습 파티션 AIP_long → AIP (설정 동일; AIP_long은 AIP보다 우선순위 등급이 낮아 AIP 대기열이 있는 한 시작 불가) (사용자 승인)
 - 2026-09-28 · C2 본학습은 2노드 8 GPU 대기 유지, 1노드 3 GPU 전환 안 함 (사용자 결정 — plain과 배치·구성 동일 유지)

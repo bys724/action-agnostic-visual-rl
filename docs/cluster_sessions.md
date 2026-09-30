@@ -101,7 +101,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 40373042~044, 40373065~067 | AIP 1×1 H100 ×6 (1 CPU) | 00:03:00 | 노드 로컬 디스크 확인(g001/g002/g012, 각 1초). 첫 3개는 출력 경로를 로그인 노드 전용 /tmp로 잡아 결과 유실 → 공유 logs로 재실행 | ✅ /scratch/tmp: g001·g002 있음, g012 없음 · `/`(=/tmp) 7 TB 로컬 · RAM 1 TB · /dev/shm 504 G |
 | 40373080 | AIP 1×1 H100 (32 CPU, g012 지정) | 01:30:00 | scratch sanity 재제출 — `/tmp` fallback 경로 검증 위해 g012 고정 | ✅ COMPLETED 1h19m (~1.3 GPU·h). `/tmp` fallback 작동 · **stage-in 71.8분**(part1+test, 32-병렬, 노드 디스크 +~300 GB) · **처리량 904.5 samp/s vs GPFS 449.8 (2.0×)** · ep1 loss 0.4859(GPFS 0.4806 동급) → 사전 기준(>4%) 충족, 1노드 본학습에 scratch 채택 |
 | 40374065 | AIP 1×4 H100 (32 CPU/task) | 3-00:00:00 | **🚀 C2 본학습 1노드 사본** (09-30 사용자 지시) — env 동일, batch **256**/GPU×4 = eff 1024(plain과 동일)·`USE_SCRATCH=1`·SUFFIX=refine_c2_mirror_s_1n. 2노드 사본 40343290과 병행, **먼저 RUNNING 된 쪽 채택·나머지 자동 취소**(체인 `c2_chain2.sh`, 이후 probe 8칸 자동). 추정 stage-in ~72분 + 학습 18–40h | ⏳ PENDING |
-| 40343290 | AIP 2×4 H100 | 2-00:00:00 | **🚀 C2 본학습 재제출** — 파티션만 AIP로 변경, env·자원 동일(EPOCHS=50·batch128/GPU eff1024·SUFFIX=refine_c2_mirror_s). 체인 `c2_chain.sh` 새 ID로 재장전 | ⏳ PENDING. AIP 우선순위 1위(6984, fairshare 6075 vs 타 사용자 대기 잡 920) |
+| ~~40343290~~ | AIP 2×4 H100 | 2-00:00:00 | C2 본학습 2노드 사본 (AIP 재제출) | ❌ **취소** 09-30 (0 GPU·h, 미시작) — 사용자 결정: 1노드 사본(40374065)만 유지. 2노드 사본이 우선순위가 더 높아 24h backfill 창 안에 들면 노드 2대를 예약해 1노드 사본 시작을 막을 수 있음 + 1노드가 GPU·h·속도(로컬 NVMe) 우위. 비교 조건 차이(4 GPU·데이터 순서)는 각주 |
 
 ### 2026-09-28 C1-DN factorization 재측정 (STEP 1 same-probe 재현)
 
