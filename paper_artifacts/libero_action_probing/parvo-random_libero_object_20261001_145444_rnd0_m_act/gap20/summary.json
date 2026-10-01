@@ -1,0 +1,32 @@
+{
+  "encoder": "parvo-random",
+  "checkpoint": null,
+  "task_suite": "libero_object",
+  "view": "agentview_rgb",
+  "gap": 20,
+  "gap_seconds": 1.0,
+  "readout": "attentive",
+  "target": "action",
+  "position_control": "none",
+  "pos_covariate": "pos",
+  "parvo_mode": null,
+  "v11_mode": null,
+  "n_train_demos": 396,
+  "n_eval_demos": 99,
+  "n_train_pairs": 50679,
+  "n_eval_pairs": 12710,
+  "best_epoch": 19,
+  "elapsed_seconds": 143.4272472858429,
+  "r2_aggregate": 0.3302323751297388,
+  "r2_per_dim": [
+    0.2339707696965434,
+    0.5800842865373252,
+    0.3846276427710912,
+    -0.02821886317727218,
+    0.43922777234750454,
+    0.037576839111074234,
+    0.32953360366472506
+  ],
+  "mse": 0.09379296004772186,
+  "cosine_sim": 0.586235523223877
+}

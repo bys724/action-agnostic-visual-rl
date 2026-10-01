@@ -16,6 +16,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 | 폐루프 BC에서는 CoMP ≈ plain (STEP 2-B, 07-10) | [확정 · 사전 등록대로 FAIL] | LIBERO 3suite × seed 0/1/2, 500ep/seed, pooled Δ−0.9pt (Wilcoxon p=0.763) | control-level value 이득은 미입증 — 논문에선 dissociation 근거로 흡수 |
 | B 모델의 deployed-P 발산은 데이터 기아 (07-12) | [확정 · attach-only] | CoMP-B × part1-5 compute-matched 7ep: deployed-P −0.49 → +0.375, M 0.352→0.401 | 논문 spine 밖 |
 | C1-DN(주장 모델)도 M/P 방향성 이중분리 유지 (09-28) | [잠정] | STEP 1 same-probe 그대로(LIBERO-object·attentive·gap20), C0 재측정 정확 재현(drift 0): 위치 너머 motion Δ M +0.320 vs P +0.209 · P identity 1.000 · M identity 잔여 +0.241 (C0 +0.307) | probe 1회 · **M−P motion 격차 축소**(C0 2.7× → 1.5×, P_t motion 0.547→0.621) · C1 단계 vs denoise 단계 기여 미분리 · plain 대조(인과)는 C0 기반만 |
+| M-recon 없으면 학습이 건강한 시점(ep4)에도 M에 motion이 안 생기고, P 보조만 하는 M은 미학습보다 낮아짐 (10-01) | [잠정] | LIBERO-object same-probe M motion, ep4: C0 0.795 / plain 0.183 / C2 0.094 / 미학습 M 0.400 · ep4 P identity 셋 다 1.000. C2는 ep6 이후 P 표현 붕괴(ep12 P identity 0.186) | probe 1회·미학습 init seed 1 · ep4는 사전 등록 판정 시점(ep50) 아님 · M-recon 없는 학습은 2/2 불안정 → ep50 판정은 붕괴와 섞일 수 있음 |
 | qk-norm 버그 재측정 후 EgoDex 기준② FAIL→PASS, OOD 확대 4/4→2/4 반전 (07-20) | [잠정] | probe 로더 qk-norm silent drop 수정 후 15잡 재측정: EgoDex P 0.328 / M 0.333 | **서랍 재판정 여부 미결** (attach-only라 spine 무피해) |
 
 ## 열린 것 · 다음 결정
@@ -35,7 +36,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40374065 | C2 거울 ablation 본학습 — 1노드 4 GPU·batch256(유효 1024)·로컬 NVMe 복사 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain2.sh`가 채택·취소 후 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
+| 40374065 | C2 거울 ablation 본학습 — 1노드 4 GPU·batch256(유효 1024)·로컬 NVMe 복사. RUNNING 10-01 09:12, 21분/ep, 완료 ~10-02 새벽. ⚠️ ep6 이후 P 복원 붕괴 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain2.sh`가 채택·취소 후 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
 
 ## 이 문서의 용어
 
