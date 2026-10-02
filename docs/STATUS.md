@@ -1,11 +1,11 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-10-02 Vault 세션 (주장 구조 v2 = `docs/claim_spine_v2.md`) · 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. C2 거울 ablation 판정 완료(10-02): M-recon 단독이 M grounding의 인과.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. C2 거울 ablation 판정 완료(10-02): M-recon 단독이 M grounding의 인과. **→ 그 결과를 받아 주장 구조를 재배치했다(10-02 Vault): 정본 = `docs/claim_spine_v2.md`. 다음 작업은 전부 그 문서의 사전 등록을 따른다.**
 
 ## 확정된 것
 
@@ -21,8 +21,8 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 열린 것 · 다음 결정
 
-- **🔴 다음 (제안, 미결정)**: C3(표준 cross-attn, M-recon 유지) 필요 여부 — C2 ≈ plain이라 routing 형태는 M grounding에 무관함이 이미 드러남 → C3는 "value 소유가 P 보호에 필요한가"(스칼펠이 일부 답함)만 남음. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
-- **사용자가 정할 것 (Vault)**: 재투고 논문 주장 확정 — 재료 = README 라운드 1·2·§10 절. 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
+- **🔴 다음 (지시 확정 10-02 · 정본 `docs/claim_spine_v2.md`)**: **E0 → E3 최소 셀** 순서로 최단 경로. E0 = 외부 인코더(DINOv2·SigLIP·VC-1)에 ΔL 입력 = 리뷰어 UnGc W1 미측정분, probe만. E3 = BC 가치 실험(같은 프레임 예산 5팔 · 간격 교정 · copycat 대책 전 팔 동일 · 데모 수 스윕), 인코더는 C0 고정. E3 최소 셀 중지 신호 = 최저 데모에서 CoMP 모션이 RGB 스택을 못 넘으면 주장 C 폐기. E1(증강 scratch ≈165 GPU·h)은 E3 양성 확인 후 발주. C3는 보류.
+- **✅ 해결 (10-02)**: 재투고 논문 주장 확정 = `docs/claim_spine_v2.md` §1 (주장 A 메커니즘 / B 불변성=설계 / C 정제된 모션의 제어 가치 + 봉합 E0). **남은 사용자 확정 2건** = ① 주장 모델 C0 유지 vs C1-DN(09-28 결정) ② venue(E0·E3 결과 후). 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
 - 요약 [잠정·probe seed 3·표현 학습 1회]:
   - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.
   - 라운드 2 (09-27): 노이즈 붕괴 = probe 학습·시험 불일치(R2-3) · P를 붙이면 판독기 붕괴는 실재(R2-2) · 배포 P는 분포 이동에서 raw 수준, 취약성은 M 국한(R2-1) · 정확히-0 ΔL: sim 77–85% vs EgoDex 2.3%(R2-4).
@@ -53,6 +53,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-10-02 · **주장 구조 v2 확정 (Vault 세션)** — 신규성 자리를 "라우팅이 모션을 만든다"(C2가 반증)에서 "갈래별 복구 = 접지 / 라우팅 = P 보호" + "정제된 모션의 제어 가치"로 재배치. 증강은 리뷰 회피가 아니라 설계 원칙으로 승격(scratch 본 레시피), 주장 B 판정 자는 raw 초과 → 선택성으로 교체. 실행 = E0 → E3. 상세·사전 등록 = `docs/claim_spine_v2.md`
 - 2026-10-02 · C2 사전 등록 판정: M motion 위치 너머 Δ +0.017 ≤ +0.05 → "M-recon 단독이 M grounding의 인과" 확정 (STEP 1 caveat ① 해소)
 - 2026-10-01 · C2 학습은 P 붕괴에도 50ep까지 계속, 판정은 사전 등록대로 ep50 (ep4 비교는 보조 증거로만) (사용자 결정)
 - 2026-09-30 · C2 2노드 사본 취소, 1노드 4 GPU 사본만 유지 (사용자 결정 — 2노드가 우선순위상 1노드 시작을 막을 수 있고 1노드가 GPU·h·속도 우위; plain과 GPU 수·데이터 순서 차이는 각주)
