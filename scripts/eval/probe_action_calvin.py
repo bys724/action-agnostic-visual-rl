@@ -46,6 +46,8 @@ from scripts.eval.probe_action_libero import (
     compute_metrics,
     encode_pairs_parvo,
     encode_pairs_raw_dl,
+    encode_pairs_ext_dl,
+    INPUT_SOURCES,
     build_parvo_random_encoder,
     PROBE_NOISE_SEED,
     encode_pairs_parvo_raw,
@@ -135,6 +137,8 @@ def main():
                         help="adapter = legacy(mean 전용) / vla = VideoMAEEncoderForVLA(mean+attentive self-consistent)")
     parser.add_argument("--probe-weight-decay", type=float, default=0.0,
                         help="AdamW weight decay (attentive P-appearance overfit 억제). default 0")
+    parser.add_argument("--input-source", default="rgb", choices=list(INPUT_SOURCES),
+                        help="E0: dinov2/siglip/vc1에 ΔL 한 장을 이미지로 (dl_signed | dl_abs). rgb = 기존 2프레임")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -234,6 +238,14 @@ def main():
         def encode_fn(prev, curr):
             return encode_pairs_videomae_vla(model, prev, curr, device,
                                              readout=args.readout, batch=args.encode_batch)
+    elif args.input_source != "rgb":
+        assert args.encoder in ("dinov2", "siglip", "vc1"), "--input-source는 단일 프레임 외부 인코더 전용"
+        adapter = build_standard_encoder(args.encoder, args.checkpoint, device)
+        img_size = adapter.img_size
+
+        def encode_fn(prev, curr):
+            return encode_pairs_ext_dl(adapter, prev, curr, device, source=args.input_source,
+                                       readout=args.readout, batch=args.encode_batch)
     else:
         if args.readout == "attentive":
             raise ValueError(f"attentive readout은 parvo/videomae(vla)만 지원 (encoder={args.encoder})")
@@ -384,6 +396,7 @@ def main():
                 "readout": args.readout,
                 "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
                 "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
+                "input_source": args.input_source,
                 "random_init_seed": args.random_init_seed,
                 "raw_pad": args.raw_pad if args.encoder == "parvo-raw" else None,
                 "probe_noise_sigma": args.probe_noise_sigma,

@@ -96,6 +96,7 @@ if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
 # refinement_floor_plan §5.2·§5.3-d: 바닥선 팔 + suite 간 무재학습 전이 (TRANSFER=1 → 3 suite 행렬, TASK_SUITE 무시)
 if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
 if [[ "$ENCODER" == "raw-dl" || "$ENCODER" == "parvo-raw" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
+[[ -n "${INPUT_SOURCE:-}" ]] && ARGS+=(--input-source "$INPUT_SOURCE")  # E0: dinov2/siglip/vc1 ← ΔL 이미지 (dl_signed | dl_abs)
 if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi
 [[ -n "${RAW_PAD:-}" ]] && ARGS+=(--raw-pad "$RAW_PAD")                          # parvo-raw: zero | linear (§9 R2-2)
 [[ -n "${PROBE_NOISE_SIGMA:-}" ]] && ARGS+=(--probe-noise-sigma "$PROBE_NOISE_SIGMA")  # §9 R2-3 학습·시험 양쪽 노이즈

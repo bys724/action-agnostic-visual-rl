@@ -116,6 +116,20 @@ class SingleFrameAdapter(EncoderAdapter):
             return hidden.mean(dim=1)
         raise ValueError(f"Unknown pool: {self.pool}")
 
+    def encode_patch_tokens(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (N, 3, H, W) [0,1] → (N, n_patch, D) 최종 norm 후 patch 토큰 (CLS 제외).
+        attentive readout용 (claim_spine_v2 §3 E0). dinov2 = 256(14px) / siglip·vc1 = 196(16px)."""
+        x = self._normalize(x)
+        if self.pool == "vc1_direct":
+            # vc_models VisionTransformer.forward_features를 handle_outcome 직전까지 재현
+            m = self.model
+            t = m.patch_embed(x) + m.pos_embed[:, 1:, :]
+            cls = (m.cls_token + m.pos_embed[:, :1, :]).expand(t.shape[0], -1, -1)
+            t = m.blocks(torch.cat([cls, t], dim=1))
+            return m.norm(t)[:, 1:]
+        hidden = self.model(pixel_values=x).last_hidden_state  # HF: 최종 layernorm 적용됨
+        return hidden[:, 1:] if self.pool == "patch_mean_skip_cls" else hidden
+
     def forward(self, obs_seq: torch.Tensor) -> torch.Tensor:
         B, T, C, H, W = obs_seq.shape
 

@@ -89,6 +89,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-02 E0 — 외부 RGB 인코더 + ΔL 바닥선 ([claim_spine_v2.md](claim_spine_v2.md) §3)
+
+**목적**: 리뷰어 UnGc W1 미측정분 — DINOv2·SigLIP·VC-1에 ΔL 한 장을 이미지로(부호 유지 `0.5+0.5·ΔL` / `|ΔL|`, 3채널 복제) 먹여 라운드 1과 같은 probe(CALVIN cross-folder gap30 attentive · LIBERO 전이 행렬, probe seed {42,1,2}). 대조 행(C0/C1 M·F1·F3) = 라운드 1 재사용. 사전 등록 판정 = claim_spine_v2 §3. 최소 칸 먼저(사용자 규칙) → 보고 → 전체. 제출 스크립트 `paper_artifacts/tables/refinement_floor/submit_e0.sh`. 파티션 = 라운드 1·2와 같은 normal V100.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 40769305 | normal 1×1 V100 (4 CPU) | 00:20:00 | **스모크** — 세 인코더 × 두 입력 변형 patch 토큰 shape·유한성 + VC-1 토큰 경로 재구현이 원본 CLS와 일치하는지 (로그인 노드 10분 timeout → 컴퓨트로) | ✅ 47s (~0.01 GPU·h). DINOv2 (n,256,768) · SigLIP/VC-1 (n,196,768) fp16 유한 · VC-1 CLS 재현 max\|diff\| 0.0 |
+| 40769563 | normal 1×1 V100 | 02:30:00 | **최소 칸** — DINOv2 · `dl_signed` · CALVIN · probe seed 42 | ✅ 11m23s (~0.19 GPU·h). 쌍 6114/32183 = 라운드 1 일치. **pos R² −0.333** (per-dim +0.021/−0.308/−0.713, agg +0.047, best_ep 15) — raw ΔL 0.218·C0 M 0.470보다 낮음. 전체 제출은 사용자 확인 대기 |
+
 ### 2026-09-28 C2 거울 ablation — M-recon만 제거, routing 유지 (사용자 승인 09-28)
 
 **목적**: STEP 1 caveat ① 해소 + 리뷰어 공통 요구. 기존 plain(36652564)은 M-recon off + routing `v_from_m` 두 노브를 동시에 바꿈 → C2 = plain submit line에서 **`V11_ROUTING_MODE=v_from_p` 하나만** 되돌림(= CoMP에서 M-recon만 제거). config = plain Model args 그대로(part1·50ep·batch128/GPU eff1024·LR2.8e-4·384/6·m6·no-Sobel·pair·pixel_pred·masked_anchor·indep_rot0). **판정(사전 등록, 결과 전 고정)**: STEP 1 same-probe 8칸. M motion 위치 너머 Δ ≤ +0.05(plain +0.016 수준) → M-recon 단독 인과 · C0 수준(~+0.3) 생존 → routing도 grounding 기여, 주장 = "M-recon + routing 결합"으로 수정. 중간 → 중간값 그대로 보고.

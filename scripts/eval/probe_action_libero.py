@@ -136,6 +136,35 @@ def encode_pairs_via_adapter(
     return torch.cat(out, dim=0)
 
 
+INPUT_SOURCES = ("rgb", "dl_signed", "dl_abs")  # E0: 외부 단일 프레임 인코더 입력 (rgb = 기존 2프레임 경로)
+
+
+@torch.no_grad()
+def encode_pairs_ext_dl(
+    adapter, frames_prev: torch.Tensor, frames_curr: torch.Tensor, device: torch.device,
+    source: str, readout: str = "mean", batch: int = 64,
+) -> torch.Tensor:
+    """E0 (claim_spine_v2 §3): 외부 RGB 인코더에 ΔL 한 장을 이미지로 먹인다 (두 프레임 각각이 아님).
+
+    ΔL = CoMP M 입력과 동일(BT.709 휘도 차, [-1,1]) → 3채널 복제 → 인코더 고유 정규화(어댑터).
+      dl_signed = 0.5 + 0.5·ΔL  (고정 배율 0.5 = [-1,1]→[0,1] 무손실·clamp 불필요, 결과 전 고정)
+      dl_abs    = |ΔL|           (엣지 유사, 이미지 통계에 가까움)
+    readout mean → (n, D) / attentive → (n, n_patch, D) fp16 — 단일 stream 규약.
+    """
+    from src.models.common.preprocessing import TwoStreamPreprocessing
+    prep = TwoStreamPreprocessing(use_sobel=False).to(device)
+    out = []
+    for s in range(0, frames_prev.shape[0], batch):
+        p = frames_prev[s:s + batch].to(device, non_blocking=True)
+        c = frames_curr[s:s + batch].to(device, non_blocking=True)
+        dl = prep.compute_m_channel(p, c)[:, :1]                            # (n, 1, H, W) ΔL
+        img = (0.5 + 0.5 * dl) if source == "dl_signed" else dl.abs()
+        tok = adapter.encode_patch_tokens(img.expand(-1, 3, -1, -1))        # (n, n_patch, D)
+        tok = tok.mean(dim=1) if readout == "mean" else tok.half()
+        out.append(tok.cpu())
+    return torch.cat(out, dim=0)
+
+
 @torch.no_grad()
 def encode_pairs_v11(
     model, fwd_fn, frames_prev: torch.Tensor, frames_curr: torch.Tensor,
@@ -737,6 +766,7 @@ def run_transfer(args, encode_fn, n_streams, img_size, device, phase, proj_strea
     json.dump({"encoder": args.encoder, "checkpoint": args.checkpoint, "gap": gap, "readout": args.readout,
                "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
                "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
+               "input_source": args.input_source,
                "random_init_seed": args.random_init_seed, "probe_seed": args.probe_seed,
                "raw_pad": args.raw_pad if args.encoder == "parvo-raw" else None,
                "probe_noise_sigma": args.probe_noise_sigma,
@@ -810,6 +840,8 @@ def main():
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (demo split은 --seed 고정)")
     parser.add_argument("--raw-dl-variant", default="raw", choices=list(RAW_DL_VARIANTS))
+    parser.add_argument("--input-source", default="rgb", choices=list(INPUT_SOURCES),
+                        help="E0: dinov2/siglip/vc1에 ΔL 한 장을 이미지로 (dl_signed | dl_abs). rgb = 기존 2프레임")
     parser.add_argument("--random-init-seed", type=int, default=None, help="parvo-random 전용 (필수)")
     parser.add_argument("--raw-pad", default="zero", choices=["zero", "linear"],
                         help="parvo-raw: raw 토큰 256→384 zero-pad(라운드 1) | linear = probe 안 학습 선형 투영(§9 R2-2)")
@@ -925,6 +957,14 @@ def main():
         def encode_fn(prev, curr):
             return encode_pairs_videomae_vla(model, prev, curr, device,
                                              readout=args.readout, batch=args.encode_batch)
+    elif args.input_source != "rgb":
+        assert args.encoder in ("dinov2", "siglip", "vc1"), "--input-source는 단일 프레임 외부 인코더 전용"
+        adapter = build_standard_encoder(args.encoder, args.checkpoint, device)
+        img_size = adapter.img_size
+
+        def encode_fn(prev, curr):
+            return encode_pairs_ext_dl(adapter, prev, curr, device, source=args.input_source,
+                                       readout=args.readout, batch=args.encode_batch)
     else:
         if args.readout == "attentive":
             raise ValueError(f"attentive readout은 parvo/videomae(vla)만 지원 (encoder={args.encoder})")
