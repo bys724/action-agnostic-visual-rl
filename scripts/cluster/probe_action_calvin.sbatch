@@ -95,6 +95,6 @@ if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi  # �
 [[ -n "${RAW_PAD:-}" ]] && ARGS+=(--raw-pad "$RAW_PAD")                          # parvo-raw: zero | linear (§9 R2-2)
 [[ -n "${PROBE_NOISE_SIGMA:-}" ]] && ARGS+=(--probe-noise-sigma "$PROBE_NOISE_SIGMA")  # §9 R2-3 학습·시험 양쪽 노이즈
 
-"$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"
+"$CONDA_PREFIX/bin/python" -u scripts/eval/probe_action_calvin.py "${ARGS[@]}"
 
 log "=== done ==="

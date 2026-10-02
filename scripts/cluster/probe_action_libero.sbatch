@@ -103,6 +103,6 @@ if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi
 if [[ "${TRANSFER:-0}" == "1" ]]; then ARGS+=(--transfer-suites libero_spatial libero_object libero_goal); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi
 
-"$CONDA_PREFIX/bin/python" scripts/eval/probe_action_libero.py "${ARGS[@]}"
+"$CONDA_PREFIX/bin/python" -u scripts/eval/probe_action_libero.py "${ARGS[@]}"
 
 log "=== done ==="

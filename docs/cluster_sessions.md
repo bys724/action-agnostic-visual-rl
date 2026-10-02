@@ -97,6 +97,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 |-------|------|--------|------|------|
 | 40769305 | normal 1×1 V100 (4 CPU) | 00:20:00 | **스모크** — 세 인코더 × 두 입력 변형 patch 토큰 shape·유한성 + VC-1 토큰 경로 재구현이 원본 CLS와 일치하는지 (로그인 노드 10분 timeout → 컴퓨트로) | ✅ 47s (~0.01 GPU·h). DINOv2 (n,256,768) · SigLIP/VC-1 (n,196,768) fp16 유한 · VC-1 CLS 재현 max\|diff\| 0.0 |
 | 40769563 | normal 1×1 V100 | 02:30:00 | **최소 칸** — DINOv2 · `dl_signed` · CALVIN · probe seed 42 | ✅ 11m23s (~0.19 GPU·h). 쌍 6114/32183 = 라운드 1 일치. **pos R² −0.333** (per-dim +0.021/−0.308/−0.713, agg +0.047, best_ep 15) — raw ΔL 0.218·C0 M 0.470보다 낮음. 전체 제출은 사용자 확인 대기 |
+| 40773417~455 | normal 1×1 V100 ×35 | 02:30:00 | **E0 전체** (사용자 승인 10-02) — {dinov2,siglip,vc1} × {dl_signed,dl_abs} × probe seed {42,1,2} × {CALVIN, LIBERO 전이 행렬}, 최소 칸 제외. 잡 목록 `paper_artifacts/tables/refinement_floor/jobs_e0_full_20261002.txt`. sbatch에 `python -u` 추가(진행 로그 버퍼링 해소, 결과 무영향) | 🔵 제출 |
 
 ### 2026-09-28 C2 거울 ablation — M-recon만 제거, routing 유지 (사용자 승인 09-28)
 
