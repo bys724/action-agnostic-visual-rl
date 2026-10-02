@@ -337,6 +337,10 @@ def train_epoch(model, dataloader, optimizer, device, epoch, dataset=None,
                 # CoMP-MAE(v16): M-recon Case A/B
                 buf['loss_m_caseA'] = buf.get('loss_m_caseA', 0.0) + loss_m_caseA.item()
                 buf['loss_m_caseB'] = buf.get('loss_m_caseB', 0.0) + loss_m_caseB.item()
+                # refinement_floor_plan §3.2: 밝기 증강 샘플 통계 + DC 오프셋 (bright_aug 켤 때만 키 존재)
+                for _k, _v in out.items():
+                    if _k.startswith('bright_'):
+                        buf[_k] = buf.get(_k, 0.0) + _v.mean().item()
                 buf['feat_std_m'] = buf.get('feat_std_m', 0.0) + std_m.item()
                 buf['feat_std_p'] = buf.get('feat_std_p', 0.0) + std_p.item()
                 buf['cos_intra_m'] = buf.get('cos_intra_m', 0.0) + cos_intra_m.item()
@@ -635,6 +639,8 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
             img_t_m = None
 
         # Forward (handle VideoMAE vs prediction models)
+        # rank 0 단독 호출 → DDP 래퍼 대신 model.module 사용. DDP forward는 buffer broadcast 등 collective를 낼 수 있어
+        # barrier 대기 중인 다른 rank와 collective 순서가 어긋나 hang (09-27 3-GPU 두 실행이 같은 NCCL SeqNum에서 정지).
         actual_model = model.module if hasattr(model, 'module') else model
         model_name = type(actual_model).__name__
 
@@ -646,9 +652,9 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
             elif model_name == 'TwoStreamV15Model':
                 # v15 eval: triple input. pair_mode면 2-frame (img_t, img_tk).
                 if getattr(actual_model, 'pair_mode', False):
-                    out = model(img_t, img_tk)
+                    out = actual_model(img_t, img_tk)
                 else:
-                    out = model(img_t, img_t_n, img_t_m)
+                    out = actual_model(img_t, img_t_n, img_t_m)
                 loss = out['loss']
                 img_pred = out['pred_tk']
                 weighted_loss = loss
@@ -656,7 +662,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 total_loss_current += out['loss_t'].item()
                 total_loss_future += out['loss_tk'].item()
             elif model_name == 'TwoStreamV11Model':
-                out = model(img_t, img_tk)
+                out = actual_model(img_t, img_tk)
                 loss = out['loss']
                 img_pred = out['pred_tk']
                 weighted_loss = loss
@@ -665,7 +671,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 total_loss_future += out['loss_tk'].item()
             elif model_name == 'TwoStreamModel':
                 # eval 모드이므로 rotation_aug는 자동 skip (self.training=False)
-                out1, out2, _ = model(img_t, img_tk)
+                out1, out2, _ = actual_model(img_t, img_tk)
 
                 pred_m, pred_p = out1, out2
                 # v9: P target 선택 — future(v4), current(MAE), residual
@@ -710,7 +716,7 @@ def evaluate(model, eval_dataset, device, batch_size=8, num_samples=500, use_ssi
                 unweighted_loss = per_sample_loss.mean()
             else:
                 # Single-stream: future prediction
-                img_pred, _ = model(img_t, img_tk)
+                img_pred, _ = actual_model(img_t, img_tk)
                 per_sample_loss = F.mse_loss(img_pred, img_tk, reduction='none')
                 per_sample_loss = per_sample_loss.mean(dim=(1, 2, 3))
 
@@ -1392,6 +1398,11 @@ def train(
                         f"cos(pred,tgt)={v14buf['cos_pred_target']/n:.3f} | "
                         f"||center||={v14buf['norm_center']/n:.2f}"
                     )
+                    _bright = {k: v / n for k, v in v14buf.items() if k.startswith('bright_')}
+                    if _bright:
+                        for k, v in _bright.items():
+                            writer.add_scalar(f'bright/{k[len("bright_"):]}', v, epoch)
+                        log("  [bright] " + " ".join(f"{k[len('bright_'):]}={v:.4f}" for k, v in _bright.items()))
                 train_epoch._v14_metrics_buf = {}
             writer.flush()
 

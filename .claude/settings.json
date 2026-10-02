@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/bys72/vault_YS/Projects/Action-Agnostic Paper/**)",
+      "Read(//c/Users/bys72/vault_YS/Concepts/Two-Stream Architecture/**)"
+    ]
+  },
+  "outputStyle": "ys-research:research-dev"
+}

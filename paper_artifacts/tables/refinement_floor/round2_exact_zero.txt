@@ -1,0 +1,11 @@
+dataset           gap  exact0_px  all0_patch  lt1/255_px   (n=500 pairs, seed=0)
+calvin              1     0.8758      0.7091      0.9077
+calvin             30     0.7673      0.5853      0.7822
+libero_spatial      1     0.8586      0.7614      0.8865
+libero_spatial     20     0.7957      0.6980      0.8102
+libero_object       1     0.8960      0.8202      0.9214
+libero_object      20     0.8469      0.7635      0.8597
+libero_goal         1     0.8883      0.8124      0.9110
+libero_goal        20     0.8365      0.7615      0.8476
+egodex_part1        1     0.1582      0.0130      0.6799
+egodex_part1       30     0.0231      0.0000      0.2915

@@ -37,6 +37,7 @@ L_compose 핵심 가설 (motion field additivity):
 """
 
 import copy
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -274,6 +275,14 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_recon_v_source: str = "m",          # STEP 1 스칼펠: M-recon V 소유 (m=기존 V_M / p=V_P 스칼펠)
         caseA_weight: float = 1.0,            # Case A(정지 calibration) 상대 loss 가중
         caseA_prob: float = 1.0,              # Case A 실행 확률 (효율: <1이면 step별 확률 skip)
+        # ── refinement_floor_plan §3: 프레임 쌍 독립 밝기 증강 (C1 base, 기본 off) ──
+        bright_aug: bool = False,
+        bright_gain_range: Tuple[float, float] = (0.8, 1.2),
+        bright_ramp_prob: float = 0.5,
+        bright_ramp_amp: float = 0.15,
+        m_noise_max: float = 0.0,             # §10 센서 노이즈: M 입력 프레임에 RGB 가우시안 σ~U[0, max] (0=off)
+        bright_scene_gain_range: Optional[Tuple[float, float]] = None,  # §10 장면 조명 수준: 쌍 공유 gain (None=off)
+        bright_target: str = "clean",         # §10 M-recon 타깃: clean = 원래 조명 ΔL(C1) / aug = 밝기 바꾼 그대로의 ΔL(노이즈만 제거)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -434,6 +443,20 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self.m_recon_v_source = m_recon_v_source
         self.caseA_weight = caseA_weight
         self.caseA_prob = caseA_prob
+        # 밝기 증강 (refinement_floor_plan §3): M 입력만 증강 ΔL, M-recon 타깃·guard-7 가중은 깨끗한 ΔL
+        #   (denoising 형태 → photometric 불변성 학습). P 입력·타깃은 증강 이미지(P 목적함수 불변).
+        #   off면 RNG 소비·연산 모두 기존과 동일 (bit-identical).
+        self.bright_aug = bright_aug
+        self.bright_gain_range = tuple(bright_gain_range)
+        self.bright_ramp_prob = bright_ramp_prob
+        self.bright_ramp_amp = bright_ramp_amp
+        self.m_noise_max = m_noise_max
+        self.bright_scene_gain_range = tuple(bright_scene_gain_range) if bright_scene_gain_range else None
+        assert bright_target in ("clean", "aug"), bright_target
+        self.bright_target = bright_target
+        assert m_noise_max == 0 or bright_aug, "m_noise_max는 bright_aug 경로 전용"
+        if bright_aug:
+            assert comp_mae, "bright_aug는 comp_mae(_forward_pair_comp) 전용"
         if comp_mae:
             assert pair_mode, "comp_mae는 pair_mode 전용 (2-frame)"
             assert not no_motion and not pixel_pred, "comp_mae는 no_motion/pixel_pred과 배타적"
@@ -871,8 +894,31 @@ class TwoStreamV15Model(TwoStreamV11Model):
         tok = self.null_motion_token.expand(B, self.num_patches + 1, -1).to(device)
         return tok + self.pos_embed_m
 
+    def _photometric_aug(self, image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """샘플별 독립 밝기 증강 (refinement_floor_plan §3.2). 픽셀 [0,1] 공간, 결과 clamp.
+
+        전역 gain g~U[lo,hi] (항상) × 공간 ramp 1 + a·proj_d (prob, a~U[0,amp], 임의 방향 d).
+        proj_d ∈ [-1,1] = 이미지 내 d 방향 좌표를 양 끝 ±1로 정규화 (= 2·proj01 − 1).
+        색·대비·노이즈·blur·국소 그림자는 넣지 않는다 (§5.3-e "못 본 nuisance"로 보존).
+        Returns (aug_image, gain[B], ramp_amp[B] (ramp 미적용 샘플은 0)).
+        """
+        B, _, H, W = image.shape
+        dev = image.device
+        lo, hi = self.bright_gain_range
+        gain = torch.empty(B, device=dev).uniform_(lo, hi)
+        amp = torch.empty(B, device=dev).uniform_(0.0, self.bright_ramp_amp)
+        amp = amp * (torch.rand(B, device=dev) < self.bright_ramp_prob).float()
+        theta = torch.rand(B, device=dev) * (2 * math.pi)
+        cos, sin = torch.cos(theta), torch.sin(theta)
+        v = torch.linspace(-1.0, 1.0, H, device=dev).view(1, H, 1)
+        u = torch.linspace(-1.0, 1.0, W, device=dev).view(1, 1, W)
+        proj = (u * cos.view(B, 1, 1) + v * sin.view(B, 1, 1)) / (cos.abs() + sin.abs()).view(B, 1, 1)
+        field = gain.view(B, 1, 1) * (1.0 + amp.view(B, 1, 1) * proj)       # [B, H, W]
+        return (image * field.unsqueeze(1)).clamp(0.0, 1.0), gain, amp
+
     def _recon_dL(
         self, m_channel: torch.Tensor, p_helper_full: torch.Tensor, device: torch.device,
+        m_target: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """CoMP-MAE M-recon: masked ΔL → P-grouping routing → 1ch ΔL 복구. masked 위치만 loss.
 
@@ -881,8 +927,10 @@ class TwoStreamV15Model(TwoStreamV11Model):
         guard 8: mask_ratio_m_recon < P (motion patch가 visible에 남도록).
 
         Args:
-            m_channel:     [B, 1, H, W] — ΔL target (Case A=ΔL(t,t)≈0 / Case B=ΔL(t,tk))
+            m_channel:     [B, 1, H, W] — M 인코더 입력 ΔL (Case A=ΔL(t,t)≈0 / Case B=ΔL(t,tk))
             p_helper_full: [B, 1+N, D]  — P-encoder full-pass of frame_t (grad on → mutual, guard 4)
+            m_target:      [B, 1, H, W] — recon 타깃·guard-7 가중용 ΔL. None이면 m_channel
+                           (bright_aug: 입력=증강 ΔL, 타깃=깨끗한 ΔL — refinement_floor_plan §3.3 ①)
         Returns (loss, patch_pred, mask_m).
         """
         B = m_channel.shape[0]
@@ -894,7 +942,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
             m_state = step(m_state, p_helper_full)   # owner=M(V), helper=P_full(Q/K) → P→P, gather M
         m_state = self.m_recon_decoder_norm(m_state)
         patch_pred = self.m_recon_head(m_state[:, 1:])                    # [B, N, ps²·1]
-        patch_target = self._patchify(m_channel)                         # [B, N, ps²·1]
+        patch_target = self._patchify(m_channel if m_target is None else m_target)  # [B, N, ps²·1]
         err = ((patch_pred - patch_target) ** 2).mean(dim=-1)            # [B, N]
         # per-patch |ΔL| 가중 (guard 7). floor>0 → 정지 patch도 calibration 신호 유지.
         weight = self.m_recon_weight_floor + self.m_recon_weight_scale * patch_target.abs().mean(dim=-1)
@@ -923,11 +971,58 @@ class TwoStreamV15Model(TwoStreamV11Model):
         B = image_current.shape[0]
         device = image_current.device
 
+        # ── 밝기 증강 (refinement_floor_plan §3.2): 회전 직후·channel 계산 직전, 프레임별 독립 ─
+        #   M 인코더 입력 = 증강 ΔL / M-recon 타깃·가중 = 깨끗한 ΔL. Case A 입력 = 같은 프레임의
+        #   다른 증강 두 벌의 차(순수 photometric) → 타깃 0. P는 증강 이미지로 입력·타깃 모두.
+        bright_stats = {}
+        if self.bright_aug and self.training:
+            with torch.no_grad():
+                # §10 장면 조명 수준: 쌍의 모든 프레임이 공유하는 gain(광원 세기, 포화 clamp = 과노출).
+                #   가짜 motion은 만들지 않고 motion 대비만 바꿈. 타깃은 원래 조명의 깨끗한 ΔL(아래 m_tgt_*) → 조명 불변 압력.
+                src_t, src_tk = image_current, image_future
+                if self.bright_scene_gain_range is not None:
+                    lo_s, hi_s = self.bright_scene_gain_range
+                    g_s = torch.empty(B, 1, 1, 1, device=device).uniform_(lo_s, hi_s)
+                    src_t, src_tk = (src_t * g_s).clamp(0.0, 1.0), (src_tk * g_s).clamp(0.0, 1.0)
+                img_t_aug, g_t, a_t = self._photometric_aug(src_t)
+                img_tk_aug, g_tk, a_tk = self._photometric_aug(src_tk)
+                img_t_aug2, _, _ = self._photometric_aug(src_t)
+                if self.bright_target == "aug":   # 밝기 변화는 신호로 보존, 노이즈만 제거 (§10, 사용자 의도 09-27)
+                    m_tgt_real = self.preprocessing.compute_m_channel(img_t_aug, img_tk_aug)
+                    m_tgt_null = self.preprocessing.compute_m_channel(img_t_aug, img_t_aug2)
+                else:                             # C1: 밝기·노이즈 모두 제거한 원래 조명 ΔL
+                    m_tgt_real = self.preprocessing.compute_m_channel(image_current, image_future)
+                    m_tgt_null = self.preprocessing.compute_m_channel(image_current, image_current)
+                # §10 센서 노이즈 (M 입력만, P는 무노이즈): 샘플별 σ~U[0, m_noise_max]를 쌍의 두 프레임이 공유,
+                #   노이즈 샘플은 프레임마다 독립 (RGB 채널·픽셀 독립 = 고주파 측정 잡음). 타깃은 깨끗한 ΔL 그대로
+                #   → Case A(타깃 0)가 "잡음은 motion이 아니다"를 직접 가르침.
+                if self.m_noise_max > 0:
+                    sig = torch.empty(B, 1, 1, 1, device=device).uniform_(0.0, self.m_noise_max)
+                    nz = lambda x: (x + sig * torch.randn_like(x)).clamp(0.0, 1.0)
+                    m_chan_real = self.preprocessing.compute_m_channel(nz(img_t_aug), nz(img_tk_aug))
+                    m_chan_null = self.preprocessing.compute_m_channel(nz(img_t_aug), nz(img_t_aug2))
+                else:
+                    m_chan_real = self.preprocessing.compute_m_channel(img_t_aug, img_tk_aug)
+                    m_chan_null = self.preprocessing.compute_m_channel(img_t_aug, img_t_aug2)
+                gains = torch.cat([g_t, g_tk])
+                amps = torch.cat([a_t, a_tk])
+                bright_stats = {
+                    "bright_gain_mean": gains.mean(), "bright_gain_std": gains.std(),
+                    "bright_ramp_frac": (amps > 0).float().mean(), "bright_ramp_amp": amps.mean(),
+                    "bright_dc_offset": (m_chan_real - m_tgt_real).abs().mean(),  # |ΔL_in − ΔL_tgt|
+                    "bright_motion_absdl": m_tgt_real.abs().mean(),               # 비교 기준 |ΔL|
+                    "bright_null_absdl": m_chan_null.abs().mean(),                # Case A 입력 |ΔL| (노이즈+밝기)
+                }
+            image_current, image_future = img_t_aug, img_tk_aug
+        else:
+            m_tgt_real = m_tgt_null = None
+
         # ── P channels (RGB) + M channels (ΔL) ───────────────────────────
         p_channel_t = self.preprocessing.compute_p_channel(image_current)
         p_channel_tk = self.preprocessing.compute_p_channel(image_future)
-        m_chan_real = self.preprocessing.compute_m_channel(image_current, image_future)   # ΔL(t,tk)
-        m_chan_null = self.preprocessing.compute_m_channel(image_current, image_current)  # ΔL(t,t)=0
+        if not bright_stats:
+            m_chan_real = self.preprocessing.compute_m_channel(image_current, image_future)   # ΔL(t,tk)
+            m_chan_null = self.preprocessing.compute_m_channel(image_current, image_current)  # ΔL(t,t)=0
 
         # ── P-recon (pixel_pred과 동일): in-place ×2(null routing) + future ×1(real routing) ─
         mask_t = self._random_mask(B, device, self.mask_ratio_p)
@@ -944,10 +1039,12 @@ class TwoStreamV15Model(TwoStreamV11Model):
         #   Case B(real ΔL)가 핵심 — 항상 실행 (m_recon 모듈에 grad 보장 → DDP-safe).
         #   Case A(정지 calibration)는 caseA_prob로 확률 skip (효율: 정적 과다 → 연산 절감).
         p_helper_t = self._encode_p_unmasked(p_channel_t)
-        loss_m_B, patch_pred_dL, mask_m = self._recon_dL(m_chan_real, p_helper_t, device)  # Case B: real ΔL
+        loss_m_B, patch_pred_dL, mask_m = self._recon_dL(
+            m_chan_real, p_helper_t, device, m_target=m_tgt_real)                     # Case B: real ΔL
         run_caseA = self.caseA_prob >= 1.0 or torch.rand(1).item() < self.caseA_prob
         if run_caseA:
-            loss_m_A, _, _ = self._recon_dL(m_chan_null, p_helper_t, device)    # Case A: 정지 calibration
+            loss_m_A, _, _ = self._recon_dL(
+                m_chan_null, p_helper_t, device, m_target=m_tgt_null)                 # Case A: 정지 calibration
         else:
             loss_m_A = torch.zeros((), device=device, dtype=loss_m_B.dtype)
         loss_m_recon = self.caseA_weight * loss_m_A + loss_m_B
@@ -981,6 +1078,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
             "student_dino_cls": cls_p_repr,
             "teacher_dino_cls": torch.zeros(B, self.embed_dim, device=device, dtype=loss.dtype),
             "teacher_proto_logits": torch.zeros(B, 1, device=device, dtype=loss.dtype),
+            **bright_stats,
         }
 
     # ----------------------------------------------------------------------

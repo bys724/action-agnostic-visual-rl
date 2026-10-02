@@ -87,6 +87,23 @@ v4, v5, v7-big (×3), v8, v9 (×4 dirs), V-JEPA-ours, vjepa2_official, vjepa_off
 
 (루트: `/proj/external_group/mrg/datasets/`)
 
+### 대량 사전학습 후보 데이터셋 (2026-09-30 조사, 미확정)
+
+CoMP 확장 학습(2노드) 대비. 기준 = 실제 보이는 움직임·환경/동작 다양성·EgoDex와 비중복, **카메라 자체 움직임이 ΔL을 지배하지 않을 것**. 용량 = 256² JPEG 16 KB/장(EgoDex 실측) 가정 추정. 출처·전체 비교는 조사 시점 웹 확인(각 항목 공식 페이지).
+
+| 순위 | 데이터셋 | 쓸 부분 | 규모 | 256² 프레임 추정 | fps | 라이선스·접근 |
+|---|---|---|---|---|---|---|
+| 1 | DROID v1.0.1 | 외부 고정 카메라 2대 | 350 h · 564 scenes / 52 buildings | ~0.6 TB | 15 | CC-BY · **보유(3.4 TB raw), 프레임 미추출** |
+| 2 | AgiBot World Beta | 머리 카메라 | 2,976 h · 87 skills · 이동 양팔 | ~5.1 TB (raw 48 TB, 순차 다운로드·추출·삭제 필요) | 30 | CC BY-NC-SA · gated(HF) · Alpha 보유 |
+| 3 | Ego-Exo4D V2 | 고정 3인칭(exo) 카메라 | ~1,065 cam-h · 123 scenes · 요리/수리/춤/스포츠 | ~1.8 TB | 확인 필요 | 라이선스 서명(~2일) |
+| 4 | Egocentric-10K (Build AI) | 부분(2–3k h) | 10k h · 85 공장 · 머리 어안 | 부분 ~3.5–5 TB (전체 ~17 TB) | 30 | Apache 2.0 · gated |
+| 5 | Galaxea Open-World | 머리 카메라 | 500 h · 50 scenes · 이동 전신 조작 | ~0.43 TB | 15 | CC BY-NC-SA · gated |
+| 6 | BridgeData V2 (최신 = V2) | 전 카메라 | ~100 h · 24 환경 | ~0.12 TB | **5** | MIT · 보유(`oxe/bridge` TFRecord, 로컬 256²판) |
+| 보류 | EgoLive(2026, 60 fps·가정/소매) | — | 1,680 h | ~2.9 TB | 60 | CC BY 4.0 · 접근 경로 미검증 |
+
+비추천: OXE 기타 하위셋(저fps·환경 1–2개) · RealOmni(손에 든 그리퍼 카메라 = ΔL이 카메라 움직임 지배, 95 TB) · Ego4D 추가/Nymeria(걷기·머리 움직임 지배, 조작 밀도 낮음) · SSv2(240p·12 fps) · 소규모 실험실 데이터(HOT3D·ARCTIC·TACO 등).
+⚠️ fps가 5–60으로 제각각 → 프레임 간격을 **초 단위**로 샘플링하도록 로더 수정 필요(현재 EgoDex 30 fps 프레임 수 기준). 손목 카메라는 함께 학습하되 최대 간격을 짧게(고정·머리 ≤1 s, 손목 ≤0.1–0.2 s 후보 — 값은 측정 후 확정, 09-30 결정).
+
 ### External codebases (repo 내 submodule/clone)
 
 | 코드 | 위치 | 용도 |

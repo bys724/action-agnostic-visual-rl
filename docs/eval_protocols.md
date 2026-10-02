@@ -123,6 +123,21 @@ SPLIT=training,CROSS_FOLDER=1,MAX_EPISODES=200,GAPS="10 15 20 30" \
 
 ---
 
+### 4-b. CALVIN nuisance 강건성 시험 (refinement_floor_plan §5.3-e, 확정 2026-09-26)
+
+판정축 ⓢ(probe 학습 분포 밖). 위 CALVIN 정규 조건(xfold·gap30·attentive·20ep) 위에서:
+
+| 항목 | 정규 값 |
+|---|---|
+| 절차 | 깨끗한 train으로 probe 1회 fit → best epoch(**`r2_aggregate` 전 차원 기준**, 깨끗한 eval) 가중치 고정 → eval **프레임** 교란 → ΔL 재계산·재인코딩 → 고정 probe 평가. 보고 = pos R²(dim 0–2 평균) |
+| 교란 (🔴 문자열 고정) | `EVAL_PERTURB="gain:0.9,1.1,1.2,1.3 ramp:0.1,0.2,0.3 shadow:0.2,0.4,0.6 noise:0.01,0.02,0.04"` — 난수 seed가 (종류, **목록 내 순번**)으로 정해지므로 목록을 바꾸면 팔 간 교란이 달라짐. 전 팔 동일 문자열 필수 |
+| 적용 프레임 | gain·ramp·shadow = t+k만 · noise = 양 프레임 독립 · 결과 clamp [0,1] |
+| shadow 기하 (구현 선택, plan 미기재) | 부드러운 타원 1개, 중심 ±0.8, 반축 이미지 한 변의 15–35%, 경계 폭 0.1 → 절반 이상 어두워진 면적 평균 17–19% |
+| seed | `PROBE_SEED` {42,1,2} (데이터 고정·probe만) |
+
+검증 (2026-09-26, 서브에이전트 2중): 코드 리뷰 8항목 결함 0 · 실제 CALVIN 프레임 실측 — 교란 프레임·크기·결정성 명세 일치, 교란 0(gain 1.0) = clean 정확 재현. 그림 `paper_artifacts/tables/refinement_floor/calvin_perturb_grid.png`.
+주의: CALVIN(렌더링) 정지 영역 ΔL은 **정확히 0이 73%** — noise σ0.01만으로 0.01%로 소멸. gain>1은 흰 영역 clamp 포화(g1.3에서 28%)로 균일 오프셋이 아님.
+
 ## 5. CortexBench (local workstation, cluster 아님)
 
 **역할**: Meta-World + Adroit success-rate (frozen encoder + BC head). vision encoder generic capability.

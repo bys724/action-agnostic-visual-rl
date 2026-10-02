@@ -78,7 +78,9 @@ docs/*.pdf
 external/eai-vc/
 
 # Claude Code 로컬 설정 (팀 공유 설정 생기면 개별 force add)
-.claude/
+.claude/*
+# 공유 프로젝트 설정(output style + report-gate hook)만 추적 — settings.local.json 은 계속 제외
+!.claude/settings.json
 
 # 로컬 워크스테이션 전송용 ckpt 번들 (transient, 환경 간 옮길 때만 생성)
 *.tar

@@ -242,6 +242,22 @@ def main():
     parser.add_argument('--v15-independent-rotation-prob', type=float, default=0.1,
                         help='[v15/CoMP-MAE] rotation-aug 시 두 프레임 독립 회전 확률. '
                              '0=joint rotation만 (§4.1 선결: 교차회전 ΔL은 재배치 아티팩트 → motion 오염 방지).')
+    # refinement_floor_plan §3: 프레임 쌍 독립 밝기 증강 (C1 base). comp_mae 전용, 기본 off.
+    parser.add_argument('--bright-aug', action='store_true',
+                        help='[CoMP-MAE] 프레임별 독립 gain·ramp 밝기 증강. M 입력=증강 ΔL, '
+                             'M-recon 타깃·가중=깨끗한 ΔL. docs/refinement_floor_plan.md §3.')
+    parser.add_argument('--bright-gain-range', type=float, nargs=2, default=[0.8, 1.2],
+                        help='[bright-aug] 전역 gain U[lo, hi] (default 0.8 1.2).')
+    parser.add_argument('--bright-ramp-prob', type=float, default=0.5,
+                        help='[bright-aug] 공간 ramp 적용 확률 (default 0.5).')
+    parser.add_argument('--bright-ramp-amp', type=float, default=0.15,
+                        help='[bright-aug] ramp 진폭 a~U[0, amp] (default 0.15).')
+    parser.add_argument('--bright-scene-gain-range', type=float, nargs=2, default=None,
+                        help='[bright-aug] 쌍 공유 장면 조명 gain U[lo, hi] (예 0.73 1.37 = ±1 stop). None=off. §10.')
+    parser.add_argument('--bright-target', default='clean', choices=['clean', 'aug'],
+                        help='[bright-aug] M-recon 타깃: clean=원래 조명 ΔL(C1) / aug=밝기 바꾼 그대로의 ΔL(노이즈만 제거). §10.')
+    parser.add_argument('--m-noise-max', type=float, default=0.0,
+                        help='[bright-aug] M 입력 프레임 RGB 센서 노이즈 σ~U[0, max] (0=off). refinement_floor_plan §10.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -393,6 +409,13 @@ def main():
             caseA_prob=args.v15_caseA_prob,
             m_recon_v_source=args.v15_m_recon_v_source,
             independent_rotation_prob=args.v15_independent_rotation_prob,
+            bright_aug=args.bright_aug,
+            bright_gain_range=tuple(args.bright_gain_range),
+            bright_ramp_prob=args.bright_ramp_prob,
+            bright_ramp_amp=args.bright_ramp_amp,
+            m_noise_max=args.m_noise_max,
+            bright_scene_gain_range=args.bright_scene_gain_range,
+            bright_target=args.bright_target,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

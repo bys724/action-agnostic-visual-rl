@@ -1,0 +1,9 @@
+[done 10:44:35]
+S×part1 (C0, R1)   clean +0.496 | shadow0.6 -2.95 gain1.3 -20.22 gain0.9 -9.91 ramp0.3 -0.40 noise0.01 -2.01 | best_ep 20
+S×p13              clean +0.495 | shadow0.6 -1.67 gain1.3 -8.68 gain0.9 -1.45 ramp0.3 -0.08 noise0.01 -0.81 | best_ep 20
+S×full             clean +0.517 | shadow0.6 -1.53 gain1.3 -3.76 gain0.9 -1.49 ramp0.3 -0.62 noise0.01 -0.09 | best_ep 20
+B×part1            clean +0.569 | shadow0.6 -0.94 gain1.3 -3.53 gain0.9 -0.14 ramp0.3 -0.50 noise0.01 -2.59 | best_ep 19
+B×full             clean +0.602 | shadow0.6 -3.51 gain1.3 -16.07 gain0.9 -9.84 ramp0.3 -0.29 noise0.01 -6.90 | best_ep 20
+raw (R1)           clean +0.225 | shadow0.6 -0.31 gain1.3 -4.20 gain0.9 -0.80 ramp0.3 +0.16 noise0.01 +0.23 | best_ep 20
+
+[exited with code 0]

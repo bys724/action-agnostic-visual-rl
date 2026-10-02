@@ -44,7 +44,7 @@ VIDEOMAE_MODE="${VIDEOMAE_MODE:-paired}"
 SUFFIX="${SUFFIX:-}"
 CROSS_FOLDER="${CROSS_FOLDER:-}"           # 0이 아닌 임의 값이면 --cross-folder flag 추가
 READOUT="${READOUT:-mean}"                 # mean | attentive (STEP 0 게이트)
-PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m
+PARVO_MODE="${PARVO_MODE:-p_t_p_tk}"       # parvo: p_t_p_tk | p_t_m | m_only | p_t_only
 VIDEOMAE_ENCODER="${VIDEOMAE_ENCODER:-adapter}"  # videomae-ours: adapter(legacy) | vla
 PROBE_WEIGHT_DECAY="${PROBE_WEIGHT_DECAY:-0.0}"
 
@@ -84,6 +84,15 @@ if [[ "$ENCODER" == "two-stream-v11" ]]; then ARGS+=(--v11-mode "$V11_MODE"); fi
 if [[ "$ENCODER" == "parvo" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE"); fi
 if [[ "$ENCODER" == "videomae-ours" ]]; then ARGS+=(--videomae-mode "$VIDEOMAE_MODE" --videomae-encoder "$VIDEOMAE_ENCODER"); fi
 if [[ -n "$CROSS_FOLDER" ]]; then ARGS+=(--cross-folder); fi
+if [[ "$ENCODER" == "parvo-random" ]]; then ARGS+=(--parvo-mode "$PARVO_MODE" --random-init-seed "${RANDOM_INIT_SEED:?RANDOM_INIT_SEED required}"); fi
+if [[ "$ENCODER" == "raw-dl" || "$ENCODER" == "parvo-raw" ]]; then ARGS+=(--raw-dl-variant "${RAW_DL_VARIANT:-raw}"); fi
+[[ "${LABEL_FIXED_EPOCHS:-0}" == "1" ]] && ARGS+=(--label-fixed-epochs)
+[[ -n "${LABEL_FRACS:-}" ]] && ARGS+=(--label-fracs $LABEL_FRACS)  # 공백 구분, 예 "1.0 0.2 0.05 0.02"
+[[ -n "${EVAL_PERTURB:-}" ]] && ARGS+=(--eval-perturb-list $EVAL_PERTURB)  # 공백 구분 'kind:l1,l2'
+[[ -n "${PROBE_EPOCHS:-}" ]] && ARGS+=(--probe-epochs "$PROBE_EPOCHS")  # 진단용 (정규 = 20)
+if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi  # 데이터 고정·probe만 재시드
+[[ -n "${RAW_PAD:-}" ]] && ARGS+=(--raw-pad "$RAW_PAD")                          # parvo-raw: zero | linear (§9 R2-2)
+[[ -n "${PROBE_NOISE_SIGMA:-}" ]] && ARGS+=(--probe-noise-sigma "$PROBE_NOISE_SIGMA")  # §9 R2-3 학습·시험 양쪽 노이즈
 
 "$CONDA_PREFIX/bin/python" scripts/eval/probe_action_calvin.py "${ARGS[@]}"
 

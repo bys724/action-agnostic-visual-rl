@@ -45,6 +45,14 @@ from scripts.eval.probe_action_libero import (
     build_videomae_token_encoder,
     compute_metrics,
     encode_pairs_parvo,
+    encode_pairs_raw_dl,
+    build_parvo_random_encoder,
+    PROBE_NOISE_SEED,
+    encode_pairs_parvo_raw,
+    eval_probe,
+    perturb_pair,
+    PERTURB_KINDS,
+    RAW_DL_VARIANTS,
     encode_pairs_v11,
     encode_pairs_via_adapter,
     encode_pairs_videomae_vla,
@@ -88,6 +96,26 @@ def main():
     parser.add_argument("--probe-lr", type=float, default=1e-3)
     parser.add_argument("--encode-batch", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--raw-dl-variant", default="raw", choices=list(RAW_DL_VARIANTS),
+                        help="raw-dl 팔: raw(F1) / proj(F1′ 384 투영) / aug(F1-aug, probe 학습 split만 밝기 증강) / "
+                             "norm(F2 전역평균 제거+패치 표준화). refinement_floor_plan §5.2")
+    parser.add_argument("--random-init-seed", type=int, default=None,
+                        help="parvo-random(F3) 전용 init seed — 필수")
+    parser.add_argument("--eval-perturb-list", nargs="*", default=None,
+                        help="nuisance 강건성 (plan §5.3-e): 'kind:l1,l2,..' 목록. 예) gain:0.9,1.1 shadow:0.2,0.4 "
+                             "noise:0.01. 깨끗한 train으로 probe 1회 fit(best epoch 고정) → eval 프레임 교란 후 재인코딩·평가")
+    parser.add_argument("--label-fracs", type=float, nargs="+", default=None,
+                        help="라벨 효율 (plan §5.3-b): probe 학습 pair를 비율별로 무작위 부분표본 → fit → 같은 전체 eval. "
+                             "비율마다 재샘플(seed=probe seed 기반). 예) 1.0 0.2 0.05 0.02")
+    parser.add_argument("--label-fixed-epochs", action="store_true",
+                        help="라벨 효율 참고 열: step 매칭 대신 --probe-epochs 고정 (편향 점검용, 판정 미사용)")
+    parser.add_argument("--probe-seed", type=int, default=None,
+                        help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
+                             "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
+    parser.add_argument("--raw-pad", default="zero", choices=["zero", "linear"],
+                        help="parvo-raw: raw 토큰 256→384 zero-pad(라운드 1) | linear = probe 안 학습 선형 투영(§9 R2-2)")
+    parser.add_argument("--probe-noise-sigma", type=float, default=0.0,
+                        help="§9 R2-3 현실적 sim: probe 학습·시험(교란 시험 포함) 양쪽 프레임에 가우시안 픽셀 노이즈 σ (0=끔)")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--v11-p-depth", type=int, default=12)
@@ -99,8 +127,10 @@ def main():
     # STEP 0 게이트 (restart_plan §3.1): CoMP-MAE / VideoMAE readout 축
     parser.add_argument("--readout", default="mean", choices=["mean", "attentive"],
                         help="mean = patch_mean concat (LinearProbe) / attentive = stream별 query pool (AttentivePoolProbe)")
-    parser.add_argument("--parvo-mode", default="p_t_p_tk", choices=["p_t_p_tk", "p_t_m"],
-                        help="parvo 2-stream: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion)")
+    parser.add_argument("--parvo-mode", default="p_t_p_tk",
+                        choices=["p_t_p_tk", "p_t_m", "m_only", "p_t_only"],
+                        help="parvo: p_t_p_tk(appearance) / p_t_m(P(t)⊕M motion) 2-stream | "
+                             "m_only / p_t_only = 단일 stream (refinement_floor_plan M 단독 열)")
     parser.add_argument("--videomae-encoder", default="adapter", choices=["adapter", "vla"],
                         help="adapter = legacy(mean 전용) / vla = VideoMAEEncoderForVLA(mean+attentive self-consistent)")
     parser.add_argument("--probe-weight-decay", type=float, default=0.0,
@@ -146,6 +176,7 @@ def main():
 
     # ── Build encoder ────────────────────────────────────────────────────
     n_streams = 1
+    phase = {"train": True}  # encode_fn이 현재 split을 알게 함 (raw-dl aug 전용)
     if args.encoder == "two-stream-v11":
         if args.checkpoint is None:
             raise ValueError("v11 encoder requires --checkpoint")
@@ -160,12 +191,41 @@ def main():
     elif args.encoder == "parvo":
         model = build_parvo_encoder(args.checkpoint, device)
         img_size = 224
-        n_streams = 2
+        n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
 
         def encode_fn(prev, curr):
             return encode_pairs_parvo(model, prev, curr, device,
                                       mode=args.parvo_mode, readout=args.readout,
                                       batch=args.encode_batch)
+    elif args.encoder == "parvo-random":
+        assert args.checkpoint is None and args.random_init_seed is not None, \
+            "parvo-random은 --random-init-seed 필수, --checkpoint 불가"
+        model = build_parvo_random_encoder(args.random_init_seed, device)
+        img_size = 224
+        n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo(model, prev, curr, device,
+                                      mode=args.parvo_mode, readout=args.readout,
+                                      batch=args.encode_batch)
+    elif args.encoder == "parvo-raw":
+        assert args.readout == "attentive", "parvo-raw는 attentive 전용"
+        model = build_parvo_encoder(args.checkpoint, device)
+        img_size = 224
+        n_streams = 2
+
+        def encode_fn(prev, curr):
+            return encode_pairs_parvo_raw(model, prev, curr, device, batch=args.encode_batch,
+                                          variant=args.raw_dl_variant, augment=phase["train"])
+    elif args.encoder == "raw-dl":
+        # F1: 인코더 = 항등. ckpt 경로가 오면 설정 실수이므로 거부 (우연한 팔 혼동 차단).
+        assert args.checkpoint is None, "raw-dl은 checkpoint를 받지 않는다"
+        img_size = 224
+
+        def encode_fn(prev, curr):
+            return encode_pairs_raw_dl(prev, curr, device, readout=args.readout,
+                                       batch=args.encode_batch, variant=args.raw_dl_variant,
+                                       augment=phase["train"])
     elif args.encoder == "videomae-ours" and args.videomae_encoder == "vla":
         model = build_videomae_token_encoder(args.checkpoint, device)
         img_size = 224
@@ -187,6 +247,7 @@ def main():
             return encode_pairs_via_adapter(adapter, prev, curr, device, batch=args.encode_batch)
 
     print(f"  img_size={img_size}  readout={args.readout}  n_streams={n_streams}")
+    proj_stream = 1 if (args.encoder == "parvo-raw" and args.raw_pad == "linear") else None
 
     # ── Segment-level train/eval split ───────────────────────────────────
     if args.cross_folder:
@@ -214,8 +275,9 @@ def main():
         print(f"\n=== gap={gap} ({seconds:.2f}s @ raw 30Hz) ===")
         t0 = time.time()
 
-        def collect_embed(seg_list, label, base_dir):
+        def collect_embed(seg_list, label, base_dir, perturb=None):
             embed_chunks, tgt_chunks, ep_ids = [], [], []
+            ngen = torch.Generator().manual_seed(PROBE_NOISE_SEED + (0 if label == "train" else 1))
             for ei, (s, e, task) in enumerate(seg_list):
                 frames, robot_obs, actions = load_segment_frames(
                     base_dir, s, e, view=args.view,
@@ -229,6 +291,10 @@ def main():
                 ])
                 prev = preprocess_frames(frames[:T - gap], img_size)
                 curr = preprocess_frames(frames[gap:], img_size)
+                if args.probe_noise_sigma > 0:   # §9 R2-3: 기저 조건 노이즈 (교란보다 먼저)
+                    prev, curr = perturb_pair(prev, curr, "noise", args.probe_noise_sigma, ngen)
+                if perturb is not None:   # (kind, level, generator) — 프레임 교란 후 ΔL은 인코더가 재계산
+                    prev, curr = perturb_pair(prev, curr, *perturb)
                 emb = encode_fn(prev, curr)  # (T-gap, D)
                 embed_chunks.append(emb)
                 tgt_chunks.append(tgts)
@@ -242,18 +308,64 @@ def main():
             )
 
         print("  encoding train ...")
+        phase["train"] = True    # F1-aug: probe 학습 split만 증강
         emb_tr, tgt_tr, _ = collect_embed(train_segs, "train", train_dir)
         print("  encoding eval ...")
+        phase["train"] = False
         emb_ev, tgt_ev, _ = collect_embed(eval_segs, "eval", eval_dir)
         print(f"  pairs: train={len(tgt_tr)} eval={len(tgt_ev)}")
 
         print(f"  training probe (epoch={args.probe_epochs}, lr={args.probe_lr}) ...")
+        if args.probe_seed is not None:
+            torch.manual_seed(args.probe_seed)  # 데이터 고정·probe 변동만
         best = train_probe(emb_tr, tgt_tr, emb_ev, tgt_ev,
                            epochs=args.probe_epochs, batch_size=args.probe_batch,
                            lr=args.probe_lr, device=str(device),
                            readout=args.readout, n_streams=n_streams,
-                           weight_decay=args.probe_weight_decay)
+                           weight_decay=args.probe_weight_decay,
+                           return_probe=bool(args.eval_perturb_list), proj_stream=proj_stream)
         m = best["metrics"]
+        label_results = {}
+        if args.label_fracs:
+            base = args.probe_seed if args.probe_seed is not None else args.seed
+            for fi, frac in enumerate(args.label_fracs):
+                # pair 단위 무작위 부분표본 (구현 선택: plan 미기재). 비율·seed마다 독립 재샘플
+                g = torch.Generator().manual_seed(1_000 * base + fi)
+                n = max(1, int(round(frac * len(tgt_tr))))
+                idx = torch.randperm(len(tgt_tr), generator=g)[:n]
+                torch.manual_seed(base)
+                # optimizer step 수를 100%와 맞춤 (구현 선택: 고정 epoch면 2%는 step이 1/24 → 라벨 부족과
+                # 학습 부족이 섞임). 평가는 ~probe_epochs회로 제한
+                steps_full = args.probe_epochs * -(-len(tgt_tr) // args.probe_batch)
+                ep_f = max(args.probe_epochs, -(-steps_full // -(-n // args.probe_batch)))
+                if args.label_fixed_epochs:
+                    ep_f = args.probe_epochs
+                bf = train_probe(emb_tr[idx], tgt_tr[idx], emb_ev, tgt_ev,
+                                 epochs=ep_f, batch_size=args.probe_batch,
+                                 eval_every=max(1, ep_f // args.probe_epochs),
+                                 lr=args.probe_lr, device=str(device), readout=args.readout,
+                                 n_streams=n_streams, weight_decay=args.probe_weight_decay,
+                                 proj_stream=proj_stream)
+                label_results[str(frac)] = {"n_train_pairs": n, "epochs": ep_f, "best_epoch": bf["epoch"],
+                                            **bf["metrics"]}
+                print(f"    label_frac={frac}: n={n} pos R² = {np.mean(bf['metrics']['r2_per_dim'][:3]):+.4f} "
+                      f"best_ep={bf['epoch']}")
+        perturb_results = {}
+        if args.eval_perturb_list:
+            for ki, spec in enumerate(args.eval_perturb_list):
+                kind, levels = spec.split(":")
+                assert kind in PERTURB_KINDS, kind
+                perturb_results[kind] = {}
+                for li, lv in enumerate(float(x) for x in levels.split(",")):
+                    # 교란 난수 = (kind, level) 고정 seed → 모든 팔 동일 교란
+                    gen = torch.Generator().manual_seed(10_000 + 100 * PERTURB_KINDS.index(kind) + li)
+                    emb_p, tgt_p, _ = collect_embed(eval_segs, f"eval/{kind}={lv}", eval_dir,
+                                                    perturb=(kind, lv, gen))
+                    mp = eval_probe(best["probe"], emb_p, tgt_p, device, args.probe_batch)
+                    perturb_results[kind][str(lv)] = mp
+                    print(f"    perturb {kind}={lv}: pos R² = {np.mean(mp['r2_per_dim'][:3]):+.4f} "
+                          f"(clean {np.mean(m['r2_per_dim'][:3]):+.4f})")
+                    del emb_p
         elapsed = time.time() - t0
         print(f"  R² agg = {m['r2_aggregate']:+.4f}  per-dim = " +
               " ".join(f"{r:+.3f}" for r in m["r2_per_dim"]) +
@@ -270,13 +382,21 @@ def main():
                 "gap": gap,
                 "gap_seconds": gap / 30.0,
                 "readout": args.readout,
-                "parvo_mode": args.parvo_mode if args.encoder == "parvo" else None,
+                "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
+                "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
+                "random_init_seed": args.random_init_seed,
+                "raw_pad": args.raw_pad if args.encoder == "parvo-raw" else None,
+                "probe_noise_sigma": args.probe_noise_sigma,
                 "v11_mode": args.v11_mode if args.encoder == "two-stream-v11" else None,
                 "n_train_episodes": len(train_segs),
                 "n_eval_episodes": len(eval_segs),
                 "n_train_pairs": int(len(tgt_tr)),
                 "n_eval_pairs": int(len(tgt_ev)),
                 "best_epoch": best["epoch"],
+                "probe_seed": args.probe_seed,
+                "perturb": perturb_results or None,
+                "label_frac": label_results or None,
+                "label_fixed_epochs": bool(args.label_fixed_epochs),
                 **m,
             }, f, indent=2)
 

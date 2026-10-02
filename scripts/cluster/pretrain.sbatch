@@ -110,11 +110,14 @@ export MASTER_PORT=${MASTER_PORT:-$((29500 + SLURM_JOB_ID % 1000))}
 #
 # Usage: sbatch --export=ALL,...,USE_SCRATCH=1 scripts/cluster/pretrain.sbatch
 USE_SCRATCH="${USE_SCRATCH:-0}"
-SCRATCH_DIR="/scratch/tmp/$USER/$SLURM_JOB_ID"
+# /scratch/tmp는 노드마다 유무가 다름(g012 없음, 09-30 확인) → 없으면 /tmp(노드 로컬 7 TB 디스크)
+SCRATCH_BASE="/scratch/tmp"; [ -w "$SCRATCH_BASE" ] || SCRATCH_BASE="/tmp"
+SCRATCH_DIR="$SCRATCH_BASE/$USER/$SLURM_JOB_ID"
 
 if [ "$USE_SCRATCH" = "1" ]; then
     SCRATCH_DATA="$SCRATCH_DIR/egodex_frames"
     mkdir -p "$SCRATCH_DATA"
+    trap 'rm -rf "$SCRATCH_DIR"' EXIT  # node-local 복사본(~100 GB급) 잡 종료 시 정리
 
     # 모든 task 중 rank 0만 stage-in. 나머지는 대기.
     # 멀티노드에서는 각 노드의 rank 0 (SLURM_LOCALID=0)이 각각 복사.
@@ -123,12 +126,14 @@ if [ "$USE_SCRATCH" = "1" ]; then
         log "  src: $DATA_ROOT → dst: $SCRATCH_DATA"
         STAGE_IN_START=$(date +%s)
 
-        # rsync로 프레임만 복사 (raw mp4, zips는 불필요)
+        # 프레임만 복사 (raw mp4, zips는 불필요). 구조 = split/task/video/frame_*.jpg (part1 ≈ 1,300만 파일)
+        # → 순차 cp는 GPFS 메타데이터 왕복이 병목이라 video 디렉터리 단위로 STAGE_IN_JOBS개 병렬 복사.
         for SPLIT in $(echo "$SPLITS" | tr ',' ' ') test; do
             SRC="$DATA_ROOT/$SPLIT"
             if [ -d "$SRC" ]; then
-                log "  copying $SPLIT ..."
-                cp -a "$SRC" "$SCRATCH_DATA/" 2>&1 || {
+                log "  copying $SPLIT (parallel ${STAGE_IN_JOBS:-32}) ..."
+                (cd "$SRC" && find . -mindepth 2 -maxdepth 2 -type d -print0 \
+                    | xargs -0 -P "${STAGE_IN_JOBS:-32}" -I{} sh -c 'mkdir -p "$0/$(dirname "$1")" && cp -a "$1" "$0/$1"' "$SCRATCH_DATA/$SPLIT" {}) 2>&1 || {
                     log "  WARNING: cp failed for $SPLIT, falling back to GPFS"
                     USE_SCRATCH=0
                     break
@@ -293,6 +298,14 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     # §4.1 선결: 0 = joint rotation만 (교차회전 ΔL 아티팩트 방지). 미설정 시 기존 default 0.1
     [ -n "${V15_INDEP_ROT_PROB:-}" ] && MODEL_ARGS+=(--v15-independent-rotation-prob "$V15_INDEP_ROT_PROB")
     [ -n "${V15_LAMBDA_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-recon "$V15_LAMBDA_RECON")  # §9 복구 가중치
+    # refinement_floor_plan §3: 프레임 쌍 독립 밝기 증강 (C1 base, comp_mae 전용)
+    [ "${BRIGHT_AUG:-0}" = "1" ] && MODEL_ARGS+=(--bright-aug)
+    [ -n "${BRIGHT_GAIN_RANGE:-}" ] && MODEL_ARGS+=(--bright-gain-range $BRIGHT_GAIN_RANGE)  # "0.8 1.2"
+    [ -n "${BRIGHT_RAMP_PROB:-}" ] && MODEL_ARGS+=(--bright-ramp-prob "$BRIGHT_RAMP_PROB")
+    [ -n "${BRIGHT_RAMP_AMP:-}" ] && MODEL_ARGS+=(--bright-ramp-amp "$BRIGHT_RAMP_AMP")
+    [ -n "${M_NOISE_MAX:-}" ] && MODEL_ARGS+=(--m-noise-max "$M_NOISE_MAX")  # §10 M 입력 센서 노이즈
+    [ -n "${BRIGHT_TARGET:-}" ] && MODEL_ARGS+=(--bright-target "$BRIGHT_TARGET")  # §10 clean | aug
+    [ -n "${BRIGHT_SCENE_GAIN:-}" ] && MODEL_ARGS+=(--bright-scene-gain-range $BRIGHT_SCENE_GAIN)  # §10 "0.73 1.37"
     [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
     [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6
     [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)
