@@ -110,3 +110,23 @@ contribution not separated.
 | `jobs_*.txt` | Slurm job lists (test, arm, seed, job id) |
 
 Re-aggregate: `python3 paper_artifacts/tables/refinement_floor/agg_verdict.py` / `agg_pt.py`.
+
+## E0 — external RGB encoders fed the ΔL image (2026-10-02, `docs/claim_spine_v2.md` §3)
+
+Reviewer UnGc W1. DINOv2-B/14, SigLIP-B/16, VC-1-B get a single ΔL image (same BT.709 luminance difference as the
+M input), replicated to 3 channels: **signed** = 0.5 + 0.5·ΔL, **abs** = |ΔL|; each encoder's own normalization;
+all final-norm patch tokens → the same attentive probe as round 1. Probe seeds {42,1,2}; mean ± 95% CI; encoders
+frozen (n = 1 each). Run on MIG-1g (round 1 on V100; one cell checked identical). Aggregate: `e0_agg.txt` (`agg_e0.py`).
+
+| Arm | CALVIN clean (i) | LIBERO in-suite (i) | LIBERO transfer, 6-dir (s) |
+|---|---:|---:|---:|
+| VC-1 + signed ΔL | 0.51 ± 0.04 | **0.79 ± 0.01** | **+0.06 ± 0.04** |
+| VC-1 + \|ΔL\| | 0.12 ± 0.02 | 0.67 ± 0.01 | −0.45 ± 0.09 |
+| DINOv2 + signed / \|ΔL\| | −0.19 / −0.54 | 0.71 / 0.63 | −0.11 / −0.38 |
+| SigLIP + signed / \|ΔL\| | −0.26 / −0.62 | 0.66 / 0.60 | −0.19 / −0.35 |
+| C0 M (round 1) | 0.47 ± 0.12 | 0.74 ± 0.03 | −0.23 ± 0.10 |
+| raw ΔL F1 (round 1) | 0.22 | 0.16 | −0.32 |
+
+Pre-registered reading (best external arm = VC-1 signed vs CoMP M CI): CALVIN overlaps (parity); LIBERO in-suite and
+transfer exceed C0 M's CI upper bound → "our encoder is special" premise **not supported**. DINOv2/SigLIP fall below
+raw ΔL on CALVIN, so the result is encoder-specific (VC-1 is an MAE-pretrained egocentric-video ViT, 86M vs CoMP-S M).

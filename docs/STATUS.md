@@ -1,7 +1,7 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-10-02 Vault 세션 (주장 구조 v2 = `docs/claim_spine_v2.md`) · 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-10-02 dev 세션 (E0 판정) · 2026-10-02 Vault 세션 (주장 구조 v2 = `docs/claim_spine_v2.md`) · 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
@@ -17,11 +17,12 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 | B 모델의 deployed-P 발산은 데이터 기아 (07-12) | [확정 · attach-only] | CoMP-B × part1-5 compute-matched 7ep: deployed-P −0.49 → +0.375, M 0.352→0.401 | 논문 spine 밖 |
 | C1-DN(주장 모델)도 M/P 방향성 이중분리 유지 (09-28) | [잠정] | STEP 1 same-probe 그대로(LIBERO-object·attentive·gap20), C0 재측정 정확 재현(drift 0): 위치 너머 motion Δ M +0.320 vs P +0.209 · P identity 1.000 · M identity 잔여 +0.241 (C0 +0.307) | probe 1회 · **M−P motion 격차 축소**(C0 2.7× → 1.5×, P_t motion 0.547→0.621) · C1 단계 vs denoise 단계 기여 미분리 · plain 대조(인과)는 C0 기반만 |
 | M-recon 없으면 학습이 건강한 시점(ep4)에도 M에 motion이 안 생기고, P 보조만 하는 M은 미학습보다 낮아짐 (10-01) | [잠정] | LIBERO-object same-probe M motion, ep4: C0 0.795 / plain 0.183 / C2 0.094 / 미학습 M 0.400 · ep4 P identity 셋 다 1.000. C2는 ep6 이후 P 표현 붕괴(ep12 P identity 0.186) | probe 1회·미학습 init seed 1 · ep4는 사전 등록 판정 시점(ep50) 아님 · M-recon 없는 학습은 2/2 불안정 → ep50 판정은 붕괴와 섞일 수 있음 |
+| 외부 인코더(VC-1)에 ΔL 한 장을 주면 CoMP M과 동급 이상 — "우리 인코더가 특별하다" 전제 불성립 (E0, 10-02) | [확정 · 사전 등록 판정] | VC-1+부호 유지 ΔL: CALVIN 0.51 (C0 M 0.47, CI 겹침) · LIBERO 같은 suite 0.79 > C0 CI 상한 0.77 · 전이 +0.06 vs −0.23. DINOv2·SigLIP은 CALVIN에서 raw 0.22 미만 | 인코더 n=1 · probe seed 3 · 크기 차이(VC-1 86M) |
 | qk-norm 버그 재측정 후 EgoDex 기준② FAIL→PASS, OOD 확대 4/4→2/4 반전 (07-20) | [잠정] | probe 로더 qk-norm silent drop 수정 후 15잡 재측정: EgoDex P 0.328 / M 0.333 | **서랍 재판정 여부 미결** (attach-only라 spine 무피해) |
 
 ## 열린 것 · 다음 결정
 
-- **🔴 다음 (지시 확정 10-02 · 정본 `docs/claim_spine_v2.md`)**: **E0 → E3 최소 셀** 순서로 최단 경로. E0 = 외부 인코더(DINOv2·SigLIP·VC-1)에 ΔL 입력 = 리뷰어 UnGc W1 미측정분, probe만. E3 = BC 가치 실험(같은 프레임 예산 5팔 · 간격 교정 · copycat 대책 전 팔 동일 · 데모 수 스윕), 인코더는 C0 고정. E3 최소 셀 중지 신호 = 최저 데모에서 CoMP 모션이 RGB 스택을 못 넘으면 주장 C 폐기. E1(증강 scratch ≈165 GPU·h)은 E3 양성 확인 후 발주. C3는 보류.
+- **🔴 다음**: E0 완료(위 표 — 사전 등록 분기 발동: 무게를 주장 C로). **E3 최소 셀** 착수 = BC 스크립트 신규 플래그(데모 수·간격·외형 1장 모드·dropout) 구현 필요 — 사용자 승인 대기. 원 지시: **E0 → E3 최소 셀** 순서로 최단 경로. E0 = 외부 인코더(DINOv2·SigLIP·VC-1)에 ΔL 입력 = 리뷰어 UnGc W1 미측정분, probe만. E3 = BC 가치 실험(같은 프레임 예산 5팔 · 간격 교정 · copycat 대책 전 팔 동일 · 데모 수 스윕), 인코더는 C0 고정. E3 최소 셀 중지 신호 = 최저 데모에서 CoMP 모션이 RGB 스택을 못 넘으면 주장 C 폐기. E1(증강 scratch ≈165 GPU·h)은 E3 양성 확인 후 발주. C3는 보류.
 - **✅ 해결 (10-02)**: 재투고 논문 주장 확정 = `docs/claim_spine_v2.md` §1 (주장 A 메커니즘 / B 불변성=설계 / C 정제된 모션의 제어 가치 + 봉합 E0). **남은 사용자 확정 2건** = ① 주장 모델 C0 유지 vs C1-DN(09-28 결정) ② venue(E0·E3 결과 후). 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
 - 요약 [잠정·probe seed 3·표현 학습 1회]:
   - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.
@@ -36,7 +37,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| (없음) E0 최소 칸 완료 10-02: DINOv2+ΔL(부호 유지) CALVIN seed 42 pos R² −0.333 [미검증·seed 1·변형 1] · **E0 전체 35잡 실행 중** (mig-1g.10gb 40776608~644, 10-02 재제출 — V100 대기 정체로 이동) | | | |
+| (없음 — E0 36칸 10-02 완료) | | | |
 
 ## 이 문서의 용어
 
