@@ -7,7 +7,7 @@ CAL="SPLIT=training,CROSS_FOLDER=1,MAX_EPISODES=200,GAPS=30,READOUT=attentive"
 LIB="TASK_SUITE=libero_spatial,TRANSFER=1,READOUT=attentive"
 EVAL_PERTURB=""; LABEL_FRACS=""; export EVAL_PERTURB LABEL_FRACS
 sub() {  # test arm seed exports script
-  local id; id=$(sbatch --parsable --partition=normal --gres=gpu:1 --time=02:30:00 --job-name=e0_$1_$2_s$3 \
+  local id; id=$(sbatch --parsable --partition=${PART:-mig-1g.10gb} --gres=gpu:1 --time=02:30:00 --job-name=e0_$1_$2_s$3 \
      --export=ALL,$4,PROBE_SEED=$3,SUFFIX=e0_$1_$2_s$3 scripts/cluster/$5)
   echo "$1 $2 $3 $id"
 }
