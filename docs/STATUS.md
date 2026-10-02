@@ -1,17 +1,17 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
-CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. C2 거울 ablation 대기 중.
+CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 Reject (09-25)** 후, 리뷰 지적(raw ΔL 바닥선 부재)에 답하는 측정을 마쳤다. 결과: 같은 분포에선 학습된 M이 raw의 2–4배(판독기를 노이즈 조건으로 학습해도 유지), 분포 이동에선 raw가 가장 강건 → 사전 등록상 효율(정제) 주장 불성립. **논문 뼈대(09-27 합의) = 메커니즘(M-recon → factorization 인과) 중심 + 같은 분포 접근성 보조 + 분포 이동·제어 성능은 한계.** **주장 모델(09-28 사용자 결정) = C1-DN**(C1 + 10ep 센서 노이즈 제거·밝기 보존 증강; 잡음 붕괴 −1.4 → raw 동급). C1-DN에서도 M/P 방향성 이중분리 유지 확인(09-28, 아래 표). 결과 표 = `paper_artifacts/tables/refinement_floor/README.md`. C2 거울 ablation 판정 완료(10-02): M-recon 단독이 M grounding의 인과.
 
 ## 확정된 것
 
 | 주장 | 신뢰도 | 근거 (무엇을 어떻게 재서) | 빠진 것 |
 |---|---|---|---|
-| M-recon 존재가 M grounding의 인과 (STEP 1, 07-08) | [확정] | V_P 스칼펠·plain 2런 same-probe: plain에서 M motion 0.835→0.107. V_P는 P 오염(identity 0.999→0.224) | — |
+| M-recon 존재가 M grounding의 인과 (STEP 1, 07-08) — **M-recon 단독 몫 분리 완료 (C2, 10-02)** | [확정] | V_P 스칼펠·plain 2런 same-probe: plain에서 M motion 0.835→0.107. V_P는 P 오염(identity 0.999→0.224). C2(CoMP − M-recon, routing 유지): M motion Δ +0.017 ≤ 사전 등록 +0.05 → routing 형태 무관, C2 ≈ plain | M-recon 없는 런은 2/2 학습 불안정 — ep4(학습 건강) 비교로 방어(아래 행) |
 | 효율은 CoMP 구조의 산물 (STEP 2-A, 07-09) | [확정] | same param(32.3M)·same data plain의 OOD probing이 4벤치 붕괴(CALVIN 0.030 등 vs CoMP-S 0.487) | — |
 | 폐루프 BC에서는 CoMP ≈ plain (STEP 2-B, 07-10) | [확정 · 사전 등록대로 FAIL] | LIBERO 3suite × seed 0/1/2, 500ep/seed, pooled Δ−0.9pt (Wilcoxon p=0.763) | control-level value 이득은 미입증 — 논문에선 dissociation 근거로 흡수 |
 | B 모델의 deployed-P 발산은 데이터 기아 (07-12) | [확정 · attach-only] | CoMP-B × part1-5 compute-matched 7ep: deployed-P −0.49 → +0.375, M 0.352→0.401 | 논문 spine 밖 |
@@ -21,7 +21,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 열린 것 · 다음 결정
 
-- **🔴 진행 중**: C2 거울 ablation(사용자 승인 09-28) — 기존 plain 대조가 M-recon과 routing을 동시에 꺼서 "M-recon 단독이 인과"를 분리 못 한 것(STEP 1 caveat ①)의 해소 + 리뷰어 공통 요구. 결과 오면 판정 후 C3(표준 cross-attn) 필요 여부 판단. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
+- **🔴 다음 (제안, 미결정)**: C3(표준 cross-attn, M-recon 유지) 필요 여부 — C2 ≈ plain이라 routing 형태는 M grounding에 무관함이 이미 드러남 → C3는 "value 소유가 P 보호에 필요한가"(스칼펠이 일부 답함)만 남음. 논문에서 C1-DN은 C1보다 10ep 더 학습(연산량 각주 필수).
 - **사용자가 정할 것 (Vault)**: 재투고 논문 주장 확정 — 재료 = README 라운드 1·2·§10 절. 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
 - 요약 [잠정·probe seed 3·표현 학습 1회]:
   - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.
@@ -36,7 +36,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 40374065 | C2 거울 ablation 본학습 — 1노드 4 GPU·batch256(유효 1024)·로컬 NVMe 복사. RUNNING 10-01 09:12, 21분/ep, 완료 ~10-02 새벽. ⚠️ ep6 이후 P 복원 붕괴 (CoMP에서 M-recon만 제거, routing 유지; plain과 routing 한 곳만 다름). sanity 40323989 PASS. 판정 = STEP 1 same-probe 8칸, M motion 위치 너머 Δ ≤ +0.05면 M-recon 단독 인과 | 09-29 AIP로 재제출(AIP_long은 우선순위 등급이 낮아 기아), PENDING · 우선순위 1위, 예상 시작 ~10-02(추정) | 로그인 노드 체인 `c2_chain2.sh`가 채택·취소 후 완료 후 probe 8칸 자동 제출·집계 → `paper_artifacts/libero_action_probing/*_fc2_*` |
+| (없음 — C2 학습·판정 10-02 완료) | | | |
 
 ## 이 문서의 용어
 
@@ -53,6 +53,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-10-02 · C2 사전 등록 판정: M motion 위치 너머 Δ +0.017 ≤ +0.05 → "M-recon 단독이 M grounding의 인과" 확정 (STEP 1 caveat ① 해소)
 - 2026-10-01 · C2 학습은 P 붕괴에도 50ep까지 계속, 판정은 사전 등록대로 ep50 (ep4 비교는 보조 증거로만) (사용자 결정)
 - 2026-09-30 · C2 2노드 사본 취소, 1노드 4 GPU 사본만 유지 (사용자 결정 — 2노드가 우선순위상 1노드 시작을 막을 수 있고 1노드가 GPU·h·속도 우위; plain과 GPU 수·데이터 순서 차이는 각주)
 - 2026-09-30 · 대량 학습 시 손목 카메라는 별도 인코더·시점 토큰 없이 **함께 학습, 손목 쌍만 프레임 간격을 짧게**(초 단위 간격, 카메라 종류별 최대 간격) — 긴 간격 손목 쌍은 ΔL이 움직임이 아닌 두 장면 겹침이 됨(교차 회전 ΔL 아티팩트와 같은 종류) (사용자 결정)

@@ -111,6 +111,17 @@ Phase A/B는 상관("표현이 factored 되어 있다")까지. 인과("M-recon �
 
 **Caveats**: ① 판정 1의 귀속은 plain이 2노브 동시 off(M-recon+라우팅)라 M-recon 단독 몫 미분리(#3a 생략분) — "사용돼도 붕괴" 논리로 실질 방어, reviewer 요구 시만 #3a. ② same-probe는 통계 경로(beyond-position Δ) 기준 — aug(rot+trans) 경로 미실행이나 효과 크기(0.835→0.107)가 경로 선택에 강건. ③ 스칼펠 P 붕괴는 linear-probe 가독성 기준(P pixel recon L_t 0.0071 건강) — 스토리 주력으로 쓸 경우 mean readout 교차확인 권장.
 
+**C2 거울 ablation (2026-10-02, caveat ① 해소)** — plain에서 routing만 `v_from_p`로 되돌린 런(= CoMP − M-recon; 1노드 4 GPU·eff 1024, ckpt `…refine_c2_mirror_s_1n/20261001_102526/latest.pt`), 같은 8칸:
+
+| 셀 (raw / Δ) | CoMP-S | plain | **C2** |
+|---|---|---|---|
+| M motion | 0.835 / +0.338 | 0.107 / +0.016 | **0.154 / +0.017** |
+| M identity | 0.526 / +0.307 | 0.134 / +0.029 | 0.141 / +0.024 |
+| P_t identity | 0.999 | 0.800 / +0.508 | 0.706 / +0.494 |
+| P_t motion | 0.547 / +0.126 | 0.014 | 0.102 / −0.014 |
+
+사전 등록 판정(M motion Δ ≤ +0.05) → **M-recon 단독이 M grounding의 인과**. C2 ≈ plain → routing 형태(value 소유 vs 표준 cross-attn)는 무관. 보조: ep4(학습 건강, P identity 1.000)에서도 M motion C0 0.795 / plain 0.183 / C2 0.094 vs 미학습 M 0.400 → P 보조 gradient만으로는 M의 motion 가독성이 미학습 이하로 깎임. ⚠️ M-recon 없는 두 런 모두 학습 불안정(C2: ep6 복원 붕괴, ep12 P identity 0.186 → ep50 0.706 부분 회복) — 판정이 붕괴와 섞일 여지는 ep4 비교로 방어.
+
 **다음 → §4.3** (STEP 2 value-level headline control).
 
 ### 4.3 STEP 2 — value-level headline control (task spec, 2026-07-09)
