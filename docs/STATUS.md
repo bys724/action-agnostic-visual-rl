@@ -1,7 +1,7 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 갱신: 2026-10-02 dev 세션 (E0 판정) · 2026-10-02 Vault 세션 (주장 구조 v2 = `docs/claim_spine_v2.md`) · 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
+> 갱신: 2026-10-03 Vault 세션 (분리 축 probe 사전 등록 = `docs/factor_shift_plan.md`, E3 선행) · 2026-10-02 dev 세션 (E0 판정) · 2026-10-02 Vault 세션 (주장 구조 v2 = `docs/claim_spine_v2.md`) · 2026-10-02 dev 세션 (C2 판정) · 이전 2026-09-28 dev 세션 — refinement-floor 라운드 1·2 + §10 denoising 파일럿 완료, 주장 모델 확정, eval hang 수정, C1-DN factorization 재측정. 이후 실험 결과를 보고한 턴과 세션 종료 시 갱신 · 본문 80줄 이내
 
 ## 지금 어디인가
 
@@ -22,7 +22,8 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 열린 것 · 다음 결정
 
-- **🔴 다음**: E0 완료(위 표 — 사전 등록 분기 발동: 무게를 주장 C로). **E3 최소 셀** 착수 = BC 스크립트 신규 플래그(데모 수·간격·외형 1장 모드·dropout) 구현 필요 — 사용자 승인 대기. 원 지시: **E0 → E3 최소 셀** 순서로 최단 경로. E0 = 외부 인코더(DINOv2·SigLIP·VC-1)에 ΔL 입력 = 리뷰어 UnGc W1 미측정분, probe만. E3 = BC 가치 실험(같은 프레임 예산 5팔 · 간격 교정 · copycat 대책 전 팔 동일 · 데모 수 스윕), 인코더는 C0 고정. E3 최소 셀 중지 신호 = 최저 데모에서 CoMP 모션이 RGB 스택을 못 넘으면 주장 C 폐기. E1(증강 scratch ≈165 GPU·h)은 E3 양성 확인 후 발주. C3는 보류.
+- **🔴 다음 (지시 확정 10-03 · 정본 `docs/factor_shift_plan.md`)**: E3 **전에** probe만으로 **1단계 = CALVIN ABC→D 외형 이동에서 C0 M vs 섞인 표현(C0 P 2장·plain P 2장·SiamMAE 있으면)의 이동 손실 비교** → **2단계(보조) = P 외형 판독(블록 위치) C0 P_t ≥ plain P_t + 간격 스윕**. 대조군은 raw ΔL이 아니라 섞인 표현(raw·E0·E3 ③은 바닥선으로 강등). 1단계 PASS면 E3에 외형 이동 셀 추가, FAIL이면 E3 저데모 셀만. 신규 코드 = CALVIN 환경 필터(`scene_info.npy`)·`scene_obs` 타깃. 표현 학습 0.
+- (10-02 지시, 1·2단계 뒤로) E0 → E3 최소 셀 순서. **E0 ✅ 완료(10-02, 위 표 — 사전 등록 분기 발동: 무게를 주장 C로).** E0 = 외부 인코더(DINOv2·SigLIP·VC-1)에 ΔL 입력 = 리뷰어 UnGc W1 미측정분, probe만. E3 = BC 가치 실험(같은 프레임 예산 5팔 · 간격 교정 · copycat 대책 전 팔 동일 · 데모 수 스윕), 인코더는 C0 고정. E3 최소 셀 중지 신호 = 최저 데모에서 CoMP 모션이 RGB 스택을 못 넘으면 주장 C 폐기. E1(증강 scratch ≈165 GPU·h)은 E3 양성 확인 후 발주. C3는 보류.
 - **✅ 해결 (10-02)**: 재투고 논문 주장 확정 = `docs/claim_spine_v2.md` §1 (주장 A 메커니즘 / B 불변성=설계 / C 정제된 모션의 제어 가치 + 봉합 E0). **남은 사용자 확정 2건** = ① 주장 모델 C0 유지 vs C1-DN(09-28 결정) ② venue(E0·E3 결과 후). 쓸 수 있는 서술 경계: 노이즈는 판독기 노이즈 조건 학습으로 해결(R2-3, 제한점) · denoising 증강은 붕괴를 raw 수준까지 없앰(§10, 관찰) · "장면 교란은 데이터 다양성으로 해결"은 내부 증거 없음(파일럿 지지 없음 → 문헌 Fang et al. 2022 가설로만) · 시점 이동 전이 실패는 판독기 기하 문제(추정).
 - 요약 [잠정·probe seed 3·표현 학습 1회]:
   - 라운드 1 (09-26): §6 (A) 전이 C1 −0.33 ≈ raw −0.32 · (B) 라벨 5% CI 겹침 · (C) 계산 불가 → 중지 신호.
@@ -54,6 +55,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-10-03 · **분리 축 probe(1·2단계)를 E3 앞에 선행, 대조군 = 섞인 표현** (Vault 세션, 사용자 판단) — raw ΔL은 변화만 담은 입력이라 M vs raw는 분리 학습의 이점을 재지 못함. 상세·사전 등록 = `docs/factor_shift_plan.md`
 - 2026-10-02 · **주장 구조 v2 확정 (Vault 세션)** — 신규성 자리를 "라우팅이 모션을 만든다"(C2가 반증)에서 "갈래별 복구 = 접지 / 라우팅 = P 보호" + "정제된 모션의 제어 가치"로 재배치. 증강은 리뷰 회피가 아니라 설계 원칙으로 승격(scratch 본 레시피), 주장 B 판정 자는 raw 초과 → 선택성으로 교체. 실행 = E0 → E3. 상세·사전 등록 = `docs/claim_spine_v2.md`
 - 2026-10-02 · C2 사전 등록 판정: M motion 위치 너머 Δ +0.017 ≤ +0.05 → "M-recon 단독이 M grounding의 인과" 확정 (STEP 1 caveat ① 해소)
 - 2026-10-01 · C2 학습은 P 붕괴에도 50ep까지 계속, 판정은 사전 등록대로 ep50 (ep4 비교는 보조 증거로만) (사용자 결정)
