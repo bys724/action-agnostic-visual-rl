@@ -54,6 +54,22 @@ def load_segments(split_dir: Path) -> List[Tuple[int, int, str]]:
     return out
 
 
+def load_scene_ranges(split_dir: Path) -> dict:
+    """training/scene_info.npy → {"A": (start, end), ...} (프레임 id 구간, 양끝 포함).
+
+    task_ABCD_D: training = A·B·C·D 네 환경(탁자 텍스처·고정 물체 배치 상이), validation = D
+    (CALVIN 공식 split 정의 — validation/엔 scene_info.npy 없음).
+    """
+    d = np.load(split_dir / "scene_info.npy", allow_pickle=True).item()
+    return {k.replace("calvin_scene_", ""): (int(a), int(b)) for k, (a, b) in d.items()}
+
+
+def filter_segments_by_scene(segments, scene_ranges: dict, scenes) -> list:
+    """세그먼트 (start, end)가 지정 환경 구간 안에 통째로 들어가는 것만 (factor_shift_plan §2)."""
+    keep = [scene_ranges[sc] for sc in scenes]
+    return [seg for seg in segments if any(a <= seg[0] and seg[1] <= b for a, b in keep)]
+
+
 def load_frame(split_dir: Path, frame_id: int,
                keys: Tuple[str, ...] = ("rgb_static", "robot_obs", "actions")) -> dict:
     """Load single frame .npz. keys filter: 메모리 절약."""
@@ -67,7 +83,8 @@ def load_segment_frames(
     start_id: int,
     end_id: int,
     view: str = "rgb_static",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    with_scene: bool = False,
+):
     """Load all frames in a task segment.
 
     Segment 길이 max 65 frame이라 stride 불필요 (메모리 OK).
@@ -76,18 +93,30 @@ def load_segment_frames(
         frames:    (T, H, W, 3) uint8       where T = end_id - start_id + 1
         robot_obs: (T, 15) float32          — TCP pose + gripper + joints
         actions:   (T, 7) float32           — abs TCP pose + binary gripper
+        scene_obs: (T, 24) float32          — with_scene=True일 때만 4번째로 반환
     """
-    frames, robot_obs, actions = [], [], []
+    keys = (view, "robot_obs", "actions") + (("scene_obs",) if with_scene else ())
+    cols = {k: [] for k in keys}
     for fid in range(start_id, end_id + 1):
-        d = load_frame(split_dir, fid, keys=(view, "robot_obs", "actions"))
-        frames.append(d[view])
-        robot_obs.append(d["robot_obs"])
-        actions.append(d["actions"])
-    return (
-        np.stack(frames),
-        np.stack(robot_obs, dtype=np.float32),
-        np.stack(actions, dtype=np.float32),
+        d = load_frame(split_dir, fid, keys=keys)
+        for k in keys:
+            cols[k].append(d[k])
+    out = (
+        np.stack(cols[view]),
+        np.stack(cols["robot_obs"], dtype=np.float32),
+        np.stack(cols["actions"], dtype=np.float32),
     )
+    return out + (np.stack(cols["scene_obs"], dtype=np.float32),) if with_scene else out
+
+
+# scene_obs 24-d = 서랍·슬라이더·버튼·스위치·전구·초록불(6) + 빨강/파랑/분홍 블록 각 (xyz, euler) 6.
+# 블록 xyz 인덱스 = 6:9 / 12:15 / 18:21 (10-04 확인: lift_blue_block 세그먼트에서 12:15만 변화, z≈0.46 탁자면)
+SCENE_BLOCK_POS = np.r_[6:9, 12:15, 18:21]
+
+
+def calvin_scene_target(scene_obs: np.ndarray, t: int) -> np.ndarray:
+    """프레임 t의 블록 3개 위치 9-d (factor_shift_plan §3-a, P 외형 판독 타깃)."""
+    return scene_obs[t, SCENE_BLOCK_POS].astype(np.float32)
 
 
 def calvin_action_target(

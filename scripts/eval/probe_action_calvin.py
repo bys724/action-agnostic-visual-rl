@@ -34,6 +34,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.datasets.calvin import (
     calvin_action_target,
     load_segments,
+    load_scene_ranges,
+    calvin_scene_target,
+    filter_segments_by_scene,
     load_segment_frames,
 )
 # probe_action_libero에서 재사용 (DRY)
@@ -79,6 +82,11 @@ def main():
     parser.add_argument("--cross-folder", action="store_true",
                         help="True 시: training/ 폴더 segments로 probe 학습 + "
                              "validation/ 폴더 segments로 R² 평가 (진짜 OOD test, paper §C10 main).")
+    parser.add_argument("--train-scenes", nargs="+", default=None, choices=["A", "B", "C", "D"],
+                        help="cross-folder 전용: training/ 세그먼트를 이 환경들로 제한 (factor_shift_plan §2 "
+                             "ABC→D 외형 이동 = A B C / 기준 D→D = D). cap(--max-episodes)은 필터 후 적용")
+    parser.add_argument("--target", default="action", choices=["action", "scene_pos"],
+                        help="action = EE 7-DoF Δ(기존) | scene_pos = 프레임 t 블록 3개 xyz 9-d (factor_shift_plan §3-a)")
     parser.add_argument("--view", default="rgb_static",
                         choices=["rgb_static", "rgb_gripper"],
                         help="rgb_static (200x200, paper main) | rgb_gripper (84x84, sub)")
@@ -157,6 +165,11 @@ def main():
             raise FileNotFoundError(f"Cross-folder: need both training/ and validation/ under {args.data_root}")
         train_segments_all = load_segments(train_split_dir)
         eval_segments_all = load_segments(eval_split_dir)
+        if args.train_scenes:
+            n0 = len(train_segments_all)
+            train_segments_all = filter_segments_by_scene(
+                train_segments_all, load_scene_ranges(train_split_dir), args.train_scenes)
+            print(f"  train scenes {''.join(args.train_scenes)}: {n0} → {len(train_segments_all)} segments")
         print(f"  CROSS-FOLDER mode: train segments={len(train_segments_all)} (training/) | "
               f"eval segments={len(eval_segments_all)} (validation/, OOD)")
         if args.max_episodes and len(train_segments_all) > args.max_episodes:
@@ -291,16 +304,19 @@ def main():
             embed_chunks, tgt_chunks, ep_ids = [], [], []
             ngen = torch.Generator().manual_seed(PROBE_NOISE_SEED + (0 if label == "train" else 1))
             for ei, (s, e, task) in enumerate(seg_list):
-                frames, robot_obs, actions = load_segment_frames(
-                    base_dir, s, e, view=args.view,
+                frames, robot_obs, actions, *scene = load_segment_frames(
+                    base_dir, s, e, view=args.view, with_scene=(args.target == "scene_pos"),
                 )
                 T = frames.shape[0]
                 if T <= gap + 1:
                     continue
-                tgts = np.stack([
-                    calvin_action_target(robot_obs, actions, t, gap)
-                    for t in range(T - gap)
-                ])
+                if args.target == "scene_pos":   # 프레임 t(= prev, P_t 입력)의 블록 위치
+                    tgts = np.stack([calvin_scene_target(scene[0], t) for t in range(T - gap)])
+                else:
+                    tgts = np.stack([
+                        calvin_action_target(robot_obs, actions, t, gap)
+                        for t in range(T - gap)
+                    ])
                 prev = preprocess_frames(frames[:T - gap], img_size)
                 curr = preprocess_frames(frames[gap:], img_size)
                 if args.probe_noise_sigma > 0:   # §9 R2-3: 기저 조건 노이즈 (교란보다 먼저)
@@ -330,13 +346,34 @@ def main():
         print(f"  training probe (epoch={args.probe_epochs}, lr={args.probe_lr}) ...")
         if args.probe_seed is not None:
             torch.manual_seed(args.probe_seed)  # 데이터 고정·probe 변동만
-        best = train_probe(emb_tr, tgt_tr, emb_ev, tgt_ev,
-                           epochs=args.probe_epochs, batch_size=args.probe_batch,
-                           lr=args.probe_lr, device=str(device),
-                           readout=args.readout, n_streams=n_streams,
-                           weight_decay=args.probe_weight_decay,
-                           return_probe=bool(args.eval_perturb_list), proj_stream=proj_stream)
-        m = best["metrics"]
+        if args.target == "scene_pos":
+            # 블록별 판독기 3개 (factor_shift_plan 10-04): 쿼리 1개 판독기는 떨어진 세 물체를 한 요약으로 섞음
+            # → 블록 k마다 기존 판독기(쿼리 1 + 선형 3출력)를 따로 학습. 인코딩은 공유, 같은 seed로 각각 재시드
+            blocks = []
+            for k in range(3):
+                if args.probe_seed is not None:
+                    torch.manual_seed(args.probe_seed)
+                blocks.append(train_probe(emb_tr, tgt_tr[:, 3 * k:3 * k + 3], emb_ev, tgt_ev[:, 3 * k:3 * k + 3],
+                                          out_dim=3, epochs=args.probe_epochs, batch_size=args.probe_batch,
+                                          lr=args.probe_lr, device=str(device), readout=args.readout,
+                                          n_streams=n_streams, weight_decay=args.probe_weight_decay,
+                                          proj_stream=proj_stream))
+            r2pd = [r for b in blocks for r in b["metrics"]["r2_per_dim"]]
+            best = {"epoch": [b["epoch"] for b in blocks]}
+            m = {"r2_aggregate": float(np.mean(r2pd)),   # = 9-d 평균 (사전 등록 판정량)
+                 "r2_per_dim": r2pd,
+                 "mse": float(np.mean([b["metrics"]["mse"] for b in blocks])),
+                 "cosine_sim": float(np.mean([b["metrics"]["cosine_sim"] for b in blocks])),
+                 "per_block": {c: b["metrics"] for c, b in zip(("red", "blue", "pink"), blocks)}}
+        else:
+            best = train_probe(emb_tr, tgt_tr, emb_ev, tgt_ev,
+                               out_dim=tgt_tr.shape[1],
+                               epochs=args.probe_epochs, batch_size=args.probe_batch,
+                               lr=args.probe_lr, device=str(device),
+                               readout=args.readout, n_streams=n_streams,
+                               weight_decay=args.probe_weight_decay,
+                               return_probe=bool(args.eval_perturb_list), proj_stream=proj_stream)
+            m = best["metrics"]
         label_results = {}
         if args.label_fracs:
             base = args.probe_seed if args.probe_seed is not None else args.seed
@@ -397,6 +434,8 @@ def main():
                 "parvo_mode": args.parvo_mode if args.encoder in ("parvo", "parvo-random") else None,
                 "raw_dl_variant": args.raw_dl_variant if args.encoder in ("raw-dl", "parvo-raw") else None,
                 "input_source": args.input_source,
+                "train_scenes": "".join(args.train_scenes) if args.train_scenes else None,
+                "target": args.target,
                 "random_init_seed": args.random_init_seed,
                 "raw_pad": args.raw_pad if args.encoder == "parvo-raw" else None,
                 "probe_noise_sigma": args.probe_noise_sigma,
@@ -416,7 +455,8 @@ def main():
     # all_gaps.csv
     csv_path = Path(args.output_dir) / "all_gaps.csv"
     with open(csv_path, "w") as f:
-        f.write("gap,r2_aggregate," + ",".join(f"r2_dim{i}" for i in range(ACTION_DIM)) + "\n")
+        n_dim = len(json.load(open(Path(args.output_dir) / f"gap{args.gaps[0]}" / "summary.json"))["r2_per_dim"])
+        f.write("gap,r2_aggregate," + ",".join(f"r2_dim{i}" for i in range(n_dim)) + "\n")
         for gap in args.gaps:
             sj = json.load(open(Path(args.output_dir) / f"gap{gap}" / "summary.json"))
             r2pd = ",".join(f"{r:.4f}" for r in sj["r2_per_dim"])

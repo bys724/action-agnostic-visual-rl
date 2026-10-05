@@ -1,0 +1,77 @@
+{
+  "encoder": "videomae-ours",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/videomae/20260415_012017/best_model.pt",
+  "split": "training",
+  "view": "rgb_static",
+  "gap": 30,
+  "gap_seconds": 1.0,
+  "readout": "attentive",
+  "parvo_mode": null,
+  "raw_dl_variant": null,
+  "input_source": "rgb",
+  "train_scenes": "D",
+  "target": "scene_pos",
+  "random_init_seed": null,
+  "raw_pad": null,
+  "probe_noise_sigma": 0.0,
+  "v11_mode": null,
+  "n_train_episodes": 200,
+  "n_eval_episodes": 1087,
+  "n_train_pairs": 6047,
+  "n_eval_pairs": 32183,
+  "best_epoch": [
+    17,
+    19,
+    19
+  ],
+  "probe_seed": 42,
+  "perturb": null,
+  "label_frac": null,
+  "label_fixed_epochs": false,
+  "r2_aggregate": 0.1335467234447691,
+  "r2_per_dim": [
+    -0.07406789145331949,
+    0.33382077688984046,
+    0.03888484317628593,
+    0.07211146194582463,
+    0.25504283498970637,
+    0.11479846353677459,
+    0.02517952683739,
+    0.27520140432322626,
+    0.1609490907571931
+  ],
+  "mse": 0.013191020116209984,
+  "cosine_sim": 0.9222133358319601,
+  "per_block": {
+    "red": {
+      "r2_aggregate": 0.11049054831508553,
+      "r2_per_dim": [
+        -0.07406789145331949,
+        0.33382077688984046,
+        0.03888484317628593
+      ],
+      "mse": 0.009128492325544357,
+      "cosine_sim": 0.943325936794281
+    },
+    "blue": {
+      "r2_aggregate": 0.1261784578257752,
+      "r2_per_dim": [
+        0.07211146194582463,
+        0.25504283498970637,
+        0.11479846353677459
+      ],
+      "mse": 0.015317099168896675,
+      "cosine_sim": 0.9109712243080139
+    },
+    "pink": {
+      "r2_aggregate": 0.08571999715088108,
+      "r2_per_dim": [
+        0.02517952683739,
+        0.27520140432322626,
+        0.1609490907571931
+      ],
+      "mse": 0.015127468854188919,
+      "cosine_sim": 0.9123428463935852
+    }
+  }
+}

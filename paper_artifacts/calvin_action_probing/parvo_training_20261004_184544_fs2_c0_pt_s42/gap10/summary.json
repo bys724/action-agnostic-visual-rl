@@ -1,0 +1,77 @@
+{
+  "encoder": "parvo",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt",
+  "split": "training",
+  "view": "rgb_static",
+  "gap": 10,
+  "gap_seconds": 0.3333333333333333,
+  "readout": "attentive",
+  "parvo_mode": "p_t_only",
+  "raw_dl_variant": null,
+  "input_source": "rgb",
+  "train_scenes": "D",
+  "target": "scene_pos",
+  "random_init_seed": null,
+  "raw_pad": null,
+  "probe_noise_sigma": 0.0,
+  "v11_mode": null,
+  "n_train_episodes": 200,
+  "n_eval_episodes": 1087,
+  "n_train_pairs": 10047,
+  "n_eval_pairs": 53923,
+  "best_epoch": [
+    19,
+    15,
+    2
+  ],
+  "probe_seed": 42,
+  "perturb": null,
+  "label_frac": null,
+  "label_fixed_epochs": false,
+  "r2_aggregate": 0.03702547962045805,
+  "r2_per_dim": [
+    -0.09701518819555388,
+    0.14354302975237987,
+    0.012392159257469393,
+    0.029211694986459924,
+    0.1058384887028313,
+    0.07913090221088293,
+    -0.06003737722208813,
+    0.11556363200522213,
+    0.004601975086518939
+  ],
+  "mse": 0.0142479141553243,
+  "cosine_sim": 0.9153256018956503,
+  "per_block": {
+    "red": {
+      "r2_aggregate": 0.015189698497080961,
+      "r2_per_dim": [
+        -0.09701518819555388,
+        0.14354302975237987,
+        0.012392159257469393
+      ],
+      "mse": 0.00994846224784851,
+      "cosine_sim": 0.936594545841217
+    },
+    "blue": {
+      "r2_aggregate": 0.05338108679188469,
+      "r2_per_dim": [
+        0.029211694986459924,
+        0.1058384887028313,
+        0.07913090221088293
+      ],
+      "mse": 0.016179004684090614,
+      "cosine_sim": 0.9049492478370667
+    },
+    "pink": {
+      "r2_aggregate": -0.018458826846944998,
+      "r2_per_dim": [
+        -0.06003737722208813,
+        0.11556363200522213,
+        0.004601975086518939
+      ],
+      "mse": 0.016616275534033775,
+      "cosine_sim": 0.904433012008667
+    }
+  }
+}
