@@ -44,6 +44,9 @@ class ParvoPtPtkAdapter(EncoderAdapter):
         m_depth: Optional[int] = None,
         comp_mae: Optional[bool] = None,
         qk_norm: Optional[bool] = None,
+        motion_gap: Optional[int] = None,
+        motion_dropout_p: float = 0.0,
+        motion_source: str = "rgb_prev",
         **kwargs,  # build_adapter가 넘기는 잉여 인자 무시
     ):
         super().__init__(freeze=freeze)
@@ -76,9 +79,22 @@ class ParvoPtPtkAdapter(EncoderAdapter):
         self.base_dim = _ed
         self.use_m = use_m
         # P_t ⊕ P_tk (⊕ M) — use_m 시 M(ΔL 현재−직전) stream 추가. instance(ckpt별 384/768)
-        self.n_streams = 3 if use_m else 2
+        # E3 팔 (claim_spine_v2 §4.2, 같은 두 프레임 예산): rgb_prev = 외형 2장 [P_prev, P_curr](②, 기존) ·
+        # comp_m = 외형 1장 + CoMP M [P_curr, M](④) · none = 외형 1장 [P_curr](①)
+        assert motion_source in ("rgb_prev", "comp_m", "none"), motion_source
+        assert not (use_m and motion_source != "rgb_prev"), "use_m(외형 2장+M)은 rgb_prev 전용"
+        self.motion_source = motion_source
+        self.n_streams = {"rgb_prev": 3 if use_m else 2, "comp_m": 2, "none": 1}[motion_source]
         self.embed_dim = _ed * self.n_streams
         self.pooling = pooling
+        # E3 (claim_spine_v2 §4.3): motion_gap=g면 입력 T_in = T_out + g 시퀀스를 받아
+        # 프레임 j를 j−g와 짝지음 (학습=robomimic frame_stack g+1 앞 패딩, 롤아웃=히스토리 앞 패딩).
+        # None이면 기존 동작(시퀀스 내 1스텝 shift, T_out=T_in) 그대로.
+        self.motion_gap = motion_gap
+        # copycat 대책: 학습 중 현재 프레임 P 외 스트림(과거 프레임 P, M)을 (B·T) 단위 확률 p로 0.
+        # rescale 없음(채널 마스킹 의미 유지). eval/rollout에선 비활성.
+        self.motion_dropout_p = motion_dropout_p
+        self.force_drop_extra = False   # 롤아웃 진단(--ablate-extra): 비현재 스트림 항상 0 = dropout 상태
 
         self.model = TwoStreamV15Model(
             embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
@@ -127,7 +143,12 @@ class ParvoPtPtkAdapter(EncoderAdapter):
         B, T, C, H, W = obs_seq.shape
 
         # P_t = 이전 프레임, P_tk = 현재 프레임 (학습 pair 순서 일치)
-        if T > 1:
+        if self.motion_gap is not None:
+            g = self.motion_gap
+            assert T > g, f"motion_gap={g}면 T_in > g 필요 (got T={T})"
+            prev, obs_seq = obs_seq[:, :-g], obs_seq[:, g:]
+            T = T - g
+        elif T > 1:
             prev = torch.cat([obs_seq[:, :1], obs_seq[:, :-1]], dim=1)
         else:
             if self.prev_obs is None:
@@ -146,10 +167,15 @@ class ParvoPtPtkAdapter(EncoderAdapter):
             p_prev = self.model.preprocessing.compute_p_channel(img_prev)
             p_curr = self.model.preprocessing.compute_p_channel(img_curr)
 
-            tok_t = self.model._encode_p_unmasked(p_prev)[:, 1:]    # (B*T, N, D)
-            tok_tk = self.model._encode_p_unmasked(p_curr)[:, 1:]
-
-            feats = [tok_t, tok_tk]
+            tok_tk = self.model._encode_p_unmasked(p_curr)[:, 1:]   # (B*T, N, D)
+            if self.motion_source == "rgb_prev":
+                tok_t = self.model._encode_p_unmasked(p_prev)[:, 1:]
+                feats = [tok_t, tok_tk]
+            elif self.motion_source == "comp_m":
+                m_chan = self.model.preprocessing.compute_m_channel(img_prev, img_curr)
+                feats = [tok_tk, self.model._encode_m_unmasked(m_chan)[:, 1:]]
+            else:
+                feats = [tok_tk]
             if self.use_m:
                 # M = ΔL(현재, 직전) motion. ⚠️ rollout gap=1(연속프레임) vs 학습 gap~15 분포차 주의
                 m_chan = self.model.preprocessing.compute_m_channel(img_prev, img_curr)
@@ -159,6 +185,14 @@ class ParvoPtPtkAdapter(EncoderAdapter):
             pooled = [self._attn_pool(t, self.pool_q[i]) for i, t in enumerate(feats)]
         else:
             pooled = [t.mean(dim=1) for t in feats]
+
+        if (self.training and self.motion_dropout_p > 0) or self.force_drop_extra:
+            # 현재 프레임 P만 유지(rgb_prev면 pooled[1], 그 외 pooled[0]). 나머지(과거 프레임 P, M)만 마스킹
+            cur = 1 if self.motion_source == "rgb_prev" else 0
+            for i in (i for i in range(len(pooled)) if i != cur):
+                p = 1.0 if self.force_drop_extra else self.motion_dropout_p
+                keep = torch.rand(pooled[i].shape[0], 1, device=pooled[i].device) >= p
+                pooled[i] = pooled[i] * keep
 
         token = torch.cat(pooled, dim=-1)
         return token.reshape(B, T, -1)

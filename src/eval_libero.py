@@ -164,6 +164,8 @@ class BCTransformerClient:
         assert not _qk_dropped, f"qk-norm 가중치 드랍 (adapter qk_norm 미배선?) {_qk_dropped[:5]}"
         self.policy.eval()
         self.img_size = self.policy.adapter.img_size
+        # E3 motion_gap=g: 어댑터가 T_out + g 프레임을 받음 → 히스토리 g장 더 보관 + 앞 패딩
+        self.motion_gap = getattr(self.policy.adapter, "motion_gap", None) or 0
         self.encoder_type = str(cfg.encoder.type)
         self.train_epoch = ckpt.get("epoch")
         self.train_eval_loss = ckpt.get("eval_loss")
@@ -213,6 +215,7 @@ class BCTransformerClient:
         self.policy.reset()
         self.obs_history: list = []  # list of dict per timestep
         self.max_seq_len = self.policy.max_seq_len  # 학습 seq_len과 동일
+        self.hist_len = self.max_seq_len + self.motion_gap
 
     def observe(self, obs: Dict[str, Any]) -> None:
         """Inference 없이 obs만 history에 누적. dummy wait 기간 동안 호출하여
@@ -230,7 +233,7 @@ class BCTransformerClient:
             "agentview_rgb": agent, "eye_in_hand_rgb": wrist,
             "gripper_states": gripper, "joint_states": joint,
         })
-        if len(self.obs_history) > self.max_seq_len:
+        if len(self.obs_history) > self.hist_len:
             self.obs_history.pop(0)
 
     @torch.no_grad()
@@ -252,16 +255,21 @@ class BCTransformerClient:
             "gripper_states": gripper,
             "joint_states": joint,
         })
-        if len(self.obs_history) > self.max_seq_len:
+        if len(self.obs_history) > self.hist_len:
             self.obs_history.pop(0)
 
         # 학습과 동일한 (B=1, T_acc, ...) 시퀀스 구성
-        T_acc = len(self.obs_history)
+        hist = self.obs_history
+        if self.motion_gap:
+            # 정책 토큰 T_cur개 + 과거 g장. 부족분은 가장 오래된 프레임 반복
+            # (= 학습 robomimic frame_stack 앞 패딩과 동일 규칙)
+            need = min(len(hist), self.max_seq_len) + self.motion_gap
+            hist = [hist[0]] * max(0, need - len(hist)) + hist[-need:]
         data = {
             "obs": {
-                k: torch.stack([h[k] for h in self.obs_history], dim=1)
+                k: torch.stack([h[k] for h in hist], dim=1)
                 # (1, T_acc, ...) — stack along time dim
-                for k in self.obs_history[0]
+                for k in hist[0]
             },
             "task_emb": self._task_emb(str(obs["prompt"])).unsqueeze(0),  # (1, 512)
         }
@@ -319,6 +327,8 @@ def evaluate_libero(
 
             t = 0
             replay = []
+            trace = {"eef": [], "grip_qpos": [], "grip_cmd": []}
+            obj_keys = [k for k in obs if k.endswith("_pos") and not k.startswith("robot0")]
             done = False
             errored = False
             while t < max_steps + num_steps_wait:
@@ -368,6 +378,15 @@ def evaluate_libero(
                         action_plan.extend(chunk[:replan_steps])
 
                     action = action_plan.popleft()
+                    # 잡기 진단 기록(E3, 10-05): EE·그리퍼·명령·물체 위치 — 관측만 읽음(롤아웃 동작 불변)
+                    try:   # 기록 실패가 에피소드 errored로 번지지 않게 격리
+                        trace["eef"].append(obs["robot0_eef_pos"].copy())
+                        trace["grip_qpos"].append(obs["robot0_gripper_qpos"].copy())
+                        trace["grip_cmd"].append(float(action[-1]))
+                        for k in obj_keys:
+                            trace.setdefault(k, []).append(np.asarray(obs[k]).copy())
+                    except Exception as e:
+                        logging.warning(f"trace skipped: {e}")
                     obs, _, done, _ = env.step(action.tolist())
                     if done:
                         task_succ += 1
@@ -387,6 +406,11 @@ def evaluate_libero(
                 imageio.mimwrite(str(video_p), replay, fps=10)
             except Exception as e:
                 logging.warning(f"Video save failed: {e}")
+            try:
+                np.savez_compressed(pathlib.Path(video_out_path) / f"task{task_id}_ep{ep}_{suffix}_trace.npz",
+                                    **{k: np.asarray(v) for k, v in trace.items()})
+            except Exception as e:
+                logging.warning(f"trace save failed: {e}")
             episode_records.append({
                 "ep_id": ep,
                 "success": bool(done),
@@ -432,12 +456,16 @@ def main():
     p.add_argument("--output-dir", type=str, default="data/libero/results")
     p.add_argument("--video-dir", type=str, default="data/libero/videos")
     p.add_argument("--quiet", action="store_true")
+    p.add_argument("--ablate-extra", action="store_true",
+                   help="E3 진단: 현재 프레임 P 외 스트림(과거 P / M)을 매 스텝 0으로 = 학습 dropout 상태(분포 내)")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s - %(levelname)s - %(message)s")
 
     client = BCTransformerClient(args.checkpoint)
+    if args.ablate_extra:
+        client.policy.adapter.force_drop_extra = True
 
     print("=" * 70)
     print("LIBERO BC-T Rollout")
@@ -462,6 +490,7 @@ def main():
         "num_trials_per_task": args.num_trials,
         "replan_steps": args.replan_steps,
         "seed": args.seed,
+        "ablate_extra": bool(args.ablate_extra),
         "env_resolution": LIBERO_ENV_RESOLUTION,
         "max_steps": TASK_SUITE_CONFIG[args.task_suite]["max_steps"],
         "train_epoch": client.train_epoch,

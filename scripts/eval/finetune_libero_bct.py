@@ -59,7 +59,10 @@ def build_cfg(args, shape_meta) -> OmegaConf:
             "type": args.encoder,
             "checkpoint": args.checkpoint,
             # pooling/use_m은 parvo-ptptk 전용 — 타 어댑터에 잉여 kwarg 전달 방지
-            "adapter_kwargs": ({"pooling": args.pooling, "use_m": args.use_m}
+            "adapter_kwargs": ({"pooling": args.pooling, "use_m": args.use_m,
+                                "motion_gap": args.motion_gap,
+                                "motion_dropout_p": args.motion_dropout_p,
+                                "motion_source": args.motion_source}
                                if args.encoder == "parvo-ptptk" else {}),
         },
         "train": {"use_augmentation": args.use_augmentation},
@@ -357,6 +360,13 @@ def main():
                         help="parvo-ptptk spatial pooling: mean(기존) | attentive(stream별 learnable query, encoder frozen·query만 학습)")
     parser.add_argument("--use-m", action="store_true",
                         help="parvo-ptptk: M encoder(ΔL 현재−직전 motion) stream 추가 → P_t⊕P_tk⊕M. M encoder frozen, pooler만 학습")
+    parser.add_argument("--motion-gap", type=int, default=None,
+                        help="parvo-ptptk E3: 과거 프레임/ΔL 간격 g 스텝 (LIBERO 20Hz → 10 = 0.5s = 사전학습 gap 중심). "
+                             "None=기존 1스텝 shift")
+    parser.add_argument("--motion-dropout-p", type=float, default=0.0,
+                        help="parvo-ptptk E3 copycat 대책: 학습 중 현재 프레임 P 외 스트림을 확률 p로 0 (claim_spine_v2 §4.6 기본 0.1)")
+    parser.add_argument("--motion-source", default="rgb_prev", choices=["rgb_prev", "comp_m", "none"],
+                        help="parvo-ptptk E3 팔(같은 두 프레임 예산): rgb_prev=외형 2장(②, 기존) | comp_m=외형 1장+CoMP M(④) | none=외형 1장(①)")
     parser.add_argument("--amp", action="store_true",
                         help="bf16 autocast (frozen ViT forward 가속, ~1.5-2×). encoder frozen이라 정확도 영향 미미")
     parser.add_argument("--p-depth", type=int, default=12)
@@ -373,6 +383,8 @@ def main():
                         help="V-JEPA용 25, 그 외 10")
     parser.add_argument("--task-ids", type=int, nargs="+", default=None,
                         help="task ID 부분집합 (sanity test용). None이면 전체")
+    parser.add_argument("--max-demos-per-task", type=int, default=None,
+                        help="E3 데모 수 스윕: task별 데모를 seed 고정 무작위 부분집합으로 제한. None=전체(50)")
     parser.add_argument("--max-train-batches", type=int, default=None,
                         help="epoch당 최대 batch 수 제한 (sanity용)")
 
@@ -436,7 +448,16 @@ def main():
             obs_modality=obs_modality,
             initialize_obs_utils=(n == 0),
             seq_len=args.seq_len,
+            # motion_gap=g: obs만 앞쪽 g장 추가(데모 시작은 첫 프레임 반복 패딩), actions는 seq_len 유지
+            frame_stack=(args.motion_gap + 1) if args.motion_gap else 1,
         )
+        if args.max_demos_per_task is not None:
+            # 부분집합은 (seed, task)로 고정 → 같은 seed의 팔끼리 동일 데모를 봄
+            rng = np.random.RandomState(args.seed * 1000 + i)
+            keep = sorted(rng.choice(ds.demos, size=args.max_demos_per_task, replace=False).tolist())
+            ds.load_demo_info(demos=keep)
+            ds.close_and_delete_hdf5_handle()  # DataLoader fork 전 핸들 정리 (robomimic 생성자와 동일)
+            print(f"  task {i}: demos {len(keep)} → {len(ds)} sequences")
         if shape_meta is None:
             shape_meta = sm
         manip_datasets.append(ds)

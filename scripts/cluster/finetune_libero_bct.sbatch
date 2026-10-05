@@ -40,6 +40,10 @@ TASK_IDS="${TASK_IDS:-}"               # sanity용 (e.g., "0")
 MAX_TRAIN_BATCHES="${MAX_TRAIN_BATCHES:-}"  # sanity용
 POOLING="${POOLING:-mean}"             # parvo-ptptk: mean(기존) | attentive(stream별 learnable query)
 USE_M="${USE_M:-}"                     # parvo-ptptk: 값 있으면 M encoder(ΔL motion) stream 추가
+MOTION_GAP="${MOTION_GAP:-}"           # E3: 과거 프레임/ΔL 간격 g (LIBERO 20Hz, 10=0.5s)
+MOTION_DROPOUT_P="${MOTION_DROPOUT_P:-}" # E3: copycat 대책 dropout p
+MOTION_SOURCE="${MOTION_SOURCE:-}"     # E3 팔: rgb_prev(②) | comp_m(④) | none(①)
+MAX_DEMOS="${MAX_DEMOS:-}"             # E3: task별 데모 수 제한
 AMP="${AMP:-1}"                        # 값 있으면 bf16 autocast (frozen ViT 가속). default 켜짐
 # V3 augmentation
 IMG_SIZE="${IMG_SIZE:-224}"            # V-JEPA은 384
@@ -83,6 +87,18 @@ ARGS=(
 )
 if [[ -n "$USE_M" ]]; then
     ARGS+=(--use-m)
+fi
+if [[ -n "$MOTION_GAP" ]]; then
+    ARGS+=(--motion-gap "$MOTION_GAP")
+fi
+if [[ -n "$MOTION_DROPOUT_P" ]]; then
+    ARGS+=(--motion-dropout-p "$MOTION_DROPOUT_P")
+fi
+if [[ -n "$MOTION_SOURCE" ]]; then
+    ARGS+=(--motion-source "$MOTION_SOURCE")
+fi
+if [[ -n "$MAX_DEMOS" ]]; then
+    ARGS+=(--max-demos-per-task "$MAX_DEMOS")
 fi
 if [[ -n "$AMP" ]]; then
     ARGS+=(--amp)
