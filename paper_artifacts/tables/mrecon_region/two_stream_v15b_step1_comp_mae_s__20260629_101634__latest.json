@@ -1,0 +1,2210 @@
+{
+ "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_step1_comp_mae_s/20260629_101634/latest.pt",
+ "tag": "two_stream_v15b_step1_comp_mae_s__20260629_101634__latest",
+ "suite": "libero_object",
+ "task_ids": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "demos": 10,
+ "gap": 10,
+ "stride": 10,
+ "rounds": 2,
+ "mask_ratio": 0.5,
+ "seed": 0,
+ "dl_thr": 0.00392156862745098,
+ "sim_move_thr_m": 0.001,
+ "n_pairs": 1431,
+ "n_patches": 280476,
+ "dl_mass_in_fg": 0.9183163051852229,
+ "sec_per_pair_render": 0.1096182439312245,
+ "sec_per_pair_model": 0.014971758584556339,
+ "headline": {
+  "target_static_abs_mse": 0.0009723125336665475,
+  "arm_moved_rel_err": 0.34108008928394906,
+  "n_target_static": 466,
+  "n_arm_moved": 31683
+ },
+ "demos_diag": [
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.32289505004883,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06219482421875,
+    "target": 0.00537109375,
+    "receptacle": 0.04437255859375,
+    "other": 0.034912109375,
+    "background": 0.8531494140625
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.08709716796875,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06219482421875,
+    "target": 0.00579833984375,
+    "receptacle": 0.04583740234375,
+    "other": 0.03497314453125,
+    "background": 0.8511962890625
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.17069625854492,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06134033203125,
+    "target": 0.00579833984375,
+    "receptacle": 0.04534912109375,
+    "other": 0.03546142578125,
+    "background": 0.85205078125
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10658645629883,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06201171875,
+    "target": 0.0057373046875,
+    "receptacle": 0.04705810546875,
+    "other": 0.03521728515625,
+    "background": 0.8499755859375
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.18756103515625,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06134033203125,
+    "target": 0.00579833984375,
+    "receptacle": 0.04620361328125,
+    "other": 0.03436279296875,
+    "background": 0.852294921875
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.23020553588867,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.05999755859375,
+    "target": 0.0057373046875,
+    "receptacle": 0.045654296875,
+    "other": 0.03472900390625,
+    "background": 0.8538818359375
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10711669921875,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.061279296875,
+    "target": 0.0057373046875,
+    "receptacle": 0.04718017578125,
+    "other": 0.03448486328125,
+    "background": 0.851318359375
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.15275192260742,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06109619140625,
+    "target": 0.00579833984375,
+    "receptacle": 0.04656982421875,
+    "other": 0.034912109375,
+    "background": 0.85162353515625
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 19,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.08518600463867,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06146240234375,
+    "target": 0.0057373046875,
+    "receptacle": 0.0474853515625,
+    "other": 0.03515625,
+    "background": 0.85015869140625
+   }
+  },
+  {
+   "task": "pick_up_the_alphabet_soup_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.22377395629883,
+   "ooi": [
+    "alphabet_soup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0621337890625,
+    "target": 0.0057373046875,
+    "receptacle": 0.0452880859375,
+    "other": 0.034423828125,
+    "background": 0.8524169921875
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.27614212036133,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06243896484375,
+    "target": 0.0057373046875,
+    "receptacle": 0.046875,
+    "other": 0.0313720703125,
+    "background": 0.85357666015625
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.34763717651367,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06170654296875,
+    "target": 0.005615234375,
+    "receptacle": 0.04705810546875,
+    "other": 0.03155517578125,
+    "background": 0.85406494140625
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.39487838745117,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06182861328125,
+    "target": 0.0059814453125,
+    "receptacle": 0.04534912109375,
+    "other": 0.03143310546875,
+    "background": 0.85540771484375
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.28263473510742,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06195068359375,
+    "target": 0.0057373046875,
+    "receptacle": 0.0467529296875,
+    "other": 0.031494140625,
+    "background": 0.85406494140625
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.34889602661133,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0625,
+    "target": 0.005859375,
+    "receptacle": 0.0477294921875,
+    "other": 0.03125,
+    "background": 0.8526611328125
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.38507080078125,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06097412109375,
+    "target": 0.005859375,
+    "receptacle": 0.0458984375,
+    "other": 0.03155517578125,
+    "background": 0.855712890625
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.281494140625,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.061767578125,
+    "target": 0.005615234375,
+    "receptacle": 0.04705810546875,
+    "other": 0.03143310546875,
+    "background": 0.8541259765625
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.43389892578125,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0625,
+    "target": 0.005615234375,
+    "receptacle": 0.04486083984375,
+    "other": 0.0311279296875,
+    "background": 0.85589599609375
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.30094528198242,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0604248046875,
+    "target": 0.00567626953125,
+    "receptacle": 0.0465087890625,
+    "other": 0.0313720703125,
+    "background": 0.85601806640625
+   }
+  },
+  {
+   "task": "pick_up_the_bbq_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.2913818359375,
+   "ooi": [
+    "bbq_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0618896484375,
+    "target": 0.005615234375,
+    "receptacle": 0.04681396484375,
+    "other": 0.0313720703125,
+    "background": 0.85430908203125
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.17120361328125,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0615234375,
+    "target": 0.00201416015625,
+    "receptacle": 0.04522705078125,
+    "other": 0.0355224609375,
+    "background": 0.855712890625
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.13639450073242,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0626220703125,
+    "target": 0.00225830078125,
+    "receptacle": 0.04620361328125,
+    "other": 0.03558349609375,
+    "background": 0.85333251953125
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.12261962890625,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06060791015625,
+    "target": 0.00238037109375,
+    "receptacle": 0.04693603515625,
+    "other": 0.03558349609375,
+    "background": 0.8544921875
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.115478515625,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0615234375,
+    "target": 0.0023193359375,
+    "receptacle": 0.04736328125,
+    "other": 0.0352783203125,
+    "background": 0.853515625
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.11918258666992,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06195068359375,
+    "target": 0.00225830078125,
+    "receptacle": 0.0465087890625,
+    "other": 0.03564453125,
+    "background": 0.8536376953125
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.09151077270508,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06121826171875,
+    "target": 0.00201416015625,
+    "receptacle": 0.04718017578125,
+    "other": 0.03564453125,
+    "background": 0.85394287109375
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.21895217895508,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06121826171875,
+    "target": 0.00225830078125,
+    "receptacle": 0.04608154296875,
+    "other": 0.03570556640625,
+    "background": 0.854736328125
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10786819458008,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06182861328125,
+    "target": 0.00244140625,
+    "receptacle": 0.04595947265625,
+    "other": 0.03558349609375,
+    "background": 0.85418701171875
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.05865478515625,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06158447265625,
+    "target": 0.00213623046875,
+    "receptacle": 0.04632568359375,
+    "other": 0.035888671875,
+    "background": 0.85406494140625
+   }
+  },
+  {
+   "task": "pick_up_the_butter_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.09222412109375,
+   "ooi": [
+    "butter_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06268310546875,
+    "target": 0.0023193359375,
+    "receptacle": 0.04534912109375,
+    "other": 0.03558349609375,
+    "background": 0.85406494140625
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.9403076171875,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06195068359375,
+    "target": 0.002197265625,
+    "receptacle": 0.0477294921875,
+    "other": 0.0416259765625,
+    "background": 0.84649658203125
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.97642135620117,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06219482421875,
+    "target": 0.002197265625,
+    "receptacle": 0.04534912109375,
+    "other": 0.04180908203125,
+    "background": 0.84844970703125
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.99165725708008,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06378173828125,
+    "target": 0.002197265625,
+    "receptacle": 0.0472412109375,
+    "other": 0.0416259765625,
+    "background": 0.84515380859375
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.08430862426758,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06109619140625,
+    "target": 0.002197265625,
+    "receptacle": 0.045166015625,
+    "other": 0.04180908203125,
+    "background": 0.8497314453125
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.00929641723633,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06231689453125,
+    "target": 0.002197265625,
+    "receptacle": 0.04705810546875,
+    "other": 0.04168701171875,
+    "background": 0.84674072265625
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.00309371948242,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0623779296875,
+    "target": 0.002197265625,
+    "receptacle": 0.0467529296875,
+    "other": 0.04205322265625,
+    "background": 0.84661865234375
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.06937789916992,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0609130859375,
+    "target": 0.002197265625,
+    "receptacle": 0.0458984375,
+    "other": 0.041748046875,
+    "background": 0.8492431640625
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.02579879760742,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06207275390625,
+    "target": 0.002197265625,
+    "receptacle": 0.04681396484375,
+    "other": 0.041748046875,
+    "background": 0.84716796875
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.98992919921875,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06195068359375,
+    "target": 0.002197265625,
+    "receptacle": 0.0467529296875,
+    "other": 0.04180908203125,
+    "background": 0.8472900390625
+   }
+  },
+  {
+   "task": "pick_up_the_chocolate_pudding_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.05220413208008,
+   "ooi": [
+    "chocolate_pudding_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.062255859375,
+    "target": 0.002197265625,
+    "receptacle": 0.04583740234375,
+    "other": 0.04193115234375,
+    "background": 0.8477783203125
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.0601806640625,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06207275390625,
+    "target": 0.0035400390625,
+    "receptacle": 0.04766845703125,
+    "other": 0.03424072265625,
+    "background": 0.85247802734375
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 18,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.12800979614258,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.062255859375,
+    "target": 0.00347900390625,
+    "receptacle": 0.04681396484375,
+    "other": 0.03424072265625,
+    "background": 0.85321044921875
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.26157760620117,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.063232421875,
+    "target": 0.00360107421875,
+    "receptacle": 0.044677734375,
+    "other": 0.0345458984375,
+    "background": 0.85394287109375
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10862350463867,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0631103515625,
+    "target": 0.0035400390625,
+    "receptacle": 0.04736328125,
+    "other": 0.03399658203125,
+    "background": 0.85198974609375
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.12308883666992,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0621337890625,
+    "target": 0.00335693359375,
+    "receptacle": 0.0465087890625,
+    "other": 0.0341796875,
+    "background": 0.85382080078125
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.20963668823242,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.061767578125,
+    "target": 0.0035400390625,
+    "receptacle": 0.04486083984375,
+    "other": 0.03424072265625,
+    "background": 0.8555908203125
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.072021484375,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0618896484375,
+    "target": 0.00347900390625,
+    "receptacle": 0.04754638671875,
+    "other": 0.03399658203125,
+    "background": 0.85308837890625
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10429000854492,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06170654296875,
+    "target": 0.00347900390625,
+    "receptacle": 0.04705810546875,
+    "other": 0.03369140625,
+    "background": 0.85406494140625
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.18873977661133,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.05731201171875,
+    "target": 0.0035400390625,
+    "receptacle": 0.0469970703125,
+    "other": 0.03448486328125,
+    "background": 0.857666015625
+   }
+  },
+  {
+   "task": "pick_up_the_cream_cheese_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.187255859375,
+   "ooi": [
+    "cream_cheese_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06243896484375,
+    "target": 0.0035400390625,
+    "receptacle": 0.04510498046875,
+    "other": 0.03363037109375,
+    "background": 0.85528564453125
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 24,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.07332229614258,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06298828125,
+    "target": 0.0079345703125,
+    "receptacle": 0.04541015625,
+    "other": 0.03369140625,
+    "background": 0.8499755859375
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.11338424682617,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06182861328125,
+    "target": 0.0079345703125,
+    "receptacle": 0.04547119140625,
+    "other": 0.03369140625,
+    "background": 0.85107421875
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.13869094848633,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06243896484375,
+    "target": 0.0079345703125,
+    "receptacle": 0.04559326171875,
+    "other": 0.03326416015625,
+    "background": 0.85076904296875
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.28495407104492,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06109619140625,
+    "target": 0.0079345703125,
+    "receptacle": 0.04449462890625,
+    "other": 0.03369140625,
+    "background": 0.852783203125
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.18465042114258,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06024169921875,
+    "target": 0.0079345703125,
+    "receptacle": 0.0450439453125,
+    "other": 0.033203125,
+    "background": 0.85357666015625
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 19,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.06734085083008,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0618896484375,
+    "target": 0.0079345703125,
+    "receptacle": 0.04559326171875,
+    "other": 0.0335693359375,
+    "background": 0.85101318359375
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.07122802734375,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06182861328125,
+    "target": 0.0079345703125,
+    "receptacle": 0.04705810546875,
+    "other": 0.03350830078125,
+    "background": 0.84967041015625
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.11653518676758,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.05999755859375,
+    "target": 0.0079345703125,
+    "receptacle": 0.04693603515625,
+    "other": 0.03326416015625,
+    "background": 0.85186767578125
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.14200973510742,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.05950927734375,
+    "target": 0.0079345703125,
+    "receptacle": 0.0474853515625,
+    "other": 0.0335693359375,
+    "background": 0.85150146484375
+   }
+  },
+  {
+   "task": "pick_up_the_ketchup_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.14593505859375,
+   "ooi": [
+    "ketchup_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06158447265625,
+    "target": 0.0079345703125,
+    "receptacle": 0.04571533203125,
+    "other": 0.0335693359375,
+    "background": 0.8511962890625
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.16904830932617,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06085205078125,
+    "target": 0.00885009765625,
+    "receptacle": 0.04730224609375,
+    "other": 0.0277099609375,
+    "background": 0.85528564453125
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.22308349609375,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0631103515625,
+    "target": 0.0086669921875,
+    "receptacle": 0.04638671875,
+    "other": 0.02764892578125,
+    "background": 0.85418701171875
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.12550735473633,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06134033203125,
+    "target": 0.0087890625,
+    "receptacle": 0.04754638671875,
+    "other": 0.02764892578125,
+    "background": 0.85467529296875
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.17360305786133,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06304931640625,
+    "target": 0.0087890625,
+    "receptacle": 0.04559326171875,
+    "other": 0.0274658203125,
+    "background": 0.8551025390625
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.17173385620117,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0601806640625,
+    "target": 0.0087890625,
+    "receptacle": 0.04656982421875,
+    "other": 0.027587890625,
+    "background": 0.85687255859375
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.09934616088867,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.061767578125,
+    "target": 0.0089111328125,
+    "receptacle": 0.04736328125,
+    "other": 0.02777099609375,
+    "background": 0.85418701171875
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.16957473754883,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06097412109375,
+    "target": 0.00885009765625,
+    "receptacle": 0.0469970703125,
+    "other": 0.02783203125,
+    "background": 0.8553466796875
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.21858596801758,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.05975341796875,
+    "target": 0.0089111328125,
+    "receptacle": 0.04644775390625,
+    "other": 0.027587890625,
+    "background": 0.8572998046875
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.26051712036133,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0615234375,
+    "target": 0.00897216796875,
+    "receptacle": 0.044677734375,
+    "other": 0.02813720703125,
+    "background": 0.856689453125
+   }
+  },
+  {
+   "task": "pick_up_the_milk_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10386276245117,
+   "ooi": [
+    "milk_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0606689453125,
+    "target": 0.0089111328125,
+    "receptacle": 0.046875,
+    "other": 0.02783203125,
+    "background": 0.855712890625
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.17138671875,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0615234375,
+    "target": 0.0106201171875,
+    "receptacle": 0.04547119140625,
+    "other": 0.029296875,
+    "background": 0.85308837890625
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.15055465698242,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0611572265625,
+    "target": 0.0106201171875,
+    "receptacle": 0.04510498046875,
+    "other": 0.02972412109375,
+    "background": 0.8533935546875
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.05513381958008,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06219482421875,
+    "target": 0.0106201171875,
+    "receptacle": 0.0474853515625,
+    "other": 0.02984619140625,
+    "background": 0.849853515625
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.16294479370117,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06182861328125,
+    "target": 0.0106201171875,
+    "receptacle": 0.04473876953125,
+    "other": 0.0294189453125,
+    "background": 0.8533935546875
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.11091995239258,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0625,
+    "target": 0.0106201171875,
+    "receptacle": 0.0457763671875,
+    "other": 0.02978515625,
+    "background": 0.851318359375
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.162109375,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0618896484375,
+    "target": 0.0106201171875,
+    "receptacle": 0.04638671875,
+    "other": 0.02911376953125,
+    "background": 0.85198974609375
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.20115280151367,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06231689453125,
+    "target": 0.0106201171875,
+    "receptacle": 0.04443359375,
+    "other": 0.02978515625,
+    "background": 0.85284423828125
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.15525436401367,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06329345703125,
+    "target": 0.0106201171875,
+    "receptacle": 0.04541015625,
+    "other": 0.0299072265625,
+    "background": 0.85076904296875
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.10554885864258,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0633544921875,
+    "target": 0.0106201171875,
+    "receptacle": 0.04656982421875,
+    "other": 0.02960205078125,
+    "background": 0.849853515625
+   }
+  },
+  {
+   "task": "pick_up_the_orange_juice_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.09666061401367,
+   "ooi": [
+    "orange_juice_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06292724609375,
+    "target": 0.0106201171875,
+    "receptacle": 0.04541015625,
+    "other": 0.0296630859375,
+    "background": 0.85137939453125
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.0152587890625,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.062255859375,
+    "target": 0.00860595703125,
+    "receptacle": 0.04595947265625,
+    "other": 0.03515625,
+    "background": 0.8480224609375
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.03416061401367,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.062255859375,
+    "target": 0.00860595703125,
+    "receptacle": 0.04498291015625,
+    "other": 0.03558349609375,
+    "background": 0.84857177734375
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.89176559448242,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06158447265625,
+    "target": 0.00860595703125,
+    "receptacle": 0.0472412109375,
+    "other": 0.03521728515625,
+    "background": 0.84735107421875
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.96397018432617,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06329345703125,
+    "target": 0.00860595703125,
+    "receptacle": 0.04736328125,
+    "other": 0.0355224609375,
+    "background": 0.84521484375
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 21,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.98069381713867,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0616455078125,
+    "target": 0.00860595703125,
+    "receptacle": 0.0474853515625,
+    "other": 0.0361328125,
+    "background": 0.84613037109375
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 11,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.96262741088867,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06170654296875,
+    "target": 0.00860595703125,
+    "receptacle": 0.04718017578125,
+    "other": 0.035400390625,
+    "background": 0.84710693359375
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.99757766723633,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06103515625,
+    "target": 0.00860595703125,
+    "receptacle": 0.04693603515625,
+    "other": 0.03558349609375,
+    "background": 0.84783935546875
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.97731399536133,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.062255859375,
+    "target": 0.00860595703125,
+    "receptacle": 0.04736328125,
+    "other": 0.03558349609375,
+    "background": 0.84619140625
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.09228515625,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06170654296875,
+    "target": 0.00860595703125,
+    "receptacle": 0.04510498046875,
+    "other": 0.03564453125,
+    "background": 0.84893798828125
+   }
+  },
+  {
+   "task": "pick_up_the_salad_dressing_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 16,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.00504684448242,
+   "ooi": [
+    "salad_dressing_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.061279296875,
+    "target": 0.00860595703125,
+    "receptacle": 0.04541015625,
+    "other": 0.03509521484375,
+    "background": 0.849609375
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_0",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.97674560546875,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06256103515625,
+    "target": 0.00848388671875,
+    "receptacle": 0.04541015625,
+    "other": 0.03173828125,
+    "background": 0.851806640625
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_1",
+   "n_pairs": 15,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.99542236328125,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06195068359375,
+    "target": 0.00848388671875,
+    "receptacle": 0.0452880859375,
+    "other": 0.03143310546875,
+    "background": 0.85284423828125
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_2",
+   "n_pairs": 12,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.99666213989258,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.064208984375,
+    "target": 0.00848388671875,
+    "receptacle": 0.04510498046875,
+    "other": 0.031494140625,
+    "background": 0.8507080078125
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_3",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.99354934692383,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06396484375,
+    "target": 0.00848388671875,
+    "receptacle": 0.0447998046875,
+    "other": 0.031982421875,
+    "background": 0.85076904296875
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_4",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.95404052734375,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0631103515625,
+    "target": 0.00848388671875,
+    "receptacle": 0.04620361328125,
+    "other": 0.03167724609375,
+    "background": 0.85052490234375
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_5",
+   "n_pairs": 17,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.98905563354492,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06207275390625,
+    "target": 0.00848388671875,
+    "receptacle": 0.04669189453125,
+    "other": 0.03155517578125,
+    "background": 0.8511962890625
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_6",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.86588668823242,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06158447265625,
+    "target": 0.00848388671875,
+    "receptacle": 0.04718017578125,
+    "other": 0.03167724609375,
+    "background": 0.85107421875
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_7",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.01444625854492,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06243896484375,
+    "target": 0.00848388671875,
+    "receptacle": 0.04534912109375,
+    "other": 0.0321044921875,
+    "background": 0.85162353515625
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_8",
+   "n_pairs": 14,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 35.89528274536133,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.0609130859375,
+    "target": 0.00848388671875,
+    "receptacle": 0.04754638671875,
+    "other": 0.031982421875,
+    "background": 0.85107421875
+   }
+  },
+  {
+   "task": "pick_up_the_tomato_sauce_and_place_it_in_the_basket_demo",
+   "demo": "demo_9",
+   "n_pairs": 13,
+   "rerender_bit_identical": true,
+   "mean_abs_diff_vs_hdf5": 36.072998046875,
+   "ooi": [
+    "tomato_sauce_1",
+    "basket_1"
+   ],
+   "pix_frac_first_frame": {
+    "arm": 0.06182861328125,
+    "target": 0.00848388671875,
+    "receptacle": 0.0445556640625,
+    "other": 0.03125,
+    "background": 0.8538818359375
+   }
+  }
+ ],
+ "groups": [
+  {
+   "grouping": "dl",
+   "region": "arm",
+   "state": "all",
+   "n_patches": 35815,
+   "abs_mse": 0.015306901613875849,
+   "energy": 0.044539296285932846,
+   "rel_err": 0.34367183342118346,
+   "pred_energy": 0.030010062520175736,
+   "mean_absdl": 0.14015003100664458,
+   "loss_share_w1": 0.9082498271572494,
+   "loss_share_w0": 0.7828863711017375,
+   "mean_purity": 0.855665071373726
+  },
+  {
+   "grouping": "dl",
+   "region": "arm",
+   "state": "moved",
+   "n_patches": 31683,
+   "abs_mse": 0.01717218943091838,
+   "energy": 0.05034650209858053,
+   "rel_err": 0.34108008928394906,
+   "pred_energy": 0.03382132937356279,
+   "mean_absdl": 0.15832948311820902,
+   "loss_share_w1": 0.9075883962803225,
+   "loss_share_w0": 0.7769596309711151,
+   "mean_purity": 0.8804296418820818
+  },
+  {
+   "grouping": "dl",
+   "region": "arm",
+   "state": "static",
+   "n_patches": 4132,
+   "abs_mse": 0.001004405508513206,
+   "energy": 1.1294891422604866e-05,
+   "rel_err": 88.92564531457592,
+   "pred_energy": 0.0007863530052042848,
+   "mean_absdl": 0.0007551662315488753,
+   "loss_share_w1": 0.0006614308769268721,
+   "loss_share_w0": 0.0059267401306223625,
+   "mean_purity": 0.665777392909003
+  },
+  {
+   "grouping": "sim",
+   "region": "arm",
+   "state": "sim_moved",
+   "n_patches": 29593,
+   "abs_mse": 0.01795559219590399,
+   "energy": 0.05376110233158484,
+   "rel_err": 0.3339885422207018,
+   "pred_energy": 0.035849524550743625,
+   "mean_absdl": 0.16791953330689158,
+   "loss_share_w1": 0.9028620476434734,
+   "loss_share_w0": 0.7588137883452019,
+   "mean_purity": 0.8858866275386071
+  },
+  {
+   "grouping": "sim",
+   "region": "arm",
+   "state": "sim_static",
+   "n_patches": 6222,
+   "abs_mse": 0.0027092319909316456,
+   "energy": 0.0006786556062511863,
+   "rel_err": 3.992057187734916,
+   "pred_energy": 0.002236484913201201,
+   "mean_absdl": 0.00807306514820533,
+   "loss_share_w1": 0.005387779513775998,
+   "loss_share_w0": 0.02407258275653548,
+   "mean_purity": 0.7119256770331083
+  },
+  {
+   "grouping": "dl",
+   "region": "target",
+   "state": "all",
+   "n_patches": 1822,
+   "abs_mse": 0.00948315733914058,
+   "energy": 0.026993212576590986,
+   "rel_err": 0.35131636563202373,
+   "pred_energy": 0.017160974798344386,
+   "mean_absdl": 0.09631221778769325,
+   "loss_share_w1": 0.027077656732410024,
+   "loss_share_w0": 0.024674468997140764,
+   "mean_purity": 0.6738945869923162
+  },
+  {
+   "grouping": "dl",
+   "region": "target",
+   "state": "moved",
+   "n_patches": 1356,
+   "abs_mse": 0.012407975686744488,
+   "energy": 0.03626596665084311,
+   "rel_err": 0.3421382864602625,
+   "pred_energy": 0.02277565254072298,
+   "mean_absdl": 0.1292686680463008,
+   "loss_share_w1": 0.027007586443335813,
+   "loss_share_w0": 0.024027418333101,
+   "mean_purity": 0.656546713679941
+  },
+  {
+   "grouping": "dl",
+   "region": "target",
+   "state": "static",
+   "n_patches": 466,
+   "abs_mse": 0.0009723125336665475,
+   "energy": 1.0692137350886986e-05,
+   "rel_err": 90.93715332658793,
+   "pred_energy": 0.0008229854879036676,
+   "mean_absdl": 0.0004131908549210446,
+   "loss_share_w1": 7.007028907421308e-05,
+   "loss_share_w0": 0.0006470506640397668,
+   "mean_purity": 0.7243746646995708
+  },
+  {
+   "grouping": "sim",
+   "region": "target",
+   "state": "sim_moved",
+   "n_patches": 1307,
+   "abs_mse": 0.012667881509488953,
+   "energy": 0.03739996561181822,
+   "rel_err": 0.3387137207817635,
+   "pred_energy": 0.023337762036653664,
+   "mean_absdl": 0.1329697849121737,
+   "loss_share_w1": 0.026890414362108764,
+   "loss_share_w0": 0.02364427852066635,
+   "mean_purity": 0.6575022714231064
+  },
+  {
+   "grouping": "sim",
+   "region": "target",
+   "state": "sim_static",
+   "n_patches": 515,
+   "abs_mse": 0.0014007602699263586,
+   "energy": 0.0005822878833055468,
+   "rel_err": 2.4056146625866344,
+   "pred_energy": 0.001485128350829381,
+   "mean_absdl": 0.0032802950077010905,
+   "loss_share_w1": 0.00018724237030125795,
+   "loss_share_w0": 0.0010301904764744123,
+   "mean_purity": 0.7154960558252427
+  },
+  {
+   "grouping": "dl",
+   "region": "receptacle",
+   "state": "all",
+   "n_patches": 11865,
+   "abs_mse": 0.0015297078332008856,
+   "energy": 0.0020009554569973714,
+   "rel_err": 0.7644886985622165,
+   "pred_energy": 0.0015497750383148563,
+   "mean_absdl": 0.005488669544801454,
+   "loss_share_w1": 0.015023836882210283,
+   "loss_share_w0": 0.02591926724649298,
+   "mean_purity": 0.8763172276654024
+  },
+  {
+   "grouping": "dl",
+   "region": "receptacle",
+   "state": "moved",
+   "n_patches": 808,
+   "abs_mse": 0.017419047499817392,
+   "energy": 0.02935027281209571,
+   "rel_err": 0.5934884357408333,
+   "pred_energy": 0.018375524247068085,
+   "mean_absdl": 0.08011535476976175,
+   "loss_share_w1": 0.014400852383866425,
+   "loss_share_w0": 0.02009936100645018,
+   "mean_purity": 0.8188814975247525
+  },
+  {
+   "grouping": "dl",
+   "region": "receptacle",
+   "state": "static",
+   "n_patches": 11057,
+   "abs_mse": 0.00036858036185909886,
+   "energy": 2.380036637467888e-06,
+   "rel_err": 154.86331431066964,
+   "pred_energy": 0.00032021861607802805,
+   "mean_absdl": 3.5258885330718174e-05,
+   "loss_share_w1": 0.0006229844983438568,
+   "loss_share_w0": 0.005819906240042805,
+   "mean_purity": 0.8805143941620692
+  },
+  {
+   "grouping": "sim",
+   "region": "receptacle",
+   "state": "sim_moved",
+   "n_patches": 198,
+   "abs_mse": 0.01733268839260093,
+   "energy": 0.026027543756010182,
+   "rel_err": 0.6659363847423571,
+   "pred_energy": 0.01060066417178887,
+   "mean_absdl": 0.1125292390058137,
+   "loss_share_w1": 0.0038239923060042146,
+   "loss_share_w0": 0.0049009199173107075,
+   "mean_purity": 0.8429214015151515
+  },
+  {
+   "grouping": "sim",
+   "region": "receptacle",
+   "state": "sim_static",
+   "n_patches": 11667,
+   "abs_mse": 0.0012615163400354439,
+   "energy": 0.0015932015799763261,
+   "rel_err": 0.7918121321811576,
+   "pred_energy": 0.001396172908510463,
+   "mean_absdl": 0.0036720900682196056,
+   "loss_share_w1": 0.011199844576206068,
+   "loss_share_w0": 0.02101834732918228,
+   "mean_purity": 0.87688398635039
+  },
+  {
+   "grouping": "dl",
+   "region": "other",
+   "state": "all",
+   "n_patches": 7339,
+   "abs_mse": 0.0008758822565488098,
+   "energy": 0.0003474073510724954,
+   "rel_err": 2.5211966696871495,
+   "pred_energy": 0.0007915816299165287,
+   "mean_absdl": 0.0017331996470172687,
+   "loss_share_w1": 0.001612252324164978,
+   "loss_share_w0": 0.009179712986525188,
+   "mean_purity": 0.7424190327360676
+  },
+  {
+   "grouping": "dl",
+   "region": "other",
+   "state": "moved",
+   "n_patches": 433,
+   "abs_mse": 0.004469090639750686,
+   "energy": 0.005853305633811525,
+   "rel_err": 0.763515681452726,
+   "pred_energy": 0.004559172476448525,
+   "mean_absdl": 0.02796290916934885,
+   "loss_share_w1": 0.0009303837802565332,
+   "loss_share_w0": 0.00276346230962566,
+   "mean_purity": 0.6705398383371824
+  },
+  {
+   "grouping": "dl",
+   "region": "other",
+   "state": "static",
+   "n_patches": 6906,
+   "abs_mse": 0.00065059131679694,
+   "energy": 2.192471775362514e-06,
+   "rel_err": 296.73874213927706,
+   "pred_energy": 0.0005553570662692142,
+   "mean_absdl": 8.862040821483975e-05,
+   "loss_share_w1": 0.0006818685439084448,
+   "loss_share_w0": 0.006416250676899527,
+   "mean_purity": 0.7469257936938893
+  },
+  {
+   "grouping": "sim",
+   "region": "other",
+   "state": "sim_moved",
+   "n_patches": 97,
+   "abs_mse": 0.0014474815270472223,
+   "energy": 0.0008045553941442871,
+   "rel_err": 1.7991073549220828,
+   "pred_energy": 0.001026100232527674,
+   "mean_absdl": 0.011425948260140787,
+   "loss_share_w1": 5.072047700420455e-05,
+   "loss_share_w0": 0.0002005077901934439,
+   "mean_purity": 0.7544700386597938
+  },
+  {
+   "grouping": "sim",
+   "region": "other",
+   "state": "sim_static",
+   "n_patches": 7242,
+   "abs_mse": 0.0008682262044584554,
+   "energy": 0.0003412842690263805,
+   "rel_err": 2.5439971403760877,
+   "pred_energy": 0.0007884404666393566,
+   "mean_absdl": 0.0016033740994512674,
+   "loss_share_w1": 0.0015615318471607733,
+   "loss_share_w0": 0.008979205196331745,
+   "mean_purity": 0.7422576204777686
+  },
+  {
+   "grouping": "dl",
+   "region": "background",
+   "state": "all",
+   "n_patches": 223635,
+   "abs_mse": 0.0004926668960009013,
+   "energy": 0.0005069338797153582,
+   "rel_err": 0.9718563223226118,
+   "pred_energy": 0.0005917897582626988,
+   "mean_absdl": 0.00209722186000505,
+   "loss_share_w1": 0.04803642690396533,
+   "loss_share_w0": 0.1573401796681037,
+   "mean_purity": 0.9600685652681825
+  },
+  {
+   "grouping": "dl",
+   "region": "background",
+   "state": "moved",
+   "n_patches": 11549,
+   "abs_mse": 0.005799849296121444,
+   "energy": 0.009783714787066385,
+   "rel_err": 0.5928064566833627,
+   "pred_energy": 0.008475973164880175,
+   "mean_absdl": 0.039851899463781745,
+   "loss_share_w1": 0.04142563937474475,
+   "loss_share_w0": 0.09565497813263894,
+   "mean_purity": 0.7455211219586111
+  },
+  {
+   "grouping": "dl",
+   "region": "background",
+   "state": "static",
+   "n_patches": 212086,
+   "abs_mse": 0.0002036678600485416,
+   "energy": 1.7730360057449933e-06,
+   "rel_err": 114.86955673128847,
+   "pred_energy": 0.00016246187163639994,
+   "mean_absdl": 4.131637050542666e-05,
+   "loss_share_w1": 0.006610787529220595,
+   "loss_share_w0": 0.06168520153546482,
+   "mean_purity": 0.9717516015024565
+  },
+  {
+   "grouping": "sim",
+   "region": "background",
+   "state": "sim_moved",
+   "n_patches": 0
+  },
+  {
+   "grouping": "sim",
+   "region": "background",
+   "state": "sim_static",
+   "n_patches": 223635,
+   "abs_mse": 0.0004926668960009013,
+   "energy": 0.0005069338797153582,
+   "rel_err": 0.9718563223226118,
+   "pred_energy": 0.0005917897582626988,
+   "mean_absdl": 0.00209722186000505,
+   "loss_share_w1": 0.04803642690396533,
+   "loss_share_w0": 0.1573401796681037,
+   "mean_purity": 0.9600685652681825
+  },
+  {
+   "grouping": "dl_near_arm",
+   "region": "target",
+   "state": "static_near_arm",
+   "n_patches": 155,
+   "abs_mse": 0.0022269185579892607,
+   "energy": 2.2350597384539162e-05,
+   "rel_err": 99.63575110210311,
+   "pred_energy": 0.0018916445186703407,
+   "mean_absdl": 0.0005022861739909727,
+   "loss_share_w1": 5.370573166552568e-05,
+   "loss_share_w0": 0.0004929268999845749,
+   "mean_purity": 0.71796875
+  },
+  {
+   "grouping": "dl_near_arm",
+   "region": "target",
+   "state": "static_far_arm",
+   "n_patches": 311,
+   "abs_mse": 0.00034702657299124024,
+   "energy": 4.881650838938153e-06,
+   "rel_err": 71.08795455488266,
+   "pred_energy": 0.00029037407385596885,
+   "mean_absdl": 0.00036878643544889397,
+   "loss_share_w1": 1.6364557408687405e-05,
+   "loss_share_w0": 0.00015412376405519204,
+   "mean_purity": 0.7275673231511254
+  }
+ ]
+}

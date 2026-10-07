@@ -89,6 +89,35 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-06 M-recon |ΔL| 비례 가중 제거 — C0 이어 학습 10ep (Vault 결정 10-06, STATUS "다음")
+
+**목적**: M-recon 손실 가중 `w = floor + scale·mean|ΔL|`에서 scale=0 → 작은 변화 패치(다뤄지는 물체)의 손실 영향력이 큰 변화 패치(팔)에 눌리던 것을 제거. 레시피 = C1-DN 선례(ckpt에서 `INIT_FROM` 가중치만 + 10ep · LR 2.8e-5), 증강(밝기·노이즈) 없음 = C0와 scale만 다름. 나머지 = 제출본 C0 레시피(part1 · ViT-S 384/6 · no-Sobel · pair · comp_mae · floor 0.02 · 유효 배치 1024). 측정(영역별 M-recon 패치 오차 팔/물체/배경, C0 vs 이 모델 + same-probe 건강 확인)은 학습 후. **판정 기준(결과 전 고정, 10-06 사용자 승인)** — 비교 = 비례항 제거 모델(ep10) vs C0, 같은 LIBERO 표본·같은 마스크 seed. **해소** = ① 다뤄지는 물체 영역 **정지 패치의 절대 오차(MSE, 목표≈0 → 상대 오차 정의 불가)가 20% 이상 감소** AND ② 팔 영역(움직인 패치) **상대 오차(MSE/목표 에너지) 악화 ≤ 10%** AND ③ 건강: same-probe M motion·P identity가 C0 대비 크게 붕괴하지 않음(STEP 1 프로토콜). ①만 충족 = 개선이나 비용 있음(기록) · ① 불충족 = 해소 안 됨. 정지/움직임 구분 |ΔL| 문턱은 측정 도구 정의를 C0 결과 보기 전에 고정해 따름. C0 값은 이 기준 고정 후 확인.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41245968 | AIP 1×4 H100 (cpu 64) | 20:00:00 | **학습** — `INIT_FROM=C0 latest.pt` · `V15_M_RECON_SCALE=0` · EPOCHS=10 · 배치 256/GPU · LR 2.8e-5 · `USE_SCRATCH=1`. SUFFIX `refine_comp_s_mrecon_noscale` | ✅ COMPLETED 6h01m (19:49→01:51, H100 4장 ~24.1 GPU·h; scratch 복사 76분 포함). Model args `--v15-m-recon-scale 0` · init C0 확인. 마지막 L_mj 0.00139, final train loss 0.0132. ckpt `…mrecon_noscale/20261006_210748/checkpoint_epoch0010.pt` |
+| 41258681 · 41258682~689 | mig-1g ×1 · mig-3g ×8 | 02:00 · 00:40 | **자동 평가 체인** (afterok 41245968) — ① 영역별 M-recon 오차(고정 표본, C0와 동일 기본값) ② same-probe 8칸(C1-DN `fdn_*` 설정 복원: libero_object·attentive·gap20·{m_only,p_t_only}×{action,identity}×POSCTRL{none,concat}, SUFFIX `fns_*`). ckpt = ep10 실행 시 해석. `paper_artifacts/tables/mrecon_region/submit_noscale_eval.sh` | ✅ 9/9 COMPLETED 01:51→01:56 (ep10 ckpt 사용 확인, ~0.5 GPU·h). **사전 등록 판정 = 해소**: ① 타깃 정지 절대 MSE 9.72e-4 → 4.40e-4 (−54.7%) ② 팔 움직임 상대 오차 0.341 → 0.338 ③ same-probe M motion 0.834/+0.338 · M id 0.524/+0.304 · P_t motion 0.557/+0.130 · P_t id 0.999 (C0와 동일 수준). ⚠ 정지 패치 개선이 전 영역 공통(배경 −47%), 팔 근처/먼 비 6.4×→7.7× — 선택적 해소 아님. 표 `paper_artifacts/tables/mrecon_region/README.md` |
+
+**대조 추가 (10-07 사용자 승인)** — 비례항 제거 모델은 "scale=0"과 "C0 + 10ep 추가 학습"이 겹침 → 대조 = 같은 레시피에 **scale=1 유지**. **새 판정(결과 전 고정)**: 비례항 제거 vs 대조, ① 타깃 정지 절대 MSE ≥20% 낮음 AND ② 팔 움직임 상대 오차 악화 ≤10% AND ③ same-probe 건강 → "비례항 제거의 몫 확인", 아니면 "10-07 해소는 추가 학습 효과". 기존 판정(vs C0 = 해소)은 그대로 기록. P 측(P 현재 프레임 복원 `L_t`·M 경유 미래 예측 `L_pred` 영역별 오차)은 **관찰(판정 없음)**.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41302870 | AIP 1×4 H100 (cpu 64) | 20:00:00 | **대조 학습** — 위 41245968과 동일 + `V15_M_RECON_SCALE=1.0`. SUFFIX `refine_comp_s_mrecon_scale1_ctrl` | ✅ 6h08m (05:39→11:47, H100 4장 ~24.5 GPU·h). ckpt `…scale1_ctrl/20261007_070348/checkpoint_epoch0010.pt` |
+| 41302888 · 41302889~899 | mig-1g ×1 · mig-3g ×8 | 02:00 · 00:40 | 대조 자동 평가(afterok 41302870): 영역별 M-recon 오차 + same-probe 8칸(SUFFIX `fsc_*`). `submit_scale1ctrl_eval.sh`(첫 실행이 `head` 파이프로 2잡 후 중단 → 나머지 7잡 수동 제출, 설정 동일) | ✅ 9/9 COMPLETED 11:47→11:5x (~0.5 GPU·h). 대조 ① 9.07e-4 ② 0.342 · same-probe M motion 0.834/+0.338 · M id 0.525/+0.304 · P_t motion 0.535/+0.124 · P_t id 0.999. **새 판정(제거 vs 대조) = 비례항 제거의 몫 확인**: ① −51.5% ② −1.2% ③ 동급. 추가 학습만의 효과 = 타깃 정지 −7%. 표 `paper_artifacts/tables/mrecon_region/README.md` |
+| 41304703 | AIP 1×1 H100 (cpu 4) | 01:00:00 | **P 측 영역별 오차 (관찰) — C0** · 도구 확장(`branch` = m_recon / p_recon(`L_t`, null routing) / p_pred(`L_pred`, M routing)), 같은 고정 표본·영역·|ΔL| 상태. 출력 태그 `…latest__mp` (M-only 기존 파일 보존, M 수치 동일 확인용) | ✅ 4m59s (05:55→06:00, H100 1장 ~0.08 GPU·h). 재현 검증: 모델 자체 `_forward_pair_comp` 마스크로 L_t 0.020121 · L_pred 0.023304 = 도구 값(차 0.0). M 27그룹 기존 파일과 완전 동일(①9.723e-4 ②0.34108). P 정지 타깃 절대 MSE: p_recon 2.25e-2 (근처 2.21e-2 / 먼 2.27e-2) · p_pred 3.31e-2 (근처 3.57e-2 / 먼 3.19e-2) · 팔 움직임 p_recon 3.41e-2 · p_pred 3.26e-2 (복사 기준 대비 rel 0.640) |
+| 41304704 | AIP 1×1 H100 (cpu 4) | 01:00:00 | 같은 측정 — 비례항 제거(scale=0) ep10, 태그 `…epoch0010__mp` | ✅ 5m16s (05:55→06:00, ~0.09 GPU·h). 재현 차 0.0. M 그룹 기존 파일과 완전 동일(①4.401e-4 ②0.33759). P는 C0 대비 거의 불변·약간 악화: 정지 타깃 p_recon +3.8% · p_pred +1.5% (근처 −0.0% / 먼 +2.3%) · 팔 움직임 p_recon +0.6% · p_pred +0.1% · 배경 정지 p_recon +4.6% |
+| 41304726 | AIP 1×1 H100 (cpu 4) | 01:00:00 | 같은 측정 — 대조(scale=1) ep10 (afterok 41302870, ckpt 경로 실행 시 해석), 태그 `…epoch0010__mp` | ⏳ 대기(의존) |
+
+### 2026-10-06 영역별 M-recon 오차 측정 도구
+
+**목적**: 위 판정 ①②용 측정 도구 `scripts/eval/mrecon_region_error.py`(+ `scripts/cluster/mrecon_region_error.sbatch`) 스모크. LIBERO 데모 state를 같은 프로세스에서 RGB+세그로 재렌더(고정물 복원) → M-recon(Case B 복제, 고정 seed 마스크+여집합) 패치 오차를 팔/타깃/받침/기타/배경 × 정지·움직임(|ΔL| 문턱 1/255)으로 집계. C0만, 출력 `paper_artifacts/tables/mrecon_region/`.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41246216 | mig-1g.10gb 1 (cpu 4, osmesa) | 02:00:00 | 스모크 1 — C0 · libero_object task 0,1 × demo 2 (61쌍) | ✅ 22 s (19:00:07–19:00:29, 1 MIG × 0.006h). 재렌더 비트 동일 4/4 · 렌더 0.11 s/쌍 · 모델 0.03 s/쌍. ① 타깃 정지 절대 MSE 1.56e-3 (n=26) · ② 팔 움직임 상대 오차 0.344 (n=1324). 출력 `smoke41246216_C0_obj_t01_d2.*` |
+| 41246248 | mig-1g.10gb 1 (cpu 4, osmesa) | 02:00:00 | 스모크 2 — C0 · task 2–9 × demo 1 (BDDL 타깃 매핑 전 과제 확인) | ✅ 38 s (19:01:21–19:01:59, 1 MIG × 0.011h). 8/8 과제 타깃 화소 검출(0.2–1.1 %) · 재렌더 비트 동일 8/8 · 121쌍. ① 1.08e-3 (n=37) · ② 0.349 (n=2768). 출력 `smoke41246248_C0_obj_t2-9_d1.*`. 비교용 고정 표본(기본값) = 10과제 × 데모 10 |
+| 41246317 | mig-1g.10gb (cpu 4) | 02:00:00 | **C0 기준값 — 고정 표본**(libero_object 10과제 × 데모 10, 간격 10·stride 10, seed 0, 정지 문턱 1/255; 판정 기준 고정 후) | ✅ 3m39s (~0.06 GPU·h, MIG 1/7). 1,370쌍대 · 재렌더 비트 동일 전 데모 · |ΔL| 질량 비배경 0.918. **C0 기준값: ① 타깃 정지 절대 MSE 9.72e-4 (n=466) · ② 팔 움직임 상대 오차 0.341 (n=31,683)** → 새 모델 해소 문턱 ① ≤ 7.78e-4 · ② ≤ 0.375. 참고(정지 절대 MSE): 받침 3.7e-4 · 기타 물체 6.5e-4 · 팔 1.0e-3. 손실 몫(정지 타깃): w=1 7.0e-5 → w=0 6.5e-4. `paper_artifacts/tables/mrecon_region/two_stream_v15b_step1_comp_mae_s__…latest.{json,csv}` |
+
 ### 2026-10-04 E3 1단계 — 저데모 최소 셀 ②(외형 2장) vs ④(외형 1장 + CoMP M) ([claim_spine_v2.md](claim_spine_v2.md) §4.4)
 
 **목적**: 같은 두 프레임을 "외형 두 장"으로 주는 것과 "외형 1장 + 그 사이 모션"으로 주는 것이 저데모(데모 10, 0단계 ② SR 39%)에서 갈리는가. libero_object · C0 · g=10 · dropout 0.1 · attentive · aug-on · 50ep, seed {0,1,2}. ② seed 0 = 0단계(40843201/40843449) 재사용. 사전 등록 판정(§4.4): ④−② SR 차의 seed 3개 CI가 0 초과 → 1차 통과, 0 포함/음수 → 주장 C 폐기, ④가 ② 절반 이하 → 7월 재발로 보고 원인 분리 후 1회 재판정. 분리 축 1단계 부분 통과(10-04)로 외형 이동 셀 유지(별도). 신규 = `--motion-source {rgb_prev,comp_m,none}`(어댑터 스트림 [P_prev,P_curr] / [P_curr,M] / [P_curr], dropout은 현재 프레임 P 외 마스킹; ②④ 둘 다 2×384 = 특징 폭 동일). 롤아웃 = osmesa(②와 동일 렌더러). MIG는 SFA 백로그(mig-3g 예상 2027) → AIP(H100, ②와 같은 GPU 계열).

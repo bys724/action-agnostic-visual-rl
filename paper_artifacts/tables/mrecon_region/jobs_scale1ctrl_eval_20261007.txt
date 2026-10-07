@@ -1,0 +1,9 @@
+region 41302888
+fsc_m_act 41302889
+fsc_m_act_pos 41302893
+fsc_m_id 41302894
+fsc_m_id_pos 41302895
+fsc_pt_act 41302896
+fsc_pt_act_pos 41302897
+fsc_pt_id 41302898
+fsc_pt_id_pos 41302899
