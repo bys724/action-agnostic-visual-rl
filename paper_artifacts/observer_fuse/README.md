@@ -129,3 +129,27 @@ move, i.e. position/appearance leaks into M [inferred]. A Fuse trained on sparse
 Expected sparse M per chunk ≈ 0.58–0.69 GFLOPs (object), 0.67–0.78 (goal); with sparse M the remaining cost is mostly
 anchor P/4 (2.30) + Fuse (0.84–1.39) per update. FLOPs only — not wall-clock (variable token counts need grouping);
 and the savings apply only if a reader trained on sparse M keeps the readout, which (b) does not yet show.
+
+## v4 — per-step z, anchor-age curve k = 1..20 (10-10, `v4_*.json`, seed 2, position-controlled)
+
+`scripts/eval/observer_fuse_v4.py`: complete 5-frame chunks + one partial last chunk (1–4 frames, encoded on the fly);
+training k ~ U{1..20}; per k a fresh probe on z_PP(train) + anchor EE position RFF; target = EE change anchor→t.
+k = 20 reproduces v3 (goal 0.194 vs 0.196, object 0.274 vs 0.275). Single Fuse seed → descriptive curve, not a verdict.
+
+Beyond-position share (R²(z+pos) − R²(pos)), P+M = cheap path:
+
+| suite | k | pos only | CoMP P+M | CoMP P+P | raw ΔL P+M | P+P-only ref |
+|---|---|---|---|---|---|---|
+| goal | 1 | 0.413 | **0.271** | 0.287 | 0.149 | 0.243 |
+| goal | 5 | 0.492 | **0.319** | 0.328 | 0.149 | 0.222 |
+| goal | 10 | 0.571 | **0.245** | 0.244 | 0.123 | 0.180 |
+| goal | 20 | 0.598 | **0.194** | 0.195 | 0.089 | 0.165 |
+| object | 1 | 0.385 | **0.352** | 0.395 | 0.334 | 0.385 |
+| object | 5 | 0.454 | **0.380** | 0.399 | 0.330 | 0.365 |
+| object | 10 | 0.518 | **0.326** | 0.317 | 0.295 | 0.308 |
+| object | 20 | 0.513 | **0.274** | 0.263 | 0.236 | 0.271 |
+
+CoMP P+M − raw ΔL P+M over all k = 1..20: goal +0.095…+0.192 (mean +0.133), object +0.014…+0.049 (mean +0.032); raw never higher.
+identity at k=20: goal CoMP P+M 0.946 vs raw 0.828 (P+P 0.950 / 0.914); object 1.0 everywhere.
+Training: CoMP 36k/28.5k steps (95/76 min), raw 13k/32.5k (24/60 min), P+P-only refs hit the 60k cap (unconverged, 138 min) — MIG-3g.
+Hand-offs (git-ignored, cluster path): `ckpt/goal_c1dn_v4_handoff.pt`, `ckpt/object_c1dn_v4_handoff.pt`; entry `observer_fuse_v4.py:ObserverV4.z_seq(frames)`.

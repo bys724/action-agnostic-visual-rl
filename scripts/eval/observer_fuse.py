@@ -394,13 +394,14 @@ class Observer:
 
     @torch.no_grad()
     def _p(self, f):
-        return _std(self.cache, "P", self.enc._encode_p_unmasked(self.enc.preprocessing.compute_p_channel(self._x(f)))[:, 1:])
+        # .half() = same rounding as the training cache (fp16 tokens) → z matches the training path
+        return _std(self.cache, "P", self.enc._encode_p_unmasked(self.enc.preprocessing.compute_p_channel(self._x(f)))[:, 1:].half())
 
     @torch.no_grad()
     def _m(self, a, b):
         assert self.meta["m_source"] == "comp", "raw-ΔL hand-off not supported"
         mc = self.enc.preprocessing.compute_m_channel(self._x(a), self._x(b))
-        return _std(self.cache, "M", self.enc._encode_m_unmasked(mc)[:, 1:])
+        return _std(self.cache, "M", self.enc._encode_m_unmasked(mc)[:, 1:].half())
 
     @torch.no_grad()
     def z_pp(self, anchor, current):
