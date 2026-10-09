@@ -1,0 +1,115 @@
+{
+  "args": {
+    "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt",
+    "tag": "v3pos_c1dnraw_s42",
+    "task_suite": "libero_object",
+    "data_root": "/proj/external_group/mrg/datasets/libero",
+    "m_source": "raw",
+    "p_source": "ckpt",
+    "max_demos": null,
+    "steps": 60000,
+    "warmup": 500,
+    "eval_every": 500,
+    "patience": 4,
+    "min_rel": 0.005,
+    "batch": 128,
+    "lr": 0.0003,
+    "ema": 0.996,
+    "align_weight": 1.0,
+    "n_lat": 32,
+    "depth": 3,
+    "probe_epochs": 100,
+    "seed": 42,
+    "split_seed": 42,
+    "pp_only": false,
+    "m_weight": 1.0,
+    "load_fuse": "/proj/external_group/mrg/checkpoints/observer_fuse/v3_c1dnraw_s42/fuse.pt",
+    "probe_seeds": [],
+    "pos_control": true,
+    "diag": false,
+    "out_root": "/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/observer_fuse",
+    "ckpt_root": "/proj/external_group/mrg/checkpoints/observer_fuse"
+  },
+  "n_train": 10296,
+  "n_eval": 2582,
+  "train": null,
+  "recon": {
+    "pp": {
+      "P_t_mse": 0.38997283577919006,
+      "M_span_mse": 2.3057339191436768
+    },
+    "anchor": {
+      "P_t_mse": 0.7185134887695312,
+      "M_span_mse": 2.469463586807251
+    },
+    "pm_g5": {
+      "P_t_mse": 0.4562356173992157,
+      "M_span_mse": 2.3431880474090576
+    },
+    "pm_g10": {
+      "P_t_mse": 0.4557410478591919,
+      "M_span_mse": 2.3431918621063232
+    },
+    "pm_g20": {
+      "P_t_mse": 0.46232783794403076,
+      "M_span_mse": 2.3471035957336426
+    }
+  },
+  "probe": {
+    "motion": {
+      "pp": 0.7555533568283608,
+      "anchor": 0.6072688137668423,
+      "pm_g5": 0.7298253955118115,
+      "pm_g10": 0.7305570418076809,
+      "pm_g20": 0.7192976271992733,
+      "enc_pp_direct": 0.3930448990501839
+    },
+    "identity": {
+      "pp": 1.0,
+      "anchor": 1.0,
+      "pm_g5": 1.0,
+      "pm_g10": 1.0,
+      "pm_g20": 1.0,
+      "enc_pp_direct": 1.0
+    }
+  },
+  "probe_pos": {
+    "pos_only": 0.526710152766809,
+    "concat": {
+      "pp": 0.7755562264789847,
+      "anchor": 0.6372142970903194,
+      "pm_g5": 0.7631376076808916,
+      "pm_g10": 0.7628958033087256,
+      "pm_g20": 0.7555423472663294
+    },
+    "beyond": {
+      "pp": 0.2488460737121757,
+      "anchor": 0.11050414432351041,
+      "pm_g5": 0.23642745491408257,
+      "pm_g10": 0.23618565054191665,
+      "pm_g20": 0.2288321944995204
+    }
+  },
+  "ratio_to_pp": {
+    "motion": {
+      "anchor": 0.8037404748170495,
+      "pm_g5": 0.9659481873992998,
+      "pm_g10": 0.9669165456088916,
+      "pm_g20": 0.9520143358487867
+    },
+    "identity": {
+      "anchor": 1.0,
+      "pm_g5": 1.0,
+      "pm_g10": 1.0,
+      "pm_g20": 1.0
+    }
+  },
+  "verdict_maintain_1s": true,
+  "pass_check": {
+    "M_recon_collapses": false,
+    "motion_collapses": false,
+    "P_recon_kept": false,
+    "identity_kept": true
+  },
+  "elapsed_s": 173.2903974056244
+}

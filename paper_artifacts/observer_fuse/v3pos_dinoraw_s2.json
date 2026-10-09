@@ -1,0 +1,115 @@
+{
+  "args": {
+    "checkpoint": null,
+    "tag": "v3pos_dinoraw_s2",
+    "task_suite": "libero_object",
+    "data_root": "/proj/external_group/mrg/datasets/libero",
+    "m_source": "raw",
+    "p_source": "dino",
+    "max_demos": null,
+    "steps": 60000,
+    "warmup": 500,
+    "eval_every": 500,
+    "patience": 4,
+    "min_rel": 0.005,
+    "batch": 128,
+    "lr": 0.0003,
+    "ema": 0.996,
+    "align_weight": 1.0,
+    "n_lat": 32,
+    "depth": 3,
+    "probe_epochs": 100,
+    "seed": 2,
+    "split_seed": 42,
+    "pp_only": false,
+    "m_weight": 1.0,
+    "load_fuse": "/proj/external_group/mrg/checkpoints/observer_fuse/v3_dinoraw_s2/fuse.pt",
+    "probe_seeds": [],
+    "pos_control": true,
+    "diag": false,
+    "out_root": "/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/observer_fuse",
+    "ckpt_root": "/proj/external_group/mrg/checkpoints/observer_fuse"
+  },
+  "n_train": 10296,
+  "n_eval": 2582,
+  "train": null,
+  "recon": {
+    "pp": {
+      "P_t_mse": 0.38174641132354736,
+      "M_span_mse": 1.2389224767684937
+    },
+    "anchor": {
+      "P_t_mse": 0.8463513851165771,
+      "M_span_mse": 1.2389814853668213
+    },
+    "pm_g5": {
+      "P_t_mse": 0.4953579306602478,
+      "M_span_mse": 1.2388465404510498
+    },
+    "pm_g10": {
+      "P_t_mse": 0.4936341941356659,
+      "M_span_mse": 1.238863468170166
+    },
+    "pm_g20": {
+      "P_t_mse": 0.4983988106250763,
+      "M_span_mse": 1.2388546466827393
+    }
+  },
+  "probe": {
+    "motion": {
+      "pp": 0.6858988192125661,
+      "anchor": 0.25360566739110746,
+      "pm_g5": 0.6750937341227842,
+      "pm_g10": 0.6671067625662697,
+      "pm_g20": 0.6671319341028883,
+      "enc_pp_direct": 0.6945895907540418
+    },
+    "identity": {
+      "pp": 1.0,
+      "anchor": 1.0,
+      "pm_g5": 1.0,
+      "pm_g10": 1.0,
+      "pm_g20": 1.0,
+      "enc_pp_direct": 1.0
+    }
+  },
+  "probe_pos": {
+    "pos_only": 0.5126007183889647,
+    "concat": {
+      "pp": 0.7733653236347243,
+      "anchor": 0.5279760852270338,
+      "pm_g5": 0.7443180868342998,
+      "pm_g10": 0.7387376240353213,
+      "pm_g20": 0.7376271628306819
+    },
+    "beyond": {
+      "pp": 0.2607646052457596,
+      "anchor": 0.01537536683806906,
+      "pm_g5": 0.23171736844533508,
+      "pm_g10": 0.22613690564635658,
+      "pm_g20": 0.22502644444171715
+    }
+  },
+  "ratio_to_pp": {
+    "motion": {
+      "anchor": 0.36974209648334855,
+      "pm_g5": 0.9842468236026612,
+      "pm_g10": 0.9726022904254736,
+      "pm_g20": 0.972638989040362
+    },
+    "identity": {
+      "anchor": 1.0,
+      "pm_g5": 1.0,
+      "pm_g10": 1.0,
+      "pm_g20": 1.0
+    }
+  },
+  "verdict_maintain_1s": true,
+  "pass_check": {
+    "M_recon_collapses": false,
+    "motion_collapses": true,
+    "P_recon_kept": false,
+    "identity_kept": true
+  },
+  "elapsed_s": 233.95095944404602
+}
