@@ -89,6 +89,23 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-10 관측기 확장 — 연산량 · 2층 인계 · LIBERO spatial (Vault 결정 10-10)
+
+**무엇**: ① `--flops` = 부품별 순전파 FLOPs(배치 1, FlopCounterMode): P 인코딩·M 인코딩·DINOv2·Fuse(P+P / 앵커만 / 조각 1·2·4) + 갱신 1회 비용(P+P = P 1회+Fuse · P+M = M 조각 1개+Fuse(4조각)+앵커 P를 4회 갱신에 분할) → `paper_artifacts/observer_fuse/flops.json`. ② **2층 인계 = v3_c1dn seed 2**(위치 너머 P+M 5×4 몫 0.270/0.293/0.275 중 중앙값) Fuse 재로드 → `{ckpt_root}/handoff/c1dn_s2_handoff.pt` (Fuse 가중치 + 입력 토큰 위치·차원별 표준화 통계 + train z_PP 통계 + 메타; 진입점 `scripts/eval/observer_fuse.py:Observer`). 판독값이 v3_c1dn_s2와 같아야 함(정합). ③ **libero_spatial**(시연 75~197프레임) 같은 프로토콜(수렴 학습 + 위치 통제 판독) · C1-DN P + CoMP M vs raw ΔL × seed 3.
+**spatial 판정 (결과 전 고정 = object와 같은 규칙)**: P+M 5×4 위치 너머 몫 CoMP M vs raw ΔL — seed 범위 비중첩 & CoMP 높음 → "우위 재현" / 겹침 → "동급" / raw 높음 → "역전".
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41467656 | mig-3g ×1 | 06:00:00 | TAG `flops` | ❌ FAILED 42s — FlopCounterMode 모듈 추적 훅이 no_grad 출력에서 assert → Fuse 계측을 no_grad 밖으로 |
+| 41467664 | mig-3g ×1 | 06:00:00 | TAG `flops` 재제출 | ✅ 9s · GFLOPs(배치 1): P 인코딩 9.20 · M 인코딩 4.58 · DINOv2-B 35.07 · Fuse P+P 0.84 · Fuse 4조각 1.39 · **갱신 1회 P+P 10.04 vs P+M 8.27 (−18%)** |
+| 41467657 | mig-3g ×1 | 06:00:00 | TAG `v3handoff_c1dn_s2` | ✅ 4m02s · 인계 파일 작성 `/proj/external_group/mrg/checkpoints/observer_fuse/handoff/c1dn_s2_handoff.pt` · 정합 ✓(판독값 v3_c1dn_s2와 소수 4자리 동일) |
+| 41467658 | mig-3g ×1 | 06:00:00 | TAG `spatial_c1dn_s42` | ⏳ |
+| 41467659 | mig-3g ×1 | 06:00:00 | TAG `spatial_c1dnraw_s42` | ⏳ |
+| 41467660 | mig-3g ×1 | 06:00:00 | TAG `spatial_c1dn_s1` | ⏳ |
+| 41467661 | mig-3g ×1 | 06:00:00 | TAG `spatial_c1dnraw_s1` | ⏳ |
+| 41467662 | mig-3g ×1 | 06:00:00 | TAG `spatial_c1dn_s2` | ⏳ |
+| 41467663 | mig-3g ×1 | 06:00:00 | TAG `spatial_c1dnraw_s2` | ⏳ |
+
 ### 2026-10-10 관측기 v3 위치 통제 재판독 (약점 1, 사용자 승인)
 
 **무엇**: 저장된 v3 Fuse 21개를 `--load-fuse`로 불러 재학습 없이 다시 판독. same-probe와 같은 위치 공변량(앵커 시점 t−20의 손 위치 → train 통계 z-score → RFF 128, pooled 뒤 concat) 추가 · 위치만 판독기(선형, 같은 epoch) 별도. **위치 너머 몫 = (z+위치) − (위치만)**. 정합 확인 = 위치 없는 기존 판독값이 v3 JSON과 같아야 함(평가 결정적).

@@ -46,7 +46,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| (없음 — 관측기 v3 21잡 10-09 23:0x 완료, ~20 GPU·h 대부분 MIG-3g) | | | |
+| 41467656~41467663 (8잡) | 관측기 확장 — 연산량 계측 · 2층 인계 파일(v3_c1dn seed 2) · libero_spatial CoMP M vs raw ΔL × seed 3 (판정 = object와 같은 규칙, cluster_sessions 10-10 확장 절) | 10-10 | `paper_artifacts/observer_fuse/{flops,spatial_*}.json` · 인계 `/proj/external_group/mrg/checkpoints/observer_fuse/handoff/c1dn_s2_handoff.pt` |
 
 ## 이 문서의 용어
 

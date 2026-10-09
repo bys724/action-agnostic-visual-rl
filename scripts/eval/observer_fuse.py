@@ -350,6 +350,89 @@ def score(probe, x, y, task, device, extra=None):
     return compute_metrics(pred.numpy(), y.numpy())["r2_aggregate"]
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Layer-2 hand-off (SC repo) · FLOPs
+# ─────────────────────────────────────────────────────────────────────────
+
+class Observer:
+    """Inference entry point for downstream (layer 2). Loads a hand-off file written by --export-handoff
+    (frozen encoder ckpt path + Fuse weights + train token stats + z stats). Frames = LIBERO agentview
+    uint8 (H, W, 3) or a batch (n, H, W, 3). z = (n, n_lat, width) token set (no CLS).
+      z_pp(anchor, current)                 — expensive path (P on both frames)
+      z_pm(anchor, ends, spans)             — cheap path: ends[i] = frame at the end of chunk i,
+                                              spans[i] = chunk length in 5-frame units (sum ≤ 4 → ≤ 1s)"""
+
+    def __init__(self, handoff, device="cuda"):
+        h = torch.load(handoff, map_location=device, weights_only=False)
+        m = h["meta"]
+        self.device, self.meta = torch.device(device), m
+        self.enc = build_parvo_encoder(m["encoder_ckpt"], self.device)
+        self.fuse = Fuse(m["dim"], n_patch=m["n_patch"], n_lat=m["n_lat"], depth=m["depth"]).to(self.device)
+        self.fuse.load_state_dict(h["fuse"]); self.fuse.eval()
+        self.cache = {"stats": h["input_stats"]}
+        self.z_stats = h["z_stats"]  # (mu, sd) per (latent, dim) over train z_PP — optional for downstream
+
+    def _x(self, f):
+        f = np.asarray(f)
+        return preprocess_frames(f[None] if f.ndim == 3 else f, 224).to(self.device)
+
+    @torch.no_grad()
+    def _p(self, f):
+        return _std(self.cache, "P", self.enc._encode_p_unmasked(self.enc.preprocessing.compute_p_channel(self._x(f)))[:, 1:])
+
+    @torch.no_grad()
+    def _m(self, a, b):
+        assert self.meta["m_source"] == "comp", "raw-ΔL hand-off not supported"
+        mc = self.enc.preprocessing.compute_m_channel(self._x(a), self._x(b))
+        return _std(self.cache, "M", self.enc._encode_m_unmasked(mc)[:, 1:])
+
+    @torch.no_grad()
+    def z_pp(self, anchor, current):
+        return self.fuse.encode(anchor=self._p(anchor), current=self._p(current))
+
+    @torch.no_grad()
+    def z_pm(self, anchor, ends, spans):
+        assert len(ends) == len(spans) and 0 < sum(spans) <= MAX_UNITS
+        chunks, prev, s0 = [], anchor, 0
+        for f, l in zip(ends, spans):
+            chunks.append((self._m(prev, f), s0, l)); prev, s0 = f, s0 + l
+        return self.fuse.encode(anchor=self._p(anchor), chunks=chunks)
+
+
+def measure_flops(args, device):
+    """Per-component forward FLOPs at batch 1 (torch FlopCounterMode; matmul/conv/attention only)."""
+    from torch.utils.flop_counter import FlopCounterMode
+
+    def fl(fn):
+        with FlopCounterMode(display=False) as fc:
+            fn()
+        return int(fc.get_total_flops())
+
+    enc = build_parvo_encoder(args.checkpoint, device)
+    x = torch.rand(1, 3, 224, 224, device=device)
+    D = enc.pos_embed_p.shape[-1]
+    out = {"P_enc": fl(lambda: enc._encode_p_unmasked(enc.preprocessing.compute_p_channel(x))),
+           "M_enc": fl(lambda: enc._encode_m_unmasked(enc.preprocessing.compute_m_channel(x, x)))}
+    dino = DinoP(device)
+    out["DINOv2_P_enc"] = fl(lambda: dino.p_tokens(x))
+    fuse = Fuse(D, n_patch=196, n_lat=args.n_lat, depth=args.depth).to(device).eval()
+    t = torch.rand(1, 196, D, device=device)
+    # no torch.no_grad() here: FlopCounterMode's module tracker asserts on grad-less outputs (forward FLOPs unchanged)
+    out["Fuse_PP"] = fl(lambda: fuse.encode(anchor=t, current=t))
+    out["Fuse_anchor"] = fl(lambda: fuse.encode(anchor=t))
+    for n, sp in EVAL_SPLITS.items():
+        out[f"Fuse_{n}"] = fl(lambda: fuse.encode(anchor=t, chunks=[(t, i, l) for i, l in enumerate(sp)]))
+    # per z update, 1s anchor (P refreshed every 20 frames = every 4 updates of 5 frames)
+    out["update_PP"] = out["P_enc"] + out["Fuse_PP"]
+    out["update_PM_g5"] = out["M_enc"] + out["Fuse_pm_g5"] + out["P_enc"] / 4
+    out["note"] = ("update_PP = fresh P on current frame + Fuse(anchor,current). update_PM_g5 = one new 5-frame M chunk "
+                   "+ Fuse(anchor, 4 chunks) + anchor P amortized over 4 updates. Fuse cost = worst case (4 chunks).")
+    print(json.dumps(out, indent=1))
+    os.makedirs(args.out_root, exist_ok=True)
+    with open(f"{args.out_root}/flops.json", "w") as f:
+        json.dump(out, f, indent=1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", default=None)
@@ -379,6 +462,8 @@ def main():
     ap.add_argument("--m-weight", type=float, default=1.0, help="M-span recon loss weight")
     ap.add_argument("--load-fuse", default=None, help="skip training, load this fuse.pt")
     ap.add_argument("--probe-seeds", type=int, nargs="*", default=[], help="extra probe-only seed sweep (motion)")
+    ap.add_argument("--flops", action="store_true", help="measure per-component FLOPs and exit")
+    ap.add_argument("--export-handoff", default=None, help="write layer-2 hand-off file (fuse + stats) here")
     ap.add_argument("--pos-control", action="store_true",
                     help="beyond-position motion probe (same-probe concat covariate, anchor ee_pos)")
     ap.add_argument("--diag", action="store_true", help="print cache hashes / standardized-token stats")
@@ -388,6 +473,8 @@ def main():
     device = torch.device("cuda")
     torch.manual_seed(args.seed)
     t0 = time.time()
+    if args.flops:
+        return measure_flops(args, device)
 
     # same demo split as same-probe (99th-pct length cutoff, seed 42, 0.8)
     tr_demos, ev_demos = _suite_split(args.task_suite, args.data_root,
@@ -434,10 +521,24 @@ def main():
     fuse.eval()
     if not args.load_fuse:
         os.makedirs(f"{args.ckpt_root}/{args.tag}", exist_ok=True)
-        torch.save({"fuse": fuse.state_dict(), "args": vars(args)}, f"{args.ckpt_root}/{args.tag}/fuse.pt")
+        torch.save({"fuse": fuse.state_dict(), "args": vars(args),
+                    "input_stats": {k: (mu.cpu(), sd.cpu()) for k, (mu, sd) in stats.items()}},
+                   f"{args.ckpt_root}/{args.tag}/fuse.pt")
 
     g_tr, g_ev = grid_index(cache_tr, MAX_UNITS), grid_index(cache_ev, MAX_UNITS)
     emb_tr, emb_ev = embed_all(fuse, cache_tr, g_tr, device), embed_all(fuse, cache_ev, g_ev, device)
+    if args.export_handoff:
+        zt = emb_tr["pp"][0].float()
+        os.makedirs(os.path.dirname(args.export_handoff), exist_ok=True)
+        torch.save({"fuse": fuse.state_dict(),
+                    "input_stats": {k: (mu.cpu(), sd.cpu()) for k, (mu, sd) in stats.items()},
+                    "z_stats": (zt.mean(0), zt.std(0)),
+                    "meta": {"encoder_ckpt": args.checkpoint, "m_source": args.m_source, "dim": cache_tr["P"].shape[-1],
+                             "n_patch": cache_tr["P"].shape[1], "n_lat": args.n_lat, "depth": args.depth,
+                             "unit_frames": UNIT, "max_units": MAX_UNITS, "task_suite": args.task_suite,
+                             "split_seed": args.split_seed, "fuse_ckpt": args.load_fuse, "tag": args.tag,
+                             "entry": "scripts/eval/observer_fuse.py:Observer"}}, args.export_handoff)
+        print(f"hand-off written: {args.export_handoff}", flush=True)
     tid2cls = {t: i for i, t in enumerate(sorted(set(cache_tr["tid"].tolist()) | set(cache_ev["tid"].tolist())))}
     ys = {"motion": (cache_tr["motion"][g_tr], cache_ev["motion"][g_ev], "reg", 7),
           "identity": (torch.tensor([tid2cls[t] for t in cache_tr["tid"][g_tr].tolist()]),

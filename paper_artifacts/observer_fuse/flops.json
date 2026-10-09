@@ -1,0 +1,13 @@
+{
+ "P_enc": 9196996608,
+ "M_enc": 4581037056,
+ "DINOv2_P_enc": 35071930368,
+ "Fuse_PP": 844234752,
+ "Fuse_anchor": 661192704,
+ "Fuse_pm_g5": 1393360896,
+ "Fuse_pm_g10": 1027276800,
+ "Fuse_pm_g20": 844234752,
+ "update_PP": 10041231360,
+ "update_PM_g5": 8273647104.0,
+ "note": "update_PP = fresh P on current frame + Fuse(anchor,current). update_PM_g5 = one new 5-frame M chunk + Fuse(anchor, 4 chunks) + anchor P amortized over 4 updates. Fuse cost = worst case (4 chunks)."
+}
