@@ -5,6 +5,7 @@
 # 사용:
 #   sbatch --export=ALL,CKPT=/proj/.../checkpoint_epoch0010.pt,TAG=c1dn scripts/cluster/observer_fuse.sbatch
 #   # smoke: EXTRA="--max-demos 8 --steps 200"
+#   # v4: SCRIPT=observer_fuse_v4.py
 #
 #SBATCH --job-name=observer_fuse
 #SBATCH --partition=mig-3g.40gb
@@ -27,4 +28,4 @@ conda activate /proj/external_group/mrg/conda_envs/aavrl-train
 
 cd "$PROJECT_ROOT"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-"$CONDA_PREFIX/bin/python" -u scripts/eval/observer_fuse.py ${CKPT:+--checkpoint "$CKPT"} --tag "$TAG" $EXTRA
+"$CONDA_PREFIX/bin/python" -u scripts/eval/${SCRIPT:-observer_fuse.py} ${CKPT:+--checkpoint "$CKPT"} --tag "$TAG" $EXTRA

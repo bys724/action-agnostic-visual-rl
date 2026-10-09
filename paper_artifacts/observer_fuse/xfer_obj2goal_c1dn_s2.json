@@ -1,0 +1,118 @@
+{
+  "args": {
+    "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt",
+    "tag": "xfer_obj2goal_c1dn_s2",
+    "task_suite": "libero_goal",
+    "data_root": "/proj/external_group/mrg/datasets/libero",
+    "m_source": "comp",
+    "p_source": "ckpt",
+    "max_demos": null,
+    "steps": 60000,
+    "warmup": 500,
+    "eval_every": 500,
+    "patience": 4,
+    "min_rel": 0.005,
+    "batch": 128,
+    "lr": 0.0003,
+    "ema": 0.996,
+    "align_weight": 1.0,
+    "n_lat": 32,
+    "depth": 3,
+    "probe_epochs": 100,
+    "seed": 2,
+    "split_seed": 42,
+    "pp_only": false,
+    "m_weight": 1.0,
+    "load_fuse": "/proj/external_group/mrg/checkpoints/observer_fuse/v3_c1dn_s2/fuse.pt",
+    "probe_seeds": [],
+    "flops": false,
+    "export_handoff": null,
+    "stats_from": "/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/observer_fuse/ckpt/object_c1dn_s2_handoff.pt",
+    "pos_control": true,
+    "diag": false,
+    "out_root": "/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/observer_fuse",
+    "ckpt_root": "/proj/external_group/mrg/checkpoints/observer_fuse"
+  },
+  "n_train": 8403,
+  "n_eval": 2258,
+  "train": null,
+  "recon": {
+    "pp": {
+      "P_t_mse": 130.70306396484375,
+      "M_span_mse": 1.9336609840393066
+    },
+    "anchor": {
+      "P_t_mse": 130.77879333496094,
+      "M_span_mse": 2.0359432697296143
+    },
+    "pm_g5": {
+      "P_t_mse": 131.34043884277344,
+      "M_span_mse": 1.555117130279541
+    },
+    "pm_g10": {
+      "P_t_mse": 131.44793701171875,
+      "M_span_mse": 1.4935940504074097
+    },
+    "pm_g20": {
+      "P_t_mse": 131.3272247314453,
+      "M_span_mse": 1.4171198606491089
+    }
+  },
+  "probe": {
+    "motion": {
+      "pp": 0.4638989985025138,
+      "anchor": 0.0493453823397666,
+      "pm_g5": -0.422702041889103,
+      "pm_g10": -0.5518256062005951,
+      "pm_g20": -0.24972166619986447,
+      "enc_pp_direct": 0.4066689906483507
+    },
+    "identity": {
+      "pp": 0.7019486427307129,
+      "anchor": 0.38928255438804626,
+      "pm_g5": 0.21966342628002167,
+      "pm_g10": 0.21567758917808533,
+      "pm_g20": 0.22010628879070282,
+      "enc_pp_direct": 0.8299379944801331
+    }
+  },
+  "probe_pos": {
+    "pos_only": 0.597887339850004,
+    "concat": {
+      "pp": 0.685282739876564,
+      "anchor": 0.44659023326742,
+      "pm_g5": 0.4421224112471581,
+      "pm_g10": 0.4042183567332106,
+      "pm_g20": 0.41741244509901054
+    },
+    "beyond": {
+      "pp": 0.08739540002655999,
+      "anchor": -0.151297106582584,
+      "pm_g5": -0.15576492860284585,
+      "pm_g10": -0.19366898311679337,
+      "pm_g20": -0.18047489475099343
+    }
+  },
+  "ratio_to_pp": {
+    "motion": {
+      "anchor": 0.10637096113390122,
+      "pm_g5": -0.911194124698703,
+      "pm_g10": -1.189538257210971,
+      "pm_g20": -0.5383104231868939
+    },
+    "identity": {
+      "anchor": 0.5545741250722611,
+      "pm_g5": 0.3129337574120657,
+      "pm_g10": 0.3072555113705452,
+      "pm_g20": 0.3135646618454133
+    }
+  },
+  "verdict_maintain_1s": false,
+  "pass_check": {
+    "M_recon_collapses": false,
+    "motion_collapses": false,
+    "P_recon_kept": true,
+    "identity_kept": true
+  },
+  "elapsed_s": 184.8457703590393
+}

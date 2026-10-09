@@ -89,6 +89,21 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-10 관측기 v4 — 매 스텝 z (완결 5프레임 조각 + 부분 조각) · goal → object (사용자 확정 종합 지시 10-10 ②)
+
+**무엇**: `scripts/eval/observer_fuse_v4.py`(v3 파일은 재현용 동결). 앵커 = 5프레임 격자 프레임 · 현재 = 앵커 + k, k ~ U{1..20} · M 입력 = 완결 5프레임 조각(캐시) + 마지막 부분 조각 1개(1~4프레임, 즉석 인코딩) · 조각 임베딩 = 시작 단위 + 길이(프레임 1~5) · 복원 타깃 = P(t) + M(앵커→t)(즉석) · M 표준화 통계 = 길이 1~20 혼합 표본 8192. 학습 = v3와 같은 수렴 멈춤. **평가 = 나이 k 1..20 곡선**: k마다 z_PP(train)+앵커 손 위치 RFF로 판독기 학습 → P+P / P+M / 앵커만에 적용, 위치 너머 몫 · motion 타깃 = 앵커→현재 손끝 변화 · identity는 k=20만. **1층 판정 재측정 아님**(k=20 = v3 5×4 구성) — 곡선은 기술(관찰). seed 2.
+**인계(판정용 2층)**: `paper_artifacts/observer_fuse/ckpt/goal_c1dn_v4_handoff.pt` (goal) · `ckpt/object_c1dn_v4_handoff.pt` · 진입점 `scripts/eval/observer_fuse_v4.py:ObserverV4.z_seq(frames)` (앵커~현재 프레임 열) + `z_pp(anchor, current)`.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41467734 | mig-3g ×1 | 06:00:00 | 스모크 — `SCRIPT=observer_fuse_v4.py` · goal 40 demos · 1500스텝 · k 1·3·5·12·20 | ✅ 4m57s · 경로 완주(캐시 → 학습 → k 곡선) · 학습 ~6스텝/s(부분 조각 즉석 인코딩) |
+| 41467738 | mig-3g ×1 | 06:00:00 | TAG `v4_goal_c1dn_s2` | ⏳ |
+| 41467739 | mig-3g ×1 | 06:00:00 | TAG `v4_goal_c1dnraw_s2` | ⏳ |
+| 41467740 | mig-3g ×1 | 06:00:00 | TAG `v4_goal_ref_c1dn_s2` | ⏳ |
+| 41467741 | mig-3g ×1 | 06:00:00 | TAG `v4_object_c1dn_s2` | ⏳ |
+| 41467742 | mig-3g ×1 | 06:00:00 | TAG `v4_object_c1dnraw_s2` | ⏳ |
+| 41467743 | mig-3g ×1 | 06:00:00 | TAG `v4_object_ref_c1dn_s2` | ⏳ |
+
 ### 2026-10-10 관측기 libero_goal — CoMP 두 번째 suite + SC 2층용 goal 관측기 (SC 저장소 Vault 회신 10-10 (2))
 
 **지시 출처**: SC 저장소 `docs/cluster_sessions.md` "◀◀◀ Vault 회신 2026-10-10 (2)" + `docs/layer2_spec.md`. 두 번째 suite = **libero_goal 확정**(spatial 6잡 취소) · **CoMP 세션이 돌리고 SC가 소비**(중복 실행 금지) · v3_c1dn 프로토콜(seed 2 · 수렴 학습 · P+P 전용 참조 · 위치 통제 판독) · 전이 참고값(object Fuse → goal 무학습, goal → object) 병기(판정 아님).
@@ -97,11 +112,11 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 41467669 | mig-3g ×1 | 06:00:00 | TAG `goal_c1dn_s2` | ⏳ |
-| 41467670 | mig-3g ×1 | 06:00:00 | TAG `goal_ref_c1dn_s2` | ⏳ |
-| 41467671 | mig-3g ×1 | 06:00:00 | TAG `goal_c1dnraw_s2` | ⏳ |
-| 41467672 | mig-3g ×1 | 06:00:00 | TAG `xfer_obj2goal_c1dn_s2` | ⏳ |
-| 41467673 | mig-3g ×1 | 06:00:00 | TAG `xfer_goal2obj_c1dn_s2` (afterok goal_c1dn_s2) | ⏳ |
+| 41467669 | mig-3g ×1 | 06:00:00 | TAG `goal_c1dn_s2` — **인계 파일 생성됨** `paper_artifacts/observer_fuse/ckpt/goal_c1dn_s2_handoff.pt` | ✅ 00:47:10 · 멈춤 26000 · 학습 44분 · 위치만 0.598 · 위치 너머 P+P +0.197 / P+M 5×4 +0.196 / 앵커만 -0.005 · P 복원 0.48 |
+| 41467670 | mig-3g ×1 | 06:00:00 | TAG `goal_ref_c1dn_s2` | ✅ 01:01:16 · 멈춤 35000 · 학습 58분 · 위치만 0.598 · 위치 너머 P+P +0.163 / P+M 5×4 -0.593 / 앵커만 -0.184 · P 복원 0.31 |
+| 41467671 | mig-3g ×1 | 06:00:00 | TAG `goal_c1dnraw_s2` | ✅ 00:38:37 · 멈춤 21000 · 학습 35분 · 위치만 0.598 · 위치 너머 P+P +0.166 / P+M 5×4 +0.144 / 앵커만 +0.040 · P 복원 0.51 |
+| 41467672 | mig-3g ×1 | 06:00:00 | TAG `xfer_obj2goal_c1dn_s2` | ✅ 00:03:10 · 학습 없음(전이) · 위치만 0.598 · 위치 너머 P+P +0.087 / P+M 5×4 -0.156 / 앵커만 -0.151 · P 복원 130.70 |
+| 41467673 | mig-3g ×1 | 06:00:00 | TAG `xfer_goal2obj_c1dn_s2` (afterok goal_c1dn_s2) | ✅ 00:04:27 · 학습 없음(전이) · 위치만 0.513 · 위치 너머 P+P +0.202 / P+M 5×4 -0.945 / 앵커만 -0.158 · P 복원 36.19 |
 
 ### 2026-10-10 관측기 확장 — 연산량 · 2층 인계 · LIBERO spatial (Vault 결정 10-10)
 

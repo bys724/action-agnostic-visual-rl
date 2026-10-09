@@ -59,3 +59,25 @@ beyond = R²(z + pos) − R²(pos only); pos only = 0.513±0.014 (same for all a
 
 Pre-registered (10-10): CoMP M vs raw ΔL on the same C1-DN P, P+M 5×4 beyond-position, seed ranges 0.270–0.293 vs 0.236–0.252 → **advantage holds**.
 The M-recon boost of the P+P path seen without position control (A′) mostly vanishes here (0.270 vs 0.265).
+
+## v3 on libero_goal (10-10, seed 2 only, position-controlled) + transfer reference
+
+Same v3 protocol (convergence stop, P+P-only reference, anchor-position RFF). pos only = 0.598. Seed 1 → observation, not a verdict.
+
+| arm | beyond P+P | beyond P+M 5×4 | anchor only | identity P+P | stop / min (MIG-3g) |
+|---|---|---|---|---|---|
+| C1-DN + CoMP M (`goal_c1dn_s2`, **SC layer-2 hand-off for plumbing test**) | 0.197 | **0.196** | −0.005 | 0.952 | 26k / 44 |
+| C1-DN + raw ΔL (`goal_c1dnraw_s2`) | 0.166 | **0.144** | 0.040 | 0.938 | 21k / 36 |
+| P+P only ref (`goal_ref_c1dn_s2`) | 0.163 | — | — | 0.936 | 35k / 58 |
+
+Ratio P+M 5×4 ÷ ref P+P: CoMP 1.20 · raw ΔL 0.88 (object: 1.05 / 0.92). Direction matches object; gap CoMP − raw +0.05 (object +0.03).
+
+Transfer (no training; Fuse + its own source-suite standardization stats; probe fit on target z_PP) — reference only:
+
+| | beyond P+P | beyond P+M 5×4 | P recon (std. MSE) | native beyond P+P |
+|---|---|---|---|---|
+| object Fuse → goal | 0.087 | −0.156 | 130.7 | 0.197 |
+| goal Fuse → object | 0.202 | −0.945 | 36.2 | 0.272 |
+
+The Fuse is suite-specific: P+M collapses off-suite. The exploding P recon error suggests part of this is the
+per-(patch,dim) standardization (near-zero-std dims in the source suite) rather than the Fuse itself [inferred].

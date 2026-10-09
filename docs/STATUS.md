@@ -23,6 +23,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 열린 것 · 다음 결정
 
+- **진행 (10-10 dev)**: ① v3 goal 5잡 ✅ — goal 위치 너머 P+M 5×4 몫 CoMP M 0.196 vs raw ΔL 0.144 · P+P 전용 0.163 [관찰 · seed 1] (object와 같은 방향, 차 +0.05) · 전이(object↔goal, 무학습)는 P+M 붕괴 = Fuse는 suite 전용 (표준화 통계 불일치 몫 추정) · 인계 `ckpt/goal_c1dn_s2_handoff.pt` SC cluster_sessions 기입 ✅. ② v4 스모크 ✅ → goal·object × 3팔 제출(41467738~743). ③ 희소 M 계측 = 서브에이전트 진행 중. 연산량(희소 전) = 갱신당 P+P 10.04 vs P+M 8.27 GFLOPs (−18%) `observer_fuse/flops.json`.
 - **🔴 종합 지시 (10-10 사용자 확정 · 이 블록이 현재 정본, 아래 10-10 권고·결정 블록은 경위)** — 순서대로:
   1. **v3 goal 5잡 완주**(41467669~673) → `observer_fuse/README.md`에 goal 표(CoMP M vs raw ΔL · P+P 전용 참조 · 위치 통제) + 전이 참고값(object→goal · goal→object, 판정 아님) 추가 → 인계 `ckpt/goal_c1dn_s2_handoff.pt` 경로를 SC 저장소 cluster_sessions에 기입(SC는 이것으로 **배관 시험만**).
   2. **관측기 v4 제작(확정)**: 입력 M = 완결 5프레임 조각(캐시 그대로) + **마지막 부분 조각 1개**(길이 1~4, 즉석 인코딩, 길이·시작 임베딩) → 앵커 나이 = 임의 정수 1~20, z 매 스텝 갱신. 학습 = 앵커 나이 1~20 균등 표집(조각 경계는 앵커 기준 5격자 + 부분). 전부 1프레임 조각 안은 기각. 평가 = **앵커 나이 1..20 저하 곡선**(위치 통제 판독 · CoMP M vs raw ΔL · P+P 전용 참조) — 나이 20은 v3와 같은 구성이라 1층 판정 재측정 아님, 1~19 구간을 곡선에 더하는 것. suite 순서 = **goal 먼저**(SC 2층 판정용 인계 `ckpt/goal_c1dn_v4_handoff.pt`) → object. seed = 2(인계)·필요시 3 seed.
@@ -52,7 +53,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 41467669~673 (5잡) | 관측기 libero_goal — CoMP 두 번째 suite(우리 M · P+P 전용 · 밝기 차이, seed 2, 위치 통제) + SC 2층용 goal 인계 파일 + 전이 참고값(object↔goal) (SC Vault 회신 10-10 (2)) | 10-10 | `paper_artifacts/observer_fuse/goal_*.json`·`xfer_*.json` · 인계 `paper_artifacts/observer_fuse/ckpt/goal_c1dn_s2_handoff.pt` |
+| 41467738~743 (6잡) | **관측기 v4**(매 스텝 z: 완결 5프레임 조각 + 부분 조각, 나이 1~20 곡선) goal·object × {우리 M + 인계 · 밝기 차이 · P+P 전용}, seed 2 (사용자 확정 종합 지시 10-10 ②) | 10-10 | `paper_artifacts/observer_fuse/v4_*.json` · 인계 `ckpt/goal_c1dn_v4_handoff.pt` |
 
 ## 이 문서의 용어
 
