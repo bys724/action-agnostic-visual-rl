@@ -192,6 +192,8 @@ def _std(cache, key, t):
     """Standardize frozen tokens per (patch, dim) with train stats: the shared per-position component
     dominates the raw tokens (frame-to-frame std 0.06 ≪ |token|), so without this the Fuse/recon loss
     is solved by emitting the mean token and ignores its input (smoke 41466897/898)."""
+    if cache["stats"] is None:  # v5 (Vault 10-10 3rd): no dataset-statistic normalization
+        return t.float()
     mu, sd = cache["stats"][key]
     return (t.float() - mu) / sd
 

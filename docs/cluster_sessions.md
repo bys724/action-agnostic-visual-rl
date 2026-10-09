@@ -89,6 +89,19 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-10 관측기 v5 — 데이터 통계 없는 정규화 (Vault 3차 결정 10-10, 사용자 확정)
+
+**무엇**: `observer_fuse_v4.py --norm ln` = Fuse 입력 = 동결 토큰 그대로 → Fuse의 토큰별 LayerNorm(inp[0], 학습 affine) · 복원 타깃 = 원본 토큰 · 손실 스케일 = 타깃 흐름별 전역 스칼라 1개(train 토큰 제곱 평균; 패치·차원별 통계 없음) · z 표준화 제거(인계 `z_stats=None`, z 스케일은 메타 참고값) · 나머지 v4 그대로 · 진입점 `ObserverV4` 인터페이스 유지(version 5). v3·v4 = "관측기 분석 1(패치별 표준화 판)" 봉인(README 상단).
+**실행 계획**: 스모크 → goal × seed 3(42/1/2) × {CoMP M, raw ΔL} = 6잡 · P+P 전용 참조 없음 · 나이 1~20 곡선 · k=20은 v4 seed 2와 병기(정합 아님).
+**인계 조건 (결과 전 고정, Vault)**: k=20 위치 너머 P+M 몫 CoMP M > raw ΔL, seed 범위 비중첩 → 중앙값 seed(k=1~20 평균 P+M 위치 너머 몫 기준) → `paper_artifacts/observer_fuse/ckpt/goal_c1dn_v5_handoff.pt` SC 인계. 겹침·역전 → 인계 없이 보고.
+**진단 (a)**: object v4 Fuse를 goal에 **goal 통계로** 재판독(학습 0) — v3 전이(object 통계)의 붕괴가 전처리 몫인지 Fuse가 장면을 외운 몫인지 분리.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41468140 | mig-3g ×1 | 06:00:00 | v5 스모크 — goal 40 demos · 1500스텝 · k 1·5·20 · 인계 내보내기 시험(tmp) | ✅ 5m02s · 손실 하강(P 0.14→0.05, 전역 스케일 P 0.381 · M 0.498) · ⚠ **z가 입력 무시**: 위치 너머 P+P/P+M/앵커만 −0.02~+0.01로 서로 같음(같은 예산 v4 표준화판 k=20 P+P +0.147) — 10-09 표준화 도입 원인과 같은 증상 의심 · 인계 내보내기 경로 ✅ |
+| 41468141 | mig-3g ×1 | 06:00:00 | 진단 (a) — TAG `diag_v4obj_on_goal_goalstats` (object v4 Fuse + goal 통계, k 1·5·10·20) | ✅ 2m30s · 위치 너머 k=20 P+P +0.082 / P+M -0.009 (v3 전이·object 통계 P+P +0.087 / P+M −0.156 · goal 자체 v4 +0.195/+0.194) → 전이 붕괴는 통계보다 **Fuse가 suite를 외운 몫** [잠정 · seed 1] |
+| 41468156 | mig-3g ×1 | 06:00:00 | **v5 최소 1칸** — TAG `v5_goal_c1dn_s42` 전체 데이터·수렴 학습 · 로그에 붕괴 지표(z 샘플 간 퍼짐 · P+P↔P+M 거리) 추가 → 정상이면 나머지 5잡 | ⏳ |
+
 ### 2026-10-10 희소 M 계측 (종합 지시 ③)
 
 **무엇**: M 인코더를 실제로 변한 패치(패치 평균 |ΔL| > τ = 1/255)만으로 돌려 연산을 줄일 수 있는지. (a) 0 아닌 패치 비율 분포(object·goal, 5프레임 격자 조각 · 부분 조각 1~4 · 20프레임 same-probe 쌍) (b1) same-probe M(m_only·attentive·gap20, action·identity) 전체 vs 희소 인코딩 (b2) v3 Fuse(c1dn seed 2) 위치 통제 판독 전체 vs 희소 (c) 희소 M FLOPs 기대값. **유지 판정(결과 전 고정)**: 짝 차이(전체 − 희소)의 데모 부트스트랩 95% CI가 0 포함. 빈 조각 = |ΔL| 최대 패치 1개 유지 · (b2) 표준화 통계 = 전체 토큰 통계(Fuse 학습과 동일). 스크립트 `scripts/eval/sparse_m.py` · `observer_fuse.py --m-sparse-tau` · `probe_action_libero.py --m-sparse-tau`.

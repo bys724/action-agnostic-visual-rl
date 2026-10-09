@@ -164,7 +164,9 @@ def train(fuse, data, args):
         p_tgt, m_tgt = data.targets(a, k)
         with torch.no_grad():
             z_t = teacher.encode(**data.inputs(a, k, "pp"))
-        l_p, l_m, l_z = F.mse_loss(p_hat, p_tgt), F.mse_loss(m_hat, m_tgt), F.mse_loss(z, z_t)
+        l_p = F.mse_loss(p_hat, p_tgt) / data.loss_scale["P"]  # scale = 1 (std) or one global scalar (ln)
+        l_m = F.mse_loss(m_hat, m_tgt) / data.loss_scale["M"]
+        l_z = F.mse_loss(z, z_t)
         return l_p + m_w * l_m + l_z, l_p, l_m, l_z
 
     t0 = time.time()
@@ -182,9 +184,15 @@ def train(fuse, data, args):
             fuse.eval()
             with torch.no_grad():
                 v = np.mean([[t.item() for t in losses(fuse, k_, a_, m_)] for k_, a_, m_ in val_batches], 0)
+                # collapse monitor: z spread across samples relative to |z| (≈0 → z ignores its input)
+                k_, a_, _ = val_batches[0]
+                zs = {m: fuse.encode(**data.inputs(a_, k_, m)) for m in ("pp", "pm")}
+                spread = (zs["pp"].std(0).mean() / (zs["pp"].abs().mean() + 1e-8)).item()
+                pp_pm = ((zs["pp"] - zs["pm"]).norm(dim=-1).mean() / (zs["pp"].norm(dim=-1).mean() + 1e-8)).item()
             fuse.train()
-            curve.append([step, round(time.time() - t0, 1), *[float(x) for x in v]])
-            print(f"  step {step:6d}  val total {v[0]:.4f}  P {v[1]:.4f}  M {v[2]:.4f}  z {v[3]:.4f}  ({time.time()-t0:.0f}s)", flush=True)
+            curve.append([step, round(time.time() - t0, 1), *[float(x) for x in v], spread, pp_pm])
+            print(f"  step {step:6d}  val total {v[0]:.4f}  P {v[1]:.4f}  M {v[2]:.4f}  z {v[3]:.4f}  "
+                  f"z-spread {spread:.3f}  |pp-pm|/|pp| {pp_pm:.3f}  ({time.time()-t0:.0f}s)", flush=True)
             if v[0] < best * (1 - args.min_rel):
                 best, best_step, bad, best_state = v[0], step, 0, copy.deepcopy(fuse.state_dict())
             else:
@@ -194,7 +202,7 @@ def train(fuse, data, args):
     fuse.load_state_dict(best_state)
     return {"stop_step": step, "best_step": best_step, "best_val": best, "train_seconds": round(time.time() - t0, 1),
             "converged": bad >= args.patience, "curve": curve,
-            "curve_cols": ["step", "seconds", "val_total", "val_P", "val_M", "val_z"]}
+            "curve_cols": ["step", "seconds", "val_total", "val_P", "val_M", "val_z", "z_spread", "pp_pm_rel"]}
 
 
 @torch.no_grad()
@@ -251,14 +259,14 @@ class ObserverV4(Observer):
     def __init__(self, handoff, device="cuda"):
         h = torch.load(handoff, map_location=device, weights_only=False)
         m = h["meta"]
-        assert m.get("version") == 4
+        assert m.get("version") in (4, 5)  # 5 = v5 (norm ln, same interface)
         self.device, self.meta = torch.device(device), m
         self.enc = build_parvo_encoder(m["encoder_ckpt"], self.device)
         args = argparse.Namespace(n_lat=m["n_lat"], depth=m["depth"])
         self.fuse = make_fuse(m["dim"], m["n_patch"], args).to(self.device)
         self.fuse.load_state_dict(h["fuse"]); self.fuse.eval()
         self.cache = {"stats": h["input_stats"]}
-        self.z_stats = h["z_stats"]
+        self.z_stats = h.get("z_stats")  # None for v5 (no z standardization)
 
     @torch.no_grad()
     def z_seq(self, frames):
@@ -295,6 +303,9 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--split-seed", type=int, default=42)
     ap.add_argument("--export-handoff", default=None)
+    ap.add_argument("--norm", default="std", choices=["std", "ln"],
+                    help="std = v4/analysis 1 (per-(patch,dim) train stats) · ln = v5 (no dataset-stat normalization)")
+    ap.add_argument("--load-fuse", default=None, help="skip training, re-read this fuse.pt")
     ap.add_argument("--out-root", default=str(PROJECT_ROOT / "paper_artifacts" / "observer_fuse"))
     ap.add_argument("--ckpt-root", default="/proj/external_group/mrg/checkpoints/observer_fuse")
     args = ap.parse_args()
@@ -307,24 +318,45 @@ def main():
         tr_d, ev_d = tr_d[:args.max_demos], ev_d[:max(2, args.max_demos // 4)]
     enc = build_parvo_encoder(args.checkpoint, device)
     tr, ev = Data(enc, tr_d, device, args.m_source), Data(enc, ev_d, device, args.m_source)
-    stats = {"P": token_stats(tr.P), "M": None}
-    tr.stats = ev.stats = {"stats": stats}
-    stats["M"] = m_stats_sample(tr)
+    if args.norm == "std":  # v4 = analysis 1 (per-(patch,dim) train-stat standardization), kept for reproducibility
+        stats = {"P": token_stats(tr.P), "M": None}
+        tr.stats = ev.stats = {"stats": stats}
+        stats["M"] = m_stats_sample(tr)
+        tr.loss_scale = ev.loss_scale = {"P": 1.0, "M": 1.0}
+    else:  # v5 (Vault 10-10 3rd): raw tokens → Fuse's token-wise LayerNorm (inp[0]); raw recon targets;
+        # loss scale = ONE global scalar per target stream (mean squared token value), no per-patch/dim stats
+        stats = None
+        tr.stats = ev.stats = {"stats": None}
+        with torch.no_grad():
+            sp = float(sum(tr.P[i:i + 4096].float().pow(2).mean() * len(tr.P[i:i + 4096])
+                           for i in range(0, len(tr.P), 4096)) / len(tr.P))
+            rng = np.random.default_rng(0); sm = []
+            for _ in range(32):
+                k = int(rng.integers(1, K_MAX + 1)); a = torch.from_numpy(rng.choice(tr.anchors(k), 256)).to(device)
+                sm.append(tr.m_tok(a, a + k).float().pow(2).mean().item())
+        tr.loss_scale = ev.loss_scale = {"P": sp, "M": float(np.mean(sm))}
+        print(f"v5 loss scales (global scalars): {tr.loss_scale}", flush=True)
     print(f"cache: train frames {len(tr.P)} grid {len(tr.grid)} / eval frames {len(ev.P)}  ({time.time()-t0:.0f}s)", flush=True)
 
     fuse = make_fuse(tr.P.shape[-1], tr.P.shape[1], args).to(device)
-    train_rec = train(fuse, tr, args)
-    os.makedirs(f"{args.ckpt_root}/{args.tag}", exist_ok=True)
-    stats_cpu = {k: (mu.cpu(), sd.cpu()) for k, (mu, sd) in stats.items()}
-    torch.save({"fuse": fuse.state_dict(), "args": vars(args), "input_stats": stats_cpu},
-               f"{args.ckpt_root}/{args.tag}/fuse.pt")
+    stats_cpu = None if stats is None else {k: (mu.cpu(), sd.cpu()) for k, (mu, sd) in stats.items()}
+    if args.load_fuse:  # re-read only (e.g. diagnostic: other-suite Fuse with this suite's stats)
+        fuse.load_state_dict(torch.load(args.load_fuse, map_location=device, weights_only=False)["fuse"])
+        train_rec = None
+    else:
+        train_rec = train(fuse, tr, args)
+        os.makedirs(f"{args.ckpt_root}/{args.tag}", exist_ok=True)
+        torch.save({"fuse": fuse.state_dict(), "args": vars(args), "input_stats": stats_cpu,
+                    "loss_scale": tr.loss_scale}, f"{args.ckpt_root}/{args.tag}/fuse.pt")
 
     curve = evaluate(fuse, tr, ev, args, device)
     if args.export_handoff:
         zt = embed(fuse, tr, tr.anchors(K_MAX), K_MAX, "pp").float()
         os.makedirs(os.path.dirname(args.export_handoff), exist_ok=True)
-        torch.save({"fuse": fuse.state_dict(), "input_stats": stats_cpu, "z_stats": (zt.mean(0), zt.std(0)),
-                    "meta": {"version": 4, "encoder_ckpt": args.checkpoint, "m_source": args.m_source,
+        z_stats = (zt.mean(0), zt.std(0)) if args.norm == "std" else None  # v5: no z standardization
+        torch.save({"fuse": fuse.state_dict(), "input_stats": stats_cpu, "z_stats": z_stats,
+                    "meta": {"version": 4 if args.norm == "std" else 5, "norm": args.norm, "loss_scale": tr.loss_scale,
+                             "z_scale_ref": {"mean_abs": zt.abs().mean().item(), "token_norm": zt.norm(dim=-1).mean().item()}, "encoder_ckpt": args.checkpoint, "m_source": args.m_source,
                              "dim": tr.P.shape[-1], "n_patch": tr.P.shape[1], "n_lat": args.n_lat, "depth": args.depth,
                              "unit_frames": UNIT, "k_max": K_MAX, "task_suite": args.task_suite,
                              "split_seed": args.split_seed, "tag": args.tag, "fuse_ckpt": f"{args.ckpt_root}/{args.tag}/fuse.pt",

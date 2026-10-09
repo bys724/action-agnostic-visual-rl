@@ -1,5 +1,8 @@
 # Observer Fuse — 1s anchor maintenance (LIBERO-object)
 
+> **Sealed (Vault 10-10, 3rd decision): all v1–v4 numbers below = "observer analysis 1 — per-(patch,dim) train-statistic standardization".** Values unchanged; the v3 object verdict stands as the verdict of that analysis. Observer v5 (no dataset-statistic normalization: token-wise LayerNorm, raw recon targets, no z standardization) replaces it going forward — see the v5 section.
+
+
 Tool: `scripts/eval/observer_fuse.py` · frozen encoder · Fuse trained with mixed anchor ages (5–20 frames) ·
 probe (attentive, same-probe class) fit on z_PP(train) and frozen · eval at anchor age 20 frames (1s).
 motion = R² of EE pose change over the last 1s (same-probe gap20 target, no position control) ·
