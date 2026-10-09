@@ -81,3 +81,51 @@ Transfer (no training; Fuse + its own source-suite standardization stats; probe 
 
 The Fuse is suite-specific: P+M collapses off-suite. The exploding P recon error suggests part of this is the
 per-(patch,dim) standardization (near-zero-std dims in the source suite) rather than the Fuse itself [inferred].
+
+## Sparse M (10-10, consolidated instruction ③) — `sparse_ratio.json` · `sparse_b1_libero_object.json` · `sparse_c1dn_s2.json` · `flops_sparse.json`
+
+Frozen M encoder run only on patches with mean|ΔL| > τ = 1/255 (16×16 patches on 224, ΔL = model's `compute_m_channel`),
+positions kept (APE added before dropping), learned `mask_token_m` re-inserted elsewhere → 196 tokens
+(`probe_action_libero.encode_m_sparse`; all-visible sparse == dense bit-exact). Empty-chunk rule (fixed before results):
+keep the max-|ΔL| patch (it fired only 4 times, all 1-frame chunks). C1-DN, seed 2 Fuse (`v3_c1dn_s2`), full-token
+standardization stats. Pre-fixed rule: **maintained ⇔ 95% demo-bootstrap CI (2000) of the paired diff (full − sparse) contains 0**.
+M was pre-trained with masked M-recon at a fixed 50% random mask (98 visible) plus full 196-token passes — the
+~12–19% motion-selected visible sets here are outside that range.
+
+(a) non-zero patches / 196, all kept demos (495 per suite)
+
+| suite | chunk | mean | q10 / q50 / q90 (patches) | zero chunks |
+|---|---|---|---|---|
+| object | 5-frame grid | 0.148 | 22 / 30 / 34 | 0 |
+| object | partial 1 / 2 / 3 / 4 frames | 0.124 / 0.133 / 0.139 / 0.144 | q50 25 / 27 / 28 / 29 | 3 (1-frame) |
+| object | 20-frame same-probe pair | 0.191 | 31 / 37 / 45 | 0 |
+| goal | 5-frame grid | 0.170 | 21 / 32 / 47 | 0 |
+| goal | partial 1 / 2 / 3 / 4 frames | 0.145 / 0.154 / 0.160 / 0.165 | q50 28 / 29 / 31 / 32 | 1 (1-frame) |
+| goal | 20-frame same-probe pair | 0.214 | 29 / 40 / 58 | 0 |
+
+(b) readout with sparse vs full M tokens (libero_object). Full-token numbers reproduce the earlier runs exactly
+(same-probe M 0.785 / 0.448; v3pos P+M 5×4 0.7873).
+
+| readout | full | sparse | diff (95% CI) | maintained |
+|---|---|---|---|---|
+| b1 same-probe M motion (pos-3 R², probe fit on full) | 0.785 | −0.535 | +1.320 [+1.289, +1.353] | no |
+| b1 same-probe M identity (acc, probe fit on full) | 0.448 | 0.052 | +0.396 [+0.353, +0.441] | no |
+| b1 secondary: probe refit on sparse — motion pos-3 R² / agg R² | 0.785 / 0.696 | 0.821 / 0.694 | −0.036 [−0.045, −0.028] / +0.002 [−0.008, +0.012] | — |
+| b1 secondary: probe refit on sparse — identity | 0.448 | 0.590 | −0.142 [−0.167, −0.118] | — |
+| **b2 Fuse P+M 5×4, z + anchor pos (R²; beyond-pos share)** | 0.787 (+0.275) | 0.319 (−0.194) | +0.469 [+0.428, +0.510] | **no** |
+| b2 P+M 10×2 / 20×1 (same) | 0.786 / 0.784 | 0.508 / 0.540 | +0.278 / +0.244 (CI excl. 0) | no |
+
+Readers trained on full tokens break on sparse tokens (incl. the frozen Fuse). A probe refit on sparse tokens recovers motion
+(so the motion information survives) but gains identity (0.45 → 0.59): the visible/mask pattern itself encodes where things
+move, i.e. position/appearance leaks into M [inferred]. A Fuse trained on sparse M was not tested.
+
+(c) forward GFLOPs (batch 1). M encoder vs visible tokens: 1 → 0.08 · 10 → 0.27 · 50 → 1.15 · 98 → 2.23 · 196 → 4.58.
+
+| | P+P | P+M dense | P+M sparse (object / goal) | saving vs P+P, dense → sparse |
+|---|---|---|---|---|
+| per update (v3: 5-frame chunk + Fuse 4 chunks + P/4) | 10.04 | 8.27 | 4.38 / 4.47 | −18% → −56% / −55% |
+| per step (v4: chunk ending at age k, len k mod 5 or 5, + Fuse ⌈k/5⌉ chunks, k=1..20, + P/20) | 10.04 | 6.16 | 2.22 / 2.31 | −39% → −78% / −77% |
+
+Expected sparse M per chunk ≈ 0.58–0.69 GFLOPs (object), 0.67–0.78 (goal); with sparse M the remaining cost is mostly
+anchor P/4 (2.30) + Fuse (0.84–1.39) per update. FLOPs only — not wall-clock (variable token counts need grouping);
+and the savings apply only if a reader trained on sparse M keeps the readout, which (b) does not yet show.

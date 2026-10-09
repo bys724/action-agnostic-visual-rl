@@ -235,10 +235,40 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     return model
 
 
+def m_patch_absdl(m_chan: torch.Tensor, patch: int = 16) -> torch.Tensor:
+    """Per-patch mean|ΔL| (n, N), row-major = patch_embed flatten order."""
+    return F.avg_pool2d(m_chan[:, :1].abs(), patch).flatten(1)
+
+
+@torch.no_grad()
+def encode_m_sparse(model, m_chan: torch.Tensor, tau: float):
+    """Sparse M (observer 종합 지시 10-10 ③): M 인코더를 mean|ΔL| > tau 인 패치 토큰만으로 돌림
+    (APE는 drop 전에 더해짐 = 위치 유지) → dropped 자리에 학습된 mask_token_m 주입해 196 복원.
+    빈 조각(0 패치) 규칙(결과 전 고정): mean|ΔL| 최대 패치 1개를 남김 (최소 1 토큰).
+    visible 수가 배치 내 같아야 하므로(_encode_stream_visible reshape) 개수별로 묶어 인코딩.
+    Returns (tokens (n, N, D) without CLS, n_visible (n,))."""
+    a = m_patch_absdl(m_chan, model.patch_size)
+    keep = a > tau
+    empty = ~keep.any(1)
+    if empty.any():
+        keep[empty, a[empty].argmax(1)] = True
+    cnt = keep.sum(1)
+    out = None
+    for c in cnt.unique().tolist():
+        idx = (cnt == c).nonzero(as_tuple=True)[0]
+        mask = ~keep[idx]                                   # True = dropped (model convention)
+        full = model._build_full_seq_m(model._encode_m_masked(m_chan[idx], mask), mask)[:, 1:]
+        if out is None:
+            out = full.new_empty(len(m_chan), *full.shape[1:])
+        out[idx] = full
+    return out, cnt
+
+
 @torch.no_grad()
 def encode_pairs_parvo(
     model, frames_prev: torch.Tensor, frames_curr: torch.Tensor,
     device: torch.device, mode: str = "p_t_p_tk", readout: str = "mean", batch: int = 64,
+    m_sparse_tau: float | None = None,
 ) -> torch.Tensor:
     """CoMP-MAE 2-stream readout. stream 순서 = [P(t), P(tk)] 또는 [P(t), M(t,tk)].
 
@@ -258,7 +288,10 @@ def encode_pairs_parvo(
             toks = [tok_a]
         elif mode == "m_only":
             m_chan = model.preprocessing.compute_m_channel(p, c)
-            toks = [model._encode_m_unmasked(m_chan)[:, 1:]]         # (n, n_patch, D) = M(t,tk)
+            if m_sparse_tau is None:
+                toks = [model._encode_m_unmasked(m_chan)[:, 1:]]     # (n, n_patch, D) = M(t,tk)
+            else:
+                toks = [encode_m_sparse(model, m_chan, m_sparse_tau)[0]]
         else:
             if mode == "p_t_p_tk":
                 p_tk = model.preprocessing.compute_p_channel(c)
@@ -651,6 +684,8 @@ def train_probe(
             m = {"accuracy": acc, "n_classes": out_dim}
             if acc > best["accuracy"]:
                 best = {"accuracy": acc, "epoch": ep + 1, "metrics": m}
+                if return_probe:
+                    best_state = {k: v.detach().clone() for k, v in probe.state_dict().items()}
         else:
             m = compute_metrics(pred.numpy(), eval_tgt.numpy())
             if m["r2_aggregate"] > best["r2"]:
@@ -845,6 +880,8 @@ def main():
     parser.add_argument("--random-init-seed", type=int, default=None, help="parvo-random 전용 (필수)")
     parser.add_argument("--raw-pad", default="zero", choices=["zero", "linear"],
                         help="parvo-raw: raw 토큰 256→384 zero-pad(라운드 1) | linear = probe 안 학습 선형 투영(§9 R2-2)")
+    parser.add_argument("--m-sparse-tau", type=float, default=None,
+                        help="parvo m_only: M 인코더를 mean|ΔL|>tau 패치만으로 인코딩(mask token 채움, 1/255=0.00392)")
     parser.add_argument("--probe-noise-sigma", type=float, default=0.0,
                         help="§9 R2-3 현실적 sim: probe 학습·시험 양쪽 프레임에 가우시안 픽셀 노이즈 σ (0=끔)")
     args = parser.parse_args()
@@ -916,11 +953,12 @@ def main():
         model = build_parvo_encoder(args.checkpoint, device)
         img_size = 224
         n_streams = 1 if args.parvo_mode in ("m_only", "p_t_only") else 2
+        assert args.m_sparse_tau is None or args.parvo_mode == "m_only", "--m-sparse-tau는 m_only 전용"
 
         def encode_fn(prev, curr):
             return encode_pairs_parvo(model, prev, curr, device,
                                       mode=args.parvo_mode, readout=args.readout,
-                                      batch=args.encode_batch)
+                                      batch=args.encode_batch, m_sparse_tau=args.m_sparse_tau)
     elif args.encoder == "parvo-random":
         assert args.checkpoint is None and args.random_init_seed is not None, \
             "parvo-random은 --random-init-seed 필수, --checkpoint 불가"

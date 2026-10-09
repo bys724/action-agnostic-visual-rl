@@ -36,7 +36,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "eval"))
 
 from probe_action_libero import (  # noqa: E402  same-probe helpers (parity)
-    AttentivePoolProbe, _suite_split, build_parvo_encoder, compute_metrics,
+    AttentivePoolProbe, _suite_split, build_parvo_encoder, compute_metrics, encode_m_sparse,
     libero_action_target, load_demo, preprocess_frames,
 )
 
@@ -69,12 +69,15 @@ class DinoP(torch.nn.Module):
 
 
 @torch.no_grad()
-def build_cache(model, demos, device, batch=64, m_source="comp"):
+def build_cache(model, demos, device, batch=64, m_source="comp", m_sparse_tau=None):
     """→ dict(P (Ng,N,D) fp16, M (Ng,4,N,D) fp16, demo_start, n_grid, motion (Ng,7), tid (Ng,))
     motion[g] = libero_action_target(frame g − 20, 20) (same-probe gap20 target, ending at g).
     m_source: comp = encoder M tokens / raw = untrained ΔL 16×16 patches (256-d, zero-padded to D;
-    same ΔL and pad rule as probe_action_libero raw-dl floor) — anchor P stays the encoder's."""
+    same ΔL and pad rule as probe_action_libero raw-dl floor) — anchor P stays the encoder's.
+    m_sparse_tau (opt-in, comp only): also store M_sp = sparse-M tokens (encoder on mean|ΔL|>tau patches
+    only, mask token elsewhere) + nvis (Ng,4) visible counts, next to the full M (paired comparison)."""
     Ps, Ms, mot, tids, starts, ngrid, eep = [], [], [], [], [], [], []
+    Msp, nvis = [], []
     off = 0
     for hp, d, tid in demos:
         frames, ee_pos, ee_ori, actions = load_demo(hp, d)
@@ -89,7 +92,7 @@ def build_cache(model, demos, device, batch=64, m_source="comp"):
             else:
                 p = model.preprocessing.compute_p_channel(x[g].to(device))
                 p_tok.append(model._encode_p_unmasked(p)[:, 1:].half())
-            m_l = []
+            m_l, sp_l, nv_l = [], [], []
             for l in range(1, MAX_UNITS + 1):
                 g2 = [min(i + UNIT * l, T - 1) for i in g]  # out-of-range spans never sampled
                 m = model.preprocessing.compute_m_channel(x[g].to(device), x[g2].to(device))
@@ -98,7 +101,12 @@ def build_cache(model, demos, device, batch=64, m_source="comp"):
                     m_l.append(F.pad(t, (0, p_tok[-1].shape[-1] - t.shape[-1])).half())
                 else:
                     m_l.append(model._encode_m_unmasked(m)[:, 1:].half())
+                    if m_sparse_tau is not None:
+                        t_sp, nv = encode_m_sparse(model, m, m_sparse_tau)
+                        sp_l.append(t_sp.half()); nv_l.append(nv.cpu())
             m_tok.append(torch.stack(m_l, 1))
+            if sp_l:
+                Msp.append(torch.stack(sp_l, 1)); nvis.append(torch.stack(nv_l, 1))
         Ps.append(torch.cat(p_tok)); Ms.append(torch.cat(m_tok))
         mot.append(np.stack([libero_action_target(ee_pos, ee_ori, actions, g - UNIT * MAX_UNITS,
                                                   UNIT * MAX_UNITS) if g >= UNIT * MAX_UNITS
@@ -106,10 +114,13 @@ def build_cache(model, demos, device, batch=64, m_source="comp"):
         tids += [tid] * len(grid)
         eep.append(ee_pos[grid].astype(np.float32))
         starts.append(off); ngrid.append(len(grid)); off += len(grid)
-    return {"P": torch.cat(Ps), "M": torch.cat(Ms),
-            "motion": torch.from_numpy(np.concatenate(mot)), "tid": torch.tensor(tids),
-            "eepos": torch.from_numpy(np.concatenate(eep)),
-            "start": np.array(starts), "n": np.array(ngrid)}
+    out = {"P": torch.cat(Ps), "M": torch.cat(Ms),
+           "motion": torch.from_numpy(np.concatenate(mot)), "tid": torch.tensor(tids),
+           "eepos": torch.from_numpy(np.concatenate(eep)),
+           "start": np.array(starts), "n": np.array(ngrid)}
+    if Msp:
+        out["M_sp"], out["nvis"] = torch.cat(Msp), torch.cat(nvis)
+    return out
 
 
 def grid_index(cache, min_units):
@@ -341,10 +352,15 @@ def probe_curve(x, y, xe, ye, task, out_dim, args, device, seed, every=10):
 
 
 @torch.no_grad()
-def score(probe, x, y, task, device, extra=None):
-    pred = torch.cat([probe(x[i:i + 256].to(device).float(),
+def predict(probe, x, device, extra=None):
+    return torch.cat([probe(x[i:i + 256].to(device).float(),
                             None if extra is None else extra[i:i + 256].to(device)).cpu()
                       for i in range(0, len(x), 256)])
+
+
+@torch.no_grad()
+def score(probe, x, y, task, device, extra=None):
+    pred = predict(probe, x, device, extra)
     if task == "cls":
         return float((pred.argmax(1) == y).float().mean())
     return compute_metrics(pred.numpy(), y.numpy())["r2_aggregate"]
@@ -469,6 +485,9 @@ def main():
     ap.add_argument("--pos-control", action="store_true",
                     help="beyond-position motion probe (same-probe concat covariate, anchor ee_pos)")
     ap.add_argument("--diag", action="store_true", help="print cache hashes / standardized-token stats")
+    ap.add_argument("--m-sparse-tau", type=float, default=None,
+                    help="sparse-M check (needs --load-fuse --pos-control): eval M cache also built from patches with "
+                         "mean|ΔL|>tau only; train cache / standardization stats stay full-token; paired demo bootstrap")
     ap.add_argument("--out-root", default=str(PROJECT_ROOT / "paper_artifacts" / "observer_fuse"))
     ap.add_argument("--ckpt-root", default="/proj/external_group/mrg/checkpoints/observer_fuse")
     args = ap.parse_args()
@@ -489,7 +508,8 @@ def main():
     else:
         enc = build_parvo_encoder(args.checkpoint, device)
     cache_tr = {k: (v.to(device) if k in ("P", "M") else v) for k, v in build_cache(enc, tr_demos, device, m_source=args.m_source).items()}
-    cache_ev = {k: (v.to(device) if k in ("P", "M") else v) for k, v in build_cache(enc, ev_demos, device, m_source=args.m_source).items()}
+    cache_ev = {k: (v.to(device) if k in ("P", "M", "M_sp") else v)
+                for k, v in build_cache(enc, ev_demos, device, m_source=args.m_source, m_sparse_tau=args.m_sparse_tau).items()}
     del enc
     stats = {"P": token_stats(cache_tr["P"]), "M": token_stats(cache_tr["M"])}  # train stats for both splits
     if args.stats_from:  # transfer (no training): use the loaded Fuse's own source-suite stats
@@ -531,6 +551,10 @@ def main():
                    f"{args.ckpt_root}/{args.tag}/fuse.pt")
 
     g_tr, g_ev = grid_index(cache_tr, MAX_UNITS), grid_index(cache_ev, MAX_UNITS)
+    if args.m_sparse_tau is not None:  # sparse twin of the eval cache (same P / stats / targets except M)
+        assert args.load_fuse and args.pos_control and args.m_source == "comp"
+        cache_ev_sp = {**cache_ev, "M": cache_ev.pop("M_sp")}
+        emb_ev_sp = embed_all(fuse, cache_ev_sp, g_ev, device)
     emb_tr, emb_ev = embed_all(fuse, cache_tr, g_tr, device), embed_all(fuse, cache_ev, g_ev, device)
     if args.export_handoff:
         zt = emb_tr["pp"][0].float()
@@ -595,6 +619,27 @@ def main():
         res["probe_pos"] = {"pos_only": pos_only, "concat": concat,
                             "beyond": {c: v - pos_only for c, v in concat.items()}}
         print("pos-control:", json.dumps(res["probe_pos"]), flush=True)
+        if args.m_sparse_tau is not None:
+            # pre-fixed rule (종합 지시 ③): maintained ⇔ 95% CI of paired diff of beyond-position share contains 0.
+            # pos-only term cancels → diff = R²(z_full+pos) − R²(z_sparse+pos), same fixed probe, demo bootstrap.
+            from sparse_m import paired_bootstrap
+            grp = np.searchsorted(cache_ev["start"], g_ev, side="right") - 1   # eval demo of each sample
+            sp = {"tau": args.m_sparse_tau, "nvis_5frame": np.bincount(cache_ev["nvis"][:, 0].numpy(), minlength=197).tolist(),
+                  "concat_sparse": {}, "beyond_sparse": {}, "probe_sparse": {}}
+            for c in ("pm_g5", "pm_g10", "pm_g20"):
+                pf = predict(probe, emb_ev[c][0], device, r_ev).numpy()
+                ps = predict(probe, emb_ev_sp[c][0], device, r_ev).numpy()
+                r2s = compute_metrics(ps, yev.numpy())["r2_aggregate"]
+                sp["concat_sparse"][c], sp["beyond_sparse"][c] = r2s, r2s - pos_only
+                sp.setdefault("paired_diff", {})[c] = paired_bootstrap(pf, ps, yev.numpy(), grp, "r2", n_boot=2000, seed=0)
+            for name, (ytr_, yev_, task_, od_) in ys.items():   # plain (no-pos) probes, fit on z_PP as above
+                pr_ = fit_probe(emb_tr["pp"][0], ytr_, task_, od_, args, device)
+                sp["probe_sparse"][name] = {c: score(pr_, emb_ev_sp[c][0], yev_, task_, device) for c in EVAL_SPLITS}
+                sp["probe_sparse"][name]["full_refit"] = {c: score(pr_, emb_ev[c][0], yev_, task_, device) for c in EVAL_SPLITS}
+            d = sp["paired_diff"]["pm_g5"]
+            sp["verdict_maintained_pm_g5"] = bool(d["ci_lo"] <= 0 <= d["ci_hi"])
+            res["sparse_m"] = sp
+            print("sparse-M:", json.dumps({k: v for k, v in sp.items() if k != "nvis_5frame"}), flush=True)
 
     # pre-fixed verdicts (STATUS 10-09): maintain = pm_g5 ≥ 0.9 × pp on both probes
     pp = {n: res["probe"][n]["pp"] for n in ys}

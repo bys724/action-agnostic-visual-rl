@@ -89,6 +89,19 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-10 희소 M 계측 (종합 지시 ③)
+
+**무엇**: M 인코더를 실제로 변한 패치(패치 평균 |ΔL| > τ = 1/255)만으로 돌려 연산을 줄일 수 있는지. (a) 0 아닌 패치 비율 분포(object·goal, 5프레임 격자 조각 · 부분 조각 1~4 · 20프레임 same-probe 쌍) (b1) same-probe M(m_only·attentive·gap20, action·identity) 전체 vs 희소 인코딩 (b2) v3 Fuse(c1dn seed 2) 위치 통제 판독 전체 vs 희소 (c) 희소 M FLOPs 기대값. **유지 판정(결과 전 고정)**: 짝 차이(전체 − 희소)의 데모 부트스트랩 95% CI가 0 포함. 빈 조각 = |ΔL| 최대 패치 1개 유지 · (b2) 표준화 통계 = 전체 토큰 통계(Fuse 학습과 동일). 스크립트 `scripts/eval/sparse_m.py` · `observer_fuse.py --m-sparse-tau` · `probe_action_libero.py --m-sparse-tau`.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41467746 | mig-3g ×1 | 04:00:00 | 스모크 — sparse_m ratio·flops·probe, 6 demos (`_smoke` 접미) | ❌ FAILED 00:00:25 — ratio 완료, flops에서 람다 변수 오류 |
+| 41467747 | mig-3g ×1 | 06:00:00 | 스모크 — TAG `sparse_smoke` observer_fuse 희소 M 8 demos | ✅ 00:00:17 · 경로 완주(희소 캐시 → 짝 부트스트랩 → 판정 필드) |
+| 41467748 | mig-3g ×1 | 04:00:00 | 스모크 재제출 — sparse_m flops·probe (FLOPs 람다 변수 오류 수정) | ✅ 00:00:20 · flops·probe 경로 완주 · 전부 보임 희소 = 전체 인코딩과 비트 동일(최대 차 0) |
+| 41467749 | mig-3g ×1 | 04:00:00 | (a)+(c) sparse_m ratio(object·goal 전 데모) → flops (`sparse_ratio.json` · `flops_sparse.json`) | ✅ 00:00:52 · 0 아닌 패치 비율 5프레임 object 0.148 / goal 0.170 (중앙 30/32개) · 20프레임 0.191/0.214 · 빈 조각 4개(전부 1프레임) · GFLOPs 갱신 1회 P+P 10.04 vs 희소 P+M 4.38/4.47(−56/−55%) · 스텝당 2.22/2.31(−78/−77%) |
+| 41467750 | mig-3g ×1 | 04:00:00 | (b1) sparse_m probe — same-probe M libero_object gap20 action·identity 전체 vs 희소 (`sparse_b1_libero_object.json`) | ✅ 00:05:08 · 전체 0.785/0.448 재현 · 전체로 학습한 판독기에 희소 → motion −0.535 · identity 0.052 (차 CI 0 미포함 = **유지 실패**) · 희소로 다시 학습한 판독기는 motion 0.821 · identity 0.590 |
+| 41467751 | mig-3g ×1 | 06:00:00 | (b2) TAG `sparse_c1dn_s2` — v3_c1dn_s2 Fuse 재로드 · 위치 통제 · 희소 M 짝 비교 (기준 = v3pos_c1dn_s2) | ✅ 00:03:58 · 전체 0.7873 정확 재현 · P+M 5×4 위치 너머 몫 +0.275 → 희소 −0.194, 차 +0.469 [0.428, 0.510] = **유지 실패** (10×2·20×1도 실패) |
+
 ### 2026-10-10 관측기 v4 — 매 스텝 z (완결 5프레임 조각 + 부분 조각) · goal → object (사용자 확정 종합 지시 10-10 ②)
 
 **무엇**: `scripts/eval/observer_fuse_v4.py`(v3 파일은 재현용 동결). 앵커 = 5프레임 격자 프레임 · 현재 = 앵커 + k, k ~ U{1..20} · M 입력 = 완결 5프레임 조각(캐시) + 마지막 부분 조각 1개(1~4프레임, 즉석 인코딩) · 조각 임베딩 = 시작 단위 + 길이(프레임 1~5) · 복원 타깃 = P(t) + M(앵커→t)(즉석) · M 표준화 통계 = 길이 1~20 혼합 표본 8192. 학습 = v3와 같은 수렴 멈춤. **평가 = 나이 k 1..20 곡선**: k마다 z_PP(train)+앵커 손 위치 RFF로 판독기 학습 → P+P / P+M / 앵커만에 적용, 위치 너머 몫 · motion 타깃 = 앵커→현재 손끝 변화 · identity는 k=20만. **1층 판정 재측정 아님**(k=20 = v3 5×4 구성) — 곡선은 기술(관찰). seed 2.
