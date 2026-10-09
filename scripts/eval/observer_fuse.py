@@ -464,6 +464,8 @@ def main():
     ap.add_argument("--probe-seeds", type=int, nargs="*", default=[], help="extra probe-only seed sweep (motion)")
     ap.add_argument("--flops", action="store_true", help="measure per-component FLOPs and exit")
     ap.add_argument("--export-handoff", default=None, help="write layer-2 hand-off file (fuse + stats) here")
+    ap.add_argument("--stats-from", default=None,
+                    help="transfer: take input standardization stats from this fuse.pt / hand-off (source suite)")
     ap.add_argument("--pos-control", action="store_true",
                     help="beyond-position motion probe (same-probe concat covariate, anchor ee_pos)")
     ap.add_argument("--diag", action="store_true", help="print cache hashes / standardized-token stats")
@@ -490,6 +492,9 @@ def main():
     cache_ev = {k: (v.to(device) if k in ("P", "M") else v) for k, v in build_cache(enc, ev_demos, device, m_source=args.m_source).items()}
     del enc
     stats = {"P": token_stats(cache_tr["P"]), "M": token_stats(cache_tr["M"])}  # train stats for both splits
+    if args.stats_from:  # transfer (no training): use the loaded Fuse's own source-suite stats
+        src = torch.load(args.stats_from, map_location=device, weights_only=False)["input_stats"]
+        stats = {k: (mu.to(device), sd.to(device)) for k, (mu, sd) in src.items()}
     cache_tr["stats"] = cache_ev["stats"] = stats
     print(f"cache: train grid {len(cache_tr['P'])} / eval grid {len(cache_ev['P'])}  ({time.time()-t0:.0f}s)", flush=True)
     _p = cache_tr["P"][:2000].float()
@@ -536,7 +541,8 @@ def main():
                     "meta": {"encoder_ckpt": args.checkpoint, "m_source": args.m_source, "dim": cache_tr["P"].shape[-1],
                              "n_patch": cache_tr["P"].shape[1], "n_lat": args.n_lat, "depth": args.depth,
                              "unit_frames": UNIT, "max_units": MAX_UNITS, "task_suite": args.task_suite,
-                             "split_seed": args.split_seed, "fuse_ckpt": args.load_fuse, "tag": args.tag,
+                             "split_seed": args.split_seed, "tag": args.tag,
+                             "fuse_ckpt": args.load_fuse or f"{args.ckpt_root}/{args.tag}/fuse.pt",
                              "entry": "scripts/eval/observer_fuse.py:Observer"}}, args.export_handoff)
         print(f"hand-off written: {args.export_handoff}", flush=True)
     tid2cls = {t: i for i, t in enumerate(sorted(set(cache_tr["tid"].tolist()) | set(cache_ev["tid"].tolist())))}

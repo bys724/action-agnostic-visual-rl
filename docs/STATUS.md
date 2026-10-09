@@ -46,7 +46,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 41467656~41467663 (8잡) | 관측기 확장 — 연산량 계측 · 2층 인계 파일(v3_c1dn seed 2) · libero_spatial CoMP M vs raw ΔL × seed 3 (판정 = object와 같은 규칙, cluster_sessions 10-10 확장 절) | 10-10 | `paper_artifacts/observer_fuse/{flops,spatial_*}.json` · 인계 `/proj/external_group/mrg/checkpoints/observer_fuse/handoff/c1dn_s2_handoff.pt` |
+| 41467669~673 (5잡) | 관측기 libero_goal — CoMP 두 번째 suite(우리 M · P+P 전용 · 밝기 차이, seed 2, 위치 통제) + SC 2층용 goal 인계 파일 + 전이 참고값(object↔goal) (SC Vault 회신 10-10 (2)) | 10-10 | `paper_artifacts/observer_fuse/goal_*.json`·`xfer_*.json` · 인계 `paper_artifacts/observer_fuse/ckpt/goal_c1dn_s2_handoff.pt` |
 
 ## 이 문서의 용어
 
