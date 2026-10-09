@@ -34,3 +34,9 @@
 - **ⓘ / ⓢ 시험** — probe 학습과 시험이 같은 분포(참조용) / probe 학습에 없는 조건(판정용: 교란·suite 간 무재학습 전이)
 - **P_t⊕X** — 판독기에 P 스트림의 현재 프레임 토큰(P_t)과 X(학습된 M 또는 raw ΔL 등)를 토큰 축으로 붙여 넣는 판독 (계획서 효율 사다리). 코드 `parvo --parvo-mode p_t_m`, `parvo-raw`
 - **(A)/(B)/(C) 판정축** — refinement_floor_plan §6: (A) LIBERO suite 간 무재학습 전이 · (B) 라벨 효율(5%·2%) · (C) 교란 강건성(그림자). 판정은 ⓢ(분포 이동)에서만
+- **관측기 / Fuse (1층)** — 동결 C1-DN의 P·M 토큰을 32개 잠재 토큰 z로 묶는 Perceiver (`scripts/eval/observer_fuse.py`). z_PP = Fuse({앵커 P, 현재 P}) = 비싼 방법 · z_PM = Fuse({앵커 P, M 조각들}) = 싼 방법 · 앵커 나이 k = 앵커~현재 프레임 수(1~20 = 1초)
+- **v3 / v4 관측기** — v3 = M을 5프레임 배수 조각으로만(z 5스텝마다) · v4 = 완결 5프레임 조각 + 마지막 부분 조각 1~4프레임(z 매 스텝, `observer_fuse_v4.py`). 나이 20에서 둘은 같은 구성
+- **위치 너머 몫 (beyond-position)** — R²(z + 앵커 손 위치 RFF) − R²(손 위치만). 손 위치로 공짜로 맞히는 몫을 뺀 움직임 정보 (same-probe concat 규약)
+- **P+P 전용 참조 (ref, `--pp-only`)** — M 입력·M 복원 없이 P+P만으로 학습한 Fuse. 칸 간 공통 분모
+- **희소 M (sparse M)** — 변화 패치(mean|ΔL|>1/255)만 M 인코더에 넣고 나머지는 mask 토큰으로 채운 인코딩 (`--m-sparse-tau`)
+- **인계 파일 (hand-off)** — SC 2층이 쓰는 관측기 묶음: Fuse 가중치 + 입력 표준화 통계 + z 통계 + 메타 (`paper_artifacts/observer_fuse/ckpt/*_handoff.pt`, git 제외)
