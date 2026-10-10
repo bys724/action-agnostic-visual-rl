@@ -123,7 +123,15 @@ class Data:
 
     def targets(self, a, k):
         at = torch.from_numpy(a).to(self.device)
-        return _std(self.stats, "P", self.P[at + k]), _std(self.stats, "M", self.m_tok(at, at + k))
+        p, m = _std(self.stats, "P", self.P[at + k]), _std(self.stats, "M", self.m_tok(at, at + k))
+        mode = getattr(self, "target_mode", "raw")
+        if mode == "token":  # per-token normalization (own channel mean/std only; MAE norm-pix style) —
+            # no dataset statistics; exact-zero tokens (static raw-ΔL patches) stay 0
+            tn = lambda x: (x - x.mean(-1, keepdim=True)) / (x.std(-1, keepdim=True) + 1e-6)
+            p, m = tn(p), tn(m)
+        elif mode == "anchor_rel":  # P target relative to the anchor (per-sample difference, no statistics)
+            p = p - _std(self.stats, "P", self.P[at])
+        return p, m
 
     def motion(self, a, k):
         return torch.from_numpy(np.stack([libero_action_target(self.ee, self.ori, self.act, i, k) for i in a]))
@@ -306,6 +314,8 @@ def main():
     ap.add_argument("--norm", default="std", choices=["std", "ln"],
                     help="std = v4/analysis 1 (per-(patch,dim) train stats) · ln = v5 (no dataset-stat normalization)")
     ap.add_argument("--load-fuse", default=None, help="skip training, re-read this fuse.pt")
+    ap.add_argument("--target-mode", default="raw", choices=["raw", "token", "anchor_rel"],
+                    help="recon targets (with --norm ln): raw tokens · per-token normalized · P relative to anchor")
     ap.add_argument("--out-root", default=str(PROJECT_ROOT / "paper_artifacts" / "observer_fuse"))
     ap.add_argument("--ckpt-root", default="/proj/external_group/mrg/checkpoints/observer_fuse")
     args = ap.parse_args()
@@ -318,6 +328,7 @@ def main():
         tr_d, ev_d = tr_d[:args.max_demos], ev_d[:max(2, args.max_demos // 4)]
     enc = build_parvo_encoder(args.checkpoint, device)
     tr, ev = Data(enc, tr_d, device, args.m_source), Data(enc, ev_d, device, args.m_source)
+    tr.target_mode = ev.target_mode = args.target_mode
     if args.norm == "std":  # v4 = analysis 1 (per-(patch,dim) train-stat standardization), kept for reproducibility
         stats = {"P": token_stats(tr.P), "M": None}
         tr.stats = ev.stats = {"stats": stats}
@@ -334,6 +345,14 @@ def main():
             for _ in range(32):
                 k = int(rng.integers(1, K_MAX + 1)); a = torch.from_numpy(rng.choice(tr.anchors(k), 256)).to(device)
                 sm.append(tr.m_tok(a, a + k).float().pow(2).mean().item())
+        if args.target_mode == "token":
+            sp, sm = 1.0, [1.0]
+        elif args.target_mode == "anchor_rel":  # global scalar of the relative target
+            rng = np.random.default_rng(1); acc = []
+            for _ in range(32):
+                k = int(rng.integers(1, K_MAX + 1)); a = torch.from_numpy(rng.choice(tr.anchors(k), 256)).to(device)
+                acc.append((tr.P[a + k].float() - tr.P[a].float()).pow(2).mean().item())
+            sp = float(np.mean(acc))
         tr.loss_scale = ev.loss_scale = {"P": sp, "M": float(np.mean(sm))}
         print(f"v5 loss scales (global scalars): {tr.loss_scale}", flush=True)
     print(f"cache: train frames {len(tr.P)} grid {len(tr.grid)} / eval frames {len(ev.P)}  ({time.time()-t0:.0f}s)", flush=True)

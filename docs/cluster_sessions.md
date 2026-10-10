@@ -113,12 +113,22 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | JobID | 자원 | --time | 목적 | 결과 |
 |-------|------|--------|------|------|
-| 41468963 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s42` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s42_handoff.pt` | ⏳ |
-| 41468964 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s42` (patience 10) | ⏳ |
-| 41468965 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s1` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s1_handoff.pt` | ⏳ |
-| 41468966 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s1` (patience 10) | ⏳ |
-| 41468967 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s2` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s2_handoff.pt` | ⏳ |
-| 41468968 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s2` (patience 10) | ⏳ |
+| 41468963 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s42` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s42_handoff.pt` | ❌ CANCELLED ~37분 (밝기 차이 칸 v5 학습 실패 → 타깃 방식 전면 수정, 사용자 10-10) |
+| 41468964 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s42` (patience 10) | ✅ 멈춤 14500 · **학습 실패(z 붕괴)**: M 복원 손실 0.975 고정(=0 예측) · z 퍼짐 ≤0.04 · 위치 너머 P+P/P+M/앵커만 모두 ≈0 (k=20 P+M -0.010) → 비교 무효 |
+| 41468965 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s1` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s1_handoff.pt` | ❌ CANCELLED ~37분 (밝기 차이 칸 v5 학습 실패 → 타깃 방식 전면 수정, 사용자 10-10) |
+| 41468966 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s1` (patience 10) | ✅ 멈춤 14500 · **학습 실패(z 붕괴)**: M 복원 손실 0.975 고정(=0 예측) · z 퍼짐 ≤0.04 · 위치 너머 P+P/P+M/앵커만 모두 ≈0 (k=20 P+M +0.002) → 비교 무효 |
+| 41468967 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s2` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s2_handoff.pt` | ❌ CANCELLED ~37분 (밝기 차이 칸 v5 학습 실패 → 타깃 방식 전면 수정, 사용자 10-10) |
+| 41468968 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s2` (patience 10) | ❌ CANCELLED ~37분 (밝기 차이 칸 v5 학습 실패 → 타깃 방식 전면 수정, 사용자 10-10) |
+
+**v5 원사양(원본 토큰 타깃) = 밝기 차이 칸 학습 실패 → 비교 무효, 인계 보류 (10-10)**: 밝기 차이 입력·타깃이 정지 패치에서 정확히 0이라 통계 정규화 없이 '0 예측'이 쉬운 해 → Fuse 전체가 평균 출력에 갇힘(P+P까지 0). 사용자 결정: **타깃 방식 전면 수정**, 데이터 통계 없이. 후보 = ① `--target-mode token`(타깃 토큰별 정규화: 토큰 자기 채널 평균·표준편차만, MAE norm-pix식) ② `--target-mode anchor_rel`(P 타깃 = P(t) − P(앵커), 샘플 내 차이). **선별 시험(결과 전 고정)**: 전체 데이터 6000스텝·조기 멈춤 없음 · 2방법 × {CoMP M, raw ΔL} · **통과 = 두 칸 모두 z 퍼짐 > 0.1 AND k=20 위치 너머 P+P > 0.05** · 둘 다 통과면 ①(원본 토큰 복원 사양에 더 가까움) · 둘 다 실패면 보고. 선택된 방법으로 6칸 수렴 재실행 → 인계 조건 판정.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41469033 | mig-3g ×1 | 06:00:00 | TAG `scr_token_c1dn` | ⏳ |
+| 41469034 | mig-3g ×1 | 06:00:00 | TAG `scr_token_c1dnraw` | ⏳ |
+| 41469035 | mig-3g ×1 | 06:00:00 | TAG `scr_anchor_rel_c1dn` | ⏳ |
+| 41469036 | mig-3g ×1 | 06:00:00 | TAG `scr_anchor_rel_c1dnraw` | ⏳ |
+
 
 
 
