@@ -67,7 +67,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 41468156 | **관측기 v5 최소 1칸**(데이터 통계 없는 정규화, goal · CoMP M · seed 42 · 수렴 학습) — 스모크에서 z가 입력을 무시하는 증상이 보여 전체 데이터로 먼저 확인 후 나머지 5잡 (Vault 3차 결정) | 10-10 | 로그 `observer_fuse_41468156.out`의 z-spread·\|pp−pm\| · `observer_fuse/v5_goal_c1dn_s42.json` |
+| 41468156 ✅ · 41468932,41468933,41468934,41468935,41468936 | **관측기 v5** goal × {CoMP M, raw ΔL} × seed 3 (첫 칸 정상: 초반 붕괴 후 탈출, k=20 위치 너머 P+M +0.136) · 인계 조건 = k=20 CoMP > raw seed 범위 비중첩 (Vault 3차) | 10-10 | `observer_fuse/v5_goal_*.json` |
 
 ## 이 문서의 용어
 
