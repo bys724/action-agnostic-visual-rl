@@ -67,7 +67,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 41468156 ✅ · 41468937,41468938,41468934,41468935,41468936 | **관측기 v5** goal × {CoMP M, raw ΔL} × seed 3 (첫 칸 정상: 초반 붕괴 후 탈출, k=20 위치 너머 P+M +0.136) · 인계 조건 = k=20 CoMP > raw seed 범위 비중첩 (Vault 3차) | 10-10 | `observer_fuse/v5_goal_*.json` |
+| 41468963~968 (6잡) | **관측기 v5** goal × {CoMP M, raw ΔL} × seed 3 · 멈춤 규칙 patience 10(사용자 10-10, raw 결과 전·6칸 동일) · 인계 조건 = k=20 CoMP > raw seed 범위 비중첩 (Vault 3차) · 이전 patience 4 첫 칸 = `v5p4_goal_c1dn_s42.json` 보존 | 10-10 | `observer_fuse/v5_goal_*.json` |
 
 ## 이 문서의 용어
 
@@ -86,6 +86,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 ## 결정 이력
 
+- 2026-10-10 · (사용자 승인) 관측기 v5 멈춤 규칙 patience 4 → 10 — 첫 칸이 짧은 정체로 멈춤(z 퍼짐 계속 상승), raw ΔL 결과 전·6칸 동일 적용 · 진행 중 5잡 취소 후 6잡 재실행
 - 2026-10-10 · dev: 관측기 블록을 Vault 논의용 종합 하나로 정리(본문) — 완료된 종합 지시 ①②③·v4 권고·10-09 진단·판정 자 재정의 블록은 결과로 흡수. 철회: 단일 seed 93% PASS · A′ · raw ΔL 복원 실패 해석. spatial 6잡은 Vault의 goal 확정으로 취소
 - 2026-10-10 · **(사용자 확정) 관측기 v4 제작**(완결 5조각 + 부분 조각 · 나이 1~20 · 1층 재판정 없음 · goal 먼저) · **희소 M 계측 필수**(비영 패치만 인코딩 · 유지 규칙 = 위치 너머 몫 짝 차 CI 0 포함 · FLOPs 재계산) · v3 goal 완주 후 인계는 SC 배관 시험용
 - 2026-10-10 · **Vault: 관측기 가치 주장 틀 확정**(위치 너머 절대 몫 + CoMP vs raw 대비 · 비율 규칙 폐기) · 1층 = 우위 유지 통과 · 확장 = FLOPs(필수)·suite 추가(권장) 이 저장소 · 2층 = SC 저장소 즉시 착수(Fuse ckpt + 표준화 통계 인계) (사용자 결정)

@@ -102,12 +102,24 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 41468141 | mig-3g ×1 | 06:00:00 | 진단 (a) — TAG `diag_v4obj_on_goal_goalstats` (object v4 Fuse + goal 통계, k 1·5·10·20) | ✅ 2m30s · 위치 너머 k=20 P+P +0.082 / P+M -0.009 (v3 전이·object 통계 P+P +0.087 / P+M −0.156 · goal 자체 v4 +0.195/+0.194) → 전이 붕괴는 통계보다 **Fuse가 suite를 외운 몫** [잠정 · seed 1] |
 | 41468156 | mig-3g ×1 | 06:00:00 | **v5 최소 1칸** — TAG `v5_goal_c1dn_s42` 전체 데이터·수렴 학습 · 로그에 붕괴 지표 추가 | ✅ 59m51s · 멈춤 20500 · 초반 2000스텝 z 붕괴(퍼짐 0.001) 후 탈출 → 퍼짐 0.34 · 위치 너머 P+M k=1/5/10/20 +0.157/+0.184/+0.173/+0.136 (v4 seed2 k=20 +0.194) → 정상, 나머지 5잡 제출 |
 | 41468932 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s1` | ❌ CANCELLED 1분 내 — 인계 내보내기 옵션 누락, 재제출 |
-| 41468937 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s1` 재제출 + 후보 인계 `ckpt/cand_v5_goal_c1dn_s1_handoff.pt` | ⏳ |
+| 41468937 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s1` 재제출 + 후보 인계 `ckpt/cand_v5_goal_c1dn_s1_handoff.pt` | ❌ CANCELLED 6–9분 (사용자 10-10: 멈춤 규칙 patience 4→10으로 6칸 재실행) |
 | 41468933 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s2` | ❌ CANCELLED 1분 내 — 인계 내보내기 옵션 누락, 재제출 |
-| 41468938 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s2` 재제출 + 후보 인계 `ckpt/cand_v5_goal_c1dn_s2_handoff.pt` | ⏳ |
-| 41468934 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s42` | ⏳ |
-| 41468935 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s1` | ⏳ |
-| 41468936 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s2` | ⏳ |
+| 41468938 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s2` 재제출 + 후보 인계 `ckpt/cand_v5_goal_c1dn_s2_handoff.pt` | ❌ CANCELLED 6–9분 (사용자 10-10: 멈춤 규칙 patience 4→10으로 6칸 재실행) |
+| 41468934 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s42` | ❌ CANCELLED 6–9분 (사용자 10-10: 멈춤 규칙 patience 4→10으로 6칸 재실행) |
+| 41468935 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s1` | ❌ CANCELLED 6–9분 (사용자 10-10: 멈춤 규칙 patience 4→10으로 6칸 재실행) |
+| 41468936 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s2` | ❌ CANCELLED 6–9분 (사용자 10-10: 멈춤 규칙 patience 4→10으로 6칸 재실행) |
+
+**멈춤 규칙 변경 (10-10 사용자 승인, raw ΔL 결과 전 · 6칸 동일 적용)**: 첫 칸이 손실 최저 18.5k 뒤 4회 정체로 20.5k에서 멈췄으나 z 퍼짐 계속 상승·직전 2500스텝 −7% → 짧은 정체에 걸린 것으로 판단. **patience 4 → 10**(개선 없는 연속 확인 10회 = 5000스텝), 상한 6만·min_rel 0.5% 그대로. 기존 첫 칸 결과는 `v5p4_goal_c1dn_s42.json`(ckpt `…/observer_fuse/v5p4_goal_c1dn_s42/`)로 보존 · 판정에는 patience 10 6칸만 사용.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|-------|------|--------|------|------|
+| 41468963 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s42` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s42_handoff.pt` | ⏳ |
+| 41468964 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s42` (patience 10) | ⏳ |
+| 41468965 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s1` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s1_handoff.pt` | ⏳ |
+| 41468966 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s1` (patience 10) | ⏳ |
+| 41468967 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dn_s2` (patience 10) + 후보 인계 `ckpt/cand_v5_goal_c1dn_s2_handoff.pt` | ⏳ |
+| 41468968 | mig-3g ×1 | 06:00:00 | TAG `v5_goal_c1dnraw_s2` (patience 10) | ⏳ |
+
 
 
 ### 2026-10-10 희소 M 계측 (종합 지시 ③)
