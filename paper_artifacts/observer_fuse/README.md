@@ -1,6 +1,6 @@
 # Observer Fuse — 1s anchor maintenance (LIBERO-object)
 
-> **Sealed (Vault 10-10, 3rd decision): all v1–v4 numbers below = "observer analysis 1 — per-(patch,dim) train-statistic standardization".** Values unchanged; the v3 object verdict stands as the verdict of that analysis. Observer v5 (no dataset-statistic normalization: token-wise LayerNorm, raw recon targets, no z standardization) replaces it going forward — see the v5 section.
+> **Sealed (Vault 10-10, 3rd decision): all v1–v4 numbers below = "observer analysis 1 — per-(patch,dim) train-statistic standardization".** Values unchanged; the v3 object verdict stands as the verdict of that analysis. **Appendix to analysis 1 (Vault 10-10, 4th decision):** self-supervised Fuse training without dataset-statistic normalization collapses — v5 with raw, per-token-normalized and anchor-relative targets all fail (raw ΔL arm never escapes; per-token: z carries the anchor only; anchor-relative: both arms collapse) — `v5p4_*`, `v5_goal_c1dnraw_*`, `scr_*` JSONs. The self-referential loss (z_PM ≈ EMA z_PP + reconstruction) admits a constant solution. **The observer Fuse/z module is retired**: layer 2 takes (anchor P tokens + M chunk tokens) directly via `scripts/eval/token_provider.py`. "P+M ≈ P+P" stands as shown once in analysis 1 (v3 object verdict, v4 curve).
 
 
 Tool: `scripts/eval/observer_fuse.py` · frozen encoder · Fuse trained with mixed anchor ages (5–20 frames) ·
