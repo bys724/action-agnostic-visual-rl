@@ -73,8 +73,11 @@ class AdaptedBCTransformerPolicy(BasePolicy):
 
         # ── 2. 카메라별 projection (adapter 출력 → embed_size) ─────────────
         # 카메라별 별도 projection (다른 시점은 다른 분포)
+        # α 앵커 모드: 카메라별 입력 형식(stream 수·차원)이 다를 수 있음 → 카메라별 in_dim
+        self.anchor_cams = getattr(self.adapter, "anchor_cams", None)
         self.image_projections = nn.ModuleDict({
-            name: nn.Linear(self.adapter_embed_dim, embed_size)
+            name: nn.Linear(self.adapter.cam_embed_dim(name) if self.anchor_cams
+                            else self.adapter_embed_dim, embed_size)
             for name in self.image_names
         })
 
@@ -119,19 +122,34 @@ class AdaptedBCTransformerPolicy(BasePolicy):
         self.latent_queue: List[torch.Tensor] = []
         self.max_seq_len = policy_cfg.transformer_max_seq_len
 
+        # α mo 팔 (앵커 P 한 번 + 슬롯별 M): 현재 앵커 P 를 창 앞 가상 시점 하나로 넣음.
+        # 블록 인과 마스크라 모든 실제 시점이 이 토큰을 봄 · 출력에선 제거. 다른 팔은 생성 안 함(RNG·순서 불변).
+        self.p_once = bool(self.anchor_cams) and all(m == "mo" for m in self.anchor_cams.values())
+        if self.p_once:
+            self.anchor_projections = nn.ModuleDict({
+                name: nn.Linear(self.adapter.cam_p_dim(name), embed_size) for name in self.image_names
+            })
+
     # ====================================================================
     # Image encoding via adapter
     # ====================================================================
 
-    def _encode_camera(self, name: str, x: torch.Tensor) -> torch.Tensor:
+    def _encode_camera(self, name: str, x: torch.Tensor, anchor_idx=None, feats=None) -> torch.Tensor:
         """data["obs"][name] → BC-T embed_size 토큰 시퀀스.
 
         x: (B, T, C, H, W) — caller가 이미 어댑터 native size로 resize 가정
         return: (B, T, 1, embed_size) — BC-T가 modality dim 추가
+        α 앵커 모드: 학습 = anchor_idx (B, T_out) 로 adapter.forward_anchor ·
+        롤아웃 = 위치별로 미리 계산한 어댑터 출력 feats (B, T, D) (앵커 P 캐시 경로)
         """
         # 어댑터: (B, T_in, C, H, W) → (B, T_out, adapter_dim)
         # T_in == T_out for non-V-JEPA. V-JEPA는 T_in=T_out+15.
-        tokens = self.adapter(x)  # (B, T_out, adapter_dim)
+        if feats is not None:
+            tokens = feats
+        elif self.anchor_cams:
+            tokens = self.adapter.forward_anchor(x, anchor_idx, name)
+        else:
+            tokens = self.adapter(x)  # (B, T_out, adapter_dim)
         proj = self.image_projections[name](tokens)  # (B, T_out, embed_size)
         return proj.unsqueeze(2)  # (B, T_out, 1, embed_size)
 
@@ -148,7 +166,7 @@ class AdaptedBCTransformerPolicy(BasePolicy):
         x = TensorUtils.join_dimensions(x, 1, 2)
         x = self.temporal_transformer(x)
         x = x.reshape(*sh)
-        return x[:, :, 0]
+        return x[:, 1:, 0] if self.p_once else x[:, :, 0]   # mo: 앞 가상 시점(앵커 P) 출력 제거
 
     def spatial_encode(self, data: dict) -> torch.Tensor:
         """data["obs"] → (B, T, num_modalities, E).
@@ -164,8 +182,9 @@ class AdaptedBCTransformerPolicy(BasePolicy):
         image_tokens = []
         T_img = None
         for name in self.image_names:
-            img_seq = data["obs"][name]  # (B, T_in, C, H, W)
-            tok = self._encode_camera(name, img_seq)  # (B, T_out, 1, E)
+            img_seq = data["obs"].get(name)  # (B, T_in, C, H, W) — 롤아웃 앵커 경로에선 없음(feats 사용)
+            tok = self._encode_camera(name, img_seq, data.get("anchor_idx"),
+                                      data.get("img_feats", {}).get(name))  # (B, T_out, 1, E)
             image_tokens.append(tok)
             T_img = tok.shape[1]
 
@@ -181,7 +200,18 @@ class AdaptedBCTransformerPolicy(BasePolicy):
 
         # Concat: text + extra + images → (B, T, num_modalities, E)
         encoded = [text_token, extra] + image_tokens
-        return torch.cat(encoded, dim=-2)
+        encoded = torch.cat(encoded, dim=-2)
+        if self.p_once:
+            # 앞 가상 시점 = [text, extra 자리 0, 카메라별 현재 앵커 P]. 학습 = anchor_idx 마지막 위치의 앵커 ·
+            # 롤아웃 = 캐시된 pooled P(data["anchor_p"]). 창이 앵커 교체를 걸치면 앞 슬롯 M 은 옛 앵커 기준(옛 P 는 안 넣음)
+            pre = []
+            for name in self.image_names:
+                p = (data["anchor_p"][name] if "anchor_p" in data
+                     else self.adapter.anchor_p_once(data["obs"][name], data["anchor_idx"], name))
+                pre.append(self.anchor_projections[name](p)[:, None, None])        # (B, 1, 1, E)
+            lead = torch.cat([text_token[:, :1], torch.zeros_like(extra[:, :1])] + pre, dim=-2)
+            encoded = torch.cat([lead, encoded], dim=1)                             # (B, 1+T, M, E)
+        return encoded
 
     def forward(self, data: dict) -> dict:
         x = self.spatial_encode(data)

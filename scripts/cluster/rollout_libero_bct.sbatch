@@ -37,7 +37,9 @@ OUT_BASE="${OUT_BASE:-/proj/external_group/mrg/results/libero_rollouts}"
 
 STEM=$(basename "$(dirname "$CKPT")")
 ABLATE_EXTRA="${ABLATE_EXTRA:-}"      # E3 진단: 비현재 스트림(과거 P / M) 0
-TAG="${STEM}_t${NUM_TRIALS}${TASK_IDS:+_tasks${TASK_IDS// /-}}${ABLATE_EXTRA:+_ablate}"
+ANCHOR_MODE="${ANCHOR_MODE:-}"        # α (alpha_plan §5-2): period(모드 A 주기 k) | distance(모드 B 고정 거리 d) — 앵커 학습 ckpt 필수
+ANCHOR_K="${ANCHOR_K:-}"              # α: k 또는 d (1·3·5·10·20)
+TAG="${STEM}_t${NUM_TRIALS}${TASK_IDS:+_tasks${TASK_IDS// /-}}${ABLATE_EXTRA:+_ablate}${ANCHOR_MODE:+_${ANCHOR_MODE}${ANCHOR_K}}${DETERMINISTIC:+_det}"
 
 log() { echo "[$(date '+%F %T')] [rollout_bct] $*"; }
 log "ckpt=$CKPT suite=$TASK_SUITE trials=$NUM_TRIALS tasks=${TASK_IDS:-all} render=$RENDER"
@@ -56,6 +58,8 @@ ARGS=(--checkpoint "$CKPT" --task-suite "$TASK_SUITE" --num-trials "$NUM_TRIALS"
       --output-dir "$OUT_BASE/$TAG" --video-dir "$OUT_BASE/$TAG/videos")
 [ -n "$TASK_IDS" ] && ARGS+=(--task-ids $TASK_IDS)
 [ -n "$ABLATE_EXTRA" ] && ARGS+=(--ablate-extra)
+[ -n "${DETERMINISTIC:-}" ] && ARGS+=(--deterministic)   # 노이즈 가설 진단 (GMM 최대 성분 평균)
+[ -n "$ANCHOR_MODE" ] && ARGS+=(--anchor-mode "$ANCHOR_MODE" --anchor-k "${ANCHOR_K:?ANCHOR_MODE 지정 시 ANCHOR_K 필요}")
 
 "$CONDA_PREFIX/bin/python" -u src/eval_libero.py "${ARGS[@]}"
 log "done → $OUT_BASE/$TAG"

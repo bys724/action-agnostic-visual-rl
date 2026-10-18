@@ -129,8 +129,10 @@ class BCTransformerClient:
     직접 호출 (`get_action`의 `preprocess_input` 우회 — 입력 분포 일치).
     """
 
-    def __init__(self, checkpoint_path: str, device: str = "cuda"):
+    def __init__(self, checkpoint_path: str, device: str = "cuda",
+                 anchor_mode: str = None, anchor_k: int = None, deterministic: bool = False):
         self.device = device
+        self.deterministic = deterministic
         logging.info(f"Loading BC-T ckpt: {checkpoint_path}")
         ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         cfg = OmegaConf.create(ckpt["config"])
@@ -164,6 +166,12 @@ class BCTransformerClient:
         assert not _qk_dropped, f"qk-norm 가중치 드랍 (adapter qk_norm 미배선?) {_qk_dropped[:5]}"
         self.policy.eval()
         self.img_size = self.policy.adapter.img_size
+        # α 앵커 규약 (docs/alpha_plan.md §3·§5-2): 앵커 학습 ckpt 는 평가 모드 필수, ★ 은 금지
+        self.anchor_cams = self.policy.anchor_cams
+        assert bool(self.anchor_cams) == (anchor_mode is not None), (
+            f"앵커 학습 ckpt ↔ --anchor-mode 짝 불일치 (anchor_cams={self.anchor_cams}, mode={anchor_mode})")
+        self.anchor_mode, self.anchor_k = anchor_mode, anchor_k
+        self.n_p_encodes = 0   # 앵커 경로에서 실제 P 인코딩 횟수(카메라 합) — 모드 A 절감 확인용
         # E3 motion_gap=g: 어댑터가 T_out + g 프레임을 받음 → 히스토리 g장 더 보관 + 앞 패딩
         self.motion_gap = getattr(self.policy.adapter, "motion_gap", None) or 0
         self.encoder_type = str(cfg.encoder.type)
@@ -216,6 +224,65 @@ class BCTransformerClient:
         self.obs_history: list = []  # list of dict per timestep
         self.max_seq_len = self.policy.max_seq_len  # 학습 seq_len과 동일
         self.hist_len = self.max_seq_len + self.motion_gap
+        if self.anchor_cams:
+            # 앵커 경로: 위치별 어댑터 출력은 (현재 프레임, 그 앵커)만의 함수 → 위치마다 한 번 계산해 창에 보관.
+            # 프레임 시계 = reset 뒤 첫 observe/infer 프레임이 0 (기본 wait 10 = seq_len 10 → env step 0).
+            self.frame_t = -1
+            self.frames: Dict[int, Dict[str, torch.Tensor]] = {}   # t → {cam: 이미지} (앵커 후보만 보관)
+            self.p_cache: Dict[tuple, torch.Tensor] = {}          # (cam, t) → pooled P (앵커 프레임만)
+
+    def anchor_time(self, t: int) -> int:
+        """롤아웃 앵커 규약. A(period k): {0} ∪ {n·k} 중 t 보다 엄격히 앞선 마지막 점 (t=0 → 자기 자신, 나이 1..k 순환)
+        · B(distance d): max(t − d, 0) (매 스텝 앵커 P 재계산 = 절감 없음, 진단용)."""
+        k = self.anchor_k
+        if self.anchor_mode == "period":
+            return 0 if t == 0 else ((t - 1) // k) * k
+        return max(t - k, 0)
+
+    @torch.no_grad()
+    def _anchor_feats(self, imgs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """현재 프레임 한 장(카메라별) → 카메라별 어댑터 출력 (1, 1, D). P 는 앵커 프레임에서만 계산·캐시."""
+        ad = self.policy.adapter
+        self.frame_t += 1
+        t = self.frame_t
+        self.frames[t] = imgs
+        anc = self.anchor_time(t)
+        for old in [u for u in self.frames if u < anc]:   # 앵커는 단조 비감소 → 이전 프레임 폐기
+            del self.frames[old]
+        for key in [key for key in self.p_cache if key[1] < anc]:
+            del self.p_cache[key]
+        out = {}
+        self.cur_anchor_p = {}   # mo: 현재 스텝 앵커의 pooled P (창 앞 토큰)
+        for cam, mode in self.anchor_cams.items():
+            x_cur, x_anc = imgs[cam], self.frames[anc][cam]
+            if mode == "now":
+                p = ad.encode_p_pooled(cam, x_cur)
+                self.n_p_encodes += 1
+            else:
+                if (cam, anc) not in self.p_cache:
+                    self.p_cache[(cam, anc)] = ad.encode_p_pooled(cam, x_anc)
+                    self.n_p_encodes += 1
+                p = self.p_cache[(cam, anc)]
+            ch = ad.encode_change_pooled(cam, x_anc, x_cur)
+            if mode == "mo":
+                self.cur_anchor_p[cam] = p
+                out[cam] = ch.unsqueeze(1)
+                continue
+            out[cam] = (p if ch is None else torch.cat([p, ch], dim=-1)).unsqueeze(1)
+        return out
+
+    def _push_anchor_step(self, obs: Dict[str, Any]) -> None:
+        state = obs["observation/state"]
+        imgs = {"agentview_rgb": self._img_to_tensor(obs["observation/image"]),
+                "eye_in_hand_rgb": self._img_to_tensor(obs["observation/wrist_image"])}
+        self.obs_history.append({
+            "gripper_states": torch.from_numpy(state[-2:]).float().view(1, 2).to(self.device),
+            "joint_states": torch.from_numpy(np.asarray(obs["observation/joint_pos"])
+                                             ).float().view(1, 7).to(self.device),
+            "feats": self._anchor_feats(imgs),
+        })
+        if len(self.obs_history) > self.max_seq_len:
+            self.obs_history.pop(0)
 
     def observe(self, obs: Dict[str, Any]) -> None:
         """Inference 없이 obs만 history에 누적. dummy wait 기간 동안 호출하여
@@ -223,6 +290,9 @@ class BCTransformerClient:
         보도록 함. videomae / v11 같은 motion-aware 어댑터는 (im, im) pair에
         대해 motion feature가 collapse하므로 첫 step부터 real motion이 필수.
         """
+        if self.anchor_cams:
+            self._push_anchor_step(obs)
+            return
         agent = self._img_to_tensor(obs["observation/image"])
         wrist = self._img_to_tensor(obs["observation/wrist_image"])
         state = obs["observation/state"]
@@ -242,6 +312,26 @@ class BCTransformerClient:
 
         학습 forward와 동일한 시퀀스 분포로 spatial_encode 호출.
         """
+        if self.anchor_cams:
+            # 앵커 경로: 창의 위치별 어댑터 출력(캐시) + low-dim 으로 spatial_encode (학습 forward_anchor 와 위치별 동치)
+            self._push_anchor_step(obs)
+            hist = self.obs_history
+            data = {
+                "obs": {k: torch.stack([h[k] for h in hist], dim=1) for k in ("gripper_states", "joint_states")},
+                "img_feats": {cam: torch.cat([h["feats"][cam] for h in hist], dim=1) for cam in self.anchor_cams},
+                "task_emb": self._task_emb(str(obs["prompt"])).unsqueeze(0),
+            }
+            if self.policy.p_once:
+                data["anchor_p"] = self.cur_anchor_p
+            x = self.policy.temporal_encode(self.policy.spatial_encode(data))
+            dist = self.policy.policy_head(x[:, -1])
+            if self.deterministic:   # 노이즈 가설 진단: 가중치 최대 성분의 평균 (무작위 추출 없음)
+                k = dist.mixture_distribution.logits.argmax(-1)                       # (B,)
+                means = dist.component_distribution.base_dist.loc                     # (B, modes, A)
+                action = means[torch.arange(means.shape[0]), k].squeeze(0).cpu().numpy()
+            else:
+                action = dist.sample().squeeze(0).cpu().numpy()
+            return {"actions": action[np.newaxis, :]}
         agent = self._img_to_tensor(obs["observation/image"])      # (1, 3, H, W)
         wrist = self._img_to_tensor(obs["observation/wrist_image"])
         state = obs["observation/state"]
@@ -456,6 +546,13 @@ def main():
     p.add_argument("--output-dir", type=str, default="data/libero/results")
     p.add_argument("--video-dir", type=str, default="data/libero/videos")
     p.add_argument("--quiet", action="store_true")
+    p.add_argument("--anchor-mode", default=None, choices=["period", "distance"],
+                   help="α 앵커 평가 규약 (앵커 학습 ckpt 필수): period = 모드 A 주기 k(위상 0, P 는 앵커에서만) | "
+                        "distance = 모드 B 고정 거리 d(매 스텝 앵커 = t−d, 진단)")
+    p.add_argument("--anchor-k", type=int, default=None,
+                   help="모드 A 의 k 또는 모드 B 의 d (alpha_plan §5-2: 1·3·5·10·20)")
+    p.add_argument("--deterministic", action="store_true",
+                   help="행동 = GMM 가중치 최대 성분의 평균 (기본 = dist.sample()). 매 스텝 추출 노이즈 진단")
     p.add_argument("--ablate-extra", action="store_true",
                    help="E3 진단: 현재 프레임 P 외 스트림(과거 P / M)을 매 스텝 0으로 = 학습 dropout 상태(분포 내)")
     args = p.parse_args()
@@ -463,7 +560,9 @@ def main():
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s - %(levelname)s - %(message)s")
 
-    client = BCTransformerClient(args.checkpoint)
+    assert (args.anchor_mode is None) == (args.anchor_k is None), "--anchor-mode/--anchor-k 는 함께"
+    client = BCTransformerClient(args.checkpoint, anchor_mode=args.anchor_mode, anchor_k=args.anchor_k,
+                                 deterministic=args.deterministic)
     if args.ablate_extra:
         client.policy.adapter.force_drop_extra = True
 
@@ -491,6 +590,10 @@ def main():
         "replan_steps": args.replan_steps,
         "seed": args.seed,
         "ablate_extra": bool(args.ablate_extra),
+        "anchor_mode": args.anchor_mode,
+        "deterministic": args.deterministic,
+        "anchor_k": args.anchor_k,
+        "anchor_n_p_encodes": client.n_p_encodes if client.anchor_cams else None,
         "env_resolution": LIBERO_ENV_RESOLUTION,
         "max_steps": TASK_SUITE_CONFIG[args.task_suite]["max_steps"],
         "train_epoch": client.train_epoch,
@@ -503,7 +606,8 @@ def main():
 
     out = pathlib.Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    fname = f"bct_{ckpt_stem}_{args.task_suite}_seed{args.seed}_{ts}.json"
+    atag = f"_{args.anchor_mode}{args.anchor_k}" if args.anchor_mode else ""
+    fname = f"bct_{ckpt_stem}_{args.task_suite}_seed{args.seed}{atag}_{ts}.json"
     with open(out / fname, "w") as fh:
         json.dump(results, fh, indent=2)
 

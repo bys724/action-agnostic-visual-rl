@@ -316,11 +316,12 @@ def embed_all(fuse, cache, g_all, device, bs=256):
     return out
 
 
-def fit_probe(x, y, task, out_dim, args, device, seed=None, extra=None):
+def fit_probe(x, y, task, out_dim, args, device, seed=None, extra=None, n_streams=1):
     """Same attentive probe as same-probe, fixed epochs, final weights (frozen for all conditions).
-    extra = position covariate (RFF of anchor ee_pos), concatenated after pooling (same-probe concat)."""
+    extra = position covariate (RFF of anchor ee_pos), concatenated after pooling (same-probe concat).
+    n_streams = 2: x = [stream0 tokens ‖ stream1 tokens], stream별 query pool (same-probe P⊕M 규약, alpha_readout)."""
     torch.manual_seed(args.seed if seed is None else seed)
-    probe = AttentivePoolProbe(x.shape[2], n_streams=1, n_patch=x.shape[1], action_dim=out_dim,
+    probe = AttentivePoolProbe(x.shape[2], n_streams=n_streams, n_patch=x.shape[1] // n_streams, action_dim=out_dim,
                                extra_dim=0 if extra is None else extra.shape[1]).to(device)
     opt = torch.optim.AdamW(probe.parameters(), lr=1e-3)
     for _ in range(args.probe_epochs):

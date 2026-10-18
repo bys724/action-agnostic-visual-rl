@@ -43,6 +43,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 
 from .common.blocks import TransformerBlock, MotionRoutingBlock
 from .two_stream_v11 import TwoStreamV11Model
@@ -283,6 +284,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_noise_max: float = 0.0,             # §10 센서 노이즈: M 입력 프레임에 RGB 가우시안 σ~U[0, max] (0=off)
         bright_scene_gain_range: Optional[Tuple[float, float]] = None,  # §10 장면 조명 수준: 쌍 공유 gain (None=off)
         bright_target: str = "clean",         # §10 M-recon 타깃: clean = 원래 조명 ΔL(C1) / aug = 밝기 바꾼 그대로의 ΔL(노이즈만 제거)
+        m_noise_kinds: Tuple[str, ...] = ("gaussian",),  # E1: 잡음 종류 묶음 (gaussian·shot·read·jpeg) — 샘플별 하나
+        m_noise_jpeg_quality: Tuple[int, int] = (85, 95),  # E1: jpeg 품질 U{lo..hi} (nvjpeg는 q≥99 인코딩 실패, 잡 42295259)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -455,6 +458,10 @@ class TwoStreamV15Model(TwoStreamV11Model):
         assert bright_target in ("clean", "aug"), bright_target
         self.bright_target = bright_target
         assert m_noise_max == 0 or bright_aug, "m_noise_max는 bright_aug 경로 전용"
+        # E1 (claim_spine_v2 §5): 잡음 종류 묶음. ("gaussian",) = §10 C1-DN 경로 그대로 (RNG 소비 동일)
+        self.m_noise_kinds = tuple(m_noise_kinds)
+        self.m_noise_jpeg_quality = tuple(m_noise_jpeg_quality)
+        assert self.m_noise_kinds and set(self.m_noise_kinds) <= {"gaussian", "shot", "read", "jpeg"}, m_noise_kinds
         if bright_aug:
             assert comp_mae, "bright_aug는 comp_mae(_forward_pair_comp) 전용"
         if comp_mae:
@@ -916,6 +923,56 @@ class TwoStreamV15Model(TwoStreamV11Model):
         field = gain.view(B, 1, 1) * (1.0 + amp.view(B, 1, 1) * proj)       # [B, H, W]
         return (image * field.unsqueeze(1)).clamp(0.0, 1.0), gain, amp
 
+    def _sensor_noise(self, x: torch.Tensor, sig: torch.Tensor, kind: torch.Tensor) -> torch.Tensor:
+        """E1 잡음 종류 묶음 (claim_spine_v2 §5). x [B,3,H,W] ∈ [0,1] · sig [B,1,1,1] · kind [B] = m_noise_kinds 인덱스.
+
+        종류·세기는 샘플(쌍) 단위로 두 프레임이 공유, 잡음 샘플은 프레임마다 독립 (호출마다 새로 뽑음).
+        - gaussian: x + σ·n                                (§10 C1-DN과 같은 형태)
+        - shot:     x + σ·sqrt(x)·n                        (신호 의존 · x=1에서 std σ)
+        - read:     x + σ·blur(n)/std(blur(n))             (공간 상관 판독 잡음 · 블러 σ=1px 후 std 재조정)
+        - jpeg:     JPEG(x, q), q ~ U{lo..hi}              (압축 · σ 무관 · 세기 = 품질)
+        """
+        out = x.clone()
+        for i, name in enumerate(self.m_noise_kinds):
+            sel = (kind == i).nonzero(as_tuple=True)[0]
+            if sel.numel() == 0:
+                continue
+            xs, s = x[sel], sig[sel]
+            if name == "gaussian":
+                y = xs + s * torch.randn_like(xs)
+            elif name == "shot":
+                y = xs + s * xs.clamp(min=0.0).sqrt() * torch.randn_like(xs)
+            elif name == "read":
+                n = torchvision.transforms.functional.gaussian_blur(torch.randn_like(xs), kernel_size=5, sigma=1.0)
+                n = n / n.flatten(1).std(dim=1).clamp(min=1e-6).view(-1, 1, 1, 1)
+                y = xs + s * n
+            else:  # jpeg
+                lo, hi = self.m_noise_jpeg_quality
+                q = torch.randint(lo, hi + 1, (sel.numel(),)).tolist()
+                # nvjpeg(GPU) 우선: H100 예열 후 5.8 ms/32장 vs CPU 137 ms/128장 (잡 42295238).
+                #   MIG 장치는 nvjpeg 인코딩 실패('image encoding failed: 8', 잡 42294849) → 이후 CPU로 고정.
+                u8 = (xs * 255.0).round().clamp(0, 255).to(torch.uint8)
+                use_gpu = u8.is_cuda and not getattr(self, "_jpeg_cpu_only", False)
+                if not use_gpu:
+                    u8 = u8.cpu()
+                y = torch.empty_like(xs)
+                for qv in sorted(set(q)):   # 같은 품질끼리 묶어 일괄 처리
+                    idx = [j for j, v in enumerate(q) if v == qv]
+                    imgs = [u8[j] for j in idx]
+                    if use_gpu:
+                        try:
+                            enc = torchvision.io.encode_jpeg(imgs, quality=qv)
+                            dec = torchvision.io.decode_jpeg([e.cpu() for e in enc], device=xs.device)  # 디코더 입력 = CPU 바이트
+                        except RuntimeError as e:
+                            print(f"[m-noise] nvjpeg 실패 → JPEG를 CPU로 전환: {e}", flush=True)
+                            self._jpeg_cpu_only, use_gpu = True, False
+                            u8 = u8.cpu(); imgs = [u8[j] for j in idx]
+                    if not use_gpu:
+                        dec = torchvision.io.decode_jpeg(torchvision.io.encode_jpeg(imgs, quality=qv))
+                    y[idx] = torch.stack(dec).to(device=xs.device, dtype=xs.dtype) / 255.0
+            out[sel] = y.clamp(0.0, 1.0)
+        return out
+
     def _recon_dL(
         self, m_channel: torch.Tensor, p_helper_full: torch.Tensor, device: torch.device,
         m_target: Optional[torch.Tensor] = None,
@@ -998,7 +1055,11 @@ class TwoStreamV15Model(TwoStreamV11Model):
                 #   → Case A(타깃 0)가 "잡음은 motion이 아니다"를 직접 가르침.
                 if self.m_noise_max > 0:
                     sig = torch.empty(B, 1, 1, 1, device=device).uniform_(0.0, self.m_noise_max)
-                    nz = lambda x: (x + sig * torch.randn_like(x)).clamp(0.0, 1.0)
+                    if self.m_noise_kinds == ("gaussian",):
+                        nz = lambda x: (x + sig * torch.randn_like(x)).clamp(0.0, 1.0)
+                    else:   # E1: 샘플별 잡음 종류 (쌍의 프레임이 공유)
+                        kind = torch.randint(0, len(self.m_noise_kinds), (B,), device=device)
+                        nz = lambda x: self._sensor_noise(x, sig, kind)
                     m_chan_real = self.preprocessing.compute_m_channel(nz(img_t_aug), nz(img_tk_aug))
                     m_chan_null = self.preprocessing.compute_m_channel(nz(img_t_aug), nz(img_t_aug2))
                 else:

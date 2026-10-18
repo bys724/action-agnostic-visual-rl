@@ -306,6 +306,8 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ -n "${M_NOISE_MAX:-}" ] && MODEL_ARGS+=(--m-noise-max "$M_NOISE_MAX")  # §10 M 입력 센서 노이즈
     [ -n "${BRIGHT_TARGET:-}" ] && MODEL_ARGS+=(--bright-target "$BRIGHT_TARGET")  # §10 clean | aug
     [ -n "${BRIGHT_SCENE_GAIN:-}" ] && MODEL_ARGS+=(--bright-scene-gain-range $BRIGHT_SCENE_GAIN)  # §10 "0.73 1.37"
+    [ -n "${M_NOISE_KINDS:-}" ] && MODEL_ARGS+=(--m-noise-kinds $M_NOISE_KINDS)  # E1 "gaussian shot read jpeg"
+    [ -n "${M_NOISE_JPEG_Q:-}" ] && MODEL_ARGS+=(--m-noise-jpeg-quality $M_NOISE_JPEG_Q)  # E1 "85 95"
     [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
     [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6
     [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)

@@ -62,7 +62,8 @@ def build_cfg(args, shape_meta) -> OmegaConf:
             "adapter_kwargs": ({"pooling": args.pooling, "use_m": args.use_m,
                                 "motion_gap": args.motion_gap,
                                 "motion_dropout_p": args.motion_dropout_p,
-                                "motion_source": args.motion_source}
+                                "motion_source": args.motion_source,
+                                **anchor_adapter_kwargs(args)}
                                if args.encoder == "parvo-ptptk" else {}),
         },
         "train": {"use_augmentation": args.use_augmentation},
@@ -171,6 +172,56 @@ def resize_obs_inplace(batch: dict, image_keys: list, target_size: int):
 
 
 # ============================================================================
+# α 앵커 규약 (docs/alpha_plan.md §3)
+# ============================================================================
+
+ANCHOR_CAMS = ("agentview_rgb", "eye_in_hand_rgb")   # 앞 · 손목 (같은 앵커 시점, 각자 누적 변화)
+
+
+def anchor_adapter_kwargs(args) -> dict:
+    """앵커 플래그 → 어댑터 kwargs. 앵커 미사용(★·E3)이면 빈 dict (config 불변)."""
+    if args.anchor_front is None:
+        return {}
+    return {"anchor_cams": {"agentview_rgb": args.anchor_front, "eye_in_hand_rgb": args.anchor_wrist},
+            "dinov2_cams": ["agentview_rgb"] if args.front_p == "dinov2" else []}
+
+
+def anchor_window_schedule(B: int, T: int, k_max: int, kind: str, gen: torch.Generator,
+                           exclude_age: torch.Tensor = None):
+    """한 학습 창(T 정책 위치)의 앵커 배정 — 창-앵커 규약의 유일한 정의처.
+
+    입력 프레임 = k_max 장 앞 패딩(robomimic frame_stack, 데모 시작은 첫 프레임 반복 = 에피소드 앞 클램프)
+    + T 장. 위치 p 의 현재 프레임 인덱스 = k_max + p. 반환 anchor_idx (B, T) ∈ [0, k_max+T) · age (B,) 또는 (B, T).
+    나이는 표집에만 쓰고 정책에 넣지 않는다.
+
+    kind:
+      periodic (기본) = 롤아웃 모드 A 와 같은 형태: 창 안 앵커가 주기 k 로 공유·갱신(톱니).
+                        마지막 위치 나이 a ~ U{1..k_max}, k ~ U{a..k_max}, 위상은 a 로 결정.
+      iid             = 위치마다 독립 나이 a_p ~ U{1..k_max} (창 안 앵커 공유 없음)
+      fixed           = 창 하나에 나이 a 하나, anchor_p = p − a (= 롤아웃 모드 B)
+    exclude_age: 일관성 손실의 두 번째 표집 — 같은 자리 나이가 첫 표집과 다르게(a₂ ≠ a₁).
+    """
+    def draw(shape, excl):
+        a = torch.randint(1, k_max + 1, shape, generator=gen)
+        if excl is not None:   # U{1..k_max}\{excl}: excl 에서 1..k_max−1 만큼 순환 이동
+            a = (excl - 1 + torch.randint(1, k_max, shape, generator=gen)) % k_max + 1
+        return a
+
+    p = torch.arange(T)[None]                                     # (1, T)
+    if kind == "iid":
+        age = draw((B, T), exclude_age)
+        return k_max + p - age, age
+    a = draw((B,), exclude_age)                                   # 마지막 위치(또는 창 전체) 나이
+    if kind == "fixed":
+        return k_max + p - a[:, None], a
+    assert kind == "periodic", kind
+    k = a + (torch.rand(B, generator=gen) * (k_max - a + 1)).long()   # U{a..k_max}
+    r = p - (T - 1) + a[:, None]                                  # 마지막 앵커점(= T−1−a) 기준 오프셋
+    age_p = torch.remainder(r - 1, k[:, None]) + 1                # 1..k
+    return k_max + p - age_p, a
+
+
+# ============================================================================
 # Training loop
 # ============================================================================
 
@@ -275,7 +326,8 @@ def _log_first_batch_stats(batch, image_keys):
 
 
 def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
-                     log_every=50, max_batches=None, debug_first_batch=False, amp=False):
+                     log_every=50, max_batches=None, debug_first_batch=False, amp=False,
+                     anchor=None):
     policy.train()
     total = 0.0
     n = 0
@@ -300,11 +352,26 @@ def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
 
         # Forward (returns GMM dist via policy_head). AMP bf16: frozen ViT forward 가속
         # (autocast가 logsumexp 등 민감 op는 fp32 자동 승격 → GMM log_prob 안전). bf16=GradScaler 불필요.
+        cons = None
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp):
-            dist = policy(batch)
-            # GMM negative log-likelihood (V-JEPA은 T_out < T_act → causal trim)
-            actions_aligned = _align_actions(dist, batch["actions"])
-            loss = -dist.log_prob(actions_aligned).mean()
+            if anchor is None:
+                dist = policy(batch)
+                # GMM negative log-likelihood (V-JEPA은 T_out < T_act → causal trim)
+                actions_aligned = _align_actions(dist, batch["actions"])
+                loss = -dist.log_prob(actions_aligned).mean()
+            else:
+                # α: 같은 창(같은 증강 프레임)에 앵커 배정 둘(a₁ ≠ a₂) → BC NLL 평균 + λ·L2(두 GMM 평균 행동)
+                B, T = batch["actions"].shape[:2]
+                idx1, a1 = anchor_window_schedule(B, T, anchor["k_max"], anchor["window"], anchor["gen"])
+                dist = policy({**batch, "anchor_idx": idx1.to(device)})
+                actions_aligned = _align_actions(dist, batch["actions"])
+                loss = -dist.log_prob(actions_aligned).mean()
+                if anchor["lam"] > 0:
+                    idx2, _ = anchor_window_schedule(B, T, anchor["k_max"], anchor["window"], anchor["gen"],
+                                                     exclude_age=a1)
+                    dist2 = policy({**batch, "anchor_idx": idx2.to(device)})
+                    cons = (dist.mean - dist2.mean).pow(2).sum(-1).mean()
+                    loss = (loss - dist2.log_prob(actions_aligned).mean()) / 2 + anchor["lam"] * cons
 
         optimizer.zero_grad()
         loss.backward()
@@ -317,15 +384,18 @@ def train_one_epoch(policy, loader, optimizer, device, image_keys, img_size,
         n += 1
 
         if i % log_every == 0:
-            print(f"  step {i:5d} | loss {loss.item():.4f}")
+            print(f"  step {i:5d} | loss {loss.item():.4f}"
+                  + (f" | cons {cons.item():.4f}" if cons is not None else ""))
     return total / max(n, 1)
 
 
 @torch.no_grad()
-def evaluate(policy, loader, device, image_keys, img_size, amp=False):
+def evaluate(policy, loader, device, image_keys, img_size, amp=False, anchor=None):
     policy.eval()
     total = 0.0
     n = 0
+    # α: 검증 손실은 앵커 배정 1개 · 고정 seed 생성기(에폭 간 같은 배정) · BC NLL 만
+    gen = torch.Generator().manual_seed(anchor["eval_seed"]) if anchor is not None else None
     for batch in loader:
         for k in batch["obs"]:
             batch["obs"][k] = batch["obs"][k].to(device, non_blocking=True)
@@ -333,6 +403,9 @@ def evaluate(policy, loader, device, image_keys, img_size, amp=False):
         if "task_emb" in batch:
             batch["task_emb"] = batch["task_emb"].to(device, non_blocking=True)
         resize_obs_inplace(batch, image_keys, img_size)
+        if anchor is not None:
+            B, T = batch["actions"].shape[:2]
+            batch["anchor_idx"] = anchor_window_schedule(B, T, anchor["k_max"], anchor["window"], gen)[0].to(device)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp):
             dist = policy(batch)
             actions_aligned = _align_actions(dist, batch["actions"])
@@ -367,6 +440,20 @@ def main():
                         help="parvo-ptptk E3 copycat 대책: 학습 중 현재 프레임 P 외 스트림을 확률 p로 0 (claim_spine_v2 §4.6 기본 0.1)")
     parser.add_argument("--motion-source", default="rgb_prev", choices=["rgb_prev", "comp_m", "none"],
                         help="parvo-ptptk E3 팔(같은 두 프레임 예산): rgb_prev=외형 2장(②, 기존) | comp_m=외형 1장+CoMP M(④) | none=외형 1장(①)")
+    # α 앵커 규약 (docs/alpha_plan.md §3) — 미지정이면 기존 경로(★·E3) 그대로
+    parser.add_argument("--anchor-front", default=None, choices=["now", "p", "pm", "praw", "mo"],
+                        help="α 앞 카메라 입력 형식: now=매 스텝 P | p=앵커 P | pm=앵커 P+CoMP M(ΔL 앵커→t) | "
+                             "praw=앵커 P+raw ΔL | mo=슬롯엔 M 만·현재 앵커 P 는 창 앞 토큰 한 번(두 카메라 함께). 지정 시 --anchor-wrist 필수, --motion-source none")
+    parser.add_argument("--anchor-wrist", default=None, choices=["now", "p", "pm", "praw", "mo"],
+                        help="α 손목 카메라 입력 형식 (같은 앵커 시점)")
+    parser.add_argument("--front-p", default="c1dn", choices=["c1dn", "dinov2"],
+                        help="α 앞 카메라 P 출처 (dinov2 = DINOv2-base, 손목은 C1-DN 유지)")
+    parser.add_argument("--anchor-max-age", type=int, default=20,
+                        help="α 앵커 나이 상한 (프레임, 20 = 1초)")
+    parser.add_argument("--anchor-window", default="periodic", choices=["periodic", "iid", "fixed"],
+                        help="α 학습 창(seq_len) 안 앵커 배정 규약 — anchor_window_schedule 참고")
+    parser.add_argument("--anchor-consistency", type=float, default=1.0,
+                        help="α 앵커 일관성 손실 가중 λ (0 = 두 번째 배정 없이 BC 만)")
     parser.add_argument("--amp", action="store_true",
                         help="bf16 autocast (frozen ViT forward 가속, ~1.5-2×). encoder frozen이라 정확도 영향 미미")
     parser.add_argument("--p-depth", type=int, default=12)
@@ -413,6 +500,14 @@ def main():
 
     args = parser.parse_args()
     args.use_augmentation = not args.no_augmentation
+    anchor_on = args.anchor_front is not None or args.anchor_wrist is not None
+    if anchor_on:
+        assert args.anchor_front and args.anchor_wrist, "--anchor-front/--anchor-wrist 는 함께 지정"
+        assert not (args.anchor_front == args.anchor_wrist == "now"), "둘 다 now = ★ → 앵커 플래그 없이 --motion-source none"
+        assert args.encoder == "parvo-ptptk" and args.motion_source == "none", "α 앵커는 parvo-ptptk + --motion-source none"
+        assert args.motion_gap is None and not args.use_m and args.motion_dropout_p == 0
+    else:
+        assert args.front_p == "c1dn", "--front-p 는 앵커 모드 전용"
 
     control_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -449,7 +544,9 @@ def main():
             initialize_obs_utils=(n == 0),
             seq_len=args.seq_len,
             # motion_gap=g: obs만 앞쪽 g장 추가(데모 시작은 첫 프레임 반복 패딩), actions는 seq_len 유지
-            frame_stack=(args.motion_gap + 1) if args.motion_gap else 1,
+            # α 앵커: obs 앞 anchor_max_age 장 패딩(데모 시작은 첫 프레임 반복 = 에피소드 앞 클램프)
+            frame_stack=((args.anchor_max_age + 1) if anchor_on
+                         else (args.motion_gap + 1) if args.motion_gap else 1),
         )
         if args.max_demos_per_task is not None:
             # 부분집합은 (seed, task)로 고정 → 같은 seed의 팔끼리 동일 데모를 봄
@@ -548,6 +645,13 @@ def main():
         save_aug_check_png(policy, first_batch, image_keys, args.aug_check_png)
 
     # ── 7. Training loop ─────────────────────────────────────────────────
+    anchor = None
+    if anchor_on:
+        # 배정 생성기는 전역 RNG 와 분리(CPU) → 학습 seed 로 재현
+        anchor = {"k_max": args.anchor_max_age, "window": args.anchor_window, "lam": args.anchor_consistency,
+                  "gen": torch.Generator().manual_seed(args.seed), "eval_seed": 10_000 + args.seed}
+        print(f"[anchor] front={args.anchor_front} wrist={args.anchor_wrist} front_p={args.front_p} "
+              f"max_age={args.anchor_max_age} window={args.anchor_window} λ={args.anchor_consistency}")
     best_eval_loss = float("inf")
     history = {"train": [], "eval": []}
     for epoch in range(1, args.epochs + 1):
@@ -556,9 +660,9 @@ def main():
             policy, train_loader, optimizer, device, image_keys, img_size,
             max_batches=args.max_train_batches,
             debug_first_batch=(epoch == 1),
-            amp=args.amp,
+            amp=args.amp, anchor=anchor,
         )
-        eval_loss = evaluate(policy, eval_loader, device, image_keys, img_size, amp=args.amp)
+        eval_loss = evaluate(policy, eval_loader, device, image_keys, img_size, amp=args.amp, anchor=anchor)
         scheduler.step()
 
         history["train"].append(train_loss)

@@ -258,6 +258,11 @@ def main():
                         help='[bright-aug] M-recon 타깃: clean=원래 조명 ΔL(C1) / aug=밝기 바꾼 그대로의 ΔL(노이즈만 제거). §10.')
     parser.add_argument('--m-noise-max', type=float, default=0.0,
                         help='[bright-aug] M 입력 프레임 RGB 센서 노이즈 σ~U[0, max] (0=off). refinement_floor_plan §10.')
+    parser.add_argument('--m-noise-kinds', nargs='+', default=['gaussian'],
+                        choices=['gaussian', 'shot', 'read', 'jpeg'],
+                        help='[m-noise] 잡음 종류 묶음, 샘플별 하나 균등 추출 (default gaussian = §10). E1 = claim_spine_v2 §5.')
+    parser.add_argument('--m-noise-jpeg-quality', type=int, nargs=2, default=[85, 95],
+                        help='[m-noise] jpeg 품질 U{lo..hi} (default 85 95 = EgoDex 휘도 RMS 0.004–0.008 ≈ gaussian σ≤0.01 · nvjpeg q≥99 실패).')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -416,6 +421,8 @@ def main():
             m_noise_max=args.m_noise_max,
             bright_scene_gain_range=args.bright_scene_gain_range,
             bright_target=args.bright_target,
+            m_noise_kinds=tuple(args.m_noise_kinds),
+            m_noise_jpeg_quality=tuple(args.m_noise_jpeg_quality),
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

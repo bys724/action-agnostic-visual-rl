@@ -44,6 +44,11 @@ MOTION_GAP="${MOTION_GAP:-}"           # E3: 과거 프레임/ΔL 간격 g (LIBE
 MOTION_DROPOUT_P="${MOTION_DROPOUT_P:-}" # E3: copycat 대책 dropout p
 MOTION_SOURCE="${MOTION_SOURCE:-}"     # E3 팔: rgb_prev(②) | comp_m(④) | none(①)
 MAX_DEMOS="${MAX_DEMOS:-}"             # E3: task별 데모 수 제한
+ANCHOR_FRONT="${ANCHOR_FRONT:-}"       # α (alpha_plan §3): 앞 카메라 now|p|pm|praw|mo (지정 시 ANCHOR_WRIST 필수, MOTION_SOURCE=none)
+ANCHOR_WRIST="${ANCHOR_WRIST:-}"       # α: 손목 카메라 now|p|pm|praw|mo
+FRONT_P="${FRONT_P:-}"                 # α: 앞 카메라 P 출처 c1dn(기본)|dinov2
+ANCHOR_WINDOW="${ANCHOR_WINDOW:-}"     # α: 학습 창 앵커 배정 periodic(기본)|iid|fixed
+ANCHOR_LAMBDA="${ANCHOR_LAMBDA:-}"     # α: 앵커 일관성 손실 λ (기본 1.0)
 AMP="${AMP:-1}"                        # 값 있으면 bf16 autocast (frozen ViT 가속). default 켜짐
 # V3 augmentation
 IMG_SIZE="${IMG_SIZE:-224}"            # V-JEPA은 384
@@ -100,6 +105,12 @@ fi
 if [[ -n "$MAX_DEMOS" ]]; then
     ARGS+=(--max-demos-per-task "$MAX_DEMOS")
 fi
+if [[ -n "$ANCHOR_FRONT" ]]; then
+    ARGS+=(--anchor-front "$ANCHOR_FRONT" --anchor-wrist "${ANCHOR_WRIST:?ANCHOR_FRONT 지정 시 ANCHOR_WRIST 필요}")
+fi
+[[ -n "$FRONT_P" ]] && ARGS+=(--front-p "$FRONT_P")
+[[ -n "$ANCHOR_WINDOW" ]] && ARGS+=(--anchor-window "$ANCHOR_WINDOW")
+[[ -n "$ANCHOR_LAMBDA" ]] && ARGS+=(--anchor-consistency "$ANCHOR_LAMBDA")
 if [[ -n "$AMP" ]]; then
     ARGS+=(--amp)
 fi
