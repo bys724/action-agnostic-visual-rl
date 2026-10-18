@@ -43,7 +43,7 @@ from observer_fuse import (  # noqa: E402  분석 1 판독 부품 그대로
     libero_action_target, load_demo, score,
 )
 from observer_fuse_v4 import K_MAX, UNIT, lin_probe  # noqa: E402
-from probe_action_libero import rff_expand  # noqa: E402
+from probe_action_libero import AttentivePoolProbe, rff_expand  # noqa: E402
 
 C1DN_CKPT = ("/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_denoise_augtgt/"
              "20260927_235906/checkpoint_epoch0010.pt")
@@ -215,6 +215,242 @@ def summarize(args):
     print(f"보고 (손목) C1-DN+M > C1-DN+raw: {verdict('ckpt', 'wrist')}")
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# α v2 · 매 스텝 판단 = 성공까지 남은 스텝 판독 (docs/alpha_plan.md §3 · 데이터 = SC export alpha_v1)
+# ─────────────────────────────────────────────────────────────────────────
+# 팔: star = 매 스텝 P_t · comp/raw = 앵커 P_a + 변화(a→t) · none = 앵커 P_a 만 (모두 앞 + 손목 두 카메라).
+# 공변량(pool 뒤 concat) = q(t)(관절 7 · 그리퍼 2 · 손끝 위치 3, train z-score) + 과제 one-hot · --no-q 면 과제만.
+# 앵커 나이는 입력 아님: train 은 프레임마다 a ~ U{1..min(20,t)} 하나, eval 은 나이 1..20 각각 전 프레임(t ≥ a).
+# 타깃 = 남은 스텝 ÷ 100 · Huber δ 0.1 (SC V(s) 와 같음). 출력 = 나이별 MAE(스텝) + eval 예측 npz(사후 지표용).
+
+SC_EXPORT = "/proj/external_group/mrg/sfa_export/alpha_v1"
+CAMS = ("agentview", "wrist")
+N_TASKS = 10
+
+
+def load_value_episodes(export, keep):
+    """index.json 의 에피소드 중 keep(e) 인 것 → [{..e, img{cam: uint8 (T,128,128,3)}, q (T,12), y (T,)}].
+    시연 hdf5 는 obs (obs[t] = states[t+1] 이라 q 도 obs 에서) · 복구 npz 는 states[:,1:10] + eef[:,:3] (같은 시점 기록)."""
+    import h5py
+    idx, lab = json.load(open(f"{export}/index.json")), np.load(f"{export}/labels.npz")
+    eps, npz = [], {}
+    for e in idx["episodes"]:
+        if not e.get("labeled", True) or not keep(e):  # 실패 복구(시간 초과) = 라벨 없음 → 학습·평가 모두 제외
+            continue
+        fr = e["frames"]
+        if "hdf5" in fr:
+            with h5py.File(fr["hdf5"], "r") as f:
+                o = f[fr["key"]]["obs"]
+                img = {"agentview": o["agentview_rgb"][:], "wrist": o["eye_in_hand_rgb"][:]}
+                q = np.concatenate([o["joint_states"][:], o["gripper_states"][:], o["ee_pos"][:]], 1)
+        else:
+            if fr["npz"] not in npz:
+                z = np.load(fr["npz"])
+                npz[fr["npz"]] = {k: z[k] for k in ("agentview", "wrist", "states", "eef")}
+            z, s = npz[fr["npz"]], slice(fr["start"], fr["start"] + fr["len"])
+            img = {"agentview": z["agentview"][s], "wrist": z["wrist"][s]}
+            q = np.concatenate([z["states"][s, 1:10], z["eef"][s, :3]], 1)
+        y = lab[e["src"].replace("/", "|")]
+        assert len(y) == e["T"] == len(q) == len(img["agentview"]) == len(img["wrist"]), e["src"]
+        eps.append(dict(e, img=img, q=q.astype(np.float32), y=y.astype(np.float32)))
+    return eps
+
+
+class ValueData:
+    """에피소드 묶음의 프레임(GPU uint8) · q · 라벨 · 과제. 전역 프레임 번호 = start[ep] + t."""
+
+    def __init__(self, eps, enc, arm, device):
+        from src.models.common.preprocessing import TwoStreamPreprocessing
+        self.enc, self.arm, self.device = enc, arm, device
+        self.prep = TwoStreamPreprocessing(use_sobel=False).to(device)
+        self.eps = eps
+        self.frames = {c: torch.from_numpy(np.concatenate([e["img"][c] for e in eps])).to(device) for c in CAMS}
+        for e in eps:
+            del e["img"]
+        self.n = np.array([e["T"] for e in eps]); self.start = np.concatenate([[0], np.cumsum(self.n)[:-1]])
+        self.q, self.y = np.concatenate([e["q"] for e in eps]), np.concatenate([e["y"] for e in eps])
+        self.task = np.repeat([e["task"] for e in eps], self.n)
+        self.dim = 384 if enc is None else enc.pos_embed_p.shape[-1]
+        self.P = None  # eval 용 전 프레임 P 캐시 (cache_p)
+
+    def _x(self, c, idx):  # [0,1] raw, bilinear 224, ImageNet 정규화 없음 (학습 parity)
+        return F.interpolate(self.frames[c][idx].permute(0, 3, 1, 2).float().div_(255.0), size=(224, 224),
+                             mode="bilinear", align_corners=False)
+
+    @torch.no_grad()
+    def p_tok(self, c, idx):
+        if self.P is not None:
+            return self.P[c][idx]
+        return self.enc._encode_p_unmasked(self.enc.preprocessing.compute_p_channel(self._x(c, idx)))[:, 1:].half()
+
+    @torch.no_grad()
+    def change_tok(self, c, i0, i1):  # = Tokens.change_tok (분석 1 raw 규칙 · 누적 M 한 장)
+        m = self.prep.compute_m_channel(self._x(c, i0), self._x(c, i1))
+        t = F.unfold(m, kernel_size=16, stride=16).transpose(1, 2) if self.arm == "raw" \
+            else self.enc._encode_m_unmasked(m)[:, 1:]
+        return F.pad(t, (0, self.dim - t.shape[-1])).half()
+
+    @torch.no_grad()
+    def cache_p(self, batch=256):
+        idx = torch.arange(len(self.y), device=self.device)
+        self.P = {c: torch.cat([self.p_tok(c, idx[i:i + batch]) for i in range(0, len(idx), batch)]) for c in CAMS}
+
+    def n_streams(self):
+        return 4 if self.arm in ("comp", "raw") else 2
+
+    @torch.no_grad()
+    def features(self, t, a):
+        """전역 프레임 t (n,) · 나이 a (n,) → (n, n_streams·196, D) fp16 [앞 P ‖ 앞 변화 ‖ 손목 P ‖ 손목 변화]."""
+        t = torch.from_numpy(t).to(self.device); s = t - torch.from_numpy(a).to(self.device)
+        out = []
+        for c in CAMS:
+            out.append(self.p_tok(c, t if self.arm == "star" else s))
+            if self.arm in ("comp", "raw"):
+                out.append(self.change_tok(c, s, t))
+        return torch.cat(out, 1)
+
+    def extra(self, t, q_mu, q_sd, use_q):
+        oh = F.one_hot(torch.from_numpy(self.task[t]).long(), N_TASKS).float()
+        return torch.cat([torch.from_numpy((self.q[t] - q_mu) / q_sd), oh], 1) if use_q else oh
+
+    def frames_at(self, age):
+        """나이 age 로 볼 수 있는 전역 프레임(t ≥ age) · 그 에피소드 번호."""
+        t = np.concatenate([s + np.arange(age, n) for s, n in zip(self.start, self.n)])
+        return t, np.searchsorted(self.start, t, side="right") - 1
+
+
+def run_value(args, device):
+    t0 = time.time()
+    keep_tr = lambda e: e["fold"] is not None and e["fold"] != args.fold
+    keep_ev = lambda e: e["fold"] == args.fold
+    if args.max_episodes:  # 스모크: 각 집합 앞쪽 에피소드만 (시연 · 복구 각각 상한)
+        cnt = {}
+        def cap(f):
+            def g(e):
+                if not f(e):
+                    return False
+                k = (f, e["source"]); cnt[k] = cnt.get(k, 0) + 1
+                return cnt[k] <= args.max_episodes
+            return g
+        keep_tr, keep_ev = cap(keep_tr), cap(keep_ev)
+    enc = build_parvo_encoder(args.checkpoint, device)
+    tr = ValueData(load_value_episodes(args.export, keep_tr), enc, args.arm, device)
+    ev = ValueData(load_value_episodes(args.export, keep_ev), enc, args.arm, device)
+    print(f"[{args.tag}] train eps {len(tr.n)} frames {len(tr.y)} / eval eps {len(ev.n)} frames {len(ev.y)} "
+          f"({time.time() - t0:.0f}s)", flush=True)
+
+    # train 표본: 프레임마다 나이 하나 (t ≥ 1) · 특징은 한 번 인코딩해 CPU 에 둠
+    rng = np.random.default_rng(args.seed)
+    t_tr, _ = tr.frames_at(1)
+    a_tr = np.minimum(rng.integers(1, K_MAX + 1, len(t_tr)), t_tr - tr.start[np.searchsorted(tr.start, t_tr, side="right") - 1])
+    q_mu, q_sd = tr.q.mean(0), tr.q.std(0) + 1e-6
+    x_tr = torch.empty((len(t_tr), tr.n_streams() * 196, tr.dim), dtype=torch.float16)
+    for i in range(0, len(t_tr), 256):
+        x_tr[i:i + 256] = tr.features(t_tr[i:i + 256], a_tr[i:i + 256]).cpu()
+    e_tr = tr.extra(t_tr, q_mu, q_sd, not args.no_q)
+    y_tr = torch.from_numpy(tr.y[t_tr] / 100.0)[:, None]
+    del tr.frames; torch.cuda.empty_cache()
+    print(f"  train features {tuple(x_tr.shape)} ({time.time() - t0:.0f}s)", flush=True)
+
+    torch.manual_seed(args.seed)
+    probe = AttentivePoolProbe(x_tr.shape[2], n_streams=tr.n_streams(), n_patch=196, action_dim=1,
+                               extra_dim=e_tr.shape[1]).to(device)
+    opt = torch.optim.AdamW(probe.parameters(), lr=1e-3)
+    for ep in range(args.probe_epochs):
+        tot = 0.0
+        for i in torch.randperm(len(x_tr)).split(256):
+            loss = F.huber_loss(probe(x_tr[i].to(device).float(), e_tr[i].to(device)), y_tr[i].to(device), delta=0.1)
+            opt.zero_grad(); loss.backward(); opt.step(); tot += float(loss) * len(i)
+        if ep % 10 == 0 or ep + 1 == args.probe_epochs:
+            print(f"  epoch {ep:3d}  huber {tot / len(x_tr):.5f} ({time.time() - t0:.0f}s)", flush=True)
+    probe.eval(); del x_tr
+
+    ev.cache_p()
+    is_rec = np.array([e["source"] == "recover" for e in ev.eps])
+    curve, preds = {}, {}
+    with torch.no_grad():
+        for k in (args.ages if args.arm != "star" else [1]):  # star 는 나이 무관 → 한 번 (곡선은 상수)
+            t_ev, ep_ev = ev.frames_at(k)
+            yh = torch.cat([probe(ev.features(t_ev[i:i + 256], np.full(len(t_ev[i:i + 256]), k)).float(),
+                                  ev.extra(t_ev[i:i + 256], q_mu, q_sd, not args.no_q).to(device)).cpu()
+                            for i in range(0, len(t_ev), 256)])[:, 0].numpy() * 100.0
+            err = np.abs(yh - ev.y[t_ev]); rec = is_rec[ep_ev]
+            # 사건 창 원자료: 복구 에피소드마다 V̂(t_inj − 1) · V̂(t_inj + 10) (판정식은 사후 — 보고 참조)
+            lookup = dict(zip(t_ev.tolist(), yh.tolist()))
+            win = [(lookup.get(ev.start[j] + e["event"]["t_inj"] - 1), lookup.get(ev.start[j] + e["event"]["t_inj"] + 10))
+                   for j, e in enumerate(ev.eps) if e["source"] == "recover"]
+            win = [w for w in win if None not in w]
+            curve[k] = {"n": len(t_ev), "mae": float(err.mean()), "mae_demo": float(err[~rec].mean()),
+                        "mae_recover": float(err[rec].mean()) if rec.any() else None,
+                        "event_dV_mean": float(np.mean([b - a for a, b in win])) if win else None, "event_n": len(win)}
+            preds[k] = (t_ev, yh)
+            print(f"  age {k:2d}  MAE {curve[k]['mae']:.2f}  demo {curve[k]['mae_demo']:.2f}  "
+                  f"recover {curve[k]['mae_recover']}  event dV̂ {curve[k]['event_dV_mean']}", flush=True)
+    base = float(np.abs(ev.y - tr.y.mean()).mean())  # 평균 예측 바닥선 (train 라벨 평균)
+    res = {"args": vars(args), "meta": {"plan": "docs/alpha_plan.md §3 (v2)", "export": args.export,
+                                        "label": "remaining steps (SC alpha_v1)", "loss": "huber(delta=0.1) on y/100",
+                                        "n_train_frames": int(len(t_tr)), "n_eval_frames": int(len(ev.y)),
+                                        "mean_predictor_mae": base},
+           "curve": curve, "age_mean_mae": float(np.mean([v["mae"] for v in curve.values()])),
+           "elapsed_s": round(time.time() - t0, 1)}
+    print(f"age-mean MAE {res['age_mean_mae']:.2f} · mean predictor {base:.2f} · {res['elapsed_s']:.0f}s", flush=True)
+    os.makedirs(args.out_root, exist_ok=True)
+    with open(f"{args.out_root}/{args.tag}.json", "w") as f:
+        json.dump(res, f, indent=1)
+    np.savez_compressed(f"{args.out_root}/{args.tag}_preds.npz", ep_start=ev.start, ep_src=np.array([e["src"] for e in ev.eps]),
+                        y=ev.y, **{f"t_age{k}": v[0] for k, v in preds.items()}, **{f"yhat_age{k}": v[1] for k, v in preds.items()})
+
+
+def summarize_value(args, n_boot=2000):
+    """out-root 의 value_* 칸 → 팔 × seed 의 5 폴드 합동 MAE(나이 1..20 평균) + J2(MAE 부분) · J3.
+    합동 = 폴드 예측을 이어 붙여 나이별 프레임 평균 → 나이 평균. J3 의 'CI 상한' = (a) seed 범위 최댓값 ·
+    (b) 에피소드 부트스트랩 95% 상한(seed 별, 짝지은 재표집) 둘 다 보고. J1(사건 창)은 여기서 계산하지 않음."""
+    root, rng = Path(args.out_root), np.random.default_rng(0)
+    ep_err = {}  # (arm, seed) → {src: (나이별 오차합, 나이별 개수)}
+    for f in sorted(root.glob("value_*_preds.npz")):
+        tag = f.name[len("value_"):-len("_preds.npz")]
+        if "smoke" in tag:
+            continue
+        arm, fold, seed = tag.rsplit("_", 2)
+        d = np.load(f)
+        st, src, y = d["ep_start"], d["ep_src"], d["y"]
+        acc = ep_err.setdefault((arm, int(seed[1:])), {})
+        for k in range(1, K_MAX + 1):
+            key = f"t_age{k}" if f"t_age{k}" in d.files else "t_age1"  # star = 나이 무관
+            t, yh = d[key], d[key.replace("t_", "yhat_")]
+            ep = np.searchsorted(st, t, side="right") - 1
+            e = np.abs(yh - y[t])
+            for j in np.unique(ep):
+                s, c = acc.setdefault(src[j], (np.zeros(K_MAX), np.zeros(K_MAX)))
+                m = ep == j; s[k - 1] += e[m].sum(); c[k - 1] += m.sum()
+    eps = sorted(next(iter(ep_err.values())))
+    S = {key: np.stack([v[s][0] for s in eps]) for key, v in ep_err.items()}   # (n_ep, 20)
+    C = {key: np.stack([v[s][1] for s in eps]) for key, v in ep_err.items()}
+    mae = lambda key, idx=slice(None): float(np.mean(S[key][idx].sum(0) / C[key][idx].sum(0)))
+    arms = sorted({a for a, _ in S})
+    print(f"합동 MAE (스텝 · 나이 1..20 평균 · 5 폴드 · 에피소드 {len(eps)})")
+    tab = {a: {s: mae((a, s)) for (b, s) in S if b == a} for a in arms}
+    for a in arms:
+        v = list(tab[a].values())
+        print(f"  {a:5s}  seeds {sorted(tab[a])}  {np.mean(v):.2f} [{min(v):.2f}, {max(v):.2f}]")
+    if {"comp", "raw"} <= set(tab):
+        ok = max(tab["comp"].values()) < min(tab["raw"].values())
+        print(f"J2 (MAE 부분) M < raw, seed 범위 비중첩: {'PASS' if ok else 'FAIL'}  (사건 창 부분은 J1 정의 확정 뒤)")
+    if {"comp", "star"} <= set(tab):
+        r = {s: tab["comp"][s] / tab["star"][s] for s in tab["comp"] if s in tab["star"]}
+        ub = {}
+        for s in r:
+            b = rng.integers(0, len(eps), (n_boot, len(eps)))
+            ub[s] = float(np.quantile([mae(("comp", s), i) / mae(("star", s), i) for i in b], 0.975))
+        print(f"J3 비율 M/★ seed 별 {', '.join(f's{s} {v:.3f}' for s, v in sorted(r.items()))} · "
+              f"(a) seed 최대 {max(r.values()):.3f} · (b) 부트스트랩 95% 상한 {', '.join(f's{s} {v:.3f}' for s, v in sorted(ub.items()))}")
+        print(f"J3 (≤ 1.2): (a) {'PASS' if max(r.values()) <= 1.2 else 'FAIL'} · (b) {'PASS' if max(ub.values()) <= 1.2 else 'FAIL'}")
+    print("나이별 합동 MAE (seed 평균) 1/5/10/15/20:")
+    for a in arms:
+        cur = np.mean([S[(a, s)].sum(0) / C[(a, s)].sum(0) for s in tab[a]], 0)
+        print(f"  {a:5s}  " + "  ".join(f"{cur[k - 1]:.2f}" for k in (1, 5, 10, 15, 20)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--p-source", default="ckpt", choices=["ckpt", "dino"])
@@ -232,10 +468,25 @@ def main():
     ap.add_argument("--max-demos", type=int, default=None, help="스모크: split 별 데모 수 상한")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--summarize", action="store_true")
+    ap.add_argument("--target", default="motion", choices=["motion", "remaining"],
+                    help="motion = 4-a·4-b (기존) · remaining = α v2 남은 스텝 판독 (SC export)")
+    ap.add_argument("--arm", default="comp", choices=["star", "comp", "raw", "none"], help="remaining 전용")
+    ap.add_argument("--fold", type=int, default=0, help="remaining: 홀드아웃 폴드 (SC 5 폴드)")
+    ap.add_argument("--no-q", action="store_true", help="remaining: 공변량에서 q 제외 (과제 one-hot 만)")
+    ap.add_argument("--export", default=SC_EXPORT)
+    ap.add_argument("--max-episodes", type=int, default=None, help="remaining 스모크: 집합·출처별 에피소드 상한")
     ap.add_argument("--out-root", default=str(PROJECT_ROOT / "paper_artifacts" / "alpha_readout"))
     args = ap.parse_args()
+    if args.summarize and args.target == "remaining":
+        args.out_root = str(PROJECT_ROOT / "paper_artifacts" / "alpha_value")
+        return summarize_value(args)
     if args.summarize:
         return summarize(args)
+    if args.target == "remaining":
+        args.tag = args.tag or f"value_{args.arm}{'_noq' if args.no_q else ''}_f{args.fold}_s{args.seed}"
+        if args.out_root.endswith("alpha_readout"):
+            args.out_root = str(PROJECT_ROOT / "paper_artifacts" / "alpha_value")
+        return run_value(args, torch.device(args.device))
     args.tag = args.tag or (f"{args.task_suite}_{args.p_source}_{args.change}_s{args.seed}"
                             + ("_wrist" if args.view == "eye_in_hand_rgb" else ""))
     device = torch.device(args.device)

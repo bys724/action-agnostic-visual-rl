@@ -89,6 +89,18 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-19 α v2 남은 스텝 판독 — 최소 1칸 (`docs/alpha_plan.md` §3·§6-1 · 데이터 = SC export `/proj/external_group/mrg/sfa_export/alpha_v1/`)
+
+**무엇**: SC export(시연 500 + 복구 162 · 라벨 = 남은 스텝 T−1−t · 5 폴드 · 사건 색인)를 받아, 동결 C1-DN 토큰 [앞 P_a ‖ 앞 M(a→t) ‖ 손목 P_a ‖ 손목 M(a→t)] + 공변량(q(t) 12 · 과제 one-hot)을 분석 1 attentive 판독기(타깃 = 남은 스텝 ÷ 100 · Huber δ 0.1 · train 나이 ~U{1..20})로 학습 → 홀드아웃 폴드에서 나이 1..20 MAE(스텝) + 예측 npz. 스크립트 `scripts/eval/alpha_readout.py --target remaining` · `scripts/cluster/alpha_value.sbatch` · 출력 `paper_artifacts/alpha_value/`. 정합 기준 = SC V(s) 홀드아웃 MAE 10.6~14.1 과 같은 자릿수 · 평균 예측(SC 35.1)보다 확실히 낮음.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42458738 | mig-3g ×1 · 48G | 00:40:00 | 배관 스모크 (comp · 폴드 0 · seed 1 · 집합·출처별 에피소드 4 · 나이 1/10/20 · probe 2 ep) | ✅ 26s · 배관 통과 (수치 무의미) |
+| 42458739 | mig-3g ×1 · 120G | 04:00:00 | 최소 1칸 (앵커 P + CoMP M · 앞+손목 · 폴드 0 · seed 1 · probe 100 ep · afterok 738) | ✅ 17m23s (~0.29 GPU·h × MIG 1/2) · **⚠ 무효: 00:07 재export 전 파일로 실행 → 실패 복구 13 에피소드에 틀린 라벨(끝 ≠ 성공) 포함 · 아래 재제출로 대체** · train 69,309 / eval 17,925 프레임 · 나이 평균 MAE 24.2 스텝 (평균 예측 50.5) · 시연 15.0 · 복구 39.6 (주입 전 40–44 · 복구 구간 33–34 · 구간 뒤 49–50) · 나이 곡선 거의 평탄 (23.9–25.2) · 사건 창 V̂(t_inj+10) − V̂(t_inj−1) 평균: 나이 1 +21.5 → 나이 7–16 −6~−10 (라벨 차는 항상 −11). JSON·preds `paper_artifacts/alpha_value/value_comp_f0_s1*` |
+| 42458817~42458890 | mig-3g ×1 ×74 · 64G(comp·raw) / 40G(나머지) | 01:30:00 / 01:00:00 | 판독 격자 (사용자 승인 10-19 · J1 분모는 팔 비교 열기 전 Vault 확정) = 팔 {comp, raw, star, none, noq} × seed {1,2,3} × 폴드 {0..4} − 위 1칸 · 제출 순서 = 팔 → seed → 폴드 (comp 14 = 42458817~42458830 · raw 15 · star 15 · none 15 · noq 15 = …42458890) · 예상 합 ~14 잡·h, 8칸 동시면 벽시계 ~2 h | ❌ 74/74 FAILED 14–37s (~0.3 잡·h 미만) — SC 가 00:07 export 재작성(실패 복구 13 = `labeled=false` · 라벨 키 없음) → KeyError. 수정 = 라벨 없는 에피소드 학습·평가 제외 |
+| 42458908 | mig-3g ×1 · 48G | 00:40:00 | 재제출 배관 스모크 (라벨 없는 에피소드 제외 수정 확인) | ✅ 13s |
+| 42458909~42458983 | mig-3g ×1 ×75 · 64G(comp·raw) / 40G(나머지) | 01:30:00 / 01:00:00 | 판독 격자 재제출 (afterok 908) = 팔 {comp, raw, star, none, noq} × seed {1,2,3} × 폴드 {0..4} 전부(무효 1칸 포함) · 순서 = 팔 → seed → 폴드 (comp 909~923 · raw 924~938 · star 939~953 · none 954~968 · noq 969~983) · 예상 ~14 잡·h · 벽시계 ~2 h | ✅ 75/75 COMPLETED 00:36–03:33 · 합 22.7 잡·h × MIG 1/2 · 평균 comp 31.8m · raw 23.7m · star 9.1m · none 12.4m. 공통 프레임(t ≥ 20) 나이 평균 MAE seed 범위: ★ [16.73, 16.83] · M [15.89, 16.07] · raw [16.58, 16.98] · P만 [17.01, 17.17] · P만 q 없음 [17.27, 17.33] → J3 통과 · J2 MAE 쪽 통과 · J1 미개봉 |
+
 ### 2026-10-17 α 선행 판독 4-a·4-b (`docs/alpha_plan.md` §4 · 현 C1-DN · 판독기 = 분석 1 그대로)
 
 **무엇**: Fuse 없이 [앵커 P 토큰(나이 a) ‖ 앵커→t 누적 변화 채널 한 장]을 분석 1 attentive 판독기(stream별 pool · 손 위치 RFF 공변량)로 직접 학습 → 나이 1..20 위치 너머 몫 + 같은 특징 릿지로 a_{t−1}·움직임 R². 칸 = P {C1-DN, DINOv2} × 변화 {CoMP M, raw ΔL, 없음} × seed {42,1,2} = 18잡. 스크립트 `scripts/eval/alpha_readout.py` · `scripts/cluster/alpha_readout.sbatch` · 출력 `paper_artifacts/alpha_readout/`. **최소 1칸 먼저**: C1-DN+M seed 2 — 정합 점검 = pos_only가 v4 object s2(나이 1/10/20 = 0.385/0.518/0.513)와 일치.
