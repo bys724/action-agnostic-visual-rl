@@ -89,6 +89,88 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-17 α 선행 판독 4-a·4-b (`docs/alpha_plan.md` §4 · 현 C1-DN · 판독기 = 분석 1 그대로)
+
+**무엇**: Fuse 없이 [앵커 P 토큰(나이 a) ‖ 앵커→t 누적 변화 채널 한 장]을 분석 1 attentive 판독기(stream별 pool · 손 위치 RFF 공변량)로 직접 학습 → 나이 1..20 위치 너머 몫 + 같은 특징 릿지로 a_{t−1}·움직임 R². 칸 = P {C1-DN, DINOv2} × 변화 {CoMP M, raw ΔL, 없음} × seed {42,1,2} = 18잡. 스크립트 `scripts/eval/alpha_readout.py` · `scripts/cluster/alpha_readout.sbatch` · 출력 `paper_artifacts/alpha_readout/`. **최소 1칸 먼저**: C1-DN+M seed 2 — 정합 점검 = pos_only가 v4 object s2(나이 1/10/20 = 0.385/0.518/0.513)와 일치.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42295170 | mig-3g ×1 | 04:00:00 | 최소 1칸 · libero_object · ckpt+comp · seed 2 | ✅ 10m56s (~0.09 GPU·h, MIG 1/2). **정합 ✓** pos_only 나이 1/10/20 = 0.385/0.518/0.513 (v4 s2와 동일). 위치 너머 몫 나이 1/5/10/20 = 0.333/0.321/0.286/0.255 · 나이 평균 0.293 (v4 P+M 곡선 .352/.380/.326/.274보다 약간 낮음 · v3 20×1 0.271). 릿지 나이 평균 a_(t−1) 0.860 · 움직임 0.842 |
+| 42295546~42295562 | mig-3g ×1 ×17 | 04:00:00 | 나머지 17칸 (C1-DN·DINOv2 P × CoMP M·raw ΔL·없음 × seed 42/1/2, 위 1칸 제외) · ID↔칸: 546=ckpt+comp:s42 · 547=ckpt+comp:s1 · 548=ckpt+raw:s42 · 549=ckpt+raw:s1 · 550=ckpt+raw:s2 · 551=ckpt+none:s42 · 552=ckpt+none:s1 · 553=ckpt+none:s2 · 554=dino+comp:s42 · 555=dino+comp:s1 · 556=dino+comp:s2 · 557=dino+raw:s42 · 558=dino+raw:s1 · 559=dino+raw:s2 · 560=dino+none:s42 · 561=dino+none:s1 · 562=dino+none:s2 | ✅ 17/17 COMPLETED 7–16m/잡 (합 ~3.4 GPU·h × MIG 1/2). **판정 ⓐ PASS** — 나이 평균 위치 너머 몫 DINOv2+M 0.299 [0.294, 0.307] vs DINOv2+raw 0.278 [0.275, 0.286] (간격 0.008 · seed 범위 = 판독기 초기화 변동만). ⓑ C1-DN+M 0.293 vs raw 0.201 비중첩. 표 `paper_artifacts/alpha_readout/README.md` |
+
+### 2026-10-18 α 파일럿 진단 — 결정적 행동 롤아웃 (사용자 10-18: "매 스텝 추론이 청크보다 노이지한 탓?")
+
+**무엇**: 파일럿 학습 ckpt 그대로, 롤아웃만 `--deterministic`(행동 = GMM 가중치 최대 성분의 평균, 기본은 `dist.sample()`). 학습 없음. 가설 = 매 스텝 무작위 추출 떨림이 ★ 성공률을 깎는다 → 결정적 ★가 크게 오르면 지지. ★ 먼저(최소 칸), 성공 시 나머지 세 팔. mig-1g · 100 ep · 롤아웃 seed 7. 판정 규칙 없음(진단).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42442824 | mig-1g ×1 (osmesa) | 12:00:00 | ★ 결정적 | ⏳ 10-18 실행 중 (커밋 시점) |
+| 42442825 · 42442826 · 42442827 | mig-1g ×1 ×3 | 12:00:00 | P+M / P만 / mo 결정적 (afterok 42442824) | ⏳ |
+
+### 2026-10-18 E1 판정 — STEP 1 same-probe 8칸 (`alpha_plan.md` §2 통과 기준 · 결과 전 고정)
+
+**무엇**: E1 ep50 ckpt · C1-DN 재측정(09-28 `fdn_*`)과 같은 설정: libero_object · attentive · gap20 · {m_only, p_t_only} × {action, identity} × POSCTRL {none, concat}. **통과** = M motion 위치 너머 몫 ≥ 0.27 ∧ P identity ≥ 0.99 ∧ M identity 잔여 ≤ 0.291 (C1-DN 0.241 + 0.05). 미달 → α 전체 현 C1-DN (E1은 부록 관찰). mig-3g 포화 → mig-1g.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42442528–535 | mig-1g ×1 ×8 | 01:00:00 | e1p_{m,pt}_{act,id}{,_pos} | ✅ 4–6m/잡 (~0.1 GPU·h). raw / Δ(위치 너머, 대조 0.579·0.314): M motion 0.773 / **+0.322** (≥0.27 ✓) · P identity **1.000** (✓) · M identity 0.477 / **+0.312** (≤0.291 ✗) · P_t motion 0.483 / +0.159. **사전 고정 판정 = 불통과 → α 전체 현 C1-DN, E1은 부록 관찰.** 관찰: M−P motion Δ 격차 C1-DN 1.5× → E1 2.0×(P가 motion을 덜 담음) · M identity 누설은 증가 |
+
+### 2026-10-17 α ④ 파일럿 — copycat 실측 (`alpha_plan.md` §5-1 · 판정 결과 전 고정)
+
+**무엇**: 표준 LIBERO BC-T(두 카메라 · attentive · seq 10 · 50ep · batch 32 · lr 1e-4 · AMP · aug-on · 시연 전부) · C1-DN ep10 · libero_object · seed 0 · 10 과제 × 10 trial. 팔 = ★(매 스텝 P) · P+M(앵커 20스텝) · P만(앵커 20스텝). 앵커 팔: 학습 창 배정 = **주기형(배포 모양 그대로, 10-17 사용자 동의)** · 일관성 손실 λ=1 · 앵커 나이는 정책 입력 아님. 롤아웃 앵커 팔 = 모드 A k=20. 처분 표(§5-1): P+M ≥ ★−0.15 → 본 격자 / P+M < P만 → copycat → DART 한 번 / 둘 다 ★−0.15 미만 & P+M ≥ P만 → 상태 손실, 본 격자 진행. 시간 선례: E3 데모 10 학습 45–52분 → 시연 전부 ~4h(★) · 앵커 팔 ~1.7×(스모크).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42424986 | AIP H100 ×1 | 2-00:00:00 | 학습 ★ · SUFFIX alpha_pilot_star | ✅ 2h13m (20:23→22:36, ~2.2 GPU·h) |
+| 42424987 | AIP H100 ×1 | 2-00:00:00 | 학습 P+M · SUFFIX alpha_pilot_pm | ✅ 4h56m (22:36→03:32, ~4.9 GPU·h · ★의 2.2×) |
+| 42424988 | AIP H100 ×1 | 2-00:00:00 | 학습 P만 · SUFFIX alpha_pilot_p | ✅ 3h51m (~3.9 GPU·h) |
+| 42424989 · 42424990 · 42424991 | mig-3g ×1 ×3 (osmesa) | 12:00:00 | 롤아웃 100 ep (afterok 각 학습) · ★ / P+M k=20 / P만 k=20 | ★ ✅ 36m · **SR 0.75 (75/100)** · 과제별 1.0/0.6/1.0/0.5/0.8/0.7/0.7/0.8/0.6/0.8 → 처분 문턱 ★−0.15 = 0.60 · P+M · P만 롤아웃(42424990·991)은 mig-3g 9h 대기(타 사용자 점유) → **10-18 12:55 취소(0 GPU·h)**, mig-1g로 재제출(아래) |
+| 42442524 · 42442525 · 42442526 · 42442527 | mig-1g ×1 ×4 (osmesa) | 12:00:00 | **파일럿 롤아웃 재제출 (mig-1g, 네 팔 같은 파티션)** — ★ 재실행 / P+M k=20 / P만 k=20 / mo k=20 · 100 ep. ★는 mig-3g 결과(0.75)와 함께 기록, 판정은 같은 파티션 값 우선. 렌더러 osmesa 동일(GPU는 정책 추론만) | ✅ 29–46m/잡 (합 ~2.5 GPU·h × MIG 1/7). **SR (100 ep, seed 0)**: ★ 0.81 (mig-3g 첫 실행 0.75 — 같은 ckpt 롤아웃 변동 ±0.06) · **P+M 0.61** · **P만 0.93** · mo 0.81. 과제별 P+M 0.8/0.4/1.0/0.8/0.3/1.0/0.1/0.6/0.2/0.9 · P만 0.9/1.0/1.0/0.8/0.9/1.0/0.8/0.9/1.0/1.0 · mo 0.7/0.6/1.0/0.9/0.4/1.0/0.8/0.9/1.0/0.8 · P 인코딩 P+M 2230 / P만 1744 / mo 1934 (★ = 매 스텝). **사전 고정 처분 (★ = 같은 파티션 0.81, 문턱 0.66)**: P+M 0.61 < 0.66 ∧ P+M < P만 → **copycat 행 → DART 한 번** |
+| 42425434 → 42425435 | mig-3g ×1 → mig-3g (osmesa) | 00:40:00 → 01:00:00 | **참조 팔 "앵커 P 한 번 + 스텝마다 M만"(mo, 사용자 10-17) GPU 스모크** — 창 10칸 = 카메라별 누적 M만 · 현재 앵커 P = 시간축 맨 앞 가상 시점 토큰 1개 · CPU 스모크 통과(★·기존 팔 비트 동일 · 롤아웃≡학습) · 롤아웃 task0×2 k=20 | ✅ 학습 24s · 롤아웃 1m09s (~0.03 GPU·h) |
+| 42425436 → 42425437 | AIP H100 ×1 → mig-3g (osmesa) | 2-00:00:00 → 12:00:00 | **파일럿 mo 칸** (afterok 스모크 롤아웃) · SUFFIX alpha_pilot_po · 롤아웃 10×10 k=20 · 판정 없음(참조). ⚠ 창이 앵커 교체에 걸치면 교체 전 칸의 M 기준 P가 없음(설계상 한계) | 학습 ✅ 4h48m (~4.8 GPU·h) · 롤아웃 42425437 mig-3g 대기 → 취소, mig-1g 재제출 |
+
+### 2026-10-17 α ③ 정책 앵커 규약 — GPU 스모크 (`alpha_plan.md` §3 · 두 카메라)
+
+**무엇**: 신규 플래그(`--anchor-front/--anchor-wrist {now,p,pm,praw}` · `--front-p` · `--anchor-window` 기본 periodic · `--anchor-consistency 1.0` · 롤아웃 `--anchor-mode period|distance --anchor-k`)의 GPU 경로 점검. CPU 스모크 통과(★ HEAD 비트 동일 · 6팔 forward/backward · 롤아웃↔학습 경로 차 ≤1.2e-6 · P 인코딩 횟수 일치). C1-DN ep10 · libero_object task 0 · 1 epoch · 20 배치 · 기록할 것 = ★ vs 앵커 팔 스텝당 시간(본 격자 --time 산정). 롤아웃 = 1 과제 × 2 trial.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42418046 | mig-3g ×1 | 00:40:00 | ★ (매 스텝 P · `motion_source=none`) · SUFFIX alpha_smoke_star | ✅ 28s · 20배치 7s |
+| 42418047 | mig-3g ×1 | 00:40:00 | P+M (두 카메라 pm) · SUFFIX alpha_smoke_pm | ✅ 34s · 20배치 12s (★의 ~1.7× = 일관성 항 정책 forward 2회 + 프레임 30장) · cons 0.0006 |
+| 42418048 | mig-3g ×1 | 01:00:00 | 롤아웃 P+M · 모드 A 주기 k=20 (afterok 42418047) | ✅ 1m18s · JSON 저장(…_period20) |
+| 42418049 | mig-3g ×1 | 01:00:00 | 롤아웃 P+M · 모드 B 거리 d=20 (afterok 42418047) | ✅ 1m22s · JSON 저장(…_distance20) |
+
+### 2026-10-17 α 선행 판독 — 손목 칸 (`alpha_plan.md` 10-17 (2) 개정: 두 카메라 같은 규약)
+
+**무엇**: 위 앞 카메라 판독과 같은 스크립트·판독기·split, 카메라만 `eye_in_hand_rgb` (`--view`, TAG 접미사 `_wrist`). C1-DN P × {CoMP M 누적, raw ΔL, 없음} × seed 42/1/2 = 9칸. 판정 없음(보고) — 앞 카메라와 나이 곡선 비교 + 손목 a_(t−1) 프로브. 첫 칸 성공 시에만 나머지 8칸 시작(afterok).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42413437 | mig-3g ×1 | 04:00:00 | 손목 최소 1칸 · ckpt+comp · seed 42 | ✅ 10m49s |
+| 42413438~42413445 | mig-3g ×1 ×8 | 04:00:00 | 나머지 8칸 (afterok 첫 칸) · 438=comp:s1 · 439=comp:s2 · 440=raw:s42 · 441=raw:s1 · 442=raw:s2 · 443=none:s42 · 444=none:s1 · 445=none:s2 | ✅ 8/8 COMPLETED 6–10m (9칸 합 ~1.3 GPU·h × MIG 1/2). 나이 평균 위치 너머 몫 손목 M 0.345 vs raw 0.288 vs 없음 0.278 (M > raw 비중첩). 표 `paper_artifacts/alpha_readout/README.md` 손목 절 |
+
+### 2026-10-17 E1 — 증강 포함 scratch 본학습 (α 0층 인코더 · `docs/alpha_plan.md` §2 · 레시피 `claim_spine_v2.md` §5)
+
+**무엇**: C1-DN 증강(쌍 공유 장면 gain U[0.73,1.37] · 프레임별 C1 밝기 증강 · M 타깃 = 밝기 보존·잡음 제거 ΔL)을 **처음부터 50ep**, M 입력 잡음을 가우시안 하나 → **종류 묶음**(샘플별 균등 1종: gaussian · shot σ√x · read = 블러(σ1px) 후 std 재조정 · jpeg). 세기 σ~U[0,0.01] 유지. **jpeg 품질 U{85..100}** = dev 보정(EgoDex part1 프레임 16장 휘도 RMS: q95 0.004 · q85 0.008 vs gaussian σ0.01 0.0067 — 같은 자릿수로 맞춤). 신규 플래그 `--m-noise-kinds` · `--m-noise-jpeg-quality` (sbatch `M_NOISE_KINDS` · `M_NOISE_JPEG_Q`), 기본값 = 기존 경로 그대로. 나머지 = C1 submit line(part1 · ViT-S 384/6 · m6 · no-Sobel · pair · comp · floor 0.02 · LR 2.8e-4 · 유효 배치 1024).
+**sanity 게이트 (refinement_floor_plan §3.4)**: ① 스모크 = 기본값(off · C1-DN 설정) 손실이 수정 전 코드(HEAD worktree `/proj/external_group/mrg/tmp_aavrl_e1_head`)와 일치 + 4종 forward/backward ② 1ep(MAX_VIDEOS=1000): L_mB 자리(C1 sanity 0.044/0.040 @500/1000) · L_mA 양수 · dc_offset vs motion_absdl 같은 자릿수.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42294782 | mig-1g ×1 | 00:20:00 | 스모크 (`scripts/cluster/e1/smoke_e1.sbatch`) | ❌ FAILED (수 분 · ~0.01 GPU·h) — HEAD worktree에 git 미추적 `external/VideoMAE` 없어 import 실패(환경, 코드 무관) → 심볼릭 링크 후 재제출 |
+| 42294783 | mig-3g ×1 | 00:40:00 | sanity 1ep (afterok 42294782) | ❌ 의존성 불충족 → scancel (0 GPU·h) |
+| 42294813 | mig-1g ×1 | 00:20:00 | 스모크 재제출 | ❌ FAILED 55s — parity 통과 후 e1 모드에서 `decode_jpeg`가 CUDA 바이트 거부 → 바이트를 CPU로 옮겨 GPU 디코딩하도록 수정 |
+| 42294814 | mig-3g ×1 | 00:40:00 | sanity (afterok 42294813) | ❌ scancel (0 GPU·h) |
+| 42294849 | mig-1g ×1 | 00:20:00 | 스모크 3차 | ❌ FAILED ~1m — C1-DN parity 일치(2.9991598129) · nvjpeg 인코딩이 MIG에서 실패('image encoding failed: 8') → JPEG를 CPU 인코딩·디코딩으로 변경 · 스모크 로그 잘림(`tee /dev/stderr`) 수정 |
+| 42294850 | mig-3g ×1 | 00:40:00 | sanity | ❌ scancel (0 GPU·h) |
+| 42294876 | mig-1g ×1 | 00:20:00 | 스모크 4차 | ✅ PASS ~2m — parity off 3.0025758743 · C1-DN 2.9991598129 (수정 전 코드와 비트 동일) · e1 forward/backward OK · 종류별 휘도 RMS(σ 0.01, 무작위 픽셀 입력) gaussian 0.0066 · shot 0.0047 · read 0.0067 · jpeg 0.015(무작위 픽셀 = JPEG 최악; EgoDex 실측 0.002–0.008) |
+| 42294877 | mig-3g ×1 | 00:40:00 | sanity 1ep (afterok 42294876) · batch 64 · SUFFIX=sanity_e1 · 처리 속도 = C1 sanity 6m17s와 비교(CPU JPEG 비용) | ✅ 11m12s (~0.09 GPU·h, MIG 1/2). **게이트 손실 기준 PASS**: L_mB @500/1000 = 0.041/0.038 (C1 sanity 0.044/0.040) · L_mA 0.0026→0.0016 양수 · dc_offset 0.0039 / motion 0.1075 — 타깃 = 밝기 보존(aug)이라 DC 오프셋은 잡음만 반영, C1-DN 본학습 0.0042/0.106과 같음(§3.4 '같은 자릿수' 기준은 C1 clean 타깃 전제). Model args에 `--m-noise-kinds gaussian shot read jpeg` 확인. ⚠ **속도 1.8×**(C1 sanity 6m17s) → 원인 계측 |
+| 42295216 | AIP H100 ×1 | 00:15:00 | 잡음 종류별 소요 시간(배치 128) + nvjpeg GPU 인코딩이 전체 H100에선 되는지 (`scripts/cluster/e1/time_noise.sbatch`) | ✅ 11s (~0.003 GPU·h). gaussian 0.7 · shot 0.8 · read 1.3 · **jpeg(CPU) 136 ms**/배치 128 → 스텝당(4회 호출) ~170 ms 추가 = 1.8× 원인. nvjpeg GPU 인코딩은 전체 H100에선 작동(실패는 MIG 전용) · 첫 호출 945 ms/32장(초기화 포함) |
+| 42295238 | AIP H100 ×1 | 00:15:00 | 같은 계측 + 예열 후 nvjpeg 반복 측정 | ✅ <1m. nvjpeg 예열 후 5.8 ms/32장 (CPU 137 ms/128장 대비 ~6×) |
+| 42295241 | AIP H100 ×1 | 00:15:00 | nvjpeg 우선·실패 시 CPU 경로로 재계측 | ✅ <1m. 모델 안에서 nvjpeg 실패 지속 + CPU 전환 플래그가 안 남음(연쇄 대입 버그) |
+| 42295259 | AIP H100 ×1 | 00:15:00 | nvjpeg 진단 (`debug_jpeg.sbatch`) | ✅ <1m. **q 85/90/95 성공 · q 99/100 실패**('image encoding failed: 8') → MIG 실패도 같은 원인 추정. 텐서 형태 무관. → **jpeg 품질 U{85..95}로 축소**(EgoDex 휘도 RMS 0.004–0.008) · 플래그 버그 수정 |
+| 42295284 | AIP H100 ×1 | 00:15:00 | 수정 후 재계측 (본학습 의존 조건) | ✅ <1m. 모델 내 nvjpeg 경로 작동(CPU 전환 없음) · jpeg 31 ms/배치 128 · 섞인 4종 9.0 ms/호출(CPU 경로 42 ms) → 배치 256·4회/스텝 ≈ +70 ms/스텝 |
+| 42295585 | **AIP 1×4 H100** (32 CPU/task) | 2-00:00:00 | **🚀 E1 본학습** (afterok 42295284 — 재계측에서 nvjpeg 경로 확인 안 되면 시작 전 취소) · C1 submit line + C1-DN 증강(`M_NOISE_MAX=0.01 BRIGHT_TARGET=aug BRIGHT_SCENE_GAIN="0.73 1.37"`) + `M_NOISE_KINDS="gaussian shot read jpeg"`(jpeg q 85–95) · **scratch 50ep** · 배치 256/GPU×4 = 유효 1024(C1과 동일) · LR 2.8e-4 · `USE_SCRATCH=1` · 1노드 = C2 선례(18h49m, 75 GPU·h). SUFFIX=e1_scratch_aug. 예상 ~20–24h ≈ 80–100 GPU·h. 통과 기준(결과 전 고정) = `alpha_plan.md` §2 | ✅ **COMPLETED** 10-17 07:51 → 10-18 12:16, **1-04:24:47 × 4 GPU = 113.7 GPU·h** (stage-in 70분 포함). 50ep 완주, NaN 0, nvjpeg 전환 0. 최종 train 0.0135 / eval 0.0214 (ep6·ep24 일시 상승 후 회복). ckpt `two_stream_v15b_e1_scratch_aug/20261017_090108/latest.pt`(epoch 50) |
+
 ### 2026-10-10 관측기 v5 — 데이터 통계 없는 정규화 (Vault 3차 결정 10-10, 사용자 확정)
 
 **무엇**: `observer_fuse_v4.py --norm ln` = Fuse 입력 = 동결 토큰 그대로 → Fuse의 토큰별 LayerNorm(inp[0], 학습 affine) · 복원 타깃 = 원본 토큰 · 손실 스케일 = 타깃 흐름별 전역 스칼라 1개(train 토큰 제곱 평균; 패치·차원별 통계 없음) · z 표준화 제거(인계 `z_stats=None`, z 스케일은 메타 참고값) · 나머지 v4 그대로 · 진입점 `ObserverV4` 인터페이스 유지(version 5). v3·v4 = "관측기 분석 1(패치별 표준화 판)" 봉인(README 상단).
