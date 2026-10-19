@@ -15,7 +15,18 @@ Reproduce: `python scripts/eval/alpha_readout.py --summarize --target remaining`
 
 - J2 (MAE half): comp < raw, seed ranges disjoint → PASS. Event-window half pending the J1 definition.
 - J3: comp/star = 0.946–0.957 (seed max 0.957; episode-bootstrap 95% upper ≤ 0.973) ≤ 1.2 → PASS under both CI readings.
-- J1 not computed: the registered denominator (true remaining-step jump) is constant (−11) under linear labels; definition to be fixed in the Vault before opening arm comparisons on the event window.
+- J1 / J2 event window (rule fixed before opening, `docs/alpha_plan.md` §4, 2026-10-19): jump registration = (V̂(t_inj+10) − V̂(t_inj−1) + 11) / (regrasp_end − t_inj), both ends read at the same anchor age a, judged on a = 11..20 (anchor precedes the injection) · 149 labeled recovery episodes · episode mean → age mean · `scripts/eval/alpha_j1.py` → `j1_event_window.json`.
+
+  | arm | a = 11..20 (judged) [seed range] | a = 1..10 (reference: anchor after injection) |
+  |---|---|---|
+  | star | 0.367 [0.366, 0.368] (age-independent) | 0.367 |
+  | comp | **0.076** [0.067, 0.085] | 0.171 |
+  | raw | −0.023 [−0.025, −0.022] | 0.108 |
+  | none | −0.017 [−0.023, −0.009] | 0.093 |
+  | none_noq | −0.116 [−0.118, −0.113] | 0.088 |
+
+  - J1: comp > none, seed ranges disjoint → **PASS**. J2 event half: comp > raw, disjoint → **PASS** (with the MAE half, J2 PASS).
+  - Size: with the anchor before the event, comp registers ~8% of the event's time cost vs ~37% for a fresh P every step (≈ 1/5 of star); raw ΔL and anchor-only register none (≤ 0). "Maintained" (J3) holds for pooled MAE, not for the event window.
 - Age curve (seed mean, ages 1/5/10/15/20): comp 17.31/16.27/15.64/15.35/15.58 · none 18.27/17.22/16.46/16.49/17.37 · raw 17.28/16.95/16.42/16.17/16.57 · star 16.67 (age-independent).
 
 ## Caveats (dev, 2026-10-19)
