@@ -3,13 +3,13 @@
 # 학습 없음(판독기만) · train 특징은 CPU 에 상주 (4 stream 칸 ≈ 50GB) → --mem 넉넉히.
 #
 #   sbatch --export=ALL,ARM=comp,FOLD=0,SEED=1 scripts/cluster/alpha_value.sbatch
-#   # ARM ∈ {star, comp, raw, none} · NOQ=1 → q 제외 · SMOKE=1 (에피소드 4 · 나이 1 10 20 · probe 2 ep)
+#   # ARM ∈ {star, comp, raw, none} · NOQ=1 → q 제외 · DINO=1 → 앞 카메라 P = DINOv2 (J4) · AGE=1 → 앵커 나이 판독기 입력 (2차) · SMOKE=1 (에피소드 4 · 나이 1 10 20 · probe 2 ep)
 #
 #SBATCH --job-name=alpha_value
 #SBATCH --partition=mig-3g.40gb
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=120G
+#SBATCH --mem=160G
 #SBATCH --time=04:00:00
 #SBATCH --output=/proj/external_group/mrg/logs/alpha_value_%j.out
 #SBATCH --error=/proj/external_group/mrg/logs/alpha_value_%j.err
@@ -20,7 +20,9 @@ ARM="${ARM:?ARM 필요 (star|comp|raw|none)}"
 FOLD="${FOLD:-0}"
 SEED="${SEED:-1}"
 EXTRA="${EXTRA:-}"
-TAG="value_${ARM}"; [ "${NOQ:-0}" = "1" ] && { TAG="${TAG}_noq"; EXTRA="--no-q $EXTRA"; }
+TAG="value_${ARM}"; [ "${DINO:-0}" = "1" ] && { TAG="value_dino_${ARM}"; EXTRA="--p-source dino $EXTRA"; }
+[ "${AGE:-0}" = "1" ] && EXTRA="--age-input $EXTRA"  # 2차 (10-19 Vault) · 출력 alpha_value/r2
+[ "${NOQ:-0}" = "1" ] && { TAG="${TAG}_noq"; EXTRA="--no-q $EXTRA"; }
 TAG="${TAG}_f${FOLD}_s${SEED}"
 if [ "${SMOKE:-0}" = "1" ]; then
   TAG="${TAG}_smoke"; EXTRA="--max-episodes 4 --ages 1 10 20 --probe-epochs 2 $EXTRA"

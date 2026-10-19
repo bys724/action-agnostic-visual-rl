@@ -2,7 +2,8 @@
 import json, sys
 from pathlib import Path
 import numpy as np
-root = Path("/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/alpha_value")
+root = Path(sys.argv[1] if len(sys.argv) > 1 else  # 2차(나이 입력) = .../alpha_value/r2
+            "/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/alpha_value")
 ev = {e["src"]: e["event"] for e in json.load(open("/proj/external_group/mrg/sfa_export/alpha_v1/index.json"))["episodes"]
       if e["source"] == "recover" and e["labeled"]}
 R = {}  # (arm, seed) -> {src: rate[20]}
@@ -30,6 +31,8 @@ for arm, v in out.items():
     j = [x["judge"] for x in v.values()]; r = [x["ref_1_10"] for x in v.values()]
     print(f"{arm:9s} n_ep {[x['n_ep'] for x in v.values()]} nan {[x['n_nan_judge'] for x in v.values()]} | a11-20 {np.mean(j):.4f} [{min(j):.4f}, {max(j):.4f}] | ref a1-10 {np.mean(r):.4f} [{min(r):.4f}, {max(r):.4f}]")
 rng = lambda arm: [x["judge"] for x in out[arm].values()]
-print("J1 comp > none, seed ranges disjoint:", "PASS" if min(rng("comp")) > max(rng("none")) else "FAIL")
-print("J2-event comp > raw, seed ranges disjoint:", "PASS" if min(rng("comp")) > max(rng("raw")) else "FAIL")
+for pre in ("", "dino_"):  # dino_ = J4 (DINOv2 블록 안 같은 규칙 · 10-20)
+    if {pre + "comp", pre + "none", pre + "raw"} <= set(out):
+        print(f"{pre}J1 comp > none, seed ranges disjoint:", "PASS" if min(rng(pre + "comp")) > max(rng(pre + "none")) else "FAIL")
+        print(f"{pre}J2-event comp > raw, seed ranges disjoint:", "PASS" if min(rng(pre + "comp")) > max(rng(pre + "raw")) else "FAIL")
 json.dump(out, open(root / "j1_event_window.json", "w"), indent=1)

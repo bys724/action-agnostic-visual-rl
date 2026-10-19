@@ -89,6 +89,28 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-20 α v2 J4 — DINOv2 앞 카메라 팔 최소 1칸 (`docs/alpha_plan.md` §3 표 [DINOv2] 행 · §4 J4 · 사전 등록 격자의 남은 팔)
+
+**무엇**: 위 10-19 판독과 같은 데이터·판독기·폴드·seed, **앞 카메라 P 만 DINOv2-base**(4-a 와 같은 `DinoP` · 196 입력 · ImageNet 정규화 = DINO 고유) · 손목 = C1-DN 그대로 · 변화 채널 = C1-DN M / raw ΔL / 없음. 토큰 차원 = 768, 짧은 토큰(C1-DN P·M 384 · raw 256)은 0 패딩(분석 1 raw 규칙) → C1-DN 팔과 판독기 차원이 달라 **J4 는 DINOv2 팔끼리만 비교**. `--p-source dino` · sbatch `DINO=1` · `--mem` 120G → 160G(768 차원 train 특징 ≈ 80 GB 예상). 판정 J4 = DINOv2+M < DINOv2+raw MAE, seed 3 범위 비중첩(`--summarize` 에 줄 추가).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42471701 | mig-3g ×1 · 160G | 00:30:00 | 배관 스모크 (dino_comp · 폴드 0 · seed 1 · 에피소드 4 · 나이 1/10/20 · probe 2 ep) | ✅ 1m48s · 배관 통과 (특징 (1120, 784, 768) · 수치 무의미) |
+| 42471702 | mig-3g ×1 · 160G | 03:00:00 | 최소 1칸 (dino_comp · 폴드 0 · seed 1 · probe 100 ep · afterok 42471701) | ✅ 25m59s (~0.43 GPU·h × MIG 1/2) · MaxRSS 80 GB · 나이 평균 MAE 15.60 (평균 예측 41.94 · 같은 폴드·seed C1-DN 칸: comp 14.93 · star 15.85 · none 15.92 · raw 16.00 — 판독기 차원 달라 참고만) · 나이 1 16.52 → 20 15.12 · huber 수렴. JSON·preds `paper_artifacts/alpha_value/ref_r1_dino/value_dino_comp_f0_s1*` (10-20 격리) |
+| 42471846~42471889 | mig-3g ×1 ×44 · 160G | 01:30:00 | J4 격자 나머지 (사용자 승인 10-20) = DINOv2 앞 × 팔 {comp, raw, none} × seed {1,2,3} × 폴드 {0..4} − 위 1칸 · 제출 순서 = 팔 → seed → 폴드 (comp 14 = 42471846~859 · raw 15 = 860~874 · none 15 = 875~889) · 예상 합 ~19 MIG-h · 완료 후 `alpha_readout.py --target remaining --summarize` 로 J4 | ❌ CANCELLED (02:15 · dev) — 원격 Vault 결정(10-19 앵커 나이 = 판독기 입력 · 10-20 DINOv2 ★ 포함 60칸)과 규칙 불일치. 846~848 은 15m25s 실행 후 취소(~0.26 GPU·h × MIG 1/2 × 3) · 나머지 41 은 대기 중 취소. 위 42471702 칸도 1차 규칙(나이 입력 없음)이라 2차 격자에 쓰지 않음(참고 보존) |
+
+### 2026-10-20 α v2 2차 격자 — 앵커 나이 = 판독기 입력 (Vault 10-19 · 사용자 확정 · `alpha_plan.md` §3·§6 2b) — 최소 칸
+
+**무엇**: 1차와 같은 데이터·판독기·폴드·seed, 공변량 끝에 **앵커 나이 ÷ 20 스칼라**(★ = 0) 추가(`--age-input` · sbatch `AGE=1`) · 출력 `paper_artifacts/alpha_value/r2/`(1차 파일 보존) · 범위 = C1-DN 5 팔 75칸 + DINOv2 블록 4 팔(★ · +M · +raw · 만) 60칸. 사건 창 `scripts/eval/alpha_j1.py <r2 경로>`(dino_ 접두 = J4) · MAE `--summarize --age-input`(J4-J3 줄). 최소 잡 규칙: 새 경로 둘(C1-DN comp 나이 입력 · DINOv2 ★)만 먼저.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42471945 | mig-3g ×1 · 64G | 00:30:00 | 스모크 C1-DN comp 나이 입력 | ✅ 23s · 배관 통과 |
+| 42471946 | mig-3g ×1 · 64G | 00:30:00 | 스모크 DINOv2 ★ 나이 입력(0) | ✅ 49s · 배관 통과 (특징 (1120, 392, 768)) |
+| 42471947 | mig-3g ×1 · 64G | 01:30:00 | 본 1칸 C1-DN comp · 폴드 0 · seed 1 (afterok 945) | ✅ 20m18s · `age_input=True` 확인 · 나이 평균 MAE 14.98 (1차 같은 칸 14.93 · 평균 예측 41.94) · huber 0.00998 |
+| 42471948 | mig-3g ×1 · 64G | 01:30:00 | 본 1칸 DINOv2 ★ · 폴드 0 · seed 1 (afterok 946) | ✅ 18m22s · 나이 평균 MAE 16.02 (나이 0 고정 · 곡선 1점) · huber 0.00941 |
+| 42471981~42472113 | mig-3g ×1 ×133 · C1-DN comp/raw 64G · 나머지 48G · DINOv2 comp/raw 120G · star/none 64G | 01:30:00 | 2차 격자 나머지 (Vault 10-19·10-20 결정 = 즉시 재실행 · 최소 칸 통과 뒤 dev 제출) · C1-DN 74 = 42471981~42472054 (팔 comp → raw → star → none → noq · seed → 폴드) · DINOv2 59 = 42472055~42472113 (star → comp → raw → none) · 예상 합 ~45 MIG-h · 완료 후 `--summarize --age-input` + `alpha_j1.py paper_artifacts/alpha_value/r2` | (진행) 중간 점검 04:37(서브에이전트): 15 완료 전부 정상(오류 0 · age_input True · MaxRSS 40 GB · comp ~24분 · raw ~21분) · 폴드 4 MAE ~19(평균 예측 46.7 · seed 무관 = 폴드 특성) · 동시 3칸(Priority 대기) → 남은 118 칸 ~14–16 h 추정 · DINOv2 comp/raw 미확인 |
+
 ### 2026-10-19 α v2 남은 스텝 판독 — 최소 1칸 (`docs/alpha_plan.md` §3·§6-1 · 데이터 = SC export `/proj/external_group/mrg/sfa_export/alpha_v1/`)
 
 **무엇**: SC export(시연 500 + 복구 162 · 라벨 = 남은 스텝 T−1−t · 5 폴드 · 사건 색인)를 받아, 동결 C1-DN 토큰 [앞 P_a ‖ 앞 M(a→t) ‖ 손목 P_a ‖ 손목 M(a→t)] + 공변량(q(t) 12 · 과제 one-hot)을 분석 1 attentive 판독기(타깃 = 남은 스텝 ÷ 100 · Huber δ 0.1 · train 나이 ~U{1..20})로 학습 → 홀드아웃 폴드에서 나이 1..20 MAE(스텝) + 예측 npz. 스크립트 `scripts/eval/alpha_readout.py --target remaining` · `scripts/cluster/alpha_value.sbatch` · 출력 `paper_artifacts/alpha_value/`. 정합 기준 = SC V(s) 홀드아웃 MAE 10.6~14.1 과 같은 자릿수 · 평균 예측(SC 35.1)보다 확실히 낮음.

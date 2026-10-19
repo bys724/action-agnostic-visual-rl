@@ -259,9 +259,9 @@ def load_value_episodes(export, keep):
 class ValueData:
     """에피소드 묶음의 프레임(GPU uint8) · q · 라벨 · 과제. 전역 프레임 번호 = start[ep] + t."""
 
-    def __init__(self, eps, enc, arm, device):
+    def __init__(self, eps, enc, arm, device, dino=None):
         from src.models.common.preprocessing import TwoStreamPreprocessing
-        self.enc, self.arm, self.device = enc, arm, device
+        self.enc, self.arm, self.device, self.dino = enc, arm, device, dino  # dino = 앞 카메라 P 만 DINOv2 (J4)
         self.prep = TwoStreamPreprocessing(use_sobel=False).to(device)
         self.eps = eps
         self.frames = {c: torch.from_numpy(np.concatenate([e["img"][c] for e in eps])).to(device) for c in CAMS}
@@ -270,7 +270,7 @@ class ValueData:
         self.n = np.array([e["T"] for e in eps]); self.start = np.concatenate([[0], np.cumsum(self.n)[:-1]])
         self.q, self.y = np.concatenate([e["q"] for e in eps]), np.concatenate([e["y"] for e in eps])
         self.task = np.repeat([e["task"] for e in eps], self.n)
-        self.dim = 384 if enc is None else enc.pos_embed_p.shape[-1]
+        self.dim = 768 if dino is not None else enc.pos_embed_p.shape[-1]  # 짧은 토큰은 0 패딩 (분석 1 raw 규칙)
         self.P = None  # eval 용 전 프레임 P 캐시 (cache_p)
 
     def _x(self, c, idx):  # [0,1] raw, bilinear 224, ImageNet 정규화 없음 (학습 parity)
@@ -281,7 +281,10 @@ class ValueData:
     def p_tok(self, c, idx):
         if self.P is not None:
             return self.P[c][idx]
-        return self.enc._encode_p_unmasked(self.enc.preprocessing.compute_p_channel(self._x(c, idx)))[:, 1:].half()
+        if self.dino is not None and c == "agentview":
+            return self.dino.p_tokens(self._x(c, idx)).half()
+        t = self.enc._encode_p_unmasked(self.enc.preprocessing.compute_p_channel(self._x(c, idx)))[:, 1:]
+        return F.pad(t, (0, self.dim - t.shape[-1])).half()
 
     @torch.no_grad()
     def change_tok(self, c, i0, i1):  # = Tokens.change_tok (분석 1 raw 규칙 · 누적 M 한 장)
@@ -309,9 +312,11 @@ class ValueData:
                 out.append(self.change_tok(c, s, t))
         return torch.cat(out, 1)
 
-    def extra(self, t, q_mu, q_sd, use_q):
+    def extra(self, t, q_mu, q_sd, use_q, age=None):
+        """age (n,) 주면 끝에 나이 ÷ 20 스칼라 (10-19 Vault · ★ 는 0)."""
         oh = F.one_hot(torch.from_numpy(self.task[t]).long(), N_TASKS).float()
-        return torch.cat([torch.from_numpy((self.q[t] - q_mu) / q_sd), oh], 1) if use_q else oh
+        x = torch.cat([torch.from_numpy((self.q[t] - q_mu) / q_sd), oh], 1) if use_q else oh
+        return x if age is None else torch.cat([x, torch.from_numpy(age / K_MAX).float()[:, None]], 1)
 
     def frames_at(self, age):
         """나이 age 로 볼 수 있는 전역 프레임(t ≥ age) · 그 에피소드 번호."""
@@ -334,8 +339,9 @@ def run_value(args, device):
             return g
         keep_tr, keep_ev = cap(keep_tr), cap(keep_ev)
     enc = build_parvo_encoder(args.checkpoint, device)
-    tr = ValueData(load_value_episodes(args.export, keep_tr), enc, args.arm, device)
-    ev = ValueData(load_value_episodes(args.export, keep_ev), enc, args.arm, device)
+    dino = DinoP(device) if args.p_source == "dino" else None
+    tr = ValueData(load_value_episodes(args.export, keep_tr), enc, args.arm, device, dino)
+    ev = ValueData(load_value_episodes(args.export, keep_ev), enc, args.arm, device, dino)
     print(f"[{args.tag}] train eps {len(tr.n)} frames {len(tr.y)} / eval eps {len(ev.n)} frames {len(ev.y)} "
           f"({time.time() - t0:.0f}s)", flush=True)
 
@@ -347,7 +353,8 @@ def run_value(args, device):
     x_tr = torch.empty((len(t_tr), tr.n_streams() * 196, tr.dim), dtype=torch.float16)
     for i in range(0, len(t_tr), 256):
         x_tr[i:i + 256] = tr.features(t_tr[i:i + 256], a_tr[i:i + 256]).cpu()
-    e_tr = tr.extra(t_tr, q_mu, q_sd, not args.no_q)
+    age_of = lambda a: (np.zeros(len(a)) if args.arm == "star" else a) if args.age_input else None
+    e_tr = tr.extra(t_tr, q_mu, q_sd, not args.no_q, age_of(a_tr))
     y_tr = torch.from_numpy(tr.y[t_tr] / 100.0)[:, None]
     del tr.frames; torch.cuda.empty_cache()
     print(f"  train features {tuple(x_tr.shape)} ({time.time() - t0:.0f}s)", flush=True)
@@ -372,7 +379,8 @@ def run_value(args, device):
         for k in (args.ages if args.arm != "star" else [1]):  # star 는 나이 무관 → 한 번 (곡선은 상수)
             t_ev, ep_ev = ev.frames_at(k)
             yh = torch.cat([probe(ev.features(t_ev[i:i + 256], np.full(len(t_ev[i:i + 256]), k)).float(),
-                                  ev.extra(t_ev[i:i + 256], q_mu, q_sd, not args.no_q).to(device)).cpu()
+                                  ev.extra(t_ev[i:i + 256], q_mu, q_sd, not args.no_q,
+                                           age_of(np.full(len(t_ev[i:i + 256]), k))).to(device)).cpu()
                             for i in range(0, len(t_ev), 256)])[:, 0].numpy() * 100.0
             err = np.abs(yh - ev.y[t_ev]); rec = is_rec[ep_ev]
             # 사건 창 원자료: 복구 에피소드마다 V̂(t_inj − 1) · V̂(t_inj + 10) (판정식은 사후 — 보고 참조)
@@ -436,15 +444,21 @@ def summarize_value(args, n_boot=2000):
     if {"comp", "raw"} <= set(tab):
         ok = max(tab["comp"].values()) < min(tab["raw"].values())
         print(f"J2 (MAE 부분) M < raw, seed 범위 비중첩: {'PASS' if ok else 'FAIL'}  (사건 창 부분은 J1 정의 확정 뒤)")
-    if {"comp", "star"} <= set(tab):
-        r = {s: tab["comp"][s] / tab["star"][s] for s in tab["comp"] if s in tab["star"]}
+    if {"dino_comp", "dino_raw"} <= set(tab):
+        ok = max(tab["dino_comp"].values()) < min(tab["dino_raw"].values())
+        print(f"J4 (MAE 부분) DINOv2+M < DINOv2+raw, seed 범위 비중첩: {'PASS' if ok else 'FAIL'}  (사건 창 부분은 별도)")
+    for pre, name in (("", "J3"), ("dino_", "J4-J3")):  # J4 = DINOv2 블록 안 같은 규칙 (10-20)
+        cm, st_ = pre + "comp", pre + "star"
+        if not {cm, st_} <= set(tab):
+            continue
+        r = {s: tab[cm][s] / tab[st_][s] for s in tab[cm] if s in tab[st_]}
         ub = {}
         for s in r:
             b = rng.integers(0, len(eps), (n_boot, len(eps)))
-            ub[s] = float(np.quantile([mae(("comp", s), i) / mae(("star", s), i) for i in b], 0.975))
-        print(f"J3 비율 M/★ seed 별 {', '.join(f's{s} {v:.3f}' for s, v in sorted(r.items()))} · "
+            ub[s] = float(np.quantile([mae((cm, s), i) / mae((st_, s), i) for i in b], 0.975))
+        print(f"{name} 비율 M/★ seed 별 {', '.join(f's{s} {v:.3f}' for s, v in sorted(r.items()))} · "
               f"(a) seed 최대 {max(r.values()):.3f} · (b) 부트스트랩 95% 상한 {', '.join(f's{s} {v:.3f}' for s, v in sorted(ub.items()))}")
-        print(f"J3 (≤ 1.2): (a) {'PASS' if max(r.values()) <= 1.2 else 'FAIL'} · (b) {'PASS' if max(ub.values()) <= 1.2 else 'FAIL'}")
+        print(f"{name} (≤ 1.2): (a) {'PASS' if max(r.values()) <= 1.2 else 'FAIL'} · (b) {'PASS' if max(ub.values()) <= 1.2 else 'FAIL'}")
     print("나이별 합동 MAE (seed 평균) 1/5/10/15/20:")
     for a in arms:
         cur = np.mean([S[(a, s)].sum(0) / C[(a, s)].sum(0) for s in tab[a]], 0)
@@ -473,19 +487,21 @@ def main():
     ap.add_argument("--arm", default="comp", choices=["star", "comp", "raw", "none"], help="remaining 전용")
     ap.add_argument("--fold", type=int, default=0, help="remaining: 홀드아웃 폴드 (SC 5 폴드)")
     ap.add_argument("--no-q", action="store_true", help="remaining: 공변량에서 q 제외 (과제 one-hot 만)")
+    ap.add_argument("--age-input", action="store_true", help="remaining: 앵커 나이를 판독기 입력에 (10-19 Vault · 2차 · 출력 alpha_value/r2)")
     ap.add_argument("--export", default=SC_EXPORT)
     ap.add_argument("--max-episodes", type=int, default=None, help="remaining 스모크: 집합·출처별 에피소드 상한")
     ap.add_argument("--out-root", default=str(PROJECT_ROOT / "paper_artifacts" / "alpha_readout"))
     args = ap.parse_args()
     if args.summarize and args.target == "remaining":
-        args.out_root = str(PROJECT_ROOT / "paper_artifacts" / "alpha_value")
+        args.out_root = str(PROJECT_ROOT / "paper_artifacts" / "alpha_value" / ("r2" if args.age_input else ""))
         return summarize_value(args)
     if args.summarize:
         return summarize(args)
     if args.target == "remaining":
-        args.tag = args.tag or f"value_{args.arm}{'_noq' if args.no_q else ''}_f{args.fold}_s{args.seed}"
+        args.tag = args.tag or (f"value_{'dino_' if args.p_source == 'dino' else ''}{args.arm}"
+                                f"{'_noq' if args.no_q else ''}_f{args.fold}_s{args.seed}")
         if args.out_root.endswith("alpha_readout"):
-            args.out_root = str(PROJECT_ROOT / "paper_artifacts" / "alpha_value")
+            args.out_root = str(PROJECT_ROOT / "paper_artifacts" / "alpha_value" / ("r2" if args.age_input else ""))
         return run_value(args, torch.device(args.device))
     args.tag = args.tag or (f"{args.task_suite}_{args.p_source}_{args.change}_s{args.seed}"
                             + ("_wrist" if args.view == "eye_in_hand_rgb" else ""))
