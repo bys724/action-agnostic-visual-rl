@@ -1,0 +1,62 @@
+{
+ "args": {
+  "p_source": "ckpt",
+  "change": "comp",
+  "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt",
+  "tag": "value_p2_f1_s2",
+  "task_suite": "libero_object",
+  "view": "agentview_rgb",
+  "data_root": "/proj/external_group/mrg/datasets/libero",
+  "ages": [
+   1,
+   2
+  ],
+  "probe_epochs": 100,
+  "seed": 2,
+  "split_seed": 42,
+  "max_demos": null,
+  "device": "cuda",
+  "summarize": false,
+  "target": "remaining",
+  "arm": "none",
+  "fold": 1,
+  "no_q": false,
+  "train_ages": [
+   1,
+   2
+  ],
+  "age_input": true,
+  "export": "/proj/external_group/mrg/sfa_export/alpha_v1",
+  "max_episodes": null,
+  "out_root": "/proj/home/mrg/bys724/action-agnostic-visual-rl/paper_artifacts/alpha_value/r3"
+ },
+ "meta": {
+  "plan": "docs/alpha_plan.md \u00a73 (v2)",
+  "export": "/proj/external_group/mrg/sfa_export/alpha_v1",
+  "label": "remaining steps (SC alpha_v1)",
+  "loss": "huber(delta=0.1) on y/100",
+  "n_train_frames": 65672,
+  "n_eval_frames": 16857,
+  "mean_predictor_mae": 42.113739013671875
+ },
+ "curve": {
+  "1": {
+   "n": 16735,
+   "mae": 15.452995300292969,
+   "mae_demo": 15.29974365234375,
+   "mae_recover": 15.77468490600586,
+   "event_dV_mean": 7.581378817558289,
+   "event_n": 32
+  },
+  "2": {
+   "n": 16613,
+   "mae": 15.431598663330078,
+   "mae_demo": 15.297216415405273,
+   "mae_recover": 15.713109016418457,
+   "event_dV_mean": 8.564992904663086,
+   "event_n": 32
+  }
+ },
+ "age_mean_mae": 15.442296981811523,
+ "elapsed_s": 1379.2
+}

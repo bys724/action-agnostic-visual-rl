@@ -67,3 +67,23 @@ Caveats (dev, 2026-10-20):
 - All arms drift upward over a = 11..20 (anchor-only −0.14 → +0.09 without seeing the event), so absolute registration carries an age-dependent baseline; J1/J2 compare arms at the same age, where it cancels (comp − anchor-only ≈ +0.18 at a = 11, +0.09 at a = 20).
 - Anchor-only arms now *improve* with age and reach below star at age 20 (16.17 vs 16.65): an old image + current q + age carries two-time-point information star lacks. Same reason comp < star is not claimed.
 - comp's MAE margin over anchor-only narrowed (r1 1.08 → r2 0.72 steps) as age input helped the M-less arms most; still disjoint.
+
+## Round 3 — cost-matched contrast (docs/alpha_plan.md §4-b, 2026-10-20) — **FAIL → α closes as a boundary result**
+
+Question: at equal compute, does anchor P + M (period 20: 0.46 + 4.58 = 5.04 GF/step) beat simply refreshing P more often
+(period-2 P = anchor P only, 4.60 GF/step)? Period-2 arm = anchor-P-only readout trained and evaluated on ages {1,2} only
+(same capacity, age input, q, task covariates; jobs 42476703, 42476734–747; outputs `r3/`). Deployment average (fixed before results):
+P+M = uniform over ages 1..20, period-2 = mean of ages 1, 2. Primary = event-window registration, secondary = pooled MAE.
+Reproduce: `python scripts/eval/alpha_j1.py --deploy paper_artifacts/alpha_value/r2 paper_artifacts/alpha_value/r3` → `r3/j1_deploy.json`.
+
+| arm | GF/step | deployment event registration [seed range] | deployment MAE [seed range] |
+|---|---|---|---|
+| anchor P + CoMP M (period 20) | 5.04 | 0.141 [0.136, 0.145] | **15.70** [15.61, 15.81] |
+| **period-2 P** (dedicated readout) | 4.60 | **0.333** [0.326, 0.337] | 16.64 [16.60, 16.67] |
+| (ref) r2 anchor-only at ages 1–2, mixed-age readout | 4.60 | 0.324 [0.315, 0.336] | 16.93 [16.91, 16.98] |
+| (ref) star, P every step | 9.20 | 0.365 [0.361, 0.368] | 16.65 [16.64, 16.67] |
+
+- Primary: P+M > period-2 P with disjoint seed ranges → **FAIL** (period-2 registers 2.4× more). Pre-registered disposition: the α cost claim is dropped; cost table, application cell (§5) and the alpha_v2 push-event grid are retired.
+- Secondary (reported): P+M has lower MAE (15.70 vs 16.64, disjoint) — consistent with the two-time-point effect noted in Round 2, not with event detection.
+- Expectation "period-2 wins the primary" was recorded as partially post-hoc (Round 2 per-age curves were seen before the rule was fixed); the rule itself was fixed before the dedicated readout was trained.
+- What remains (alpha_plan §4-b): ① learned M > raw ΔL (J2 · J4) ② event detection depends on anchor freshness more than on M ③ anchor P + M retains average accuracy (pooled MAE) only.
