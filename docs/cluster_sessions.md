@@ -99,6 +99,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 42471702 | mig-3g ×1 · 160G | 03:00:00 | 최소 1칸 (dino_comp · 폴드 0 · seed 1 · probe 100 ep · afterok 42471701) | ✅ 25m59s (~0.43 GPU·h × MIG 1/2) · MaxRSS 80 GB · 나이 평균 MAE 15.60 (평균 예측 41.94 · 같은 폴드·seed C1-DN 칸: comp 14.93 · star 15.85 · none 15.92 · raw 16.00 — 판독기 차원 달라 참고만) · 나이 1 16.52 → 20 15.12 · huber 수렴. JSON·preds `paper_artifacts/alpha_value/ref_r1_dino/value_dino_comp_f0_s1*` (10-20 격리) |
 | 42471846~42471889 | mig-3g ×1 ×44 · 160G | 01:30:00 | J4 격자 나머지 (사용자 승인 10-20) = DINOv2 앞 × 팔 {comp, raw, none} × seed {1,2,3} × 폴드 {0..4} − 위 1칸 · 제출 순서 = 팔 → seed → 폴드 (comp 14 = 42471846~859 · raw 15 = 860~874 · none 15 = 875~889) · 예상 합 ~19 MIG-h · 완료 후 `alpha_readout.py --target remaining --summarize` 로 J4 | ❌ CANCELLED (02:15 · dev) — 원격 Vault 결정(10-19 앵커 나이 = 판독기 입력 · 10-20 DINOv2 ★ 포함 60칸)과 규칙 불일치. 846~848 은 15m25s 실행 후 취소(~0.26 GPU·h × MIG 1/2 × 3) · 나머지 41 은 대기 중 취소. 위 42471702 칸도 1차 규칙(나이 입력 없음)이라 2차 격자에 쓰지 않음(참고 보존) |
 
+### 2026-10-20 α §4-b 비용 대등 대조 — 주기-2 P (Vault 10-20 · `alpha_plan.md` §4-b · α 닫기 판정) — 최소 칸
+
+**무엇**: 같은 연산량(스텝당 4.60 GF vs 앵커 P + M 주기 20 = 5.04 GF)의 상대 = **앵커 P만 · 나이 {1,2} 로만 학습·평가**한 전용 판독기(2차 판독기와 같은 용량·나이 입력·q·과제 공변량). `--train-ages 1 2 --ages 1 2` · sbatch `ARM=none AGE=1 P2=1` · 출력 `paper_artifacts/alpha_value/r3/value_p2_f*_s*`. 판정(결과 전 고정) = 배포 평균 사건 창 등록률(P+M 나이 1..20 균등 vs 주기-2 나이 1·2) seed 3 비중첩 · 부 = MAE. 최소 잡 규칙: 스모크 + 본 1칸 먼저 → 나머지 14칸.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42476249 | mig-3g ×1 · 48G | 00:30:00 | 스모크 주기-2 P (에피소드 4 · probe 2 ep) | (대기) |
+| 42476250 | mig-3g ×1 · 48G | 01:30:00 | 본 1칸 주기-2 P · 폴드 0 · seed 1 (afterok 249) | (대기) |
+
 ### 2026-10-20 α v2 2차 격자 — 앵커 나이 = 판독기 입력 (Vault 10-19 · 사용자 확정 · `alpha_plan.md` §3·§6 2b) — 최소 칸
 
 **무엇**: 1차와 같은 데이터·판독기·폴드·seed, 공변량 끝에 **앵커 나이 ÷ 20 스칼라**(★ = 0) 추가(`--age-input` · sbatch `AGE=1`) · 출력 `paper_artifacts/alpha_value/r2/`(1차 파일 보존) · 범위 = C1-DN 5 팔 75칸 + DINOv2 블록 4 팔(★ · +M · +raw · 만) 60칸. 사건 창 `scripts/eval/alpha_j1.py <r2 경로>`(dino_ 접두 = J4) · MAE `--summarize --age-input`(J4-J3 줄). 최소 잡 규칙: 새 경로 둘(C1-DN comp 나이 입력 · DINOv2 ★)만 먼저.

@@ -3,7 +3,7 @@
 # 학습 없음(판독기만) · train 특징은 CPU 에 상주 (4 stream 칸 ≈ 50GB) → --mem 넉넉히.
 #
 #   sbatch --export=ALL,ARM=comp,FOLD=0,SEED=1 scripts/cluster/alpha_value.sbatch
-#   # ARM ∈ {star, comp, raw, none} · NOQ=1 → q 제외 · DINO=1 → 앞 카메라 P = DINOv2 (J4) · AGE=1 → 앵커 나이 판독기 입력 (2차) · SMOKE=1 (에피소드 4 · 나이 1 10 20 · probe 2 ep)
+#   # ARM ∈ {star, comp, raw, none} · NOQ=1 → q 제외 · DINO=1 → 앞 카메라 P = DINOv2 (J4) · AGE=1 → 앵커 나이 판독기 입력 (2차) · P2=1 → 주기-2 P (§4-b) · SMOKE=1 (에피소드 4 · 나이 1 10 20 · probe 2 ep)
 #
 #SBATCH --job-name=alpha_value
 #SBATCH --partition=mig-3g.40gb
@@ -22,6 +22,8 @@ SEED="${SEED:-1}"
 EXTRA="${EXTRA:-}"
 TAG="value_${ARM}"; [ "${DINO:-0}" = "1" ] && { TAG="value_dino_${ARM}"; EXTRA="--p-source dino $EXTRA"; }
 [ "${AGE:-0}" = "1" ] && EXTRA="--age-input $EXTRA"  # 2차 (10-19 Vault) · 출력 alpha_value/r2
+# 주기-2 P (alpha_plan §4-b · 10-20): 앵커 P만 · 나이 {1,2} 로 학습·평가 · 출력 alpha_value/r3 (ARM=none AGE=1 P2=1)
+[ "${P2:-0}" = "1" ] && { TAG="value_p2"; EXTRA="--ages 1 2 --train-ages 1 2 --out-root $PROJECT_ROOT/paper_artifacts/alpha_value/r3 $EXTRA"; }
 [ "${NOQ:-0}" = "1" ] && { TAG="${TAG}_noq"; EXTRA="--no-q $EXTRA"; }
 TAG="${TAG}_f${FOLD}_s${SEED}"
 if [ "${SMOKE:-0}" = "1" ]; then

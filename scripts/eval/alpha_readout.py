@@ -348,7 +348,8 @@ def run_value(args, device):
     # train 표본: 프레임마다 나이 하나 (t ≥ 1) · 특징은 한 번 인코딩해 CPU 에 둠
     rng = np.random.default_rng(args.seed)
     t_tr, _ = tr.frames_at(1)
-    a_tr = np.minimum(rng.integers(1, K_MAX + 1, len(t_tr)), t_tr - tr.start[np.searchsorted(tr.start, t_tr, side="right") - 1])
+    a_draw = rng.choice(args.train_ages, len(t_tr)) if args.train_ages else rng.integers(1, K_MAX + 1, len(t_tr))
+    a_tr = np.minimum(a_draw, t_tr - tr.start[np.searchsorted(tr.start, t_tr, side="right") - 1])
     q_mu, q_sd = tr.q.mean(0), tr.q.std(0) + 1e-6
     x_tr = torch.empty((len(t_tr), tr.n_streams() * 196, tr.dim), dtype=torch.float16)
     for i in range(0, len(t_tr), 256):
@@ -487,6 +488,8 @@ def main():
     ap.add_argument("--arm", default="comp", choices=["star", "comp", "raw", "none"], help="remaining 전용")
     ap.add_argument("--fold", type=int, default=0, help="remaining: 홀드아웃 폴드 (SC 5 폴드)")
     ap.add_argument("--no-q", action="store_true", help="remaining: 공변량에서 q 제외 (과제 one-hot 만)")
+    ap.add_argument("--train-ages", type=int, nargs="+", default=None,
+                    help="remaining: 학습 나이 집합 (기본 = U{1..20}) · 주기-2 P = 1 2 (alpha_plan §4-b · 10-20)")
     ap.add_argument("--age-input", action="store_true", help="remaining: 앵커 나이를 판독기 입력에 (10-19 Vault · 2차 · 출력 alpha_value/r2)")
     ap.add_argument("--export", default=SC_EXPORT)
     ap.add_argument("--max-episodes", type=int, default=None, help="remaining 스모크: 집합·출처별 에피소드 상한")
