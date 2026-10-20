@@ -37,3 +37,33 @@ Reproduce: `python scripts/eval/alpha_readout.py --summarize --target remaining`
 - 13 timed-out recoveries are unlabeled and excluded → event data is biased toward successful recoveries.
 - Seed ranges reflect readout initialisation (and age sampling) only; one suite (libero_goal tasks 1/3/4/8 for events), one event type (grasp slip).
 - Per-frame predictions (`value_*_preds.npz`, git-ignored, 93 MB) stay on the cluster at `paper_artifacts/alpha_value/`; J1 can be computed from them without rerunning.
+
+## Round 2 — anchor age as readout input (Vault 10-19 decision, 2026-10-20)
+
+Same data, folds, seeds and rules as round 1; the readout gets anchor age / 20 as an extra covariate (star = 0).
+DINOv2 block: front-camera P = DINOv2-base (wrist stays C1-DN, M stays CoMP M), tokens zero-padded to 768 → compared only within the block.
+Jobs 42471947–48, 42471981–42472113 (135 cells). Outputs `r2/`. Reproduce:
+`python scripts/eval/alpha_readout.py --target remaining --summarize --age-input` · `python scripts/eval/alpha_j1.py paper_artifacts/alpha_value/r2`.
+
+| arm | pooled MAE r2 [seed range] | (r1) | event window a = 11..20 (judged) | a = 1..10 (ref) | (r1 judged / ref) |
+|---|---|---|---|---|---|
+| star | 16.65 [16.64, 16.67] | 16.67 | 0.365 [0.361, 0.368] | 0.365 | 0.367 / 0.367 |
+| comp | **15.70** [15.61, 15.81] | 15.87 | **0.098** [0.090, 0.109] | 0.184 | 0.076 / 0.171 |
+| raw | 16.33 [16.26, 16.41] | 16.58 | −0.027 [−0.033, −0.021] | 0.100 | −0.023 / 0.108 |
+| none | 16.42 [16.38, 16.49] | 16.95 | −0.048 [−0.055, −0.040] | 0.086 | −0.017 / 0.093 |
+| none_noq | 16.60 [16.54, 16.68] | 17.18 | −0.119 [−0.120, −0.118] | 0.086 | −0.116 / 0.088 |
+| dino_star | 17.02 [16.94, 17.14] | — | 0.355 [0.342, 0.365] | 0.355 | — |
+| dino_comp | **16.53** [16.34, 16.71] | — | **0.067** [0.058, 0.072] | 0.191 | — |
+| dino_raw | 17.23 [17.12, 17.39] | — | −0.006 [−0.009, −0.001] | 0.093 | — |
+| dino_none | 17.08 [17.01, 17.16] | — | −0.032 [−0.034, −0.028] | 0.058 | — |
+
+- J1 (comp > none, a = 11..20) PASS · J2 (comp < raw MAE, comp > raw event) PASS · J3 comp/star seed max 0.950, bootstrap upper ≤ 0.968 → PASS.
+- J4 (DINOv2 block): J1 PASS · J2 PASS (MAE + event) · J3 dino_comp/dino_star seed max 0.975, bootstrap upper ≤ 1.001 → PASS.
+- Cross-block (reported, not judged): C1-DN P beats DINOv2 P on this task (star 16.65 vs 17.02; anchor-only 16.42 vs 17.08).
+- Age curve (seed mean, ages 1/5/10/15/20): comp 17.21/16.09/15.48/15.22/15.28 · none 16.98/16.67/16.35/16.18/16.17 · raw 17.02/16.65/16.24/16.01/16.02 · star 16.65 · dino_comp 17.46/16.78/16.41/16.24/16.28 · dino_none 17.39/17.20/17.04/16.96/16.98 · dino_star 17.02.
+
+Caveats (dev, 2026-10-20):
+- Age input fixed the small-age MAE penalty (none at age 1: 18.3 → 17.0 vs star 16.65) but **not** the reference-band event gap (anchor-only a = 1..10: 0.093 → 0.086 vs star 0.365). The 10-19 attribution of that gap to the ruler is not supported. Per-age registration (seed mean, ages 1..20) shows it is anchor staleness: anchor-only 0.33/0.32/0.27/0.24/0.18/0.08/−0.09 at ages 1–7 (star 0.36) — a fresh anchor registers the event like star, and the 1..10 band average hides that. comp 0.39/0.40/0.35/0.28/0.21/0.14/0.01 · raw ≈ anchor-only at every age (raw ΔL adds no event registration).
+- All arms drift upward over a = 11..20 (anchor-only −0.14 → +0.09 without seeing the event), so absolute registration carries an age-dependent baseline; J1/J2 compare arms at the same age, where it cancels (comp − anchor-only ≈ +0.18 at a = 11, +0.09 at a = 20).
+- Anchor-only arms now *improve* with age and reach below star at age 20 (16.17 vs 16.65): an old image + current q + age carries two-time-point information star lacks. Same reason comp < star is not claimed.
+- comp's MAE margin over anchor-only narrowed (r1 1.08 → r2 0.72 steps) as age input helped the M-less arms most; still disjoint.
