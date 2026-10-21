@@ -7,6 +7,7 @@ from the frozen CoMP encoder: no Fuse, no dataset-statistic normalization, no z.
   tp = TokenProvider(encoder_ckpt)                      # e.g. C1-DN two_stream_v15b_refine_comp_s_denoise_augtgt/…/checkpoint_epoch0010.pt
   P  = tp.p_tokens(frames)                              # (n, 196, D)  frames = uint8 (n, H, W, 3) agentview
   M  = tp.m_tokens(frames_a, frames_b)                  # (n, 196, D)  M of ΔL(frame_a → frame_b), pairwise
+  R  = tp.raw_tokens(frames_a, frames_b)                # (n, 196, D)  raw ΔL patch pixels (256) zero-padded to D
   anchor, chunks = tp.anchor_and_chunks(seq)            # seq = [f_anchor, …, f_t] (k = len−1 ∈ 1..20)
         chunks = [(M tokens (1,196,D), start_unit, length_frames), …]: complete 5-frame chunks + one partial
         last chunk (1–4 frames) — the observer-v4 convention (start unit 0..3, length 1..5)
@@ -55,6 +56,15 @@ class TokenProvider:
         assert a.shape == b.shape
         return torch.cat([self.enc._encode_m_unmasked(self.enc.preprocessing.compute_m_channel(a[i:i + batch], b[i:i + batch]))[:, 1:]
                           for i in range(0, len(a), batch)])
+
+    @torch.no_grad()
+    def raw_tokens(self, frames_a, frames_b, pad: bool = True) -> torch.Tensor:
+        """raw ΔL(frame_a → frame_b) tokens = 16×16 patch pixels of the same ΔL (analysis 1 / α raw arm rule):
+        (n, 196, 256), zero-padded to D when pad (= alpha_readout change_tok, arm raw). World-model arm (d)."""
+        a, b = self._x(frames_a), self._x(frames_b)
+        assert a.shape == b.shape
+        t = F.unfold(self.enc.preprocessing.compute_m_channel(a, b), kernel_size=16, stride=16).transpose(1, 2)
+        return F.pad(t, (0, self.dim - t.shape[-1])) if pad else t
 
     @torch.no_grad()
     def anchor_and_chunks(self, seq):
