@@ -9,14 +9,15 @@ Execution = SC repo (A v4 pipeline, caches, rulers are SC canonical); SC exports
 Predictor, training setup, data and loss = A v4 fixed; only input tokens and target change.
 Ruler = ridge probes trained on observed tokens, applied to k-step predicted tokens → hand (EE) / object position R², k ∈ {1, 5, 10, 20}.
 
-| arm | input | target | hand R² k1/5/10/20 | **object R² k20** (primary) | probe health (observed tokens) |
-|---|---|---|---|---|---|
-| (a) current A v4 | C1-DN anchor P + cumulative M + command | step-coordinate M | — | — | — |
-| (b) DINOv2 full | DINOv2-base patches | next DINOv2 tokens | — | — | — |
-| (c) C1-DN P full (format control) | C1-DN P only | next P tokens | — | — | — |
-| (d) raw ΔL (encoder control) | C1-DN anchor P + raw ΔL tokens | next raw ΔL tokens | — | — | — |
+| arm | input | target | hand R² k1/5/10/19 | **object R² k19** (primary) | object health (observed) k19 | object context-only k19 |
+|---|---|---|---|---|---|---|
+| (a) current A v4 | C1-DN anchor P + cumulative M + command | step-coordinate M | — | — | — | — |
+| (b) DINOv2 full | DINOv2-base patches | next DINOv2 tokens | — | — | — | — |
+| (c) C1-DN P full (format control) | C1-DN P only | next P tokens | — | — | — | — |
+| (d) raw ΔL (encoder control) | C1-DN anchor P + raw ΔL tokens | next raw ΔL tokens | — | — | — | — |
 
-Reading (fixed before results): (a) ≯ (c) → no format support (back to Vault) · (a) > (c) ∧ (a) ≈ (d) → format only ·
+Object = body with the longest in-episode path (check the per-task body distribution before reading).
+Reading (fixed before results, primary = object R² at k 19): (a) ≯ (c) → no format support (back to Vault) · (a) > (c) ∧ (a) ≈ (d) → format only ·
 (a) > (c) ∧ (a) > (d) → format + encoder sub-claim → register the main grid · fourth-loss rule (plan §1).
 
 Token entry points (CoMP-owned, `scripts/eval/token_provider.py:TokenProvider`): `p_tokens` · `m_tokens` ·
