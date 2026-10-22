@@ -1,0 +1,43 @@
+use,measure,channel,model,value,ci95,seeds,verdict,source
+A_readout_same,CALVIN clean pos R2,raw dL,-,0.22,,probe 3,floor,tables/refinement_floor/README.md
+A_readout_same,CALVIN clean pos R2,CoMP M,C0,0.47,0.12,probe 3,holds vs raw,tables/refinement_floor/README.md#E0
+A_readout_same,CALVIN clean pos R2,CoMP M,C1-DN,0.43,,probe 3,holds vs raw,tables/refinement_floor/README.md#10-pilot
+A_readout_same,CALVIN clean pos R2,VC-1 + signed dL,external,0.51,0.04,probe 3,parity with CoMP M,tables/refinement_floor/README.md#E0
+A_readout_same,LIBERO in-suite pos R2,raw dL,-,0.16,,probe 3,floor,tables/refinement_floor/README.md
+A_readout_same,LIBERO in-suite pos R2,CoMP M,C0,0.74,0.03,probe 3,holds vs raw,tables/refinement_floor/README.md#E0
+A_readout_same,LIBERO in-suite pos R2,CoMP M,C1-DN,0.68,,probe 3,holds vs raw,tables/refinement_floor/README.md#10-pilot
+A_readout_same,LIBERO in-suite pos R2,VC-1 + signed dL,external,0.79,0.01,probe 3,above CoMP M CI,tables/refinement_floor/README.md#E0
+B_readout_shift,LIBERO transfer 6-dir pos R2,raw dL,-,-0.32,,probe 3,most robust,tables/refinement_floor/README.md
+B_readout_shift,LIBERO transfer 6-dir pos R2,CoMP M,C0,-0.23,0.10,probe 3,not met (sec 6),tables/refinement_floor/README.md#E0
+B_readout_shift,LIBERO transfer 6-dir pos R2,CoMP M,C1-DN,-0.32,,probe 3,parity with raw,tables/refinement_floor/README.md#10-pilot
+B_readout_shift,LIBERO transfer 6-dir pos R2,VC-1 + signed dL,external,0.06,0.04,probe 3,above CoMP M,tables/refinement_floor/README.md#E0
+B_readout_shift,CALVIN shadow 0.6 pos R2,raw dL,-,-0.32,,probe 3,most robust,tables/refinement_floor/README.md
+B_readout_shift,CALVIN shadow 0.6 pos R2,CoMP M,C0,-2.59,,probe 3,below raw,tables/refinement_floor/README.md
+B_readout_shift,CALVIN shadow 0.6 pos R2,CoMP M,C1-DN,-2.9,,probe 3,below raw,tables/refinement_floor/README.md#10-pilot
+C_policy_input,LIBERO-object BC SR (500 ep),current P only,C0,0.472,,1,reference,tables/e3/README.md
+C_policy_input,LIBERO-object BC SR (500 ep),P(t-g)+P(t),C0,0.390,,1,reference,tables/e3/README.md
+C_policy_input,LIBERO-object BC SR (500 ep),current P + CoMP M,C0,0.034,,1,negative (copycat),tables/e3/README.md
+C_policy_input,LIBERO-object BC SR (500 ep),current P + CoMP M (M zeroed at rollout),C0,0.006,,1,policy depends on M,tables/e3/README.md
+C_policy_input,LIBERO-object BC SR (100 ep),every-step P,C1-DN,0.81,,1,reference,docs/STATUS.md alpha pilot
+C_policy_input,LIBERO-object BC SR (100 ep),anchor P only (20),C1-DN,0.93,,1,reference,docs/STATUS.md alpha pilot
+C_policy_input,LIBERO-object BC SR (100 ep),anchor P + CoMP M (20),C1-DN,0.61,,1,negative (copycat),docs/STATUS.md alpha pilot
+D_stale_anchor,remaining-step MAE (steps),anchor P + CoMP M,C1-DN,15.70,,3x5 folds,holds vs raw (J2),alpha_value/README.md Round 2
+D_stale_anchor,remaining-step MAE (steps),anchor P + raw dL,C1-DN,16.33,,3x5 folds,,alpha_value/README.md Round 2
+D_stale_anchor,remaining-step MAE (steps),anchor P only,C1-DN,16.42,,3x5 folds,,alpha_value/README.md Round 2
+D_stale_anchor,remaining-step MAE (steps),every-step P,C1-DN,16.65,,3x5 folds,reference,alpha_value/README.md Round 2
+D_stale_anchor,event registration age 11-20,anchor P + CoMP M,C1-DN,0.098,,3x5 folds,holds vs raw (J1 J2),alpha_value/README.md Round 2
+D_stale_anchor,event registration age 11-20,anchor P + raw dL,C1-DN,-0.027,,3x5 folds,,alpha_value/README.md Round 2
+D_stale_anchor,event registration age 11-20,anchor P only,C1-DN,-0.048,,3x5 folds,,alpha_value/README.md Round 2
+D_stale_anchor,event registration age 11-20,every-step P,C1-DN,0.365,,3x5 folds,reference,alpha_value/README.md Round 2
+D_stale_anchor,event registration age 11-20,DINOv2 anchor P + CoMP M,DINOv2 P + C1-DN M,0.067,,3x5 folds,holds vs raw (J4),alpha_value/README.md Round 2
+D_stale_anchor,event registration age 11-20,DINOv2 anchor P + raw dL,DINOv2 P,-0.006,,3x5 folds,,alpha_value/README.md Round 2
+D_stale_anchor,event registration deploy-avg (cost-matched),anchor P + CoMP M (5.04 GF/step),C1-DN,0.141,,3x5 folds,FAIL vs period-2 P,alpha_value/README.md Round 3
+D_stale_anchor,event registration deploy-avg (cost-matched),period-2 P (4.60 GF/step),C1-DN,0.333,,3x5 folds,wins,alpha_value/README.md Round 3
+D_stale_anchor,observer beyond-position motion (object),anchor P + CoMP M chunks,C1-DN,0.279,0.012 (seed range),Fuse 3,holds vs raw (observation),observer_fuse/README.md v3
+D_stale_anchor,observer beyond-position motion (object),anchor P + raw dL chunks,C1-DN,0.245,0.008 (seed range),Fuse 3,,observer_fuse/README.md v3
+E_pred_target,pilot1 object R2 k19,(a) keep P predict CoMP M,C1-DN,0.735,,1,format ~ (c),worldmodel/pilot/pilot_s1.md
+E_pred_target,pilot1 object R2 k19,(b) DINOv2 predict full,DINOv2,0.746,,1,best,worldmodel/pilot/pilot_s1.md
+E_pred_target,pilot1 object R2 k19,(c) same-encoder P predict full,C1-DN,0.734,,1,,worldmodel/pilot/pilot_s1.md
+E_pred_target,pilot1 object R2 k19,(d) keep P predict raw dL,C1-DN,0.665,,1,(a)-(d) = readability gap,worldmodel/pilot/pilot_s1.md
+E_pred_target,pilot2 cross-fit event-window probe,(a) keep P predict CoMP M,C1-DN,0.12,,1,lowest,SC docs/STATUS.md 10-22 14:00 (not in export)
+E_pred_target,pilot2 cross-fit event-window probe,(b)(c)(d),mixed,0.26-0.27,,1,,SC docs/STATUS.md 10-22 14:00 (not in export)
