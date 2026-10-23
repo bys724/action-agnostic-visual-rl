@@ -1,0 +1,86 @@
+{
+ "note": "batch 1, CPU FlopCounterMode (matmul/conv only) + analytic attention 4*N^2*d per block (N=197); CPU SDPA is not counted by FlopCounterMode. Check: 384x6 -> 4.581 (=4.58 of sec 4-b), P 12x384 -> 9.197 (=9.20).",
+ "X_gf_kstar9": 0.5622222222222221,
+ "X_gf_if_kstar8": 0.69,
+ "rungs": {
+  "384x6": {
+   "M_gf": 4.581,
+   "M_params_M": 10.822,
+   "pm_cost_per_step": 5.041,
+   "below_X": false
+  },
+  "384x3": {
+   "M_gf": 2.311,
+   "M_params_M": 5.499,
+   "pm_cost_per_step": 2.771,
+   "below_X": false
+  },
+  "384x2": {
+   "M_gf": 1.554,
+   "M_params_M": 3.724,
+   "pm_cost_per_step": 2.014,
+   "below_X": false
+  },
+  "384x1": {
+   "M_gf": 0.797,
+   "M_params_M": 1.95,
+   "pm_cost_per_step": 1.257,
+   "below_X": false
+  },
+  "256x3": {
+   "M_gf": 1.076,
+   "M_params_M": 2.486,
+   "pm_cost_per_step": 1.536,
+   "below_X": false
+  },
+  "256x2": {
+   "M_gf": 0.727,
+   "M_params_M": 1.697,
+   "pm_cost_per_step": 1.187,
+   "below_X": false
+  },
+  "192x6": {
+   "M_gf": 1.246,
+   "M_params_M": 2.757,
+   "pm_cost_per_step": 1.706,
+   "below_X": false
+  },
+  "192x4": {
+   "M_gf": 0.837,
+   "M_params_M": 1.867,
+   "pm_cost_per_step": 1.297,
+   "below_X": false
+  },
+  "192x3": {
+   "M_gf": 0.633,
+   "M_params_M": 1.422,
+   "pm_cost_per_step": 1.093,
+   "below_X": false
+  },
+  "192x2": {
+   "M_gf": 0.429,
+   "M_params_M": 0.977,
+   "pm_cost_per_step": 0.889,
+   "below_X": true
+  },
+  "192x1": {
+   "M_gf": 0.225,
+   "M_params_M": 0.533,
+   "pm_cost_per_step": 0.685,
+   "below_X": true
+  },
+  "128x3": {
+   "M_gf": 0.307,
+   "M_params_M": 0.653,
+   "pm_cost_per_step": 0.767,
+   "below_X": true
+  },
+  "128x2": {
+   "M_gf": 0.209,
+   "M_params_M": 0.455,
+   "pm_cost_per_step": 0.669,
+   "below_X": true
+  }
+ },
+ "P_gf": 9.197
+}

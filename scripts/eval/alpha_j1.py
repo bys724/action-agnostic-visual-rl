@@ -49,6 +49,20 @@ if DEPLOY:
         rg = lambda arm, k: [x[k] for x in out[arm].values()]
         print("§4-b 주 (등록률) comp > p2, seed ranges disjoint:", "PASS" if min(rg("comp", "reg")) > max(rg("p2", "reg")) else "FAIL")
         print("§4-b 부 (MAE, 보고) comp < p2, seed ranges disjoint:", min(rg("p2", "mae")) > max(rg("comp", "mae")))
+    # §4-c 0 단계 (10-24): 앵커 P만(r2 나이 입력 판독기)을 주기-k P 배포 평균(나이 1..k 균등)으로 재채점
+    #   k* = 등록률(seed 평균)이 P+M(주기 20) 이하로 처음 내려가는 k · X = 9.20·(1/k* − 1/20) GF (M 손익 분기)
+    if {"comp", "none"} <= set(out):
+        pm = np.mean(rg("comp", "reg"))
+        per = {}
+        for k in range(1, 21):
+            r = [float(np.mean(c[:k])) for (b, s), c in sorted(curve.items()) if b == "none"]
+            per[k] = dict(reg=float(np.mean(r)), lo=min(r), hi=max(r))
+            print(f"주기-{k:2d} P(앵커 P만) 배포 등록률 {per[k]['reg']:.4f} [{per[k]['lo']:.4f}, {per[k]['hi']:.4f}]")
+        ks = [k for k in per if per[k]["reg"] <= pm]
+        kstar = min(ks) if ks else None
+        X = 9.20 * (1 / kstar - 1 / 20) if kstar else None
+        print(f"§4-c k* = {kstar} (P+M {pm:.4f}) · X = {X if X is None else round(X, 3)} GF")
+        out["period_k_none"] = dict(curve=per, pm_reg=float(pm), kstar=kstar, X_gf=X)
     json.dump(out, open(roots[-1] / "j1_deploy.json", "w"), indent=1)
     sys.exit()
 

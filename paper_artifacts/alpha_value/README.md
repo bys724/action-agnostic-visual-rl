@@ -87,3 +87,26 @@ Reproduce: `python scripts/eval/alpha_j1.py --deploy paper_artifacts/alpha_value
 - Secondary (reported): P+M has lower MAE (15.70 vs 16.64, disjoint) — consistent with the two-time-point effect noted in Round 2, not with event detection.
 - Expectation "period-2 wins the primary" was recorded as partially post-hoc (Round 2 per-age curves were seen before the rule was fixed); the rule itself was fixed before the dedicated readout was trained.
 - What remains (alpha_plan §4-b): ① learned M > raw ΔL (J2 · J4) ② event detection depends on anchor freshness more than on M ③ anchor P + M retains average accuracy (pooled MAE) only.
+
+## Round 4 — M-size ladder, stage 0 (2026-10-24, zero training · `docs/alpha_plan.md` §4-c)
+
+Second operating point of the cost boundary: how small must M be for anchor P + M (period 20) to beat periodic re-encoding of the same P?
+
+**Break-even X.** The r2 anchor-P-only arm (age-input readout) re-scored as a period-k P deployment average (ages 1..k uniform), `alpha_j1.py --deploy r2 r3` → `r3/j1_deploy.json` key `period_k_none`.
+P+M (period 20) = 0.1405 [0.1362, 0.1450].
+
+| period k | 1 | 2 | 4 | 6 | 7 | **8** | **9** | 10 | 12 | 20 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| registration (seed mean) | 0.331 | 0.324 | 0.288 | 0.235 | 0.189 | 0.1414 | 0.110 | 0.086 | 0.050 | 0.019 |
+
+k* = 9 (first k at or below 0.1405) → **X = 9.20·(1/9 − 1/20) = 0.562 GF**. Borderline: k = 8 misses by 0.0009 with overlapping seed ranges (if k* = 8, X = 0.690).
+Caveat: this readout was trained on mixed ages; the dedicated period-2 readout (r3) scored higher (0.333 vs 0.324), so dedicated period-k readouts would likely move k* up and X down [inferred].
+
+**Candidate M GFLOPs** (batch 1; CPU FlopCounterMode + analytic attention 4·N²·d per block, N = 197, because CPU SDPA is not counted; reproduces §4-b: M 384×6 = 4.581, P = 9.197). `ladder/m_ladder_flops.{py,json}`.
+
+| M (width × depth) | 384×6 (current) | 384×3 | 384×2 | 384×1 | 256×2 | 192×4 | 192×3 | **192×2** | **128×3** | **192×1** | **128×2** |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| GF | 4.58 | 2.31 | 1.55 | 0.80 | 0.73 | 0.84 | 0.63 | **0.43** | **0.31** | **0.23** | **0.21** |
+| params (M) | 10.8 | 5.5 | 3.7 | 1.95 | 1.70 | 1.87 | 1.42 | 0.98 | 0.65 | 0.53 | 0.46 |
+
+Bold = below X (0.562). None of the example rungs in §4-c (384×3, 192×6 / 384×2, 192×3) is below X; every width-384 M is above X (384×1 = 0.80), so a depth-only retrain (`m_depth`, option (b)) cannot reach X.
