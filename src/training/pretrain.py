@@ -1099,7 +1099,17 @@ def train(
         _sd = _ck.get('model_state_dict', _ck)
         _sd = {(k[7:] if k.startswith('module.') else k): v for k, v in _sd.items()}
         _mdl = model.module if hasattr(model, 'module') else model
+        # alpha §4-c 작은 M(m_up 있음): 폭이 다른 M 인코더 키만 건너뜀 · 그 외 모양 불일치는 기존대로 오류
+        _M_ENC = ('patch_embed_m', 'cls_token_m', 'pos_embed_m', 'blocks_m.', 'norm_m', 'mask_token_m')
+        if getattr(_mdl, 'm_up', None) is not None:
+            _own = _mdl.state_dict()
+            _skip = [k for k, v in _sd.items() if k.startswith(_M_ENC) and k in _own and _own[k].shape != v.shape]
+            _sd = {k: v for k, v in _sd.items() if k not in _skip}
+            log(f"  init skipped {len(_skip)} M-encoder keys (small M, fresh init)")
         _miss, _unexp = _mdl.load_state_dict(_sd, strict=False)
+        if getattr(_mdl, 'm_only', False):  # 동결 P · M-recon 디코더가 실제로 로드됐는지
+            _bad = [k for k in _miss if not k.startswith(_M_ENC + ('m_up.',))]
+            assert not _bad, f"m_only init_from: M 인코더 외 키 미로드 {_bad[:5]}"
         log(f"  init loaded: missing={len(_miss)} unexpected={len(_unexp)} "
             f"(composition_head 등 pair model 미사용 키 무시)")
         # qk ckpt를 --qk-norm 없이 init_from 하면 q_norm/k_norm이 조용히 드랍 → 즉사 가드

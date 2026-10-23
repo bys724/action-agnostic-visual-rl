@@ -89,6 +89,18 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-10-24 α §4-c M 크기 사다리 — 작은 M 스모크 (Vault 10-24 · 사용자 확정 "추천대로" · `alpha_plan.md` §4-c)
+
+**무엇**: 동결 C1-DN P 위에 작은 M(폭 d_m · 깊이 L)만 M-recon 손실로 학습하는 코드(`--m-embed-dim` · `--m-only`) 검증. 사다리(결과 전 고정) = 192×2(0.43 GF) → 128×2(0.21) → 128×1(0.11) · X = 0.562 GF. 스모크 = ① 옵션 off 손실이 수정 전 코드와 같은가 ② 192×2 + P 동결에서 grad 가 M 쪽에만 가는가(C1-DN 로드 · 모양 다른 키 건너뜀) ③ 평가 로더(`build_parvo_encoder`)가 작은 M ckpt 를 읽는가. 학습 0.
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42619445 | mig-3g ×1 | 00:30:00 | 작은 M 스모크 ①②③ (`scripts/cluster/alpha_ladder/smoke_small_m.sbatch`) | ❌ FAILED 15 s — 수정 전 코드 사본에 `external/VideoMAE` 없음(import 오류) · 사본에 링크 후 재제출 |
+| 42619446 | mig-3g ×1 | 00:30:00 | 같은 스모크 재제출 | ✅ COMPLETED 1m02s (~0.02 MIG-3g·h) · ① off 손실 수정 전/후 2.8732879162 동일 · ② 192×2: 새로 초기화 = M 인코더 + m_up 뿐(P·M-recon 디코더 로드) · 학습 대상 11 모듈 8.33M(디코더 포함) · grad 없는 학습 대상 0 · 동결인데 grad 0 · ③ `build_parvo_encoder` 로드 OK · M 토큰 (197, 192) |
+| 42619447 | mig-3g ×1 | 00:40:00 | **sanity 학습 1 ep** — 단 1 (192×2) · `M_EMBED_DIM=192 M_ONLY=1 V11_M_DEPTH=2` + C1-DN 레시피(part1 · comp · masked anchor · floor 0.02 · 밝기 증강 · 노이즈 0.01 · 장면 gain 0.73–1.37 · 타깃 aug) · `INIT_FROM`=C1-DN ep10 · MAX_VIDEOS=200 · 배치 64 · LR 2.8e-4 · SUFFIX=sanity_alpha_ladder_m192x2. 확인 = init 로그(건너뛴 키 = M 인코더뿐) · 손실 하강 · NaN 0 · 처리량 | ❌ FAILED 59 s (~0.02 MIG-3g·h) — init 정상(건너뜀 31 = M 인코더 · 학습 8.33M) · batch 0 손실 0.0573 뒤 DDP "grad 미수신" = M 인코더 Linear/Conv(LayerNorm 은 받음). 원인 = `m_only` 진단 M full-pass(no_grad)를 M-recon 앞에 둬 autocast 가중치 캐시가 grad 없는 fp16 사본을 재사용 · 수정 = 진단 pass 를 M-recon 뒤로. 재제출 전 서브에이전트 점검(사용자 지시) |
+| 42619448 | mig-3g ×1 · CPU 32 | 01:00:00 | **sanity 재제출** (서브에이전트 점검 2건 반영: 코드 = 차단 없음 · autocast 진단 재현 확인 · init 건너뛰기를 M 인코더 키로 한정 + m_only 디코더 로드 assert / 효율 = 큰 중복 없음 · 병목은 데이터 로더 → 1 프로세스 배치 1024(유효 1024 = C1-DN) · NUM_WORKERS 24 · CPU 32 · GPFS) · MAX_VIDEOS=2000(실제 I/O 노출) · PRETRAIN_DIAG=1(데이터/계산 병목 판별) · 나머지 레시피 동일 | ✅ COMPLETED 3m37s (~0.06 MIG-3g·h) · init 건너뜀 31 = M 인코더뿐 · 손실 0.066 → 0.032(L_mA 0.017→0.004 · L_mB 0.050→0.028) · NaN 0 · **1,196 samp/s · COMPUTE-bound(데이터 34 %)** → 에폭 ≈ 64 분 · 학습 후 P 150 키 C1-DN 과 비트 동일 · 디코더 60 키 갱신 |
+| 42619451 | mig-3g ×1 · CPU 32 | 2-00:00:00 | **🚀 단 1 본학습 192×2 (0.43 GF)** — sanity 와 같은 설정 · 10 ep · part1 전체 · SUFFIX=alpha_ladder_m192x2. 추정 ≈ 64 분/ep × 10 ≈ 11 h (규칙 ×1.3 ≈ 14 h · 학습 잡 규칙 = 파티션 최대). 완료 후 = 판독 15 칸(앞+손목 · seed 3 × 5 폴드) → 단별 판정(§4-c) · **체인** `scripts/cluster/alpha_ladder/chain_rung.sh`(학습 COMPLETED + ep10 ckpt 확인 → 판독 1 칸 → 성공 시 14 칸 · 출력 `paper_artifacts/alpha_value/r4/m192x2` · 로그 `logs/alpha_ladder_chain_m192x2.log`) | ⏳ RUNNING 10-24 01:5x (g005) |
+
 ### 2026-10-20 α v2 J4 — DINOv2 앞 카메라 팔 최소 1칸 (`docs/alpha_plan.md` §3 표 [DINOv2] 행 · §4 J4 · 사전 등록 격자의 남은 팔)
 
 **무엇**: 위 10-19 판독과 같은 데이터·판독기·폴드·seed, **앞 카메라 P 만 DINOv2-base**(4-a 와 같은 `DinoP` · 196 입력 · ImageNet 정규화 = DINO 고유) · 손목 = C1-DN 그대로 · 변화 채널 = C1-DN M / raw ΔL / 없음. 토큰 차원 = 768, 짧은 토큰(C1-DN P·M 384 · raw 256)은 0 패딩(분석 1 raw 규칙) → C1-DN 팔과 판독기 차원이 달라 **J4 는 DINOv2 팔끼리만 비교**. `--p-source dino` · sbatch `DINO=1` · `--mem` 120G → 160G(768 차원 train 특징 ≈ 80 GB 예상). 판정 J4 = DINOv2+M < DINOv2+raw MAE, seed 3 범위 비중첩(`--summarize` 에 줄 추가).

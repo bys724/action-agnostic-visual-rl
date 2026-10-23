@@ -286,6 +286,9 @@ class TwoStreamV15Model(TwoStreamV11Model):
         bright_target: str = "clean",         # §10 M-recon 타깃: clean = 원래 조명 ΔL(C1) / aug = 밝기 바꾼 그대로의 ΔL(노이즈만 제거)
         m_noise_kinds: Tuple[str, ...] = ("gaussian",),  # E1: 잡음 종류 묶음 (gaussian·shot·read·jpeg) — 샘플별 하나
         m_noise_jpeg_quality: Tuple[int, int] = (85, 95),  # E1: jpeg 품질 U{lo..hi} (nvjpeg는 q≥99 인코딩 실패, 잡 42295259)
+        # ── alpha_plan §4-c M 크기 사다리 (10-24): M 폭 분리 + 동결 P 위 M 만 학습 (기본 off) ──
+        m_embed_dim: Optional[int] = None,    # None = embed_dim (기존). 다르면 M 인코더만 이 폭으로
+        m_only: bool = False,                 # P 쪽 전부 동결 · 손실 = M-recon 만
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -499,6 +502,35 @@ class TwoStreamV15Model(TwoStreamV11Model):
             #   (효율) + always-on routing 의미 명확(정지 판정 장치 불필요) + t/tk 비대칭 해소.
             self.null_motion_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
             nn.init.trunc_normal_(self.null_motion_token, std=0.02)
+
+        # ── alpha_plan §4-c M 크기 사다리: 작은 M (폭 d_m · 깊이 m_depth) ──────────────
+        #   M 인코더(patch_embed·cls·pos·blocks·norm)와 mask_token_m 만 d_m 으로 재구성. M-recon 디코더는
+        #   P_full(폭 D)을 Q/K 로 쓰므로 폭 D 그대로 두고, mask token 주입 뒤 m_up(d_m→D)으로 올린다.
+        #   하류 판독기는 짧은 토큰을 0 패딩(분석 1 raw 규칙)이라 변경 없음.
+        self.m_up = None
+        if m_embed_dim is not None and m_embed_dim != embed_dim:
+            assert comp_mae and m_only, "m_embed_dim은 comp_mae + m_only 전용 (P-recon 은 M 폭 = P 폭 전제)"
+            d_m = m_embed_dim
+            self.patch_embed_m = nn.Conv2d(1, d_m, kernel_size=patch_size, stride=patch_size)
+            self.cls_token_m = nn.Parameter(torch.zeros(1, 1, d_m))
+            self.pos_embed_m = nn.Parameter(torch.zeros(1, self.num_patches + 1, d_m))
+            self.blocks_m = nn.ModuleList([
+                TransformerBlock(d_m, max(d_m // 64, 1), mlp_ratio) for _ in range(m_depth)
+            ])
+            self.norm_m = nn.LayerNorm(d_m)
+            self.mask_token_m = nn.Parameter(torch.zeros(1, 1, d_m))
+            for t in (self.cls_token_m, self.pos_embed_m, self.mask_token_m):
+                nn.init.trunc_normal_(t, std=0.02)
+            self.m_up = nn.Linear(d_m, embed_dim)
+        # m_only: 동결 C1-DN P 위에서 M 만 학습. 학습 대상 = M 인코더 + M-recon 경로(디코더·head·m_up).
+        #   나머지는 동결(find_unused_parameters=False 이라 trainable 인데 grad 미도달이면 DDP hang).
+        self.m_only = m_only
+        if m_only:
+            assert comp_mae, "m_only는 comp_mae 전용"
+            train = ("patch_embed_m", "cls_token_m", "pos_embed_m", "blocks_m", "norm_m", "mask_token_m",
+                     "dec_pos_embed_m", "m_recon_decoder", "m_recon_decoder_norm", "m_recon_head", "m_up")
+            for n, p in self.named_parameters():
+                p.requires_grad_(n.split(".")[0] in train)
 
     # ----------------------------------------------------------------------
     # EMA update
@@ -994,6 +1026,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         mask_m = self._random_mask(B, device, self.mask_ratio_m_recon)
         m_visible = self._encode_m_masked(m_channel, mask_m)              # masked 별도 pass (guard 6)
         m_full = self._inject_mask_tokens(m_visible, mask_m, self.mask_token_m)
+        if self.m_up is not None:                                         # §4-c 작은 M: d_m → D
+            m_full = self.m_up(m_full)
         m_state = m_full + self.dec_pos_embed_m                           # mask token 주입 + APE
         for step in self.m_recon_decoder:
             m_state = step(m_state, p_helper_full)   # owner=M(V), helper=P_full(Q/K) → P→P, gather M
@@ -1085,21 +1119,30 @@ class TwoStreamV15Model(TwoStreamV11Model):
             m_chan_real = self.preprocessing.compute_m_channel(image_current, image_future)   # ΔL(t,tk)
             m_chan_null = self.preprocessing.compute_m_channel(image_current, image_current)  # ΔL(t,t)=0
 
-        # ── P-recon (pixel_pred과 동일): in-place ×2(null routing) + future ×1(real routing) ─
-        mask_t = self._random_mask(B, device, self.mask_ratio_p)
-        mask_tk = self._random_mask(B, device, self.mask_ratio_p)
-        p_t_visible = self._student_p_encode_visible(p_channel_t, mask_t)
-        p_tk_visible = self._student_p_encode_visible(p_channel_tk, mask_tk)
-        m_real = self._encode_m_unmasked(m_chan_real)   # full M (P-side routing helper)
-        m_null = self._null_routing(B, device)          # learned null-motion token (M full forward 제거)
-        loss_t, patch_pred_t = self._predict_pixels(p_t_visible, mask_t, m_null, image_current)
-        loss_tk, patch_pred_tk = self._predict_pixels(p_tk_visible, mask_tk, m_null, image_future)
-        loss_pred, patch_pred_pred = self._predict_pixels(p_t_visible, mask_t, m_real, image_future)
+        if self.m_only:
+            # §4-c: P-recon 생략 · P-helper 는 동결 P 의 grad 없는 full-pass.
+            #   M full-pass(진단 cls_m)는 M-recon **뒤**에서 no_grad 로 — 앞에 두면 autocast 가중치 캐시가
+            #   grad 없는 fp16 사본을 masked M pass 에 재사용해 M Linear/Conv 가중치 grad 가 끊긴다(잡 42619447 DDP 오류).
+            with torch.no_grad():
+                p_helper_t = self._encode_p_unmasked(p_channel_t)
+            loss_t = loss_tk = loss_pred = torch.zeros((), device=device)
+            p_t_visible = p_tk_visible = p_helper_t
+        else:
+            # ── P-recon (pixel_pred과 동일): in-place ×2(null routing) + future ×1(real routing) ─
+            mask_t = self._random_mask(B, device, self.mask_ratio_p)
+            mask_tk = self._random_mask(B, device, self.mask_ratio_p)
+            p_t_visible = self._student_p_encode_visible(p_channel_t, mask_t)
+            p_tk_visible = self._student_p_encode_visible(p_channel_tk, mask_tk)
+            m_real = self._encode_m_unmasked(m_chan_real)   # full M (P-side routing helper)
+            m_null = self._null_routing(B, device)          # learned null-motion token (M full forward 제거)
+            loss_t, patch_pred_t = self._predict_pixels(p_t_visible, mask_t, m_null, image_current)
+            loss_tk, patch_pred_tk = self._predict_pixels(p_tk_visible, mask_tk, m_null, image_future)
+            loss_pred, patch_pred_pred = self._predict_pixels(p_t_visible, mask_t, m_real, image_future)
 
-        # ── M-recon 미러: P-helper = frame_t full-pass만 (§3.1 leakage 해소, guard 4 grad on) ─
-        #   Case B(real ΔL)가 핵심 — 항상 실행 (m_recon 모듈에 grad 보장 → DDP-safe).
-        #   Case A(정지 calibration)는 caseA_prob로 확률 skip (효율: 정적 과다 → 연산 절감).
-        p_helper_t = self._encode_p_unmasked(p_channel_t)
+            # ── M-recon 미러: P-helper = frame_t full-pass만 (§3.1 leakage 해소, guard 4 grad on) ─
+            #   Case B(real ΔL)가 핵심 — 항상 실행 (m_recon 모듈에 grad 보장 → DDP-safe).
+            #   Case A(정지 calibration)는 caseA_prob로 확률 skip (효율: 정적 과다 → 연산 절감).
+            p_helper_t = self._encode_p_unmasked(p_channel_t)
         loss_m_B, patch_pred_dL, mask_m = self._recon_dL(
             m_chan_real, p_helper_t, device, m_target=m_tgt_real)                     # Case B: real ΔL
         run_caseA = self.caseA_prob >= 1.0 or torch.rand(1).item() < self.caseA_prob
@@ -1117,9 +1160,17 @@ class TwoStreamV15Model(TwoStreamV11Model):
             + self.lambda_m_recon * loss_m_recon
         )
 
+        if self.m_only:
+            with torch.no_grad():
+                m_real = self._encode_m_unmasked(m_chan_real)
         zero = torch.zeros((), device=device, dtype=loss_t.dtype)
         cls_p_repr = p_t_visible[:, 0]
         cls_m_repr = m_real[:, 0]
+        if self.m_only:   # P 예측 없음 → 샘플 시각화 자리에는 입력 프레임, P 마스크 자리에는 M 마스크
+            mask_t = mask_m
+            pred_t_img, pred_tk_img = image_current, image_future
+        else:
+            pred_t_img, pred_tk_img = self._unpatchify(patch_pred_t), self._unpatchify(patch_pred_pred)
         return {
             "loss": loss,
             "loss_t": loss_t, "loss_tn": loss_t, "loss_tk": loss_tk,
@@ -1129,7 +1180,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
             "loss_m_jepa": loss_m_recon, "loss_m_recon": loss_m_recon,
             "loss_m_caseA": loss_m_A, "loss_m_caseB": loss_m_B,
             "loss_compose": zero, "loss_dino": zero, "loss_var": zero,
-            "pred_t": self._unpatchify(patch_pred_t), "pred_tk": self._unpatchify(patch_pred_pred),
+            "pred_t": pred_t_img, "pred_tk": pred_tk_img,
             "mask_p": mask_t, "mask_m": mask_m,
             "m_features": m_real[:, 1:], "p_features_t": p_t_visible[:, 1:],
             "p_features_tk": p_tk_visible[:, 1:], "cls_m": cls_m_repr, "cls_p": cls_p_repr,

@@ -263,6 +263,10 @@ def main():
                         help='[m-noise] 잡음 종류 묶음, 샘플별 하나 균등 추출 (default gaussian = §10). E1 = claim_spine_v2 §5.')
     parser.add_argument('--m-noise-jpeg-quality', type=int, nargs=2, default=[85, 95],
                         help='[m-noise] jpeg 품질 U{lo..hi} (default 85 95 = EgoDex 휘도 RMS 0.004–0.008 ≈ gaussian σ≤0.01 · nvjpeg q≥99 실패).')
+    parser.add_argument('--m-embed-dim', type=int, default=None,
+                        help='[comp-mae] M 인코더 폭 (None = embed-dim). alpha_plan §4-c M 크기 사다리.')
+    parser.add_argument('--m-only', action='store_true',
+                        help='[comp-mae] P 동결 · 손실 = M-recon 만 (--init-from 으로 P 로드). alpha_plan §4-c.')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -423,6 +427,8 @@ def main():
             bright_target=args.bright_target,
             m_noise_kinds=tuple(args.m_noise_kinds),
             m_noise_jpeg_quality=tuple(args.m_noise_jpeg_quality),
+            m_embed_dim=args.m_embed_dim,
+            m_only=args.m_only,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

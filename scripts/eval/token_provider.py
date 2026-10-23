@@ -54,8 +54,9 @@ class TokenProvider:
     def m_tokens(self, frames_a, frames_b, batch: int = 128) -> torch.Tensor:
         a, b = self._x(frames_a), self._x(frames_b)
         assert a.shape == b.shape
-        return torch.cat([self.enc._encode_m_unmasked(self.enc.preprocessing.compute_m_channel(a[i:i + batch], b[i:i + batch]))[:, 1:]
-                          for i in range(0, len(a), batch)])
+        t = torch.cat([self.enc._encode_m_unmasked(self.enc.preprocessing.compute_m_channel(a[i:i + batch], b[i:i + batch]))[:, 1:]
+                       for i in range(0, len(a), batch)])
+        return F.pad(t, (0, self.dim - t.shape[-1]))  # alpha §4-c 작은 M(폭 < D)은 0 패딩 · 기존 ckpt 는 그대로
 
     @torch.no_grad()
     def raw_tokens(self, frames_a, frames_b, pad: bool = True) -> torch.Tensor:

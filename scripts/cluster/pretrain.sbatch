@@ -311,6 +311,8 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     [ -n "${EMBED_DIM:-}" ] && MODEL_ARGS+=(--embed-dim "$EMBED_DIM")  # ViT-S=384 (size 분기)
     [ -n "${NUM_HEADS:-}" ] && MODEL_ARGS+=(--num-heads "$NUM_HEADS")  # ViT-S=6
     [ -n "${INIT_FROM:-}" ] && MODEL_ARGS+=(--init-from "$INIT_FROM")  # 가중치만 init (ep8 등)
+    [ -n "${M_EMBED_DIM:-}" ] && MODEL_ARGS+=(--m-embed-dim "$M_EMBED_DIM")  # alpha §4-c 작은 M 폭
+    [ "${M_ONLY:-0}" = "1" ] && MODEL_ARGS+=(--m-only)  # alpha §4-c: P 동결 · M-recon 만
     if [ -n "${V15_COMP_HIDDEN:-}" ]; then
         MODEL_ARGS+=(--v15-composition-hidden-dim "${V15_COMP_HIDDEN}")
     fi

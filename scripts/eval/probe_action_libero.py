@@ -223,6 +223,7 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     model = TwoStreamV15Model(
         embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
         pair_mode=True, use_sobel=False, masked_anchor=True,
+        m_embed_dim=sd["pos_embed_m"].shape[-1] if _comp else None,  # alpha §4-c 작은 M 폭 자동 감지
     )
     missing, unexpected = model.load_state_dict(sd, strict=False)
     _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]
