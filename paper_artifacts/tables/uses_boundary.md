@@ -82,6 +82,8 @@ Source `paper_artifacts/alpha_value/README.md` Rounds 2–3.
 | same, DINOv2 anchor P (J4) | **0.067** | −0.006 | −0.032 | — | M > raw on an external P too |
 | cost-matched (§4-b): P every 2 steps 4.60 GF vs anchor P + M 5.04 GF | 0.141 | — | **0.333** (period-2 P) | — | **FAIL** — fresh P wins at equal compute → α cost claim dropped |
 
+**Second operating point (alpha §4-c, 10-25):** shrinking M to 192×2 (0.43 GF, below the break-even X = 0.562 GF) loses to periodic re-encoding of the same P at similar cost (registration 0.083 vs period-9 P 0.097; current M 0.141; raw 0.037) — pre-registered FAIL, ladder stopped. Attribution limited to this recipe (frozen P, 10 ep) — capacity vs training not separated.
+
 Analysis 1 (observer, `observer_fuse/README.md` v3/v4, C1-DN P, beyond-position motion share): CoMP M 0.279 ± 0.012
 vs raw ΔL 0.245 ± 0.008 (object, Fuse seeds 3, non-overlapping); goal 0.196 vs 0.144 (seed 1); the Fuse module was
 retired (10-10) — report as an observation.
