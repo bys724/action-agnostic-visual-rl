@@ -128,3 +128,37 @@ Small M = width 192 × depth 2 (0.43 GF) trained 10 ep on the frozen C1-DN P wit
 - Ladder stops at the first miss (rungs 2–3 not run). Pre-registered wording for "no passing rung": M must cost below X = 0.562 GF to win, and at the smallest M tried that keeps it below X (192×2), registration is not retained (0.141 → 0.083, −41 %).
 - Robust to the competitor choice: the stage-0 mixed re-score (0.110) also beats the small M. Unlike 4-b, the dedicated readout scored lower than the mixed one here (0.097 vs 0.110).
 - Caveat (attribution, not verdict): the drop mixes capacity with the training recipe — the small M had 10 ep on a frozen P, while the current M had 60 ep of joint training (M-recon loss 0.0028 vs 0.0022, plateaued from ep 8). "Capacity floor of M-recon" should be worded as "at this recipe".
+
+## Round 5 — real-time ruler: latency curve + time-to-detect (2026-10-25 · zero training · `docs/alpha_plan.md` §4-d)
+
+Re-score of the existing r2/r3/r4 prediction npz (every step of the event window [t_inj−1, t_inj+10] is present for all 149 recovery events; the 90 demo episodes per held-out fold give the clean windows). `scripts/eval/alpha_latency.py` → `r5/latency.json`.
+Registration_s = (V̂(t_inj+s) − V̂(t_inj−1) + (s+1)) / (regrasp_end − t_inj); s = 10 reproduces Rounds 2–4 exactly. Deployment averages as in `alpha_j1.py` (same anchor age at both window ends, the 10-19 convention). Seed 3 × 5 folds; seed mean [range].
+
+| arm (GF/step) | s=1 | 2 | 3 | 4 | **5 (= s\*)** | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| star, P every step (9.20) | −0.035 | −0.115 | −0.042 | 0.137 | **0.213** [0.203, 0.221] | 0.264 | 0.309 | 0.344 | 0.348 | 0.365 |
+| P+M 4.58 (5.04) | −0.029 | 0.002 | 0.031 | 0.058 | **0.070** [0.062, 0.080] | 0.074 | 0.089 | 0.109 | 0.119 | 0.141 |
+| period-2 P (4.60) | −0.026 | −0.046 | −0.095 | −0.097 | **0.029** [0.013, 0.042] | 0.155 | 0.222 | 0.274 | 0.315 | 0.333 |
+| P+M 0.43 (0.89) | −0.006 | 0.025 | 0.016 | 0.010 | **0.013** [0.011, 0.015] | 0.017 | 0.034 | 0.048 | 0.062 | 0.083 |
+| period-9 P (1.02) | −0.032 | −0.050 | −0.074 | −0.086 | **−0.077** [−0.081, −0.073] | −0.057 | −0.027 | 0.009 | 0.052 | 0.097 |
+| anchor P + raw ΔL | −0.008 | −0.014 | −0.038 | −0.048 | −0.052 | −0.049 | −0.030 | −0.012 | 0.011 | 0.037 |
+| (ref) anchor P only, ages 11–20 | 0.011 | 0.007 | 0.001 | −0.007 | −0.018 | −0.029 | −0.036 | −0.042 | −0.046 | −0.048 |
+
+Time-to-detect (threshold = per-arm, per-age, per-s 95th percentile of the clean-window rise; samples = event × deployment age; median per seed, ∞ = not crossed by s = 10):
+
+| arm | median s_det (3 seeds) | undetected within window |
+|---|---|---|
+| star | 7 / 6 / 8 | 0.40–0.42 |
+| P+M 4.58 | ∞ | 0.72–0.74 |
+| period-2 P | ∞ / 10 / 10 | 0.49–0.50 |
+| P+M 0.43 | ∞ | 0.79 |
+| period-9 P | ∞ | 0.75–0.78 |
+| anchor P + raw ΔL | ∞ | 0.83–0.84 |
+
+**Reading (fixed before re-scoring):** s\* = 5 (star reaches half of its s = 10 value, 0.182, first at s = 5; 0.137 at s = 4) → branch ② (s\* ≤ 5). Compute-matched pairs at s = 5, seed ranges disjoint: P+M 4.58 0.070 > period-2 P 0.029 ✓ · P+M 0.43 0.013 > period-9 P −0.077 ✓ → **"real-time advantage" per the pre-registered rule** → next step = §4-e pre-registration (Vault).
+
+What the curves show (report, not verdict):
+- P+M reacts early but weakly; a periodic P is blind until its next refresh and then catches up with star. Period-2 overtakes P+M 4.58 at s = 6 (0.155 vs 0.074). The advantage at s\* sits just before that crossover, and s\* is one step from the "no verdict" branch (s\* ≥ 6).
+- Absolute size: P+M 4.58 at s\* is about ⅓ of star (0.070 / 0.213); P+M 0.43 is 6 % of star. The 0.43 pair is won mainly because period-9 P is still negative (stale anchor).
+- The time-to-detect view points the other way for the 4.58 pair: period-2 P leaves fewer events undetected (0.49–0.50 vs 0.72–0.74). §4-d: when the two disagree, both are reported and registration_s\* decides.
+- Star dips negative at s = 2 (−0.115) before rising — the readout first reads the injected event as progress. Every arm whose anchor is before the event shares this early negative stretch.
