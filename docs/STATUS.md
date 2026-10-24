@@ -161,7 +161,7 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 42619979 (+14 체인) | §4-c 단 1 판독 15 칸 — 학습 42619451 완료(10-24 14:45 · 13.0 MIG-3g·h) · 첫 칸 재제출(1 차 42619923 = 로더 assert 실패 → 수정) · 성공 시 14 칸 자동 | 10-24 15:11 | `logs/alpha_ladder_chain_m192x2.log` → `alpha_j1.py --deploy` 재채점으로 단별 판정 |
+| 42620573 (+14 체인) | §4-c 경쟁자 = 주기-9 P 전용 판독기 15 칸(Vault 10-25 · 단 1 결과 전 제출) · 단 1 판독 15 칸은 10-24 완료 · 결과 미개봉 | 10-25 01:22 | `logs/alpha_ladder_competitor_p9.log` → `alpha_j1.py --deploy r4/m192x2 r4/competitor_p9 r2` 로 단 1 판정 |
 
 ## 이 문서의 용어
 

@@ -24,6 +24,9 @@ TAG="value_${ARM}"; [ "${DINO:-0}" = "1" ] && { TAG="value_dino_${ARM}"; EXTRA="
 [ "${AGE:-0}" = "1" ] && EXTRA="--age-input $EXTRA"  # 2차 (10-19 Vault) · 출력 alpha_value/r2
 # 주기-2 P (alpha_plan §4-b · 10-20): 앵커 P만 · 나이 {1,2} 로 학습·평가 · 출력 alpha_value/r3 (ARM=none AGE=1 P2=1)
 [ "${P2:-0}" = "1" ] && { TAG="value_p2"; EXTRA="--ages 1 2 --train-ages 1 2 --out-root $PROJECT_ROOT/paper_artifacts/alpha_value/r3 $EXTRA"; }
+# 주기-k P 전용 판독기 (alpha_plan §4-c 경쟁자 · 10-25): 앵커 P만 · 나이 {1..PK} 로 학습·평가 · 출력 alpha_value/r4/competitor_p$PK (ARM=none AGE=1 PK=9)
+if [ -n "${PK:-}" ]; then AGES=$(seq -s ' ' 1 "$PK"); TAG="value_p$PK"
+  EXTRA="--ages $AGES --train-ages $AGES --out-root $PROJECT_ROOT/paper_artifacts/alpha_value/r4/competitor_p$PK $EXTRA"; fi
 [ "${NOQ:-0}" = "1" ] && { TAG="${TAG}_noq"; EXTRA="--no-q $EXTRA"; }
 TAG="${TAG}_f${FOLD}_s${SEED}"
 if [ "${SMOKE:-0}" = "1" ]; then
