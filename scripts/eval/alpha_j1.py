@@ -34,7 +34,8 @@ curve = {k: np.nanmean(np.stack(list(v.values())), 0) for k, v in R.items()}  # 
 if DEPLOY:
     # 배포 평균: 비용이 배포 전체에 걸리므로 나이 균등 평균 (alpha_plan §4-b · 결과 전 고정)
     AGES = {"comp": range(1, 21), "p2": (1, 2), "none": (1, 2), "star": range(1, 21),  # none = r2 혼합 학습 재채점(참고)
-            "p9": range(1, 10)}  # §4-c 경쟁자 = 주기-9 P 전용 판독기 (10-25)
+            "p9": range(1, 10),  # §4-c 경쟁자 = 주기-9 P 전용 판독기 (10-25)
+            "raw": range(1, 21)}  # §4-c 부 판정 = 앵커 P + raw ΔL (주기 20 배포)
     out = {}
     for arm, ages in AGES.items():
         idx = [a - 1 for a in ages]

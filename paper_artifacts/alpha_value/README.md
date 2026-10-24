@@ -110,3 +110,21 @@ Caveat: this readout was trained on mixed ages; the dedicated period-2 readout (
 | params (M) | 10.8 | 5.5 | 3.7 | 1.95 | 1.70 | 1.87 | 1.42 | 0.98 | 0.65 | 0.53 | 0.46 |
 
 Bold = below X (0.562). None of the example rungs in §4-c (384×3, 192×6 / 384×2, 192×3) is below X; every width-384 M is above X (384×1 = 0.80), so a depth-only retrain (`m_depth`, option (b)) cannot reach X.
+
+### Round 4 — rung 1 verdict (2026-10-25 · pre-registered rules, `docs/alpha_plan.md` §4-c)
+
+Small M = width 192 × depth 2 (0.43 GF) trained 10 ep on the frozen C1-DN P with the M-recon loss only (`two_stream_v15b_alpha_ladder_m192x2/20261024_014642/checkpoint_epoch0010.pt`, P bit-identical to C1-DN). Same readout, folds and seeds as r2 (age input, front + wrist, seed 3 × 5 folds). Competitor = dedicated period-9 readout (ages 1..9 train/eval, Vault 10-25, submitted before this result was read). Deployment average of the event-window registration; `alpha_j1.py --deploy r4/m192x2 r4/competitor_p9` and `--deploy r2`.
+
+| arm | GF / step | registration [seed range] | MAE (steps) |
+|---|---:|---|---:|
+| **small M (192×2): anchor P + M, period 20** | 0.89 | **0.0825** [0.0810, 0.0838] | 16.37 |
+| **competitor: period-9 P (dedicated readout)** | 1.02 | **0.0972** [0.0895, 0.1049] | 16.61 |
+| anchor P + raw ΔL, period 20 | 0.46 + tokenise | 0.0365 [0.0348, 0.0390] | 16.33 |
+| (ref) current M (384×6): anchor P + M, period 20 | 5.04 | 0.1405 [0.1362, 0.1450] | 15.70 |
+| (ref) period-9 P, mixed-age re-score (stage 0) | 1.02 | 0.110 | — |
+
+- **Primary — FAIL**: small-M P+M upper seed bound 0.0838 < period-9 P lower bound 0.0895. Cheaper (0.89 vs 1.02 GF/step) but registers fewer events.
+- Secondary — pass: small-M P+M > anchor P + raw ΔL (disjoint).
+- Ladder stops at the first miss (rungs 2–3 not run). Pre-registered wording for "no passing rung": M must cost below X = 0.562 GF to win, and at the smallest M tried that keeps it below X (192×2), registration is not retained (0.141 → 0.083, −41 %).
+- Robust to the competitor choice: the stage-0 mixed re-score (0.110) also beats the small M. Unlike 4-b, the dedicated readout scored lower than the mixed one here (0.097 vs 0.110).
+- Caveat (attribution, not verdict): the drop mixes capacity with the training recipe — the small M had 10 ep on a frozen P, while the current M had 60 ep of joint training (M-recon loss 0.0028 vs 0.0022, plateaued from ep 8). "Capacity floor of M-recon" should be worded as "at this recipe".
