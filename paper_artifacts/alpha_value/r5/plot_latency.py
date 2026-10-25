@@ -1,12 +1,14 @@
-"""Round 5 지연 곡선 그림 (alpha_plan §4-d) — r5/latency.json → r5/latency_curve.png."""
+"""지연 곡선 그림 (alpha_plan §4-d) — <dir>/latency.json → <dir>/latency_curve.png · 인자 없으면 r5(선형) · `r6` = §4-f 비선형."""
 import json
+import sys
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-R = json.load(open(Path(__file__).parent / "latency.json"))
+D = Path(__file__).parent.parent / (sys.argv[1] if len(sys.argv) > 1 else "r5")
+R = json.load(open(D / "latency.json"))
 S = np.arange(1, 11)
 INK, MUTED, SURF = "#0b0b0b", "#52514e", "#fcfcfb"
 ROLE = {"pm": "#2a78d6", "per": "#eb6834", "raw": "#1baf7a", "star": MUTED}   # reference palette slots 1-3
@@ -28,7 +30,7 @@ for ax, (title, pm, per, pm_lab, per_lab) in zip(axes, PANELS):
         ys.append(max(y, ys[-1] + 0.03) if ys else y)
         ax.annotate(lab, (10, y), xytext=(10.25, ys[-1]), textcoords="data", va="center", fontsize=8.5, color=INK)
     ax.axvline(R["s_star"], color=MUTED, lw=1, ls=":")
-    ax.text(R["s_star"] + 0.1, -0.135, "s* = 5", color=MUTED, fontsize=8.5)
+    ax.text(R["s_star"] + 0.1, -0.135, f"s* = {R['s_star']}", color=MUTED, fontsize=8.5)
     ax.axhline(0, color=MUTED, lw=0.6)
     ax.grid(axis="y", color="#e6e5e1", lw=0.6); ax.set_axisbelow(True)
     for sp in ("top", "right"): ax.spines[sp].set_visible(False)
@@ -36,6 +38,6 @@ for ax, (title, pm, per, pm_lab, per_lab) in zip(axes, PANELS):
     ax.set_xticks(S); ax.set_xlim(0.7, 13.6); ax.set_xlabel("steps after the injected event (s)")
 axes[0].set_ylabel("event registration_s (deployment average)")
 axes[0].legend(loc="lower right", bbox_to_anchor=(1.0, 0.02), frameon=False, fontsize=8)
-fig.suptitle("alpha §4-d — how fast each arm registers the event (seed 3 × 5 folds, band = seed range)", fontsize=11, color=INK, x=0.01, ha="left")
+fig.suptitle(f"alpha §4-d — how fast each arm registers the event ({'nonlinear tf1' if D.name == 'r6' else 'linear'} readout · seed 3 × 5 folds · band = seed range)", fontsize=11, color=INK, x=0.01, ha="left")
 fig.tight_layout()
-fig.savefig(Path(__file__).parent / "latency_curve.png", dpi=150, facecolor=SURF)
+fig.savefig(D / "latency_curve.png", dpi=150, facecolor=SURF)
