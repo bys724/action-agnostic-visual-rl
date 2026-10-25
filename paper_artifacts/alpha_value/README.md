@@ -196,3 +196,27 @@ Same grid, folds, seeds, labels and event index as Rounds 2–4. Only the readou
 | anchor P + raw ΔL | −0.028 | −0.023 | −0.016 | −0.010 | −0.004 | 0.000 | 0.041 | 0.089 | 0.69–0.76 |
 
 s\* = 4 (linear: 5) → same branch ② under both readouts; at s\* both compute-matched pairs favour P+M (disjoint). Time-to-detect again points the other way: period-2 P leaves fewer events undetected than P+M 4.58 (0.39–0.45 vs 0.52–0.56), and period-9 P fewer than P+M 0.43 (0.56–0.62 vs 0.64–0.66). Period-2 P overtakes P+M 4.58 at s = 6 under both readouts. Since both readouts land in the same §4-d branch, the §4-e primary readout is the linear one (rule in §4-e).
+
+## Round 7 — composition test (2026-10-26 · zero training · `docs/alpha_plan.md` §4-g)
+
+P̂_t = pretrained L_pred path predict(P_a visible, mask, M(a→t)) with the frozen C1-DN decoder (4 complementary visible sets, each position = mean of its 3 masked predictions, clamp [0,1]) → re-encoded by P → fed to the ★ readout (refit on real P_t with the r2 / r6 seed and recipe; the readout never sees P̂). Ages {1, 5, 10, 20} · 3 seeds × 5 folds × 2 readouts = 30 cells · 6.2 MIG-3g h · scorer `scripts/eval/alpha_compose_score.py` → `r7/compose.json`.
+
+**★ refit reproduction** (pre-fixed: per-fold MAE diff ≤ 0.1 ∧ corr ≥ 0.99): linear exact (diff 0.000, corr 1.0000) · tf1 FAIL (max diff 0.44, min corr 0.982 — bf16 + dropout nondeterminism) → tf1 read with the refit ★, as pre-fixed.
+
+| readout | arm | reg s=2 | reg s=5 | **reg s=10** [seed range] | MAE (steps) |
+|---|---|---|---|---|---|
+| linear | ★ (P_t) | −0.115 | 0.213 | **0.365** [0.361, 0.368] | 16.65 |
+| linear | P̂ (ages 1/5/10/20 mean) | −0.090 | 0.218 | **0.301** [0.282, 0.335] | **141.0** |
+| linear | P+M tokens (same ages · r2) | 0.032 | 0.100 | 0.206 | 16.01 |
+| linear | anchor P only (same ages · r2) | −0.022 | −0.007 | 0.118 | 16.54 |
+| tf1 | ★ | −0.208 | 0.256 | **0.281** [0.251, 0.317] | 15.13 |
+| tf1 | P̂ | 0.022 | 0.131 | **0.215** [0.191, 0.231] | 42.9 |
+
+P̂ by age (linear, s=10): 1 −0.056 · 5 0.330 · 10 0.500 · 20 0.429.
+
+**Pre-fixed reading** (primary = linear, s = 10, ratio P̂ / ★ per seed): linear 0.767 / 0.927 / 0.779 → min < 0.80, max > 0.50 → **in between** (tf1 0.728 / 0.804 / 0.761, same band).
+
+**Validity facts (report, not judgment):**
+- **Absolute state is lost, change is kept.** P̂ MAE 141 steps (linear) is far worse than the mean predictor (≈ 42); registration is a within-episode difference, so the offset cancels. Raw event-window change V̂(t_inj+10) − V̂(t_inj−1): P̂ age 10 +19.8 vs ★ +12.5.
+- **The +11 normal-progress term over-credits P̂.** Undisturbed 11-step change: ★ / P+M / anchor-only −9.7 to −10.3 (the basis of the 10-19 +11 choice) vs P̂ −6.4 to −7.9, with twice the spread (sd 23–27 vs 13–14). With each arm's own undisturbed slope in place of +11: linear 0.63 / 0.79 / 0.65 (still in between) · tf1 0.54 / 0.50 / 0.35.
+- **The decoder fails on LIBERO before M enters.** Same code on EgoDex: composition patch MSE 0.0005–0.0006 vs anchor copy 0.012–0.017 (correct). On LIBERO, in-place recon of P_t itself (null routing) 0.010–0.015 and images fill with EgoDex colours (`r7/sanity_*.png`); composed patch MSE 0.011–0.012 is above anchor copy at every age (0.0010 / 0.0046 / 0.0066 / 0.0083).

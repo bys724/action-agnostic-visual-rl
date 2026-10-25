@@ -3,7 +3,7 @@
 # 학습 없음(판독기만) · train 특징은 CPU 에 상주 (4 stream 칸 ≈ 50GB) → --mem 넉넉히.
 #
 #   sbatch --export=ALL,ARM=comp,FOLD=0,SEED=1 scripts/cluster/alpha_value.sbatch
-#   # ARM ∈ {star, comp, raw, none} · NOQ=1 → q 제외 · DINO=1 → 앞 카메라 P = DINOv2 (J4) · AGE=1 → 앵커 나이 판독기 입력 (2차) · P2=1 → 주기-2 P (§4-b) · SMOKE=1 (에피소드 4 · 나이 1 10 20 · probe 2 ep)
+#   # ARM ∈ {star, comp, raw, none} · NOQ=1 → q 제외 · DINO=1 → 앞 카메라 P = DINOv2 (J4) · AGE=1 → 앵커 나이 판독기 입력 (2차) · P2=1 → 주기-2 P (§4-b) · COMPOSE=linear|tf1 → §4-g (ARM=star AGE=1) · SMOKE=1 (에피소드 4 · 나이 1 10 20 · probe 2 ep)
 #
 #SBATCH --job-name=alpha_value
 #SBATCH --partition=mig-3g.40gb
@@ -27,10 +27,15 @@ TAG="value_${ARM}"; [ "${DINO:-0}" = "1" ] && { TAG="value_dino_${ARM}"; EXTRA="
 # 주기-k P 전용 판독기 (alpha_plan §4-c 경쟁자 · 10-25): 앵커 P만 · 나이 {1..PK} 로 학습·평가 · 출력 alpha_value/r4/competitor_p$PK (ARM=none AGE=1 PK=9)
 if [ -n "${PK:-}" ]; then AGES=$(seq -s ' ' 1 "$PK"); TAG="value_p$PK"
   EXTRA="--ages $AGES --train-ages $AGES --out-root $PROJECT_ROOT/paper_artifacts/alpha_value/r4/competitor_p$PK $EXTRA"; fi
+# 합성 복원 시험 (alpha_plan §4-g · 10-26): ★ 판독기 재적합(r2/r6 재현 점검) + P̂_t(나이 1 5 10 20) 판독 · 출력 alpha_value/r7/{linear,tf1}
+#   (ARM=star AGE=1 COMPOSE=linear|tf1)
+if [ -n "${COMPOSE:-}" ]; then EXTRA="--compose-ages 1 5 10 20 --out-root $PROJECT_ROOT/paper_artifacts/alpha_value/r7/$COMPOSE $EXTRA"
+  [ "$COMPOSE" = "tf1" ] && EXTRA="--readout tf1 $EXTRA"; fi
 [ "${NOQ:-0}" = "1" ] && { TAG="${TAG}_noq"; EXTRA="--no-q $EXTRA"; }
 TAG="${TAG}_f${FOLD}_s${SEED}"
 if [ "${SMOKE:-0}" = "1" ]; then
   TAG="${TAG}_smoke"; EXTRA="--max-episodes 4 --ages 1 10 20 --probe-epochs 2 $EXTRA"
+  [ -n "${COMPOSE:-}" ] && EXTRA="$EXTRA --compose-ages 1 20"
 fi
 
 module load miniforge3/24.11.3-2

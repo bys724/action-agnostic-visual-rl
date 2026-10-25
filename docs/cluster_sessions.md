@@ -89,6 +89,25 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### ▶▶▶ 인계 (2026-10-26 08시) — 다음 세션은 여기부터
+
+- **상태**: 돌아가는 잡 없음. §4-g 합성 복원 시험 ② 완료 · 사전 고정 읽기 = **사이**(선형 P̂/★ 0.77–0.93) · Vault 안건 = `docs/STATUS.md` "열린 것" 첫 블록(🟣 §4-g · ① 기다릴지 vs §4-h 사전 등록 · dev 추천 = §4-h + ① 병렬).
+- **시작 절차**: `git fetch && git merge --ff-only origin/main` → STATUS 첫 블록에 Vault 처분이 붙었는지 확인 → 붙었으면 그 지시만 실행 · 없으면 대기(측정 추가 금지).
+- **SC 세그 대기(①)**: 요청 형식 = 아래 10-26 §4-g 절 "▶ CoMP → SC 요청". SC `cluster_sessions.md` "▶▶▶ SC → CoMP 인계" 에 경로가 오면 → `paper_artifacts/alpha_value/r7/patch_err_f{0..4}.npz`(키 `t_age{1,5,10,20}` · `comp_/copy_{agentview,wrist}_age*` · 224 해상도 16×16 패치 MSE · 전역 프레임 번호 = npz 의 `ep_start`+t) 와 결합해 물체/팔/배경 × 사건 창/무교란 오차 비 채점(스크립트 미작성 · `alpha_compose_score.py` 옆에 추가) · 보조 읽기 = 사건 창 물체 오차 비 ≥ 2.
+- **산출물**: 코드 `scripts/eval/alpha_readout.py --compose-ages` · `scripts/cluster/alpha_value.sbatch COMPOSE=linear|tf1` · 체인 `scripts/cluster/alpha_ladder/chain_compose.sh` · 채점 `scripts/eval/alpha_compose_score.py` → `r7/compose.json` · 표 = `paper_artifacts/alpha_value/README.md` Round 7 · 예측 npz(git 제외)는 클러스터 `paper_artifacts/alpha_value/r7/{linear,tf1}/` 에만 있음.
+- **주의**: tf1 ★ 재적합은 재현 기준 미달(bf16·dropout 비결정) — 재실행하면 값이 조금 달라짐 · "+11" 보정은 P̂ 에서 전제(무교란 기울기 ≈ −10)가 깨짐(P̂ −6.4~−7.9) — 해석 시 README Round 7 validity 절 참조.
+
+### 2026-10-26 α §4-g 합성 복원 시험 (Vault 10-26 · 사용자 확정 · `alpha_plan.md` §4-g) — 학습 0 (인코더·디코더 동결)
+
+**무엇**: P̂_t = 사전학습 L_pred 경로 predict(P_a 보임, mask, M(a→t))(C1-DN 디코더 그대로 · 상보 보임 4 등분 · 각 위치 = 가려진 3 회 평균 · [0,1] clamp) → P 인코더 재인코딩 → ★ 판독기(실물 P_t 로 학습)에 입력 · 나이 1 5 10 20 · 출력 `paper_artifacts/alpha_value/r7/{linear,tf1}`(`value_compose_*` = 기존 npz 형식 · `patch_err_f*.npz` = ① 영역 오차용 패치 MSE · 합성 vs 앵커 복사). **★ 판독기 가중치는 r2·r6 에서 저장되지 않았음** → 같은 seed·레시피로 실물 P_t 에 재적합하고 저장된 ★ 예측 재현을 점검(결과 전 고정 기준: 폴드별 MAE 차 ≤ 0.1 스텝 ∧ 프레임 예측 상관 ≥ 0.99) · 판독기는 P̂ 를 학습에서 보지 않음(Vault 의도 "재학습 없음" 유지). 판독 칸 = 2 판독기 × 3 seed × 5 폴드 = 30.
+
+**▶ CoMP → SC 요청 (① 영역 오차 · SC 지시 (43) §3 의 "CoMP 로 세그 export" 와 같은 건)**: alpha_v1 662 에피소드(라벨 있는 것)의 **프레임별 영역 라벨 지도** — `{src: uint8 (T, 128, 128)}` · 값 = 0 배경 · 1 팔(그리퍼 포함) · 2 다뤄지는 물체(사건 물체) · (선택) 3 그 외 물체 · 프레임 번호 = `index.json` 의 frames start/len 과 같음 · 앞 카메라 필수 · 손목은 있으면 · 렌더 비결정 함정(SC 메모: 세그는 같은 실행 이미지와만 짝)에 맞춰 export 이미지와 같은 실행의 세그일 것. 경로를 SC `cluster_sessions.md` "▶▶▶ SC → CoMP 인계" 에 기입. **접촉 소실 시각은 이미 `index.json` event.t_drop 에 있음 → 추가 불필요.** CoMP 쪽은 224 리사이즈 뒤 16×16 패치 비율로 배정(`patch_err_f*.npz` 와 결합).
+
+| JobID | 자원 | --time | 목적 | 결과 |
+|---|---|---|---|---|
+| 42625582 | mig-3g ×1 · 160G | 04:00:00 | 스모크 (선형 · f0 s1 · 에피소드 4 · 합성 나이 1 20) — 합성 경로 동작 · npz 형식 · 합성 vs 앵커 복사 패치 MSE | ✅ COMPLETED 58s (~0.02 MIG-3g·h) · 오류 0 · npz 생성 · 합성 패치 MSE 0.0117 ≫ 앵커 복사 0.0011(나이 1) → 로그인 노드 CPU 점검: **EgoDex 에선 같은 코드로 합성 0.0005–0.0006 ≪ 복사 0.012–0.017(정상 · 버그 아님)** · **LIBERO 에선 제자리 복원(null routing · P_t 자신)도 0.010–0.015 · 그림 = EgoDex 색(살색·베이지)으로 무너짐** · 그림 `paper_artifacts/alpha_value/r7/sanity_*.png` |
+| 42625584 (+29 체인) | mig-3g ×1 · 160G ×30 | 04:00:00 | **본 30 칸** — 첫 칸 선형 f0 s1 → 성공 시 29 칸 자동(`scripts/cluster/alpha_ladder/chain_compose.sh` · 로그 `logs/alpha_compose_chain.log`) | 첫 칸 ✅ 11m19s · **★ 재현 정확(MAE 15.571 = 저장값 · 예측 상관 1.0000)** · P̂ 판독 MAE 134–143 스텝(평균 예측 바닥선 41.9 보다 나쁨 · 1 칸) → 03:18 나머지 29 칸 제출(42625607~635) · ✅ **30/30 COMPLETED**(03:06 – 04:07 · 합 6.2 MIG-3g·h) · 판정 = README Round 7 |
+
 ### 2026-10-25 α §4-f 비선형 판독기 (Vault 10-25 (4) · 사용자 확정 · `alpha_plan.md` §4-f) — 판독기만 학습 · 인코더 0
 
 **무엇**: §4-b·§4-c 의 음성이 선형 판독기(주의 풀링 + 선형) 아래였으므로 같은 격자를 비선형 판독기 1 종으로 재판. 판독기 = 토큰 트랜스포머 1 블록(d 384 · 6 heads · MLP ×4 · dropout 0.1 · 스트림 id) → 기존 주의 풀링 → concat + [q · 과제 · 나이] → 선형(`alpha_readout.py --readout tf1`). 학습 규약(결과 전 고정 · dev 선택): 학습 폴드 에피소드 10 % 홀드아웃 조기 종료 · 인내 5 · 상한 60 ep · 최저 홀드아웃 가중치 복원 · AdamW lr 3e-4 · wd 0.05 · bf16 · 배치 256(선형 = lr 1e-3 · wd 0 · 100 ep · 조기 종료 없음 · fp32). 팔 7 × seed 3 × 5 폴드 = 105 칸 · 출력 `paper_artifacts/alpha_value/r6/{base,p2,p9,m192x2}`.

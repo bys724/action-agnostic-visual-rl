@@ -299,6 +299,29 @@ class ValueData:
         idx = torch.arange(len(self.y), device=self.device)
         self.P = {c: torch.cat([self.p_tok(c, idx[i:i + batch]) for i in range(0, len(idx), batch)]) for c in CAMS}
 
+    @torch.no_grad()
+    def compose(self, c, i0, i1, gen):
+        """§4-g 합성 복원: P̂_t = 사전학습 L_pred 경로 predict(P_a 보임, mask, M(a→t)) — 학습 0.
+        보임 집합 4 개 = 패치 무작위 순열의 상보 4 등분(49 개씩 · 마스크 비율 0.75 = 사전학습값) → 각 위치는
+        가려진 3 회의 예측 평균 · [0,1] clamp · P 인코더 재인코딩. 반환 = (P̂ 토큰 fp16, 패치 MSE 합성 · 앵커 복사)."""
+        e = self.enc
+        xa, xt = self._x(c, i0), self._x(c, i1)
+        p_ch = e.preprocessing.compute_p_channel(xa)
+        m_full = e._encode_m_unmasked(self.prep.compute_m_channel(xa, xt))  # = comp 팔 change_tok 의 입력 (CLS 포함)
+        B, N = len(xa), e.num_patches
+        grp = torch.argsort(torch.rand(B, N, generator=gen, device=self.device), 1) % 4  # 위치별 보임 집합 번호
+        acc = torch.zeros(B, N, e.patch_size ** 2 * 3, device=self.device)
+        for j in range(4):
+            mask = grp != j  # True = 가림
+            _, pp = e._predict_pixels(e._student_p_encode_visible(p_ch, mask), mask, m_full, xt)
+            acc += pp * mask[..., None]
+        pred = e._unpatchify(acc / 3.0).clamp(0.0, 1.0)
+        tgt = e._patchify(xt)
+        err = ((e._patchify(pred) - tgt) ** 2).mean(-1)
+        err_copy = ((e._patchify(xa) - tgt) ** 2).mean(-1)
+        t = e._encode_p_unmasked(e.preprocessing.compute_p_channel(pred))[:, 1:]
+        return F.pad(t, (0, self.dim - t.shape[-1])).half(), err.half(), err_copy.half()
+
     def n_streams(self):
         return 4 if self.arm in ("comp", "raw") else 2
 
@@ -453,6 +476,37 @@ def run_value(args, device):
             preds[k] = (t_ev, yh)
             print(f"  age {k:2d}  MAE {curve[k]['mae']:.2f}  demo {curve[k]['mae_demo']:.2f}  "
                   f"recover {curve[k]['mae_recover']}  event dV̂ {curve[k]['event_dV_mean']}", flush=True)
+    if args.compose_ages:  # §4-g: 같은 ★ 판독기(실물 P_t 로 학습)에 P̂_t 를 넣음 · 판독기는 P̂ 를 학습에서 보지 않음
+        assert args.arm == "star"
+        gen = torch.Generator(device).manual_seed(0)  # 마스크 분할 = 판독기 seed 와 무관하게 고정 → 모든 판독기가 같은 P̂
+        cpreds, cerr = {}, {}
+        with torch.no_grad():
+            for k in args.compose_ages:
+                t_ev, _ = ev.frames_at(k)
+                yh, errs = [], {f"{w}_{c}": [] for w in ("comp", "copy") for c in CAMS}
+                for i in range(0, len(t_ev), 128):
+                    t1 = torch.from_numpy(t_ev[i:i + 128]).to(device)
+                    toks = []
+                    for c in CAMS:
+                        tok, er, ec = ev.compose(c, t1 - k, t1, gen)
+                        toks.append(tok); errs[f"comp_{c}"].append(er.cpu()); errs[f"copy_{c}"].append(ec.cpu())
+                    x = torch.cat(toks, 1).float()
+                    yh.append(probe(x, ev.extra(t_ev[i:i + 128], q_mu, q_sd, not args.no_q,
+                                                age_of(np.zeros(len(x)))).to(device)).cpu())
+                yh = torch.cat(yh)[:, 0].numpy() * 100.0
+                cpreds[k] = (t_ev, yh)
+                cerr.update({f"{n}_age{k}": torch.cat(v).numpy() for n, v in errs.items()})
+                print(f"  compose age {k:2d}  MAE {np.abs(yh - ev.y[t_ev]).mean():.2f}  patch MSE comp/copy front "
+                      f"{cerr[f'comp_agentview_age{k}'].astype(np.float32).mean():.5f}/"
+                      f"{cerr[f'copy_agentview_age{k}'].astype(np.float32).mean():.5f}", flush=True)
+        ctag = args.tag.replace("value_star", "value_compose")
+        common = dict(ep_start=ev.start, ep_src=np.array([e["src"] for e in ev.eps]), y=ev.y)
+        os.makedirs(args.out_root, exist_ok=True)
+        np.savez_compressed(f"{args.out_root}/{ctag}_preds.npz", **common, **{f"t_age{k}": v[0] for k, v in cpreds.items()},
+                            **{f"yhat_age{k}": v[1] for k, v in cpreds.items()})
+        if args.seed == 1:  # 패치 오차는 판독기와 무관 → 폴드당 한 벌 (① 영역 오차 · 세그 도착 뒤 채점)
+            np.savez_compressed(f"{args.out_root}/patch_err_f{args.fold}.npz", **common,
+                                **{f"t_age{k}": v[0] for k, v in cpreds.items()}, **cerr)
     base = float(np.abs(ev.y - tr.y.mean()).mean())  # 평균 예측 바닥선 (train 라벨 평균)
     res = {"args": vars(args), "meta": {"plan": "docs/alpha_plan.md §3 (v2)", "export": args.export,
                                         "label": "remaining steps (SC alpha_v1)", "loss": "huber(delta=0.1) on y/100",
@@ -551,6 +605,8 @@ def main():
     ap.add_argument("--train-ages", type=int, nargs="+", default=None,
                     help="remaining: 학습 나이 집합 (기본 = U{1..20}) · 주기-2 P = 1 2 (alpha_plan §4-b · 10-20)")
     ap.add_argument("--age-input", action="store_true", help="remaining: 앵커 나이를 판독기 입력에 (10-19 Vault · 2차 · 출력 alpha_value/r2)")
+    ap.add_argument("--compose-ages", type=int, nargs="+", default=None,
+                    help="remaining · arm star: §4-g 합성 복원 P̂_t(앵커 나이 목록)를 같은 ★ 판독기에 → value_compose_* npz")
     ap.add_argument("--export", default=SC_EXPORT)
     ap.add_argument("--max-episodes", type=int, default=None, help="remaining 스모크: 집합·출처별 에피소드 상한")
     ap.add_argument("--out-root", default=str(PROJECT_ROOT / "paper_artifacts" / "alpha_readout"))
