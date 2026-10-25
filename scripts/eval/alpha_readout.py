@@ -35,6 +35,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -324,6 +325,57 @@ class ValueData:
         return t, np.searchsorted(self.start, t, side="right") - 1
 
 
+class TF1Probe(nn.Module):
+    """alpha_plan §4-f 비선형 판독기: 토큰 트랜스포머 1 블록(d · 6 heads · MLP ×4 · dropout 0.1 · 스트림 id 임베딩)
+    → 기존 AttentivePoolProbe(스트림별 질의 풀링 → concat + 공변량 → 선형). P_a 패치와 M 패치의 위치별 합성이 가능한 최소 꼴."""
+    def __init__(self, dim, n_streams, extra_dim):
+        super().__init__()
+        self.stream = nn.Parameter(torch.randn(n_streams, dim) * 0.02)
+        self.block = nn.TransformerEncoderLayer(dim, 6, 4 * dim, dropout=0.1, activation="gelu",
+                                                batch_first=True, norm_first=True)
+        self.pool = AttentivePoolProbe(dim, n_streams=n_streams, n_patch=196, action_dim=1, extra_dim=extra_dim)
+
+    def forward(self, x, extra=None):
+        return self.pool(self.block(x + self.stream.repeat_interleave(196, 0)), extra)
+
+
+def fit_tf1(x_tr, e_tr, y_tr, ep_of, n_streams, args, device, log):
+    """§4-f 학습 규약(결과 전 고정): 학습 폴드 에피소드 10 % 를 떼어 조기 종료(에피소드 단위 · 홀드아웃 Huber ·
+    인내 5 · 상한 60 ep · 최저 홀드아웃 가중치 복원) · AdamW lr 3e-4 · wd 0.05 · bf16 · 배치 256."""
+    rng = np.random.default_rng(args.seed)
+    eps = np.unique(ep_of); hold = rng.choice(eps, max(1, round(0.1 * len(eps))), replace=False)
+    is_h = np.isin(ep_of, hold); i_fit, i_hold = np.nonzero(~is_h)[0], np.nonzero(is_h)[0]
+    torch.manual_seed(args.seed)
+    probe = TF1Probe(x_tr.shape[2], n_streams, e_tr.shape[1]).to(device)
+    opt = torch.optim.AdamW(probe.parameters(), lr=3e-4, weight_decay=0.05)
+    amp = lambda: torch.autocast("cuda", dtype=torch.bfloat16)
+    best, best_ep, best_state, bad = np.inf, -1, None, 0
+    for ep in range(60):
+        probe.train(); tot = 0.0
+        for i in torch.from_numpy(i_fit)[torch.randperm(len(i_fit))].split(256):
+            with amp():
+                out = probe(x_tr[i].to(device).float(), e_tr[i].to(device))
+            loss = F.huber_loss(out.float(), y_tr[i].to(device), delta=0.1)
+            opt.zero_grad(); loss.backward(); opt.step(); tot += float(loss) * len(i)
+        probe.eval(); hl = 0.0
+        with torch.no_grad(), amp():
+            for i in torch.from_numpy(i_hold).split(512):
+                hl += float(F.huber_loss(probe(x_tr[i].to(device).float(), e_tr[i].to(device)).float(),
+                                         y_tr[i].to(device), delta=0.1, reduction="sum"))
+        hl /= len(i_hold)
+        if hl < best:
+            best, best_ep, bad = hl, ep, 0
+            best_state = {k: v.detach().clone() for k, v in probe.state_dict().items()}
+        else:
+            bad += 1
+        log(f"  epoch {ep:3d}  fit huber {tot / len(i_fit):.5f}  hold huber {hl:.5f}")
+        if bad >= 5:
+            break
+    probe.load_state_dict(best_state); probe.eval()
+    return probe, {"best_epoch": best_ep, "best_hold_huber": best, "epochs_run": ep + 1,
+                   "n_fit_frames": int(len(i_fit)), "n_hold_frames": int(len(i_hold)), "n_hold_eps": int(len(hold))}
+
+
 def run_value(args, device):
     t0 = time.time()
     keep_tr = lambda e: e["fold"] is not None and e["fold"] != args.fold
@@ -360,17 +412,23 @@ def run_value(args, device):
     del tr.frames; torch.cuda.empty_cache()
     print(f"  train features {tuple(x_tr.shape)} ({time.time() - t0:.0f}s)", flush=True)
 
-    torch.manual_seed(args.seed)
-    probe = AttentivePoolProbe(x_tr.shape[2], n_streams=tr.n_streams(), n_patch=196, action_dim=1,
-                               extra_dim=e_tr.shape[1]).to(device)
-    opt = torch.optim.AdamW(probe.parameters(), lr=1e-3)
-    for ep in range(args.probe_epochs):
-        tot = 0.0
-        for i in torch.randperm(len(x_tr)).split(256):
-            loss = F.huber_loss(probe(x_tr[i].to(device).float(), e_tr[i].to(device)), y_tr[i].to(device), delta=0.1)
-            opt.zero_grad(); loss.backward(); opt.step(); tot += float(loss) * len(i)
-        if ep % 10 == 0 or ep + 1 == args.probe_epochs:
-            print(f"  epoch {ep:3d}  huber {tot / len(x_tr):.5f} ({time.time() - t0:.0f}s)", flush=True)
+    fit_info = None
+    if args.readout == "tf1":
+        ep_of = np.searchsorted(tr.start, t_tr, side="right") - 1
+        probe, fit_info = fit_tf1(x_tr, e_tr, y_tr, ep_of, tr.n_streams(), args, device,
+                                  lambda m: print(f"{m} ({time.time() - t0:.0f}s)", flush=True))
+    else:
+        torch.manual_seed(args.seed)
+        probe = AttentivePoolProbe(x_tr.shape[2], n_streams=tr.n_streams(), n_patch=196, action_dim=1,
+                                     extra_dim=e_tr.shape[1]).to(device)
+        opt = torch.optim.AdamW(probe.parameters(), lr=1e-3)
+        for ep in range(args.probe_epochs):
+            tot = 0.0
+            for i in torch.randperm(len(x_tr)).split(256):
+                loss = F.huber_loss(probe(x_tr[i].to(device).float(), e_tr[i].to(device)), y_tr[i].to(device), delta=0.1)
+                opt.zero_grad(); loss.backward(); opt.step(); tot += float(loss) * len(i)
+            if ep % 10 == 0 or ep + 1 == args.probe_epochs:
+                print(f"  epoch {ep:3d}  huber {tot / len(x_tr):.5f} ({time.time() - t0:.0f}s)", flush=True)
     probe.eval(); del x_tr
 
     ev.cache_p()
@@ -399,7 +457,7 @@ def run_value(args, device):
     res = {"args": vars(args), "meta": {"plan": "docs/alpha_plan.md §3 (v2)", "export": args.export,
                                         "label": "remaining steps (SC alpha_v1)", "loss": "huber(delta=0.1) on y/100",
                                         "n_train_frames": int(len(t_tr)), "n_eval_frames": int(len(ev.y)),
-                                        "mean_predictor_mae": base},
+                                        "mean_predictor_mae": base, "readout": args.readout, "tf1_fit": fit_info},
            "curve": curve, "age_mean_mae": float(np.mean([v["mae"] for v in curve.values()])),
            "elapsed_s": round(time.time() - t0, 1)}
     print(f"age-mean MAE {res['age_mean_mae']:.2f} · mean predictor {base:.2f} · {res['elapsed_s']:.0f}s", flush=True)
@@ -478,6 +536,8 @@ def main():
     ap.add_argument("--data-root", default="/proj/external_group/mrg/datasets/libero")
     ap.add_argument("--ages", type=int, nargs="+", default=list(range(1, K_MAX + 1)))
     ap.add_argument("--probe-epochs", type=int, default=100)
+    ap.add_argument("--readout", default="linear", choices=["linear", "tf1"],
+                    help="remaining: linear = 주의 풀링 + 선형(Round 2-4) · tf1 = 토큰 트랜스포머 1 블록 + 같은 풀링(§4-f · 조기 종료)")
     ap.add_argument("--seed", type=int, default=42, help="분석 1 seed = 42 · 1 · 2")
     ap.add_argument("--split-seed", type=int, default=42)
     ap.add_argument("--max-demos", type=int, default=None, help="스모크: split 별 데모 수 상한")
