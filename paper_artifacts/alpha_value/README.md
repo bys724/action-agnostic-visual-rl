@@ -162,3 +162,37 @@ What the curves show (report, not verdict):
 - Absolute size: P+M 4.58 at s\* is about ⅓ of star (0.070 / 0.213); P+M 0.43 is 6 % of star. The 0.43 pair is won mainly because period-9 P is still negative (stale anchor).
 - The time-to-detect view points the other way for the 4.58 pair: period-2 P leaves fewer events undetected (0.49–0.50 vs 0.72–0.74). §4-d: when the two disagree, both are reported and registration_s\* decides.
 - Star dips negative at s = 2 (−0.115) before rising — the readout first reads the injected event as progress. Every arm whose anchor is before the event shares this early negative stretch.
+
+## Round 6 — nonlinear readout re-judgment (2026-10-26 · readout-only training · `docs/alpha_plan.md` §4-f)
+
+Same grid, folds, seeds, labels and event index as Rounds 2–4. Only the readout changes: one token-transformer block (d 384, 6 heads, MLP ×4, dropout 0.1, stream-id embedding) before the same attentive pooling + covariates + linear head (`alpha_readout.py --readout tf1`). Protocol fixed before results: early stopping on 10 % held-out training episodes (patience 5, max 60 ep, best weights restored), AdamW 3e-4, wd 0.05, bf16 (linear readout: 1e-3, no wd, 100 ep, no early stopping, fp32). 7 arms × 3 seeds × 5 folds = 105 cells, 105/105 completed, 7.6 min/cell, 13.3 MIG-3g·h. Outputs `r6/{base,p2,p9,m192x2}`; deployment averages via `alpha_j1.py --deploy`; latency via `alpha_latency.py tf1` → `r6/latency.json`.
+
+| arm (GF/step) | tf1 registration [seed range] | linear (Rounds 2–4) | tf1 MAE | linear MAE |
+|---|---|---|---:|---:|
+| star, P every step (9.20) | 0.307 [0.281, 0.324] | 0.365 | 15.19 | 16.65 |
+| **P+M 4.58 (5.04)** | **0.186** [0.141, 0.212] | 0.141 | **13.78** | 15.70 |
+| **period-2 P (4.60)** | **0.247** [0.225, 0.267] | 0.333 | 15.11 | 16.64 |
+| **P+M 0.43 (0.89)** | **0.053** [0.036, 0.079] | 0.083 | 14.63 | 16.37 |
+| **period-9 P (1.02)** | **0.054** [0.045, 0.065] | 0.097 | 15.31 | 16.61 |
+| anchor P + raw ΔL | 0.089 [0.083, 0.098] | 0.037 | 15.89 | 16.33 |
+| anchor P only (mixed ages, period-2 deploy) | 0.234 [0.183, 0.263] | 0.324 | 15.12 | 16.93 |
+
+**Readings (fixed before results, §4-f):**
+- ① §4-b pair — P+M 4.58 0.186 vs period-2 P 0.247: upper 0.212 < lower 0.225 → **period P holds** (not flipped).
+- ② §4-c pair — P+M 0.43 0.053 vs period-9 P 0.054: seed ranges overlap → **not flipped** (P+M ≥ period P with disjoint ranges is not met). Under the linear readout this pair was a clear loss (0.083 vs 0.097, disjoint); under tf1 it is a tie.
+- → ①② both "not flipped" → pre-registered wording: **"robust to the readout form"** — the §4-b/§4-c conclusions stand; no "linear-accessibility only" downgrade.
+- ③ J2 (P+M 4.58 vs raw ΔL) — registration 0.186 > 0.089 and MAE 13.78 < 15.89, both disjoint → **holds**. The small M (0.43) now falls **below** raw on registration (0.053, upper 0.079 < raw lower 0.083), while its MAE stays better (14.63 < 15.89).
+- ④ Reported: star 0.307 (linear 0.365; expectation 0.45–0.55 not met) · P+M/star 0.61 (4.58) and 0.17 (0.43) vs linear 0.39 and 0.23 · every arm's MAE improves by 1–2 steps · the readout compresses the gaps (period-2 P drops, raw ΔL and P+M 4.58 rise).
+
+### §4-d latency under the nonlinear readout
+
+| arm | s=1 | 2 | 3 | **4 (= s\*)** | 5 | 6 | 8 | 10 | undetected |
+|---|---|---|---|---|---|---|---|---|---|
+| star | −0.074 | −0.208 | 0.002 | **0.191** | 0.277 | 0.295 | 0.311 | 0.307 | 0.28–0.36 |
+| P+M 4.58 | −0.068 | −0.067 | 0.004 | **0.080** [0.047, 0.098] | 0.101 | 0.115 | 0.156 | 0.186 | 0.52–0.56 |
+| period-2 P | −0.062 | −0.099 | −0.183 | **−0.137** [−0.161, −0.092] | 0.059 | 0.184 | 0.232 | 0.246 | 0.39–0.45 |
+| P+M 0.43 | −0.035 | −0.015 | −0.021 | **−0.021** [−0.033, −0.002] | −0.019 | −0.016 | 0.017 | 0.053 | 0.64–0.66 |
+| period-9 P | −0.042 | −0.065 | −0.100 | **−0.108** [−0.120, −0.096] | −0.097 | −0.076 | −0.019 | 0.054 | 0.56–0.62 |
+| anchor P + raw ΔL | −0.028 | −0.023 | −0.016 | −0.010 | −0.004 | 0.000 | 0.041 | 0.089 | 0.69–0.76 |
+
+s\* = 4 (linear: 5) → same branch ② under both readouts; at s\* both compute-matched pairs favour P+M (disjoint). Time-to-detect again points the other way: period-2 P leaves fewer events undetected than P+M 4.58 (0.39–0.45 vs 0.52–0.56), and period-9 P fewer than P+M 0.43 (0.56–0.62 vs 0.64–0.66). Period-2 P overtakes P+M 4.58 at s = 6 under both readouts. Since both readouts land in the same §4-d branch, the §4-e primary readout is the linear one (rule in §4-e).

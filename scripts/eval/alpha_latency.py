@@ -6,9 +6,11 @@
   사건의 상승분이 θ 를 처음 넘는 s = s_det · 넘지 못하면 미감지(∞). 배포 나이 집합의 (사건 × 나이) 표본을 모아 중앙값 · 미감지 비율.
 읽기(결과 전 고정 · §4-d): s* = ★ 등록률_s 가 ★ 등록률_10 의 절반에 처음 도달하는 s.
 
-python scripts/eval/alpha_latency.py  → 표 출력 + paper_artifacts/alpha_value/r5/latency.json
+python scripts/eval/alpha_latency.py [tf1]  → 표 출력 + paper_artifacts/alpha_value/r5/latency.json
+  (tf1 = §4-f 비선형 판독기 npz · r6/{base,p2,p9,m192x2} → r6/latency.json)
 """
 import json
+import sys
 from pathlib import Path
 import numpy as np
 
@@ -27,6 +29,13 @@ ARMS = {
     "anchor P + raw dL":          ("r2", "raw", range(1, 21), None),
     "(ref) anchor P only 11..20": ("r2", "none", range(11, 21), None),
 }
+
+
+TF1 = sys.argv[1:2] == ["tf1"]
+OUT = "r6" if TF1 else "r5"
+if TF1:  # §4-f: 같은 팔 · 같은 규약 · 판독기만 다른 npz
+    ROOT6 = {"r2": "r6/base", "r3": "r6/p2", "r4/competitor_p9": "r6/p9", "r4/m192x2": "r6/m192x2"}
+    ARMS = {k: (ROOT6[v[0]],) + v[1:] for k, v in ARMS.items()}
 
 
 def load(root, arm):
@@ -110,5 +119,5 @@ if sstar is not None and sstar <= 5:
         ge = lo_a > hi_b
         print(f"  s*={sstar}: {a} {res[a]['reg_mean'][i]:.3f} [{lo_a:.3f}, {res[a]['reg_hi'][i]:.3f}] vs {b} "
               f"{res[b]['reg_mean'][i]:.3f} [{res[b]['reg_lo'][i]:.3f}, {hi_b:.3f}] → P+M ≥ (disjoint): {ge}")
-(A / "r5").mkdir(exist_ok=True)
-json.dump(res, open(A / "r5" / "latency.json", "w"), indent=1)
+(A / OUT).mkdir(exist_ok=True)
+json.dump(res, open(A / OUT / "latency.json", "w"), indent=1)
