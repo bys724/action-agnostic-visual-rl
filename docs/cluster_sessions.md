@@ -89,13 +89,26 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
-### ▶▶▶ 인계 (2026-10-26 08시) — 다음 세션은 여기부터
+### ▶▶▶ 인계 (2026-10-26 16시) — 다음 세션은 여기부터
 
-- **상태**: 돌아가는 잡 없음. §4-g 합성 복원 시험 ② 완료 · 사전 고정 읽기 = **사이**(선형 P̂/★ 0.77–0.93) · Vault 안건 = `docs/STATUS.md` "열린 것" 첫 블록(🟣 §4-g · ① 기다릴지 vs §4-h 사전 등록 · dev 추천 = §4-h + ① 병렬).
-- **시작 절차**: `git fetch && git merge --ff-only origin/main` → STATUS 첫 블록에 Vault 처분이 붙었는지 확인 → 붙었으면 그 지시만 실행 · 없으면 대기(측정 추가 금지).
-- **SC 세그 대기(①)**: 요청 형식 = 아래 10-26 §4-g 절 "▶ CoMP → SC 요청". SC `cluster_sessions.md` "▶▶▶ SC → CoMP 인계" 에 경로가 오면 → `paper_artifacts/alpha_value/r7/patch_err_f{0..4}.npz`(키 `t_age{1,5,10,20}` · `comp_/copy_{agentview,wrist}_age*` · 224 해상도 16×16 패치 MSE · 전역 프레임 번호 = npz 의 `ep_start`+t) 와 결합해 물체/팔/배경 × 사건 창/무교란 오차 비 채점(스크립트 미작성 · `alpha_compose_score.py` 옆에 추가) · 보조 읽기 = 사건 창 물체 오차 비 ≥ 2.
-- **산출물**: 코드 `scripts/eval/alpha_readout.py --compose-ages` · `scripts/cluster/alpha_value.sbatch COMPOSE=linear|tf1` · 체인 `scripts/cluster/alpha_ladder/chain_compose.sh` · 채점 `scripts/eval/alpha_compose_score.py` → `r7/compose.json` · 표 = `paper_artifacts/alpha_value/README.md` Round 7 · 예측 npz(git 제외)는 클러스터 `paper_artifacts/alpha_value/r7/{linear,tf1}/` 에만 있음.
-- **주의**: tf1 ★ 재적합은 재현 기준 미달(bf16·dropout 비결정) — 재실행하면 값이 조금 달라짐 · "+11" 보정은 P̂ 에서 전제(무교란 기울기 ≈ −10)가 깨짐(P̂ −6.4~−7.9) — 해석 시 README Round 7 validity 절 참조.
+- **상태**: §4-g 안건 처분 = **§4-h LIBERO 도메인 추가학습**(사용자 확정 · 사전 등록 정본 = `docs/alpha_plan.md` §4-h · STATUS "열린 것" 첫 블록). sanity 42638323 PASS · **본학습 가중 유지 판 42638341**(AIP 1×3 · 10 ep · SUFFIX=alpha_4h_keepw · 추정 5–6 h) 제출됨.
+- **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude` 로 같은 대화가 다른 프로세스에서 도는지 확인(잡 제출·취소 전) → `squeue -u $USER` · `sacct -j 42638341 -X --format=JobID,State,Start,End,Elapsed`.
+- **할 일 순서**:
+  1. **경과 확인(최소 잡 먼저 규칙)**: `logs/pretrain_alpha_4h_keepw_42638341.out` 에서 `init loaded: missing=0` · `[Time] Epoch` 줄(실측 에폭 시간 → 전체 시간 확정) · NaN 0 · 손실 하강. 중간에 서브에이전트 점검 1 회(메모리 규칙). 이상 없으면 사용자에게 경과 보고.
+  2. **가중 제거 판 제출**(경과 보고 뒤): 아래 env 그대로 + `V15_M_RECON_SCALE=0 CHECKPOINT_SUFFIX=alpha_4h_dropw --job-name=alpha_4h_dropw`. 같은 turn 에 아래 표 기입.
+  3. **평가 코드 준비(학습 중)**: `alpha_readout.py` 의 `--checkpoint` 로 새 ckpt 를 받아 ★ 재적합(실물 P_t) + `--compose-ages`(§4-g 경로) · 1 차 신호 = 합성 패치 MSE < 앵커 복사 MSE, 나이 {1,5,10,20} 전부(평가 에피소드 평균) → 통과 판만 주 읽기(P̂/★ ≥ 0.80 / ≤ 0.50 · seed 3 × 5 폴드 · 선형) + 보조(★ · P+M 4.58 격자) + EgoDex same-probe 건강(P identity < 0.9 또는 M motion < C1-DN 절반이면 해석 안 함). 결과 = README Round 8.
+- **제출 env (유지 판과 동일 · 재현용)**: `MODEL=two-stream-v15b NO_SOBEL=1 PAIR_MODE=1 V15_COMP_MAE=1 V15_M_RECON_FLOOR=0.02 BRIGHT_AUG=1 M_NOISE_MAX=0.01 BRIGHT_TARGET=aug BRIGHT_SCENE_GAIN="0.73 1.37" EMBED_DIM=384 NUM_HEADS=6 INIT_FROM=<C1-DN ep10> TRAIN_DATA=libero SAMPLE_DIST=uniform MAX_GAP=20 SPLITS=part1 EPOCHS=10 BATCH_SIZE_PER_GPU=341 LR=2.8e-5 NUM_WORKERS=12` · `sbatch --partition=AIP --nodes=1 --ntasks-per-node=3 --gres=gpu:3 --cpus-per-task=16 --time=2-00:00:00 --export=ALL scripts/cluster/pretrain.sbatch` (C1-DN ep10 = `/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt`).
+- **SC 세그 대기(§4-g ①)**: 그대로 — SC 쪽은 사건 가독성 표 프로브가 사용자 선택(주 놓침 출처) 대기라 export 는 그 뒤. 경로가 오면 `paper_artifacts/alpha_value/r7/patch_err_f{0..4}.npz` 와 결합해 물체/팔/배경 × 사건/무교란 오차 비 채점(스크립트 미작성).
+- **주의**: 새 인코더는 SC 에 넘기지 않음(C1-DN 동결 계약) · LIBERO 색인 캐시 = `/proj/external_group/mrg/datasets/libero/pair_index_<suites>.json`(지우면 첫 실행이 GPFS 스캔 ≈ 2 분) · EgoDex eval 손실은 max_gap 20 이라 C1-DN 값과 직접 비교 금지(망각 판정은 same-probe 로).
+
+### 2026-10-26 α §4-h LIBERO 도메인 추가학습 (dev 세션 · 사용자 확정 · `alpha_plan.md` §4-h) — 인코더·디코더 학습
+
+**무엇**: C1-DN ep10 에서 `INIT_FROM` · 모델 인자 = C1-DN 로그(40313842) 그대로 · 데이터만 LIBERO 시연(libero_goal 제외 4 suite · 앞+손목 · gap 균등 1..20 · 전처리 = α 평가와 픽셀 동일) · 10 ep · LR 2.8e-5 · 두 판(|ΔL| 가중 유지 / 제거). 코드 = `src/datasets/libero.py` · `pretrain.py --train-data libero` · sbatch `TRAIN_DATA` · `SAMPLE_DIST` · `LIBERO_SUITES`. eval = EgoDex test(망각 감시).
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 42638323 | mig-3g ×1 · CPU 32 | 01:30:00 | **sanity 1 ep** — libero_object 만(149k 쌍) · 배치 64 · LR 2.8e-5 · SUFFIX=sanity_alpha_4h. 확인 = Model args 가 C1-DN 과 데이터 인자(max-gap 20 · uniform)만 다름 · init 로드 · 손실 하강 · NaN 0 · 처리량(본학습 시간 추정) | ✅ COMPLETED 9m15s (≈ 0.15 MIG-3g·h) · **PASS**: Model args = C1-DN 과 `--max-gap 20 --sample-dist uniform` 만 다름 · init missing 0 / unexpected 0 · 손실 0.073→0.041–0.044(L_pred 0.019→0.007 · L_t 0.024→0.014) · NaN 0 · 312 samp/s (mig-3g) · dc_offset 0.0042(C1-DN 0.0042 동일) |
+| 42638341 | AIP 1×3 H100 · CPU 16/task | 2-00:00:00 | **🚀 본학습 · 가중 유지 판**(scale 1 · 기본) — 4 suite · 10 ep · 배치 341×3 · LR 2.8e-5 · SUFFIX=alpha_4h_keepw · 최소 잡 먼저(제거 판은 경과 보고 뒤). 추정 ≈ 30–35 분/ep(1.89M 쌍 · C1-DN ≈ 1,000 samp/s 기준) × 10 ≈ 5–6 h [추정] | ⏳ 제출 10-26 15:4x |
 
 ### 2026-10-26 α §4-g 합성 복원 시험 (Vault 10-26 · 사용자 확정 · `alpha_plan.md` §4-g) — 학습 0 (인코더·디코더 동결)
 

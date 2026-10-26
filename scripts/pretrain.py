@@ -57,8 +57,12 @@ def main():
 
     # Dataset parameters
     parser.add_argument('--train-data', type=str, default='egodex',
-                        choices=['egodex'],
-                        help='Training dataset (default: egodex)')
+                        choices=['egodex', 'libero'],
+                        help='Training dataset (default: egodex). libero = alpha §4-h 도메인 추가학습 (eval 은 EgoDex test 유지 = 망각 감시)')
+    parser.add_argument('--libero-root', type=str, default='/proj/external_group/mrg/datasets/libero',
+                        help='[libero] 공식 hdf5 루트')
+    parser.add_argument('--libero-suites', type=str, default='libero_object,libero_spatial,libero_10,libero_90',
+                        help='[libero] 학습 suite (기본 = libero_goal 제외 · alpha 평가 에피소드 비노출)')
     parser.add_argument('--egodex-root', type=str,
                         default='/workspace/data/egodex',
                         help='EgoDex data root')
@@ -464,8 +468,14 @@ def main():
     needs_global = False
     needs_triple = args.model in ('two-stream-v15', 'two-stream-v15b') and not args.pair_mode
 
-    splits = [s.strip() for s in args.egodex_splits.split(',')]
+    splits = [s.strip() for s in args.egodex_splits.split(',')] if args.train_data == 'egodex' else []
     split_datasets = []
+    if args.train_data == 'libero':
+        from src.datasets.libero import LiberoPairDataset
+        assert args.pair_mode and args.sample_dist == 'uniform', "libero = pair 모드 · 간격 균등 (alpha §4-h 사전 등록)"
+        split_datasets.append(LiberoPairDataset(
+            data_root=args.libero_root, suites=[s.strip() for s in args.libero_suites.split(',')],
+            max_gap=args.max_gap))
     for split in splits:
         ds = EgoDexDataset(
             data_root=args.egodex_root,

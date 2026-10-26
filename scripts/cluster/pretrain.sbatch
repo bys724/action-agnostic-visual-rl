@@ -264,7 +264,7 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
         --v11-routing-mode "${V11_ROUTING_MODE:-v_from_p}"
         --rotation-aug
         --mask-ratio-p "${MASK_P:-0.75}"
-        --max-gap "${MAX_GAP:-30}" --sample-dist triangular --sample-center "${SAMPLE_CENTER:-15}"
+        --max-gap "${MAX_GAP:-30}" --sample-dist "${SAMPLE_DIST:-triangular}" --sample-center "${SAMPLE_CENTER:-15}"
         --v15-lambda-pred "${V15_LAMBDA_PRED:-1.0}"
         --v15-lambda-m-jepa "${V15_LAMBDA_M_JEPA:-1.0}"
         --v15-lambda-compose "${V15_LAMBDA_COMPOSE:-1.0}"
@@ -376,14 +376,16 @@ fi
 [ -n "${ADAM_BETA2:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --adam-beta2 $ADAM_BETA2"
 [ -n "${ADAM_EPS:-}" ] && EXTRA_ARGS="$EXTRA_ARGS --adam-eps $ADAM_EPS"
 
+# alpha §4-h: TRAIN_DATA=libero (+ SAMPLE_DIST=uniform MAX_GAP=20) → LIBERO 시연 쌍 학습 · eval 은 EgoDex test (망각 감시)
 # ── srun으로 task 분산 실행 ──────────────────────────────────────────────────
 # CRITICAL: srun이 새 shell을 띄우면서 PATH 전파 안 됨 → 절대 경로 사용.
 srun --kill-on-bad-exit=1 --export=ALL \
     "$CONDA_PREFIX/bin/python" -u "$PROJECT_ROOT/scripts/pretrain.py" \
     --model "$MODEL_NAME_FOR_PY" \
-    --train-data egodex \
+    --train-data "${TRAIN_DATA:-egodex}" \
     --egodex-root "$DATA_ROOT" \
     --egodex-splits "$SPLITS" \
+    ${LIBERO_SUITES:+--libero-suites "$LIBERO_SUITES"} \
     --epochs "$EPOCHS" \
     --batch-size "$BATCH_SIZE_PER_GPU" \
     --lr "$LR" \
