@@ -122,10 +122,12 @@ windows, front camera, W 5, tf1 probe, AUC, **probe seeds 3** (seed range in bra
 
 Reading: subtracting the predicted self-caused change does not beat M itself on the primary cell (SC pre-fixed reading
 "subtraction is the bottleneck", gap 0.005); it helps where M is weakest (push: 0.86 → 0.91) but only up to P_t, and
-the residual is **not localized to the object** — background AUC equals object AUC for every event. Closed loop: SC arms
-that rely on the residual (dependence 0.4–0.7) show no success gain (JHp − J −0.030 [−0.100, +0.037], SC `docs/STATUS.md`
+the residual is **not localized to the object** — background AUC equals object AUC for every event. Note that M and P are nearly as non-localized here (background ≈ object for every token channel; P_t is the most
+object-specific), so this is a property of the probe setting, not of the residual alone. Closed loop (residual as a policy
+input): SC arms that rely on the residual (dependence 0.4–0.7) show no success gain (JHp − J −0.030 [−0.100, +0.037], SC `docs/STATUS.md`
 10-27 19:00). Consistent with the shared line above: M is mostly self-caused change; removing it leaves a
-global "something happened" signal, not a task-region map.
+global "something happened" signal, not a task-region map. Whether the residual is useful as a label-free training-weight
+signal marking event onsets is SC's open test (SC Vault instruction 2026-10-27), not a CoMP claim.
 
 ## Gaps to state in the caption
 
