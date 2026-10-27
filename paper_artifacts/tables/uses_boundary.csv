@@ -41,3 +41,11 @@ E_pred_target,pilot1 object R2 k19,(c) same-encoder P predict full,C1-DN,0.734,,
 E_pred_target,pilot1 object R2 k19,(d) keep P predict raw dL,C1-DN,0.665,,1,(a)-(d) = readability gap,worldmodel/pilot/pilot_s1.md
 E_pred_target,pilot2 cross-fit event-window probe,(a) keep P predict CoMP M,C1-DN,0.12,,1,lowest,SC docs/STATUS.md 10-22 14:00 (not in export)
 E_pred_target,pilot2 cross-fit event-window probe,(b)(c)(d),mixed,0.26-0.27,,1,,SC docs/STATUS.md 10-22 14:00 (not in export)
+F_residual,drop object AUC tf1,raw dL,-,0.728,,probe 3,floor,worldmodel/sc_event_read/event_read_C.md
+F_residual,drop object AUC tf1,CoMP M,C1-DN,0.919,,probe 3,best on primary,worldmodel/sc_event_read/event_read_C.md
+F_residual,drop object AUC tf1,residual (M - A v4 pred),C1-DN,0.908,,probe 3,subtraction is the bottleneck (SC),worldmodel/sc_event_read/event_read_C.md
+F_residual,drop object AUC tf1,P_t,C1-DN,0.882,,probe 3,,worldmodel/sc_event_read/event_read_C.md
+F_residual,push object AUC tf1,CoMP M,C1-DN,0.858,,probe 3,,worldmodel/sc_event_read/event_read_C.md
+F_residual,push object AUC tf1,residual (M - A v4 pred),C1-DN,0.914,,probe 3,above M; equals P_t,worldmodel/sc_event_read/event_read_C.md
+F_residual,push object AUC tf1,P_t,C1-DN,0.918,,probe 3,,worldmodel/sc_event_read/event_read_C.md
+F_residual,push background AUC tf1,residual (M - A v4 pred),C1-DN,0.904,,probe 3,not object-localized,worldmodel/sc_event_read/event_read_C.md

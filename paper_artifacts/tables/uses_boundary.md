@@ -106,6 +106,27 @@ tokens −0.30 to +0.04). Reading (`docs/worldmodel_plan.md` decision log 10-22 
 token-readability gap (health probe 0.072) → M tokens are easier to read, not more predictable; no format support on
 either ruler; track closed.
 
+## F. World-model residual as an event signal (SC §3 · 2026-10-27)
+
+Residual = observed CoMP M tokens − A v4 predicted M (self-caused change subtracted). Event vs paired undisturbed
+windows, front camera, W 5, tf1 probe, AUC, **probe seeds 3** (seed range in brackets). Executed and judged in SC
+(Vault (43) §3); quoted from the export `paper_artifacts/worldmodel/sc_event_read/event_read_C.md`, not recomputed.
+
+| event · region | raw ΔL | CoMP M | residual | P_t |
+|---|---:|---:|---:|---:|
+| drop (pertC) · object — **primary** | 0.728 | **0.919** [0.914, 0.922] | 0.908 [0.907, 0.909] | 0.882 |
+| drop (pertC) · background | 0.623 | 0.899 | 0.910 | 0.836 |
+| push · object | 0.851 | 0.858 | 0.914 | **0.918** |
+| push · background | 0.660 | 0.820 | 0.904 | **0.923** |
+| arm push (block) · all | 0.686 | 0.859 | 0.871 | 0.567 |
+
+Reading: subtracting the predicted self-caused change does not beat M itself on the primary cell (SC pre-fixed reading
+"subtraction is the bottleneck", gap 0.005); it helps where M is weakest (push: 0.86 → 0.91) but only up to P_t, and
+the residual is **not localized to the object** — background AUC equals object AUC for every event. Closed loop: SC arms
+that rely on the residual (dependence 0.4–0.7) show no success gain (JHp − J −0.030 [−0.100, +0.037], SC `docs/STATUS.md`
+10-27 19:00). Consistent with the shared line above: M is mostly self-caused change; removing it leaves a
+global "something happened" signal, not a task-region map.
+
 ## Gaps to state in the caption
 
 - seed 1: C, E, analysis 1 goal. Representation n = 1 everywhere.

@@ -220,3 +220,30 @@ P̂ by age (linear, s=10): 1 −0.056 · 5 0.330 · 10 0.500 · 20 0.429.
 - **Absolute state is lost, change is kept.** P̂ MAE 141 steps (linear) is far worse than the mean predictor (≈ 42); registration is a within-episode difference, so the offset cancels. Raw event-window change V̂(t_inj+10) − V̂(t_inj−1): P̂ age 10 +19.8 vs ★ +12.5.
 - **The +11 normal-progress term over-credits P̂.** Undisturbed 11-step change: ★ / P+M / anchor-only −9.7 to −10.3 (the basis of the 10-19 +11 choice) vs P̂ −6.4 to −7.9, with twice the spread (sd 23–27 vs 13–14). With each arm's own undisturbed slope in place of +11: linear 0.63 / 0.79 / 0.65 (still in between) · tf1 0.54 / 0.50 / 0.35.
 - **The decoder fails on LIBERO before M enters.** Same code on EgoDex: composition patch MSE 0.0005–0.0006 vs anchor copy 0.012–0.017 (correct). On LIBERO, in-place recon of P_t itself (null routing) 0.010–0.015 and images fill with EgoDex colours (`r7/sanity_*.png`); composed patch MSE 0.011–0.012 is above anchor copy at every age (0.0010 / 0.0046 / 0.0066 / 0.0083).
+
+## Round 8 — LIBERO domain continued pretraining, first signal (2026-10-27 · `docs/alpha_plan.md` §4-h)
+
+C1-DN ep10 → +10 ep full-parameter training on LIBERO demos (4 suites, libero_goal excluded), two arms: |ΔL| weighting
+kept (`keepw`) / removed (`dropw`). Same §4-g composition path and refit ★ readout (linear, readout seed 1, 5 folds).
+Files `r8/{keepw,dropw}/linear/` (patch-error npz git-ignored).
+
+**First signal** (pre-fixed: composed patch MSE < anchor copy at every age {1,5,10,20}; frame-weighted over all eval
+episodes, `keepw`; `dropw` within ±3 %, 5/5 folds same direction):
+
+| camera | age 1 comp / copy | age 5 | age 10 | age 20 | C1-DN comp (all ages) |
+|---|---|---|---|---|---|
+| front | 0.00534 / **0.00098** ✗ | 0.00499 / **0.00456** ✗ | **0.00492** / 0.00659 | **0.00485** / 0.00827 | ≈ 0.0117 |
+| wrist | **0.00221** / 0.00491 | **0.00164** / 0.02137 | **0.00152** / 0.03373 | **0.00146** / 0.04723 | ≈ 0.0080 |
+
+→ **both arms FAIL** (front ages 1, 5) → pre-fixed consequence "continued training does not resolve the domain";
+no main reading.
+
+**Reported facts (not judgment):**
+- Composition error halves (front 0.0117 → 0.0053, wrist 0.0080 → 0.0022) but is flat across ages on the front camera
+  (decoder floor ≈ 0.005); a fixed camera makes the 1-step copy nearly exact (0.001), so the front short-age criterion
+  is dominated by static-background sharpness, not by M's change content [inferred]. The pre-registration premise
+  "C1-DN fails at every age" holds only for the front camera (C1-DN wrist passes ages 5–20). Not re-judged (post hoc).
+- P̂ readout MAE 64–82 steps (C1-DN 134–143; mean predictor 41.9) — still worse than the mean predictor.
+- **Real-frame ★ readout is unchanged**: fold-mean MAE C1-DN 16.63 → keepw 16.50 · dropw 16.47 (per-fold seed spread
+  of C1-DN up to 0.3) → the gain sits in the composition path (decoder), not in the encoder's judgment information.
+- EgoDex same-probe health check not run.
