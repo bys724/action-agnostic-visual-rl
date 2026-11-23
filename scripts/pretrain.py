@@ -271,6 +271,11 @@ def main():
                         help='[comp-mae] M 인코더 폭 (None = embed-dim). alpha_plan §4-c M 크기 사다리.')
     parser.add_argument('--m-only', action='store_true',
                         help='[comp-mae] P 동결 · 손실 = M-recon 만 (--init-from 으로 P 로드). alpha_plan §4-c.')
+    parser.add_argument('--rope', action='store_true',
+                        help='[comp-mae] 위치 = 전부 2D RoPE (인코더·routing·디코더, APE 4개 삭제). '
+                             'docs/rope_encoder_plan.md 판 R. (--use-ape 는 구 two-stream 전용)')
+    parser.add_argument('--rope-theta', type=float, default=10000.0,
+                        help='[comp-mae --rope] RoPE 주파수 밑 θ (기본 10000)')
 
     # Multi-GPU
     parser.add_argument('--no-multi-gpu', action='store_true',
@@ -433,6 +438,8 @@ def main():
             m_noise_jpeg_quality=tuple(args.m_noise_jpeg_quality),
             m_embed_dim=args.m_embed_dim,
             m_only=args.m_only,
+            rope=args.rope,
+            rope_theta=args.rope_theta,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

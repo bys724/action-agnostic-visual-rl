@@ -27,11 +27,25 @@ C1-DN 의 위치 인코딩을 학습된 절대 위치(APE · `pos_embed_p/m`)에
 | 멈춤 조건 | R 이 관문 셋 통과 → 판정 단계로. 예산 안에 통과 못 하면 **"RoPE 전환 불성립"** 으로 기록하고 끝(판정 단계 안 열림 · 원인 분석 보고) |
 | 금지 | 관문 **문턱**을 바꿔 통과시키기 · 판정 단계의 자(§4-2 · §4-3)를 공학 단계에서 미리 재서 고르기(미리 재면 그 결과는 "공학 단계 수치"로 표에 적고 판정에 쓰지 않음) · 데이터 추가 · 에폭 연장으로 메우기(에폭 변경은 A 와 함께 · 근거 기록) |
 
+**⚠ 점검 결과 (2026-11-23 dev · 코드 수정 없음 · 저장소 사실)**
+
+- **전제 정정 [확실 · 코드]**: 현행 모델(`TwoStreamV15Model` ← `TwoStreamV11Model`)에는 RoPE 스위치가 **없다**. `--use-ape` 는 구 `TwoStreamModel`(v4–v10 · `src/models/two_stream.py`)에만 전달되고 v15 생성자에는 안 감. v11/v15 의 모든 블록 호출이 `freqs_cis=None` 하드코딩(`two_stream_v11.py` `_encode_stream_visible` · `_run_interpreter`, `two_stream_v15.py` `_encode_*` · `RoutingInterpreterStep`). → R 은 **새 코드**(플래그 기본 off = 기존 ckpt·결과 비트 동일).
+- **C1-DN 구조 [확실 · ckpt]**: 폭 384 · 6 heads(head 64) · P 12 블록 · M 6 블록 · P 복원 디코더 2 단 · M 복원 디코더 2 단 · qk-norm 없음 · 위치 파라미터 4 개(`pos_embed_p/m` · `dec_pos_embed_p/m`, 각 1×197×384) + `null_motion_token`. 학습은 rot90 회전 증강 켜짐(sbatch v15b 분기 고정).
+- **① init 키**: `--init-from` 은 `strict=False` → R 에서 `pos_embed_p/m` 을 없애면 "unexpected" 로 조용히 버려지고 개수만 로그. 다른 키가 같이 빠져도 모름 → R 에는 **가드 필요**(unexpected ⊆ {`pos_embed_p`, `pos_embed_m`} · missing = ∅ 단언). 모양 불일치는 strict=False 에서도 오류라 안전.
+- **② 초기 손실 급등**: 코드로는 판정 불가 → 1-GPU sanity 에서 C1-DN 끝 손실(L_mj ≈ 0.0022 · 학습 손실 ≈ 0.013 · cluster_sessions 40315549) 대비 첫 스텝 손실과 회복 속도로 잰다. 레시피 LR 2.8e-5(C1 의 1/10) · 워밍업 기본 1 ep(`num_epochs//10`)라 **적응이 느릴 수 있음**(급등보다 이쪽이 위험 [추정]). RoPE 고유 완화 후보 = APE 를 켠 채 RoPE 를 얹고 첫 구간에 APE 를 0 으로 감쇠(끝 상태 = 순수 RoPE).
+- **③ CLS · 마스크**: P·M 각 CLS 1 개(`num_p_cls` 는 구 모델 전용 · v15 무관) · `apply_rope(has_cls=True)` 가 index 0 제외 → 그대로 맞음. **숨은 함정 [확실 · 코드]**: 마스크가 **샘플마다 다르다**(`_random_mask` 샘플별 noise) — 보이는 패치만 인코딩하는 경로는 샘플별 위치 주파수 `[B, N_vis, D/2]` 가 필요한데 `apply_rope` 는 `[N, D/2]` 하나를 배치에 broadcast. 그대로 쓰면 **오류 없이 위치가 틀림** → `apply_rope` 배치 주파수 지원 + 단위 점검(마스크 경로 = 전체 경로에서 같은 패치 출력 일치) 필수.
+- **④ 디코더 — 계획서 가정보다 큰 문제 [확실 · 코드 / 귀결은 추정]**: 위치가 디코더로 들어가는 길은 `dec_pos_embed`(마스크 토큰 주입 뒤 owner 에 더함)만이 아니다. 두 스트림을 잇는 **routing 교차 주의(`MotionRoutingBlock`)의 Q/K 는 상대 스트림 인코더 출력**에서 나오고(P 복원: Q/K = M 토큰 · M 복원: Q/K = P 토큰), 지금 그 국소성은 **인코더 입력에 더한 APE 가 토큰에 남은 것**에 기댄다. `MotionRoutingBlock` 에는 RoPE 경로가 아예 없다. 또 P 제자리 복원의 null routing = `null_motion_token + pos_embed_m` → 인코더 APE 를 지우면 **상수 토큰**이 되어 주의가 균일(전체 평균)해진다. 귀결 [추정]: 인코더만 RoPE 로 바꾸면 routing 이 국소성을 잃고, 복원 손실이 **인코더에 절대 위치를 다시 새기도록** 압력을 준다 → 판정 ①(위치 의존성)을 오염. 반대로 디코더 owner 에 더하는 `dec_pos_embed` 는 디코더가 스스로 위치를 알게 할 뿐 인코더 토큰에 절대 위치를 요구하지 않는다(MAE 표준 · 디코더는 배포 안 함) [추정 · 근거 = 구조].
+- **⑤ RoPE 경로 이력 [확실 · git/문서]**: 마지막 학습 사용 = **2026-04 v4**(구 `TwoStreamModel` · CLS 교환 구조 · routing 없음 · 48 ep · EgoDex 행동 프로브 R² 0.197 "정체"). 같은 시기 회전 진단(정성)에서 "RoPE ep48 = 주의가 위치에 고정(position prior)" 판단 → v5 APE(설정 동일 · PE 만 교체)도 ep4 0.208 → ep8 0.192 하락 → 결론 "PE 교체만으로 해결 불가 · **회전 증강이 결정적**"(v6 0.259 · 커밋 d42c91c · 996c816 · `RESEARCH_PLAN.md` 설계 iteration 표). `RESEARCH_PLAN.md` "RoPE 가 position prior overfit 유발" 문장은 그 표와 어긋남(에폭 비대응 · 정성 진단) — 근거 약함 [잠정]. 깨진 적은 없음(수렴함). v11 이후 routing 구조에서 RoPE 는 **한 번도 학습된 적 없음**.
+- **⑥ 주파수 [확실 · 계산]**: `build_2d_rope_freqs(θ=10000)` · head 64 → 축당 16 주파수. 14×14 격자 안에서 1 rad 이상 도는 것은 축당 **5/16**(π 이상 3/16) — 나머지 11/16 은 격자 전체에서 0.002–1 rad 로 사실상 위치 무관 채널. θ = 100 이면 9/16. 외삽 격자 18·20 에서도 같은 비율. 기본은 코드 그대로 θ = 10000 으로 시작하고 θ 는 RoPE 고유 수정 후보로만 둔다(RoPE-ViT 의 2D 기본 θ 값은 미확인).
+- **판정 자 ⚠ 확정 (§3)**: OOD 4 벤치 = STEP 2-A 프로토콜 그대로 — CALVIN xfold(gap 30) + LIBERO spatial · object · goal(gap 20) · 위치 R²(차원 0–2) · 판독 `P_t ⊕ M` · **attn 주 / mean 보고** · `probe_action_calvin.sbatch` · `probe_action_libero.sbatch`(C1-DN 기준값은 판정 단계에서 같은 코드로 재측정). 주의: LIBERO-object 는 건강 관문(STEP 1 same-probe)과 같은 도메인. 해상도 외삽에서 A 의 APE 보간 = 14×14 격자 **bicubic**(timm `resample_abs_pos_embed` 관례 · CLS 위치 그대로) · R 은 격자 크기별 주파수 재계산(패치 간격 불변).
+- **평가 경로 [확실 · 코드]**: 프로브·어댑터 대부분이 `model._encode_p/m_unmasked` 를 불러 모델 안 수정이 그대로 전달됨. 단 `probe_action.py` · `probe_action_libero.py` · `parvo_pt_ptk.py` · `eval_libero.py` · `token_provider.py` · `alpha_readout.py` 는 폭을 `pos_embed_p` 키에서 읽음 → R ckpt 에선 `StopIteration`(크게 실패 · 조용한 오류 아님) → 로더 6 곳에 R 자동 감지(`pos_embed_p` 부재) 추가 필요.
+- **비용 [확실 · 기록 / 추정]**: 10 ep · part1 이어 학습 실측 = H100 4 장 + 노드 로컬 복사 6 h 01 m ≈ **24 GPU·h**(41245968 · 복사 76 분 포함) / 3 장 복사 없음 ≈ 37–40 GPU·h(40313842 · 40315549). 계획서 추정(17–20)보다 큼. RoPE 복소 연산 오버헤드는 sanity 에서 계측. 예산 120 = R 한 판 + A 한 판 ≈ 50 → 공학 반복 여유 ≈ 70 [추정].
+
 **로그 표(dev 가 채움 · 공학 단계 정본)**
 
 | # | 관찰된 문제 | 가설 | 수정(R / A·R 공통) | 결과(손실 · 예비 관문) | 비용 |
 |---|---|---|---|---|---|
-| | | | | | |
+| R0 | 현행 모델에 RoPE 경로 없음 · routing Q/K 국소성이 인코더 APE 잔여에 기댐 · null routing = 토큰 + `pos_embed_m` · 마스크가 샘플별이라 주파수도 샘플별 필요 | 인코더만 바꾸면 routing 이 국소성을 잃어 인코더에 절대 위치를 다시 새길 압력(점검 ④) → 사용자 11-23 선택 "전부 RoPE"(dev 추천은 디코더 APE 유지 · 선택 사유 기록 없음) | **R 만**: `--rope` = 인코더 P·M self-attn + routing Q/K + 디코더 self-attn 에 2D RoPE(θ 10000 · CLS 제외) · APE 4 개 삭제 · `apply_rope` 샘플별 주파수 지원 · init 가드(버리는 키 = APE 4 개만) · 프로브 로더 R 자동 감지. A 는 코드 경로 변경 없음(비트 동일 확인) | CPU 점검 통과 · **sanity(2 ep · 2만 쌍/ep · 배치 16)**: NaN 0 · 첫 손실 A 의 11 배(routing 의존 손실 L_mB 23 배 · L_pred 16 배 > 제자리 L_t 5 배) → ep2 끝 A 의 1.7 배(L_t 1.25 배 · L_pred 2.9 배 · L_mB 2.0 배)로 회복 중 · 처리량 A 의 0.85 배(mig-1g) → **10 ep 본학습 44466217**(1×4 H100) · ep2 체크포인트 예비 관문(공학 단계 수치) | sanity 0.19 + 0.17 MIG-1g·h · 본학습 ≈ 28 GPU·h [추정] |
 
 ## 3. 판정 단계 — 규칙 (결과 전 고정 · 공학 단계 끝난 뒤 **한 번**)
 
@@ -84,12 +98,17 @@ STEP 1 same-probe(LIBERO-object · attentive · gap 20 · C1-DN `fdn_*` 설정) 
 
 | 데이터 | 클러스터 위치 · 크기 | 프레임/클립 수 | 도메인(1인칭 · 로봇 · 고정 카메라) | 로더 상태 | 에폭당 비용 [추정] | 비고 |
 |---|---|---|---|---|---|---|
-| EgoDex part1 (현행) | | | | 있음 | | C1-DN 사전학습 |
-| EgoDex part2~5 | | | | 있음 | | R₂ · CoMP-B 선례 |
-| DROID | | | | ⚠ | | 3뷰 페어링 로더는 Cross-View 미구현 |
-| Ego4D · Nymeria · EPIC · OXE | | | | ⚠ | | 다운로드 스크립트만 |
+| EgoDex part1 (현행) | `datasets/egodex/frames/part1` · 프레임 ≈ 222 GB(표본 추정) · zip 322 GB | 영상 46,234 · 프레임 ≈ 14.1 M(영상당 ≈ 306 장 ≈ 10 s) · 에폭당 표본 4.62 M(영상 × 100) | 1인칭 사람 손 조작 · 머리 착용(카메라 움직임) · 30 fps | 있음 — `src/datasets/egodex.py:EgoDexDataset` · `SPLITS=part1` | H100 1×4 + 노드 로컬 복사 ≈ 1.9 GPU·h/ep(복사 76 분 별도 · cs 41245968) · 1×3 GPFS ≈ 4 GPU·h/ep(40313842) | C1-DN 사전학습 · 256² center-crop JPEG q95 |
+| EgoDex part2 | `…/part2` ≈ 207 GB · zip 327 GB | 영상 95,125 · 프레임 ≈ 14.8 M(영상당 ≈ 156 장 ≈ 5 s) · 에폭당 표본 9.51 M | part1 과 같음 | 있음(split 별 ConcatDataset) · part1 과 같은 형식 확인 · part1-5 · part1+3 학습에 이미 사용 | part1+2 = 표본 14.1 M/ep(part1 의 3.06 배) → 1×4 + 복사 ≈ 5.8–6.6 GPU·h/ep [추정] · 복사 ≈ 2.4 h [추정] | **R₂ 설계에 걸리는 사실**: 에폭 단위 = 영상 × 100 이라 표본 3.06 배 · 프레임 2.05 배 → 연산 대등 = 3.27 ep(3 또는 4 로 반올림) · 프레임당 노출 part1 0.33 배 / part2 0.64 배(고르지 않음). `SPLITS` 를 빠뜨리면 sbatch 기본값 part1-5 · 콤마 값은 `--export=` 안에 넣지 말 것(cs 36822612 사고) |
+| EgoDex part3~5 | ≈ 263 / 213 / 219 GB | 영상 53,779 / 44,129 / 75,572 · part1-5 합계 314,839(part1 의 6.8 배) | part1 과 같음 | 있음 | part1-5 7 ep: S 127 GPU·h · B 266 GPU·h(2×4 · 입출력 병목) | test split(영상 3,243)은 평가 전용 |
+| DROID | `datasets/droid/1.0.1` TFRecord 1.7 TB · 추출 프레임 712 에피소드만(ext1 · wrist) | 에피소드 95,658 · 카메라당 27.6 M 스텝 | 로봇(Franka) · 외부 고정 2 + 손목 · 15 fps | ⚠ `src/datasets/droid.py:DROIDDataset` 있음 · `pretrain.py --train-data` 미연결(egodex · libero 만) · 3뷰 페어링 미구현 · 전량 프레임 추출 필요 | 미확인 | 현재 프레임은 probing 용 |
+| Ego4D | `datasets/ego4d` 원본 7.2 TB · 프레임 추출 완료 ≈ 11.6–14.7 TB(EgoDex 와 같은 형식) | 영상 9,821 · 프레임 ≈ 372 M(표본 20 · 오차 큼) | 1인칭 일상 · 걷기 · 머리 움직임 많음 · 30 fps | ⚠ 로더 없음(영상/프레임 1 단 구조 → `EgoDexDataset` 은 영상 0 개로 잡음 · 서브클래스 필요) · 영상이 길어 표본 단위 재정의 필요 | 미확인 | 계획서 원문 "다운로드 스크립트만"은 틀림 — 프레임까지 있음 |
+| Nymeria | `datasets/nymeria/data` 1.5 TB | 세션 1,100 · **영상 0**(영상 링크 전부 "missing download link" · 모션캡처 · 서술 · 메타만) | 1인칭 Aria + 전신 모션캡처 | ⚠ 로더 없음 · 재다운로드에 새 manifest 필요(URL 14 일 만료) | 해당 없음 | 지금은 시각 사전학습 불가 |
+| EPIC-Kitchens-100 | `datasets/epic_kitchens_100` 51 GB | MP4 32 개(전체 약 700 영상 중 일부 [기억 기반]) · 프레임 미추출 | 1인칭 부엌 조작 | ⚠ 로더 없음 · 다운로드 스크립트(전체 ≈ 400 GB 추정) | 미확인 | 일부만 받음 |
+| OXE | `datasets/oxe/bridge` 388 GB · `oxe/fractal20220817_data` 112 GB(RLDS) | Bridge 에피소드 25,460 + 3,475 · Fractal 87,212 | 로봇 · Bridge = WidowX 고정 카메라 5 fps · Fractal = Google Robot | ⚠ 로더 없음 · 프레임 미추출(SIMPLER 평가용으로 받음) · Bridge 전처리 결정 기록만 | 미확인 | — |
 
-- 표와 함께 한 줄: 각 후보가 **어느 판정 축**(위치 의존성 / 분포 밖 판독 / 해상도)에 닿을 것으로 보는지 [추정 표시].
+- 출처: 서브에이전트 조사 11-23(`find` · `du` · 표본 외삽 · `docs/cluster_sessions.md` 실측) · 표에 없지만 클러스터에 있음 = agibot_alpha · ssv2 · robomind · robomimic · calvin · libero.
+- **판정 축 [추정]**: part2~5 = 같은 도메인 양 → 분포 밖 판독 축 · DROID · OXE = LIBERO/CALVIN 에 가까운 고정 카메라 로봇 → 분포 밖 판독에 닿지만 고정 시점은 절대 위치 단서를 키워 **위치 의존성 축엔 불리할 수 있음** · Ego4D · EPIC = 도메인 다양성 → 분포 밖 판독 축 · 해상도 축 = 모든 프레임이 256² 로 추출돼 어느 데이터도 직접 닿지 않음.
 
 ### 4-3. 확장 결정은 여기서 하지 않는다
 

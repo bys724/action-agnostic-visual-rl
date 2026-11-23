@@ -71,7 +71,11 @@ def apply_rope(x: torch.Tensor, freqs_cis: torch.Tensor, has_cls: bool = True) -
     patches_c = torch.view_as_complex(patches_c)  # [B, N, H, D//2]
 
     # freqs_cis: [N, D//2] → broadcast: [1, N, 1, D//2]
-    freqs = freqs_cis[:N].unsqueeze(0).unsqueeze(2).to(patches_c.device)
+    #   또는 [B, N, D//2] (샘플별 위치 — 마스크가 샘플마다 다른 visible-only 경로) → [B, N, 1, D//2]
+    if freqs_cis.dim() == 3:
+        freqs = freqs_cis.unsqueeze(2).to(patches_c.device)
+    else:
+        freqs = freqs_cis[:N].unsqueeze(0).unsqueeze(2).to(patches_c.device)
     patches_c = patches_c * freqs
 
     # complex → real
@@ -242,8 +246,12 @@ class MotionRoutingBlock(nn.Module):
             nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
         )
 
-    def forward(self, v_owner_state: torch.Tensor, qk_helper_state: torch.Tensor) -> torch.Tensor:
+    def forward(self, v_owner_state: torch.Tensor, qk_helper_state: torch.Tensor,
+                freqs_cis: torch.Tensor = None) -> torch.Tensor:
         """Routing/cross-attn: V는 owner에서, residual도 owner에 붙음 (V는 복구 대상).
+
+        freqs_cis: [N, D_head//2] — 주어지면 Q/K에 2D RoPE (owner·helper는 같은 격자, CLS 제외).
+          None이면 기존 동작(위치는 helper 토큰에 남은 APE에 의존). rope_encoder_plan.md.
 
         인자명 generic화 (CoMP-MAE guard 1): 메커니즘은 owner/helper 역할만 결정하고
         P/M 의미는 호출부가 부여한다. v_from_p + source='m' 인스턴스를:
@@ -284,6 +292,10 @@ class MotionRoutingBlock(nn.Module):
         if self.qk_norm:
             q = self.q_norm(q)
             k = self.k_norm(k)
+
+        if freqs_cis is not None:
+            q = apply_rope(q, freqs_cis, has_cls=True)
+            k = apply_rope(k, freqs_cis, has_cls=True)
 
         # SDPA
         q = q.transpose(1, 2)  # [B, H, N, D_head]

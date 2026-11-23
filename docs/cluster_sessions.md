@@ -102,6 +102,16 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 - **SC 세그 대기(§4-g ①)**: 그대로 — SC 쪽은 사건 가독성 표 프로브가 사용자 선택(주 놓침 출처) 대기라 export 는 그 뒤. 경로가 오면 `paper_artifacts/alpha_value/r7/patch_err_f{0..4}.npz` 와 결합해 물체/팔/배경 × 사건/무교란 오차 비 채점(스크립트 미작성).
 - **주의**: 새 인코더는 SC 에 넘기지 않음(C1-DN 동결 계약) · 로더 속도는 DataLoader 워커(스레드 1)에서 ≈ 3.6 ms/샘플 [추정 · 로그인 노드 단일 스레드 계측] — 메인 프로세스에서 재면 torch 스레드 과다로 100 ms 대(착시) · EgoDex eval 손실은 max_gap 20 이라 C1-DN 값과 직접 비교 금지(망각 판정은 same-probe 로).
 
+### 2026-11-23 RoPE 인코더 — 공학 단계 R0 sanity (Vault 11-23 (2)(3) · 사용자 확정 · `docs/rope_encoder_plan.md` §2)
+
+**무엇**: C1-DN ep10 에서 이어 학습 · 판 R0 = 위치 전부 2D RoPE(사용자 11-23 선택 "전부 RoPE" · 인코더 self-attn + routing 교차 주의 Q/K + 디코더 self-attn · APE 4 개 삭제 · θ 10000) vs 판 A = APE 그대로 · 나머지 = C1-DN 레시피(`scripts/cluster/rope/submit.sh`). 코드 점검(CPU) 통과: rope off = 수정 전과 손실·grad·인코더 출력·키 비트 동일 · rope on = APE 4 키만 빠짐 · 모든 학습 파라미터 grad 도달 · 샘플별 마스크 위치 주파수 = 샘플별 수동 계산(max|diff| 1.3e-6) · 288 입력 동작 · C1-DN → R 로드 missing 0 / unexpected = APE 4 개. **sanity 설계**: 2 ep(ep1 = 워밍업 LR 1e-6 고정 → 첫 손실 급등 크기 · ep2 = LR 2.8e-5 → 회복 속도) · MAX_VIDEOS 200(2만 쌍/ep) · 배치 16 · 같은 seed·데이터 · 요약 `python scripts/cluster/rope/summarize_log.py <log>`.
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 44466134 | mig-1g ×1 · CPU 6 · 48G | 00:50:00 | **sanity R0** — `ARM=R SUFFIX=sanity_R0 EPOCHS=2 MAX_VIDEOS=200 BATCH_SIZE_PER_GPU=16 NUM_WORKERS=6` · 확인 = Model args 에 `--rope` · init 로그 `rope: dropped APE keys`(4 개) · 첫 손실 vs A · ep2 회복 · NaN 0 · 처리량 R/A | ✅ COMPLETED 12:38–12:49 · 11m19s ≈ 0.19 MIG-1g·h · init missing 0 / unexpected = APE 4 개 · NaN 0 · MaxRSS 14 GB · **첫 손실 0.122(A 의 11 배)**: L_mB 0.044(23 배) · L_pred 0.030(16 배) · L_mA 0.0125(A 0.0000) · L_t 0.018(5 배) → ep1(LR 1e-6) 끝 0.041 → ep2(LR 2.8e-5) 끝 **0.018(A 0.011 의 1.7 배)**: L_t 0.0045(A 0.0036) · L_pred 0.0050(A 0.0017 · 2.9 배) · L_mB 0.0040(A 0.0020 · 2.0 배) · 처리량 68.6–70.0 samp/s(A 의 0.85 배) |
+| 44466135 | mig-1g ×1 · CPU 6 · 48G | 00:50:00 | **sanity A** — 위와 같음 · `ARM=A` (APE · init missing 0 / unexpected 0 기대) | ✅ COMPLETED 12:38–12:48 · 10m01s ≈ 0.17 MIG-1g·h · init missing 0 / unexpected 0 · NaN 0 · MaxRSS 14 GB · 손실 0.0109 → 0.0102(ep1) → 0.0109(ep2 끝 · LR 전환 직후 0.0126 로 튐) · 80.8–82.8 samp/s |
+| 44466217 | AIP 1×4 H100 · CPU 16/task | 2-00:00:00 | **🚀 R0 본학습(사용자 "추천대로")** — `ARM=R SUFFIX=R0 EPOCHS=10 BATCH_SIZE_PER_GPU=256 USE_SCRATCH=1`(유효 배치 1024 · 41245968 선례) · 추정 ≈ 7 h · ≈ 28 GPU·h [추정 = APE 24 ÷ 0.85] · 체인 `scripts/cluster/rope/gate_chain.sh 44466217 R0 2` = ep2 ckpt 생기면 예비 관문 8 칸(mig-1g · 학습은 계속) → `gate_summary.py rope_R0_ep2` · 문턱 크게 미달이면 중단 → 다음 변형 · 예비 수치는 공학 단계 수치(판정 아님) | ⏳ PENDING (Resources · AIP 5 노드 만석 · 대기 46) |
+
 ### 2026-10-26 α §4-h LIBERO 도메인 추가학습 (dev 세션 · 사용자 확정 · `alpha_plan.md` §4-h) — 인코더·디코더 학습
 
 **무엇**: C1-DN ep10 에서 `INIT_FROM` · 모델 인자 = C1-DN 로그(40313842) 그대로 · 데이터만 LIBERO 시연(libero_goal 제외 4 suite · 앞+손목 · gap 균등 1..20 · 전처리 = α 평가와 픽셀 동일) · 10 ep · LR 2.8e-5 · 두 판(|ΔL| 가중 유지 / 제거). 코드 = `src/datasets/libero.py` · `pretrain.py --train-data libero` · sbatch `TRAIN_DATA` · `SAMPLE_DIST` · `LIBERO_SUITES`. eval = EgoDex test(망각 감시).

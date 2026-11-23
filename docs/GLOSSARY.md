@@ -40,3 +40,9 @@
 - **P+P 전용 참조 (ref, `--pp-only`)** — M 입력·M 복원 없이 P+P만으로 학습한 Fuse. 칸 간 공통 분모
 - **희소 M (sparse M)** — 변화 패치(mean|ΔL|>1/255)만 M 인코더에 넣고 나머지는 mask 토큰으로 채운 인코딩 (`--m-sparse-tau`)
 - **인계 파일 (hand-off)** — SC 2층이 쓰는 관측기 묶음: Fuse 가중치 + 입력 표준화 통계 + z 통계 + 메타 (`paper_artifacts/observer_fuse/ckpt/*_handoff.pt`, git 제외)
+
+## RoPE 인코더 실험 (정의 정본 = `rope_encoder_plan.md`)
+
+- **판 R / 판 A** — R = C1-DN 가중치에서 위치 인코딩을 전부 2D RoPE 로 바꿔 이어 학습한 판(`--rope` · 인코더 self-attn + routing 교차 주의 Q/K + 디코더 self-attn · APE 4 개 삭제) · A = 같은 레시피를 APE 그대로 이어 학습한 대조 판("에폭을 더 돌린 효과" 분리용)
+- **R0** — 공학 단계 첫 변형 = 사용자 11-23 선택 "전부 RoPE"(θ = 10000 · 다른 수정 없음). 이후 변형은 로그 표에 R1, R2 … 로 한 번에 하나씩
+- **routing 교차 주의** — `MotionRoutingBlock`: owner 스트림의 V 를 helper 스트림의 Q/K 주의로 모으는 층(P 복원 = M 이 Q/K · M 복원 = P 가 Q/K). APE 판에선 국소성이 helper 토큰에 남은 인코더 APE 에서 옴

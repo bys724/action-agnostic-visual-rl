@@ -213,9 +213,10 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     ckpt = torch.load(checkpoint, map_location="cpu")
     sd = ckpt.get("model_state_dict", ckpt)
     sd = {k.replace("module.", ""): v for k, v in sd.items()}
-    _ed = next(v.shape[-1] for k, v in sd.items() if k == "pos_embed_p")
+    _ed = sd["cls_token_p"].shape[-1]
     _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
     _comp = any("m_recon" in k for k in sd)  # CoMP-MAE = M-recon 분기 보유
+    _rope = _comp and "pos_embed_p" not in sd  # RoPE 판 R (rope_encoder_plan.md): APE 키 없음
     # qk-norm ckpt 자동 감지 — 모델 생성 전 전역 스위치 (pretrain --qk-norm parity).
     # 미설정 시 strict=False가 q_norm/k_norm 가중치를 조용히 드랍 → 아키 불일치 inference.
     from src.models.common import blocks as _blocks
@@ -223,8 +224,9 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     model = TwoStreamV15Model(
         embed_dim=_ed, num_heads=_ed // 64, m_depth=_md, comp_mae=_comp,
         pair_mode=True, use_sobel=False, masked_anchor=True,
-        m_embed_dim=sd["pos_embed_m"].shape[-1] if _comp else None,  # alpha §4-c 작은 M 폭 자동 감지
-        m_only=_comp and sd["pos_embed_m"].shape[-1] != _ed,          # 작은 M 은 m_only 구성 (추론엔 영향 없음 · 전부 동결)
+        m_embed_dim=sd["cls_token_m"].shape[-1] if _comp and not _rope else None,  # alpha §4-c 작은 M 폭 자동 감지
+        m_only=_comp and not _rope and sd["cls_token_m"].shape[-1] != _ed,          # 작은 M 은 m_only 구성 (추론엔 영향 없음 · 전부 동결)
+        rope=_rope,
     )
     missing, unexpected = model.load_state_dict(sd, strict=False)
     _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]

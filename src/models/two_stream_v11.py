@@ -225,6 +225,7 @@ class TwoStreamV11Model(nn.Module):
         mask: torch.Tensor,          # [B, N] bool, True=masked
         blocks: nn.ModuleList,       # encoder blocks for this stream
         norm: nn.LayerNorm,
+        freqs_cis: torch.Tensor = None,  # [N, D_head//2] RoPE 전체 격자 (None = APE path)
     ) -> torch.Tensor:
         """Stream-independent visible-only encoding (CLS exchange 없음).
 
@@ -238,8 +239,12 @@ class TwoStreamV11Model(nn.Module):
         visible = patches[~mask].reshape(B, -1, D)
         x = torch.cat([cls, visible], dim=1)
 
+        # RoPE: 마스크가 샘플마다 달라 visible 위치의 주파수도 샘플별 [B, N_vis, D_head//2] (patches와 같은 순서)
+        f = None
+        if freqs_cis is not None:
+            f = freqs_cis.unsqueeze(0).expand(B, -1, -1)[~mask].reshape(B, -1, freqs_cis.shape[-1])
         for block in blocks:
-            x = block(x, freqs_cis=None)  # APE path (freqs_cis=None)
+            x = block(x, freqs_cis=f)  # f=None → APE path
         x = norm(x)
         return x
 

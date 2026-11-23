@@ -1112,6 +1112,11 @@ def train(
             assert not _bad, f"m_only init_from: M 인코더 외 키 미로드 {_bad[:5]}"
         log(f"  init loaded: missing={len(_miss)} unexpected={len(_unexp)} "
             f"(composition_head 등 pair model 미사용 키 무시)")
+        if getattr(_mdl, 'rope', False):  # RoPE 판 R: 버리는 키는 APE 4 개뿐이어야 함 (strict=False 가 조용히 버리는 것 방지)
+            _ape = {'pos_embed_p', 'pos_embed_m', 'dec_pos_embed_p', 'dec_pos_embed_m'}
+            assert not _miss and set(_unexp) <= _ape, (
+                f"rope init_from: APE 외 키 불일치 missing={_miss[:5]} unexpected={sorted(set(_unexp) - _ape)[:5]}")
+            log(f"  rope: dropped APE keys {sorted(_unexp)}")
         # qk ckpt를 --qk-norm 없이 init_from 하면 q_norm/k_norm이 조용히 드랍 → 즉사 가드
         _qk_dropped = [k for k in _unexp if '.q_norm.' in k or '.k_norm.' in k]
         assert not _qk_dropped, (

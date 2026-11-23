@@ -45,7 +45,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 
-from .common.blocks import TransformerBlock, MotionRoutingBlock
+from .common.blocks import TransformerBlock, MotionRoutingBlock, build_2d_rope_freqs
 from .two_stream_v11 import TwoStreamV11Model
 
 
@@ -74,20 +74,22 @@ class RoutingInterpreterStep(nn.Module):
         #   ("구멍 채운 뒤 이동"). False(기존 full anchor): routing→interp.
         self.decode_first = decode_first
 
-    def forward(self, owner_state: torch.Tensor, helper_state: torch.Tensor) -> torch.Tensor:
+    def forward(self, owner_state: torch.Tensor, helper_state: torch.Tensor,
+                freqs_cis: Optional[torch.Tensor] = None) -> torch.Tensor:
         """owner = V 소유(=복구 대상, residual·self-attn 대상), helper = Q/K 공급(routing pattern).
 
         인자명 generic화 (CoMP-MAE 미러링):
           - P-recon: forward(owner=P_state, helper=M_routing) → M→M attn, gather P (기존)
           - M-recon: forward(owner=M_state, helper=P_full)    → P→P attn, gather M (신규)
         같은 클래스를 인자만 swap해 미러 (단, 호출부는 **별도 인스턴스** 사용 = param-symmetry).
+        freqs_cis: RoPE 판(rope=True)만 전달 — interp self-attn과 routing Q/K 둘 다. None = 기존 APE 경로.
         """
         if self.decode_first:
-            owner_state = self.interp(owner_state, freqs_cis=None)    # 완성(self-attn) 먼저
-            owner_state = self.routing(owner_state, helper_state)     # routing 나중
+            owner_state = self.interp(owner_state, freqs_cis=freqs_cis)                # 완성(self-attn) 먼저
+            owner_state = self.routing(owner_state, helper_state, freqs_cis=freqs_cis)  # routing 나중
         else:
-            owner_state = self.routing(owner_state, helper_state)
-            owner_state = self.interp(owner_state, freqs_cis=None)
+            owner_state = self.routing(owner_state, helper_state, freqs_cis=freqs_cis)
+            owner_state = self.interp(owner_state, freqs_cis=freqs_cis)
         return owner_state
 
 
@@ -289,6 +291,9 @@ class TwoStreamV15Model(TwoStreamV11Model):
         # ── alpha_plan §4-c M 크기 사다리 (10-24): M 폭 분리 + 동결 P 위 M 만 학습 (기본 off) ──
         m_embed_dim: Optional[int] = None,    # None = embed_dim (기존). 다르면 M 인코더만 이 폭으로
         m_only: bool = False,                 # P 쪽 전부 동결 · 손실 = M-recon 만
+        # ── RoPE 판 R (docs/rope_encoder_plan.md · 11-23 · 기본 off = 기존 APE 경로 비트 동일) ──
+        rope: bool = False,
+        rope_theta: float = 10000.0,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -532,6 +537,31 @@ class TwoStreamV15Model(TwoStreamV11Model):
             for n, p in self.named_parameters():
                 p.requires_grad_(n.split(".")[0] in train)
 
+        # ── RoPE 판 R (rope_encoder_plan.md · 11-23 사용자 "전부 RoPE") ───────────────────
+        #   위치 정보를 전부 블록 안 2D RoPE 로: 인코더 P·M self-attn · routing 교차 주의 Q/K · 디코더 self-attn.
+        #   APE 4 개(인코더 pos_embed_p/m · 디코더 dec_pos_embed_p/m)를 삭제 → 마스크 토큰·null routing 토큰은
+        #   위치를 RoPE 상대 위치로만 얻는다. routing 에 RoPE 가 없으면 Q/K(상대 스트림 인코더 출력)의 국소성이
+        #   인코더 APE 잔여에만 기대므로 routing 까지 넣는다(점검 ④). CLS(index 0)는 RoPE 미적용.
+        #   주파수는 격자 크기별 즉석 계산·캐시(해상도 외삽 대비 · 버퍼 아님 → state_dict·DDP broadcast 무관).
+        self.rope = rope
+        self.rope_theta = rope_theta
+        self._rope_cache = {}
+        if rope:
+            assert comp_mae and m_embed_dim is None and not m_only, "rope는 comp_mae(폭 공통 · 공동 학습) 전용"
+            del self.pos_embed_p, self.pos_embed_m, self.dec_pos_embed_p, self.dec_pos_embed_m
+
+    def _freqs(self, n: int, device: torch.device) -> Optional[torch.Tensor]:
+        """RoPE 주파수 [n, head_dim//2] (rope off 면 None). n = 패치 수(정사각 격자)."""
+        if not self.rope:
+            return None
+        key = (n, str(device))
+        if key not in self._rope_cache:
+            side = int(round(n ** 0.5))
+            assert side * side == n, f"RoPE: 정사각 격자 아님 (n={n})"
+            self._rope_cache[key] = build_2d_rope_freqs(
+                side, self.blocks_p[0].head_dim, self.rope_theta).to(device)
+        return self._rope_cache[key]
+
     # ----------------------------------------------------------------------
     # EMA update
     # ----------------------------------------------------------------------
@@ -551,26 +581,32 @@ class TwoStreamV15Model(TwoStreamV11Model):
         B = p_channel.shape[0]
         patches = self.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
         cls = self.cls_token_p.expand(B, -1, -1)
-        x = torch.cat([cls, patches], dim=1) + self.pos_embed_p
+        x = torch.cat([cls, patches], dim=1)
+        x = x if self.rope else x + self.pos_embed_p
+        f = self._freqs(patches.shape[1], x.device)
         for block in self.blocks_p:
-            x = block(x, freqs_cis=None)
+            x = block(x, freqs_cis=f)
         return self.norm_p(x)
 
     def _encode_m_unmasked(self, m_channel: torch.Tensor) -> torch.Tensor:
         B = m_channel.shape[0]
         patches = self.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
         cls = self.cls_token_m.expand(B, -1, -1)
-        x = torch.cat([cls, patches], dim=1) + self.pos_embed_m
+        x = torch.cat([cls, patches], dim=1)
+        x = x if self.rope else x + self.pos_embed_m
+        f = self._freqs(patches.shape[1], x.device)
         for block in self.blocks_m:
-            x = block(x, freqs_cis=None)
+            x = block(x, freqs_cis=f)
         return self.norm_m(x)
 
     def _encode_m_masked(self, m_channel: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         B = m_channel.shape[0]
         patches = self.patch_embed_m(m_channel).flatten(2).transpose(1, 2)
         cls = self.cls_token_m.expand(B, -1, -1)
-        tokens = torch.cat([cls, patches], dim=1) + self.pos_embed_m
-        return self._encode_stream_visible(tokens, mask, self.blocks_m, self.norm_m)
+        tokens = torch.cat([cls, patches], dim=1)
+        tokens = tokens if self.rope else tokens + self.pos_embed_m
+        return self._encode_stream_visible(tokens, mask, self.blocks_m, self.norm_m,
+                                           freqs_cis=self._freqs(patches.shape[1], tokens.device))
 
     def _decode_m(self, m_full: torch.Tensor) -> torch.Tensor:
         x = m_full + self.dec_pos_embed_m
@@ -584,12 +620,14 @@ class TwoStreamV15Model(TwoStreamV11Model):
         B = p_channel.shape[0]
         patches = self.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
         cls = self.cls_token_p.expand(B, -1, -1)
-        tokens = torch.cat([cls, patches], dim=1) + self.pos_embed_p
-        return self._encode_stream_visible(tokens, mask, self.blocks_p, self.norm_p)
+        tokens = torch.cat([cls, patches], dim=1)
+        tokens = tokens if self.rope else tokens + self.pos_embed_p
+        return self._encode_stream_visible(tokens, mask, self.blocks_p, self.norm_p,
+                                           freqs_cis=self._freqs(patches.shape[1], tokens.device))
 
     def _build_full_seq_p(self, p_visible: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         p_full = self._inject_mask_tokens(p_visible, mask, self.mask_token_p)
-        return p_full + self.dec_pos_embed_p
+        return p_full if self.rope else p_full + self.dec_pos_embed_p
 
     def _build_full_seq_m(self, m_visible: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         return self._inject_mask_tokens(m_visible, mask, self.mask_token_m)
@@ -844,8 +882,9 @@ class TwoStreamV15Model(TwoStreamV11Model):
         """
         full_seq = self._build_full_seq_p(p_visible, mask)   # [B, 1+N, D], mask token + dec_pos
         p_state = full_seq
+        f = self._freqs(mask.shape[1], p_state.device)      # RoPE 판: 디코더 self-attn + routing Q/K
         for step in self.p_motion_decoder:
-            p_state = step(p_state, m_routing)
+            p_state = step(p_state, m_routing, freqs_cis=f)
         p_state = self.p_motion_decoder_norm(p_state)
         patch_pred = self.recon_head(p_state[:, 1:])          # [B, N, p*p*3]
         patch_target = self._patchify(target_image)
@@ -931,7 +970,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         norm_m으로 다시 정규화하므로 raw token+APE로 충분. P-side 정적 복구(L_t/L_tk)용.
         """
         tok = self.null_motion_token.expand(B, self.num_patches + 1, -1).to(device)
-        return tok + self.pos_embed_m
+        return tok if self.rope else tok + self.pos_embed_m   # RoPE 판: 상수 토큰 → routing RoPE 가 상대 위치 커널
 
     def _photometric_aug(self, image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """샘플별 독립 밝기 증강 (refinement_floor_plan §3.2). 픽셀 [0,1] 공간, 결과 clamp.
@@ -1028,9 +1067,10 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_full = self._inject_mask_tokens(m_visible, mask_m, self.mask_token_m)
         if self.m_up is not None:                                         # §4-c 작은 M: d_m → D
             m_full = self.m_up(m_full)
-        m_state = m_full + self.dec_pos_embed_m                           # mask token 주입 + APE
+        m_state = m_full if self.rope else m_full + self.dec_pos_embed_m  # mask token 주입 + APE (RoPE 판은 없음)
+        f = self._freqs(mask_m.shape[1], m_state.device)
         for step in self.m_recon_decoder:
-            m_state = step(m_state, p_helper_full)   # owner=M(V), helper=P_full(Q/K) → P→P, gather M
+            m_state = step(m_state, p_helper_full, freqs_cis=f)   # owner=M(V), helper=P_full(Q/K) → P→P, gather M
         m_state = self.m_recon_decoder_norm(m_state)
         patch_pred = self.m_recon_head(m_state[:, 1:])                    # [B, N, ps²·1]
         patch_target = self._patchify(m_channel if m_target is None else m_target)  # [B, N, ps²·1]
