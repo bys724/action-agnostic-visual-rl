@@ -239,6 +239,29 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     return model
 
 
+@torch.no_grad()
+def set_parvo_resolution(model, img_size: int):
+    """rope_encoder_plan §3-3 해상도 외삽: 224 로 학습한 인코더에 img_size 입력(격자 img_size/16).
+    APE 판(C1-DN · A)은 14×14 위치 임베딩을 새 격자로 bicubic 보간(CLS 위치 그대로 · timm resample_abs_pos_embed 관례),
+    RoPE 판(R)은 모델이 격자 크기별 주파수를 다시 만든다(`_freqs` · 패치 간격 불변) → 여기서 할 일 없음."""
+    g = img_size // model.patch_size
+    assert g * model.patch_size == img_size, f"img_size {img_size} 는 패치 {model.patch_size} 의 배수여야 함"
+    if model.rope:
+        return
+    if not hasattr(model, "_ape_orig"):   # 늘 학습된 원본에서 보간 → 224 로 되돌리면 원본과 비트 동일 (평가 중 해상도 왕복용)
+        model._ape_orig = {n: getattr(model, n).detach().clone() for n in ("pos_embed_p", "pos_embed_m")}
+    for name in ("pos_embed_p", "pos_embed_m"):
+        pe = model._ape_orig[name]                                      # [1, 1+N, D]
+        s = int(round((pe.shape[1] - 1) ** 0.5))
+        if s == g:
+            setattr(model, name, nn.Parameter(pe.clone(), requires_grad=False))
+            continue
+        grid = pe[:, 1:].reshape(1, s, s, -1).permute(0, 3, 1, 2).float()
+        grid = F.interpolate(grid, size=(g, g), mode="bicubic", align_corners=False)
+        grid = grid.permute(0, 2, 3, 1).reshape(1, g * g, -1).to(pe.dtype)
+        setattr(model, name, nn.Parameter(torch.cat([pe[:, :1], grid], dim=1), requires_grad=False))
+
+
 def m_patch_absdl(m_chan: torch.Tensor, patch: int = 16) -> torch.Tensor:
     """Per-patch mean|ΔL| (n, N), row-major = patch_embed flatten order."""
     return F.avg_pool2d(m_chan[:, :1].abs(), patch).flatten(1)
@@ -390,7 +413,8 @@ def encode_pairs_parvo_raw(model, frames_prev, frames_curr, device, batch: int =
     return torch.cat(out, dim=0)
 
 
-PERTURB_KINDS = ("gain", "ramp", "shadow", "noise", "shot", "corr", "jpeg")  # 뒤 3종 = §10 held-out 잡음 (append만 — 기존 seed 불변)
+PERTURB_KINDS = ("gain", "ramp", "shadow", "noise", "shot", "corr", "jpeg", "shift", "res")  # 뒤 3종 = §10 held-out 잡음 · shift·res = RoPE 판정 (append만 — 기존 seed 불변)
+# res = 평가 입력 해상도만 level 로 (판독기는 학습 해상도로 고정 · parvo 전용 · main 의 교란 루프에서 처리)
 SHADOW_AXIS_RANGE = (0.15, 0.35)   # 타원 반축 (이미지 한 변 대비 비율) — plan 미기재, 이 구현의 선택
 SHADOW_SOFTNESS = 0.1              # 경계 sigmoid 폭 (반경 단위)
 
@@ -430,6 +454,11 @@ def perturb_pair(prev: torch.Tensor, curr: torch.Tensor, kind: str, level: float
     # §10.2 held-out 센서 잡음 (양 프레임 독립, 학습 증강의 가우시안과 다른 구조):
     #   shot = 밝기 의존 σ(x)=√(a·x), level = σ(0.5) → a = 2·level² / corr = 가우시안을 σ=1px 블러 후 std=level로 재조정
     #   jpeg = 품질 level로 인코딩·디코딩 (PIL, 224 해상도)
+    if kind == "shift":   # rope_encoder_plan §3-2 평행이동 교란: 양 프레임 같은 이동 (오른쪽·아래로 level px · 빈 자리 = 반사 패딩 · 난수 없음)
+        k = int(level)
+        if k == 0:
+            return prev, curr
+        return tuple(F.pad(x, (k, 0, k, 0), mode="reflect")[..., :H, :W] for x in (prev, curr))
     if kind in ("shot", "corr", "jpeg"):
         return tuple(_sensor_noise(x, kind, level, gen) for x in (prev, curr))
     if kind == "gain":
@@ -461,10 +490,12 @@ PROBE_NOISE_SEED = 20_000  # §9 R2-3: split별 generator seed = 이 값 + split
 
 
 @torch.no_grad()
-def eval_probe(probe, emb, tgt, device, batch_size: int = 256) -> dict:
-    """고정 probe로 (교란된) eval 임베딩 평가 — compute_metrics 동일 지표."""
+def eval_probe(probe, emb, tgt, device, batch_size: int = 256, extra=None) -> dict:
+    """고정 probe로 (교란된) eval 임베딩 평가 — compute_metrics 동일 지표. extra = attentive 위치 공변량(교란 무관)."""
     probe.eval()
-    preds = [probe(emb[i:i + batch_size].to(device).float()).cpu() for i in range(0, len(emb), batch_size)]
+    preds = [(probe(emb[i:i + batch_size].to(device).float(), extra[i:i + batch_size].to(device).float())
+              if extra is not None else probe(emb[i:i + batch_size].to(device).float())).cpu()
+             for i in range(0, len(emb), batch_size)]
     return compute_metrics(torch.cat(preds).numpy(), tgt.numpy())
 
 
@@ -612,7 +643,7 @@ class AttentivePoolProbe(nn.Module):
 
     def forward(self, x, extra=None):
         B = x.shape[0]
-        x = x.view(B, self.n_streams, self.n_patch, self.embed_dim)
+        x = x.view(B, self.n_streams, -1, self.embed_dim)   # 패치 수는 입력에서 (해상도 교란 평가 · 학습 때는 n_patch 와 같음)
         if self.proj is not None:
             i = self.proj_stream
             x = torch.cat([x[:, :i], self.proj(x[:, i:i + 1]), x[:, i + 1:]], dim=1)
@@ -888,6 +919,9 @@ def main():
                         help="parvo m_only: M 인코더를 mean|ΔL|>tau 패치만으로 인코딩(mask token 채움, 1/255=0.00392)")
     parser.add_argument("--probe-noise-sigma", type=float, default=0.0,
                         help="§9 R2-3 현실적 sim: probe 학습·시험 양쪽 프레임에 가우시안 픽셀 노이즈 σ (0=끔)")
+    parser.add_argument("--eval-perturb-list", nargs="*", default=None,
+                        help="probe_action_calvin.py 와 같은 형식 'kind:l1,l2,..' (예 shift:8,16,32 res:288,320). 깨끗한 train 으로 "
+                             "probe 1 회 fit(best epoch 고정 · 깨끗한 eval 로 고름) → eval 프레임만 교란해 재인코딩·평가 (action 전용)")
     args = parser.parse_args()
 
     if args.readout == "attentive" and args.view == "both":
@@ -1026,6 +1060,9 @@ def main():
         run_transfer(args, encode_fn, n_streams, img_size, device, phase, proj_stream)
         return
     assert args.probe_noise_sigma == 0, "--probe-noise-sigma는 전이 모드(LIBERO)에만 배선됨"
+    assert not args.eval_perturb_list or (args.target == "action" and args.view != "both"
+                                          and args.position_control != "only" and not args.rotate_aug), \
+        "--eval-perturb-list 는 action · 단일 view · 프레임 사용 · 회전 증강 없음 전용"
 
     # ── Demo-level train/test split ─────────────────────────────────────
     all_demo_keys = []  # list of (hdf5_path, demo_key, task_id)
@@ -1070,8 +1107,9 @@ def main():
 
         # Streaming: demo loop 안에서 frames load → preprocess → encoder forward →
         # embeddings + targets만 누적. raw frames은 즉시 폐기 (메모리 절약).
-        def collect_embed(demo_list, label):
+        def collect_embed(demo_list, label, perturb=None, size=None):
             embed_chunks, tgt_chunks, demo_ids, pos_chunks = [], [], [], []
+            size = size or img_size
             for di, (hp, d, tid) in enumerate(demo_list):
                 if args.position_control == "only":
                     # 위치 control: 프레임/인코더 미사용 — ee/action만 로드 (CPU로도 충분히 빠름)
@@ -1110,10 +1148,12 @@ def main():
                     emb = torch.cat([emb_av, emb_eih], dim=-1)  # (T-gap, 2D)
                     del frames_av, frames_eih, prev_av, curr_av, prev_eih, curr_eih, emb_av, emb_eih
                 else:
-                    prev = preprocess_frames(frames[:T - gap], img_size)
-                    curr = preprocess_frames(frames[gap:], img_size)
+                    prev = preprocess_frames(frames[:T - gap], size)
+                    curr = preprocess_frames(frames[gap:], size)
                     if args.rotate_aug:
                         prev, curr = rotate_pair(prev, curr, device, rot_rng)
+                    if perturb is not None:   # (kind, level, generator) — eval 프레임만 교란 · ΔL 은 인코더가 재계산
+                        prev, curr = perturb_pair(prev, curr, *perturb)
                     emb = encode_fn(prev, curr)  # (T-gap, D), already on CPU
                     del frames, prev, curr
                 if args.position_control == "concat":
@@ -1169,8 +1209,31 @@ def main():
             task=("classification" if is_cls else "regression"),
             out_dim=(n_classes if is_cls else ACTION_DIM),
             extra_train=extra_tr, extra_eval=extra_ev, proj_stream=proj_stream,
+            return_probe=bool(args.eval_perturb_list),
         )
         m = best["metrics"]
+        perturb_results = {}
+        for spec in (args.eval_perturb_list or []):   # probe_action_calvin.py 와 같은 규약 (교란 seed = kind · level 고정)
+            kind, levels = spec.split(":")
+            assert kind in PERTURB_KINDS, kind
+            perturb_results[kind] = {}
+            for li, lv in enumerate(float(x) for x in levels.split(",")):
+                gen = torch.Generator().manual_seed(10_000 + 100 * PERTURB_KINDS.index(kind) + li)
+                if kind == "res":   # §3-3 해상도 외삽: 판독기 고정 · eval 만 lv 해상도 (APE 보간 / RoPE 주파수 재계산) → 원 해상도로 복귀
+                    assert args.encoder == "parvo", "res 교란은 parvo 전용"
+                    set_parvo_resolution(model, int(lv))
+                    emb_p, tgt_p, _, _ = collect_embed(eval_demos, f"eval/res={lv:g}", size=int(lv))
+                    set_parvo_resolution(model, img_size)
+                else:
+                    emb_p, tgt_p, _, _ = collect_embed(eval_demos, f"eval/{kind}={lv:g}", perturb=(kind, lv, gen))
+                assert torch.equal(tgt_p, tgt_ev), "교란 eval 의 표본 순서가 깨끗한 eval 과 다름"
+                if args.position_control == "concat" and args.readout == "mean":
+                    emb_p = torch.cat([emb_p, pos_ev], dim=-1)   # 위치 공변량은 교란과 무관 (같은 시점 ee_pos)
+                mp = eval_probe(best["probe"], emb_p, tgt_p, device, args.probe_batch, extra=extra_ev)
+                perturb_results[kind][f"{lv:g}"] = mp
+                print(f"    perturb {kind}={lv:g}: pos R² = {np.mean(mp['r2_per_dim'][:3]):+.4f} "
+                      f"(clean {np.mean(m['r2_per_dim'][:3]):+.4f})")
+                del emb_p
         elapsed = time.time() - t0
 
         if is_cls:
@@ -1222,6 +1285,9 @@ def main():
             "n_eval_pairs": int(len(tgt_ev)),
             "best_epoch": best["epoch"],
             "elapsed_seconds": float(elapsed),
+            "img_size": img_size,
+            "probe_seed": args.probe_seed,
+            "perturb": perturb_results or None,
         }
         if is_cls:
             summary.update({"accuracy": m["accuracy"], "chance": chance,

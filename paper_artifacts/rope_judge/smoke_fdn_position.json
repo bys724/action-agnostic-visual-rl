@@ -1,0 +1,48 @@
+{
+ "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_denoise_augtgt/20260927_235906/checkpoint_epoch0010.pt",
+ "rope": false,
+ "equivariance": {
+  "P": {
+   "frac_moved": 1.0,
+   "frac_ci": [
+    1.0,
+    1.0
+   ],
+   "cos_moved": 0.9967853045463562,
+   "cos_stay": 0.9102905529737473,
+   "n_demos": 100
+  },
+  "M": {
+   "frac_moved": 0.20576389446854593,
+   "frac_ci": [
+    0.2004996579773724,
+    0.21082188145443795
+   ],
+   "cos_moved": 0.9130992031097412,
+   "cos_stay": 0.9582330715656281,
+   "n_demos": 100
+  }
+ },
+ "position_readout": {
+  "per_seed": [
+   {
+    "seed": 0,
+    "top1": 0.9788392782211304,
+    "near1": 0.9981250166893005
+   },
+   {
+    "seed": 1,
+    "top1": 0.9785714149475098,
+    "near1": 0.9982908368110657
+   },
+   {
+    "seed": 2,
+    "top1": 0.9783673286437988,
+    "near1": 0.9982143044471741
+   }
+  ],
+  "top1_mean": 0.9785926739374796,
+  "n_test_tokens": 78400,
+  "chance": 0.00510204081632653
+ }
+}

@@ -89,13 +89,26 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
-### ▶▶▶ 인계 (2026-11-24 16:40) — 다음 세션은 여기부터
+### ▶▶▶ 인계 (2026-11-24 17시 반) — 다음 세션은 여기부터
 
-- **상태**: RoPE 인코더 실험 **공학 단계 끝**(정본 = `docs/rope_encoder_plan.md` §2 로그 표 R0 행). R0(C1-DN 에서 위치 전부 2D RoPE · 10 ep 이어 학습) 완료 · **ep10 관문 셋 다 통과** [공학 단계 수치 · probe 1 회]: M motion Δ +0.273 · M identity 잔여 +0.207 · P identity 1.000 → **최종 R = `two_stream_v15b_rope_R0/20261124_104046/checkpoint_epoch0010.pt`** · 변형 1 개.
-- **돌아가는 것**: **A0 본학습 44502065**(APE 대조 판 · 11-24 16:22 실행 · olaf-g012 · 끝 ≈ 23:25 [추정] · 자동 후속 없음). 체인 없음.
-- **다음 = 판정 단계(§3 · 한 번 · probe seed 3 · R0 ep10 · A0 ep10 · C1-DN)**: 기존 코드로 되는 것 = 건강 관문(STEP 1 same-probe 8 칸 × seed 3 · `PROBE_SEED`) · OOD 4 벤치(STEP 2-A 프로토콜) · 4-a. **코드 없음** = 평행이동 교란(k 8/16/32 · 반사 패딩) · 해상도 외삽(288/320 · A·C1-DN APE bicubic 보간 · R 주파수 재계산) · 쉬프트 등변성 · 위치 선형 판독(196 클래스) → 구현 → k = 0 · 224 에서 C1-DN 기존 값 재현 점검 → 최소 칸(1 모델 · 1 칸) → 사용자 보고 → 격자. 진행 여부 = 사용자 확인 대기(11-24 16:40 보고).
-- **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude`(잡 제출·취소 전) → `squeue -u $USER`.
-- **주의**: 공학 단계 예산 사용 = R0 28.1 GPU·h + MIG-1g 1.9 h(sanity 0.36 · 관문 1.58) · A0 ≈ 24 GPU·h 진행 중 · 판정 자(§3-2·§3-3) 문턱 변경 금지 · 판정은 한 번 · 집필은 별도로 계속.
+- **상태**: RoPE 실험 **판정 단계 진행 중**(정본 = `docs/rope_encoder_plan.md` §3 + "dev 조작화"). 공학 단계는 R0 한 판으로 끝(ep10 관문 셋 통과 · 최종 R = `two_stream_v15b_rope_R0/20261124_104046/checkpoint_epoch0010.pt`). 새 자 넷 구현 · C1-DN 스모크 완료(재현 정확 · 평행이동 낙폭 큼 · 위치 판독 0.979). 해상도 자 = **224 판독기 고정 · 평가 입력만 288/320**(사용자 11-24).
+- **돌아가는 것**: ① A0 본학습 44502065(APE 대조 판 · 16:22~ · 끝 ≈ 23시 [추정]) ② 해상도 스모크 44531126 ③ **판정 격자 체인**(olaf1 · `setsid` · `/proj/external_group/mrg/logs/rope_judge_launch.sh` → 스모크 통과 시 `rope_judge_chain.sh` 실행 · 로그 `…/logs/rope_judge_chain.log`) = C1-DN · R0 각 52 칸 즉시 → A0 ep10 생기면 52 칸 → `judge_summary.py`.
+- **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude` → `squeue -u $USER | grep rj_` → 체인 로그 `tail`.
+- **결과 읽기**: 체인 끝 = `paper_artifacts/rope_judge/summary.md`(표 + 판정 + §3-4 결론 문장 자동 선택). 판정은 한 번 · 문턱 변경 금지. 로그 표 · STATUS · 이 표 갱신 → 사용자 보고. 미완 칸이 있으면 sacct 로 실패 칸 확인 · 같은 SUFFIX 로 재제출(집계는 최신 디렉터리 사용).
+- **체인이 죽었을 때**: 제출된 칸은 그대로 돈다. 남은 칸만 내려면 `judge_chain.sh` 의 `model_cells` 호출을 해당 모델만 남긴 사본으로(`pkill -f` 금지 · PID 로).
+- **주의**: 예산 = 공학 단계 R0 28.1 GPU·h + MIG-1g 1.9 h · A0 ≈ 24 GPU·h 진행 중 · 판정 격자 ≈ MIG-1g 25–35 h [추정] · 판정 자 문턱 변경 금지 · 집필은 별도로 계속.
+
+### 2026-11-24 RoPE 판정 단계 — 새 측정 자 스모크 (C1-DN · 1 칸씩 · `docs/rope_encoder_plan.md` §3 dev 조작화)
+
+**무엇**: 판정 단계에 필요한 새 자 셋(평행이동 교란 `--eval-perturb-list shift:…` · 해상도 `--img-size` · `scripts/eval/rope_position.py` 등변성 + 위치 판독)을 C1-DN 한 모델로 1 칸씩. CPU 점검 통과(교란 0 px = 원본 그대로 · 224 는 APE 불변 · 288/320 = C1-DN·R0 모두 동작 · 등변 지표 = 완전 등변 1.0 / 위치만 0.0). **확인 기준**: ① 교란 칸의 깨끗한 값이 C1-DN `fdn` M motion concat(0.899)과 같고(PROBE_SEED 없음 = 기존 규약) · 교란 0 px = 깨끗한 값 ② 288 칸 finite · 패치 324 ③ 위치 판독 top-1 ≈ SC 0.977(프레임 출처 차이로 다를 수 있음 · 보고).
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 44530620 | mig-1g ×1 · CPU 4 · 48G | 01:00:00 | 교란 칸 — `m_only` · action · concat · gap20 · attentive · `EVAL_PERTURB="shift:0,8,16,32"` · SUFFIX `judge_smoke_fdn_shift` | ✅ COMPLETED 9m07s · **깨끗한 값 = `fdn` 기존 칸과 같음**(R² agg 0.7582 · 위치 R² 0.8987 = 0.579 + 0.320) · 교란 0 px = 깨끗한 값 · 이동 8 / 16 / 32 px = 0.761 / 0.440 / −0.359(낙폭 0.138 / 0.459 / 1.258) |
+| 44530621 | 같음 | 01:00:00 | 해상도 칸 — 같은 칸 · `IMG_SIZE=288` · SUFFIX `judge_smoke_fdn_res288` | ✅ COMPLETED 8m46s · 패치 324 · 위치 R² **0.904**(224 의 0.899 보다 +0.005 = 낙폭 없음 · 판독기를 288 에서 다시 학습) → 이 조작화 폐기(사용자 11-24) |
+| 44531126 | mig-1g ×1 · CPU 4 · 48G | 01:00:00 | **해상도 고정 판독기 스모크** — 같은 칸 · `EVAL_PERTURB="res:224,288,320 shift:8"`(224 판독기로 288/320 평가) · 통과 기준 = 깨끗한 값 0.8987 · res 224 = 깨끗한 값(1e-6) · 해상도 왕복 뒤 shift 8 = 앞 스모크 0.7610 | ⏳ RUNNING 17:1x · 통과하면 판정 격자 자동 시작(아래) |
+| (체인) | olaf1 `setsid nohup` · PID 886791 | — | **판정 격자 체인** `…/logs/rope_judge_launch.sh` → 스모크 통과 확인 → `scripts/cluster/rope/judge_chain.sh` 고정 사본 실행 = C1-DN · R0 즉시 · A0 ep10 생기면 · 모델당 16 칸 × 판독기 seed 3 + 등변성·위치 판독 1 + 4-a 3(mig-3g) = 모델당 52 · 총 156 · 동시 8 · 끝나면 `judge_summary.py` → `paper_artifacts/rope_judge/summary.md` | 로그 `/proj/external_group/mrg/logs/rope_judge_chain.log` · 잡 이름 접두사 `rj_` |
+| 44530622 | 같음 | 01:00:00 | `rope_position.py` C1-DN → `paper_artifacts/rope_judge/smoke_fdn_position.json` | ✅ COMPLETED 29s · 위치 판독 top-1 **0.979**(seed 0·1·2 = 0.979/0.979/0.978 · SC 0.977 재현) · 등변성 P **1.000**(옮겨 간 코사인 0.997 > 같은 자리 0.910 · 천장) · M **0.206** [0.200, 0.211](같은 자리 0.958 > 옮겨 간 0.913) |
 
 ### 2026-11-23 RoPE 인코더 — 공학 단계 R0 sanity (Vault 11-23 (2)(3) · 사용자 확정 · `docs/rope_encoder_plan.md` §2)
 
