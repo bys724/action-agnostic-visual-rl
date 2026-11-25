@@ -90,6 +90,7 @@ if [[ "$ENCODER" == "raw-dl" || "$ENCODER" == "parvo-raw" ]]; then ARGS+=(--raw-
 [[ "${LABEL_FIXED_EPOCHS:-0}" == "1" ]] && ARGS+=(--label-fixed-epochs)
 [[ -n "${LABEL_FRACS:-}" ]] && ARGS+=(--label-fracs $LABEL_FRACS)  # 공백 구분, 예 "1.0 0.2 0.05 0.02"
 [[ -n "${EVAL_PERTURB:-}" ]] && ARGS+=(--eval-perturb-list $EVAL_PERTURB)  # 공백 구분 'kind:l1,l2'
+[[ "${PROBE_PE:-0}" == "1" ]] && ARGS+=(--probe-pos-embed)  # rope_encoder_plan §7-2 ② 판독기 측 위치 임베딩
 [[ -n "${PROBE_EPOCHS:-}" ]] && ARGS+=(--probe-epochs "$PROBE_EPOCHS")  # 진단용 (정규 = 20)
 if [[ -n "${PROBE_SEED:-}" ]]; then ARGS+=(--probe-seed "$PROBE_SEED"); fi  # 데이터 고정·probe만 재시드
 [[ -n "${RAW_PAD:-}" ]] && ARGS+=(--raw-pad "$RAW_PAD")                          # parvo-raw: zero | linear (§9 R2-2)

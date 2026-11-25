@@ -92,10 +92,31 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 ### ▶▶▶ 인계 (2026-11-25 9시) — 다음 세션은 여기부터
 
 - **상태**: RoPE 실험 **판정 단계 완료** — 결론 = "① 성립 · ② 불성립 → 위치 의존성은 낮아졌으나 범용 기능 이득은 없다"(후보 아님) · 정본 `docs/rope_encoder_plan.md` §3-5 · 집계 `paper_artifacts/rope_judge/summary.md`.
-- **돌아가는 것**: 없음. A0 4-a(44561684–86 · mig-3g)까지 끝나 §3-5 표 완성(mig-1g 판 44561680–82 는 GPU OOM).
+- **돌아가는 것 (11-25 10:4x)**: ① §7-2 사전 점검 ①② 체인 108 칸(`…/logs/rope_precheck_chain.log` → `paper_artifacts/rope_judge/precheck.md`) ② T1 θ 점검 두 판 44562828(θ 100) · 44562829(θ 10000) + 체인 둘(ep4 에서 자동 중지 → 관문 seed 3 → `theta_t1.md`). 전부 끝나면 결과 + θ · 해상도 자 · OOD 자 선택을 `VAULT_SYNC_TODO.md` 최상단 → Vault 확인 → R-full 이어 학습 제출. (A0 4-a 는 완료.)
 - **열린 것**: R₂(§4-1) **보류(사용자 11-25 확정)** — R 레시피 고정이라 R 이 후보에서 빠진 뒤 의미가 약함 · 무엇을 돌릴지는 Vault · 그 전 잡 0.
 - **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude` → `squeue -u $USER | grep rj_`.
 - **예산**: 공학 단계 R0 28.1 + A0 24.0 = 52.1 GPU·h(≤ 120) · MIG-1g 관문 1.6 h + 판정 격자 MIG-1g 13.1 h · MIG-3g 1.1 h.
+
+### 2026-11-25 RoPE §7-2 ③ T1 θ 점검 — 처음부터 4 ep 두 판 (사용자 11-25 "추천대로 T1 만" · `docs/rope_encoder_plan.md` §7-2 ③ 재설계)
+
+**무엇**: θ 100 / θ 10000 두 판을 R-full 스케줄 첫 4 ep 로 — `ARM=R RECIPE=c1 SUFFIX=T1th{100,10000} [ROPE_THETA=100] BATCH_SIZE_PER_GPU=256 USE_SCRATCH=1 bash scripts/cluster/rope/submit.sh --nodes=1 --ntasks-per-node=4 --gres=gpu:4 --cpus-per-task=16 --time=05:00:00` = C1 `40275371` Model args + `--rope`(+ `--rope-theta 100`) · EPOCHS 50 · LR 2.8e-4 · 워밍업 5 ep · 유효 배치 1024. **체인**(olaf1 · `setsid` · 고정 사본 `…/logs/rope_theta_chain.sh`): ① Model args 에서 rope 인자를 뺀 것 = C1 인자 · 헤더(epochs 50 · 256/GPU · lr 2.8e-4) 확인 → 다르면 scancel ② `checkpoint_epoch0004.pt` 생기면 120 s 뒤 scancel ③ 관문 8 칸 × 판독기 seed 0·1·2(접두사 `t1_`) → `theta_summary.py` → `paper_artifacts/rope_judge/theta_t1.md`. 채택 규칙 = 계획서 §7-2 dev 조작화(결과 전 고정). 추정 [R0 속도] = 판당 복사 ≈ 78 분 + 4 × 34 분 ≈ 3.6 h × 4 GPU ≈ 14.3 GPU·h · 두 판 ≈ 28.5 GPU·h. 이긴 판은 Vault 확인 뒤 같은 SUFFIX 로 재제출 → `latest.pt` 이어 학습.
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 44562828 | AIP 1×4 H100 · CPU 16/task | 05:00:00 | T1 θ 100 · CHECKPOINT_SUFFIX `rope_T1th100` · 체인 로그 `…/logs/rope_theta_chain_T1th100.log` | ⏳ PENDING(11-25 10:4x 제출) |
+| 44562829 | 같음 | 05:00:00 | T1 θ 10000 · CHECKPOINT_SUFFIX `rope_T1th10000` · 체인 로그 `…/logs/rope_theta_chain_T1th10000.log` | ⏳ PENDING |
+
+### 2026-11-25 RoPE §7-2 사전 점검 ①② — 최소 칸 (Vault 11-25 · 사용자 승인 · `docs/rope_encoder_plan.md` §7-2 · 결과 = 사후 보고 행 · §3 판정 불변)
+
+**무엇**: ① 해상도 **보간** 재측정 — `--eval-perturb-list resi:288,320`(RoPE 좌표 × 14/g · APE 는 `res` 와 같은 bicubic) · 같은 칸에서 `res:288,320`(외삽)도 같이 재서 §3 값 재현 확인. ② **판독기 측 위치 임베딩** — `PROBE_PE=1` → `--probe-pos-embed`(attentive 판독기에 stream 별 학습 위치 임베딩 [S, 196, D] · std 0.02 · 토큰에 더한 뒤 풀링). CPU 점검 통과: 기본값 = 수정 전 비트 동일 · 보간 각도 오차 1e-6 · 배율 설정/복귀 뒤 224 · 외삽 표 불변 · 위치 임베딩 꺼짐 = 파라미터 · 난수 소비 동일. **확인 기준**: ① 칸의 깨끗한 값 · `res` 값 = `rj_R0_m_act_pos_s0` 그대로 · `resi` finite ② 칸 finite · `probe_pos_embed: true` 기록.
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 44562625 | mig-1g ×1 · CPU 4 · 48G | 03:00:00 | ① R0 · `m_only` · action · concat · gap20 · seed 0 · `EVAL_PERTURB="res:288,320 resi:288,320"` · SUFFIX `pc_ri_R0_m_act_pos_s0` | ✅ 12m52s · **§3 값 정확 재현**(깨끗한 0.865909 · 외삽 288 −6.588370 · 320 −9.219912 = `rj_R0_m_act_pos_s0`) · 보간 finite |
+| 44562626 | 같음 | 03:00:00 | ② R0 · OOD libero_goal · `p_t_m` · attentive · seed 0 · `PROBE_PE=1` · SUFFIX `pc_pe_R0_ood_goal_attn_s0` | ✅ 5m32s · finite · `probe_pos_embed: true` · best ep 20 |
+| 44562627 | 같음 | 03:00:00 | ② R0 · OOD CALVIN 교차 폴더 · gap30 · `p_t_m` · attentive · seed 0 · `PROBE_PE=1` · SUFFIX `pc_pe_R0_ood_calvin_attn_s0` | ✅ 9m49s · finite · `probe_pos_embed: true` · best ep 18 · 최소 칸 3 개 합 ≈ 0.47 MIG-1g·h |
+| (체인) | olaf1 `setsid nohup` · PID 846108 | — | **나머지 108 칸**(`scripts/cluster/rope/precheck_chain.sh` 고정 사본 `…/logs/rope_precheck_chain.sh`) = ① R0 seed 1·2 + ② 세 모델 × seed 3 × (관문 8 + OOD attn 4) − 최소 칸 2 · 동시 8(접두사 `pc_`) · 끝나면 `precheck_summary.py` → `paper_artifacts/rope_judge/precheck.md` · 10:09 시작 | 로그 `/proj/external_group/mrg/logs/rope_precheck_chain.log` |
+| 44562750 | mig-1g ×1 · CPU 4 · 32G | 00:30:00 | **해상도 토큰 진단**(판정 아님 · ① 보조) — R0 · A0 · 프레임 8 쌍 · 240/256/288/320 × 외삽/보간: 보간 배율이 실제 토큰을 바꾸는가(APE 는 0 이어야) · 224 토큰 대비 코사인 · 노름 비 · 스크립트 `…/logs/rope_res_token_diag.py` | ✅ 수 초 · **보간 배율이 R0 토큰을 바꿈**(M 320 차 0.108 · A0 = 0) · 224 대비 코사인(보간) R0 M 0.988/0.978/0.896/0.824(240/256/288/320) vs A0 M 0.984–0.978 · R0 P 0.96 대 유지 · 노름 비 ≤ 1.08 → 붕괴는 R0 M 스트림 표현 이동(구현 결함 아님) |
 
 ### 2026-11-24 RoPE 판정 단계 — 새 측정 자 스모크 (C1-DN · 1 칸씩 · `docs/rope_encoder_plan.md` §3 dev 조작화)
 

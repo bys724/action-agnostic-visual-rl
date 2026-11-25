@@ -554,12 +554,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
         """RoPE 주파수 [n, head_dim//2] (rope off 면 None). n = 패치 수(정사각 격자)."""
         if not self.rope:
             return None
-        key = (n, str(device))
+        scale = getattr(self, "rope_pos_scale", 1.0)   # 평가 전용 위치 보간 배율(set_parvo_resolution · 기본 1.0)
+        key = (n, str(device), scale)
         if key not in self._rope_cache:
             side = int(round(n ** 0.5))
             assert side * side == n, f"RoPE: 정사각 격자 아님 (n={n})"
             self._rope_cache[key] = build_2d_rope_freqs(
-                side, self.blocks_p[0].head_dim, self.rope_theta).to(device)
+                side, self.blocks_p[0].head_dim, self.rope_theta, pos_scale=scale).to(device)
         return self._rope_cache[key]
 
     # ----------------------------------------------------------------------

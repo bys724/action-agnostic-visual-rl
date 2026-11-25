@@ -18,10 +18,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def build_2d_rope_freqs(num_patches_per_side: int, dim: int, theta: float = 10000.0):
+def build_2d_rope_freqs(num_patches_per_side: int, dim: int, theta: float = 10000.0, pos_scale: float = 1.0):
     """2D RoPE 주파수 테이블 생성.
 
     패치의 (row, col) 좌표를 dim의 절반씩 나눠 인코딩.
+    pos_scale: 좌표 배율(기본 1.0 = 정수 칸 번호 · 비트 동일). 해상도 보간 평가용 — 격자 g 를 학습 격자 g0 범위로
+      눌러 넣으려면 g0/g (rope_encoder_plan §7-2 ①). RoPE 는 상대 위치만 보므로 원점 오프셋은 무관.
     Returns: [N, dim] complex frequencies (N = num_patches_per_side^2)
     """
     half_dim = dim // 2
@@ -30,6 +32,8 @@ def build_2d_rope_freqs(num_patches_per_side: int, dim: int, theta: float = 1000
 
     rows = torch.arange(num_patches_per_side, dtype=torch.float32)
     cols = torch.arange(num_patches_per_side, dtype=torch.float32)
+    if pos_scale != 1.0:
+        rows, cols = rows * pos_scale, cols * pos_scale
 
     # [H, W, half_dim//2] for row and col separately
     grid_r, grid_c = torch.meshgrid(rows, cols, indexing='ij')

@@ -240,13 +240,16 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
 
 
 @torch.no_grad()
-def set_parvo_resolution(model, img_size: int):
+def set_parvo_resolution(model, img_size: int, interp: bool = False):
     """rope_encoder_plan §3-3 해상도 외삽: 224 로 학습한 인코더에 img_size 입력(격자 img_size/16).
     APE 판(C1-DN · A)은 14×14 위치 임베딩을 새 격자로 bicubic 보간(CLS 위치 그대로 · timm resample_abs_pos_embed 관례),
-    RoPE 판(R)은 모델이 격자 크기별 주파수를 다시 만든다(`_freqs` · 패치 간격 불변) → 여기서 할 일 없음."""
+    RoPE 판(R)은 모델이 격자 크기별 주파수를 다시 만든다(`_freqs`). interp=False = 패치 간격 불변(외삽 · §3 판정 자) ·
+    interp=True = 좌표를 학습 격자 범위로 눌러 넣음(배율 g0/g · §7-2 ① 보간 재측정). APE 는 interp 와 무관(늘 bicubic)."""
     g = img_size // model.patch_size
     assert g * model.patch_size == img_size, f"img_size {img_size} 는 패치 {model.patch_size} 의 배수여야 함"
     if model.rope:
+        g0 = int(round(model.num_patches ** 0.5))
+        model.rope_pos_scale = (g0 / g) if interp else 1.0
         return
     if not hasattr(model, "_ape_orig"):   # 늘 학습된 원본에서 보간 → 224 로 되돌리면 원본과 비트 동일 (평가 중 해상도 왕복용)
         model._ape_orig = {n: getattr(model, n).detach().clone() for n in ("pos_embed_p", "pos_embed_m")}
@@ -413,8 +416,9 @@ def encode_pairs_parvo_raw(model, frames_prev, frames_curr, device, batch: int =
     return torch.cat(out, dim=0)
 
 
-PERTURB_KINDS = ("gain", "ramp", "shadow", "noise", "shot", "corr", "jpeg", "shift", "res")  # 뒤 3종 = §10 held-out 잡음 · shift·res = RoPE 판정 (append만 — 기존 seed 불변)
+PERTURB_KINDS = ("gain", "ramp", "shadow", "noise", "shot", "corr", "jpeg", "shift", "res", "resi")  # 뒤 3종 = §10 held-out 잡음 · shift·res = RoPE 판정 (append만 — 기존 seed 불변)
 # res = 평가 입력 해상도만 level 로 (판독기는 학습 해상도로 고정 · parvo 전용 · main 의 교란 루프에서 처리)
+# resi = res 와 같되 RoPE 좌표를 학습 격자 범위로 보간 (§7-2 ① · APE 는 res 와 동일)
 SHADOW_AXIS_RANGE = (0.15, 0.35)   # 타원 반축 (이미지 한 변 대비 비율) — plan 미기재, 이 구현의 선택
 SHADOW_SOFTNESS = 0.1              # 경계 sigmoid 폭 (반경 단위)
 
@@ -620,6 +624,9 @@ class LinearProbe(nn.Module):
         return self.linear(x)
 
 
+PROBE_POS_EMBED = False   # §7-2 ②: True 면 AttentivePoolProbe 가 stream 별 학습 위치 임베딩을 토큰에 더한 뒤 풀링 (CLI --probe-pos-embed)
+
+
 class AttentivePoolProbe(nn.Module):
     """Attentive-pooling probe (probe_action.py와 동일). stream별 learnable query 1개로
     patch 토큰을 softmax-weighted pool → stream pooled concat → linear head.
@@ -640,6 +647,10 @@ class AttentivePoolProbe(nn.Module):
         self.query = nn.Parameter(torch.randn(n_streams, embed_dim) * 0.02)
         self.head = nn.Linear(n_streams * embed_dim + extra_dim, action_dim)
         self.scale = embed_dim ** -0.5
+        self.pos = None
+        if PROBE_POS_EMBED:   # 판독기가 위치를 자기 안에 갖게 함(토큰 안 절대 위치에 기대지 않게) · 꺼져 있으면 파라미터·난수 소비 없음
+            self.pos = nn.Parameter(torch.zeros(n_streams, n_patch, embed_dim))
+            nn.init.trunc_normal_(self.pos, std=0.02)
 
     def forward(self, x, extra=None):
         B = x.shape[0]
@@ -647,6 +658,9 @@ class AttentivePoolProbe(nn.Module):
         if self.proj is not None:
             i = self.proj_stream
             x = torch.cat([x[:, :i], self.proj(x[:, i:i + 1]), x[:, i + 1:]], dim=1)
+        if self.pos is not None:
+            assert x.shape[2] == self.n_patch, "판독기 위치 임베딩은 학습 패치 수에서만 (해상도 교란과 같이 쓰지 않음)"
+            x = x + self.pos
         attn = torch.einsum("bsnd,sd->bsn", x, self.query) * self.scale
         attn = attn.softmax(dim=-1)
         pooled = torch.einsum("bsn,bsnd->bsd", attn, x)
@@ -919,11 +933,17 @@ def main():
                         help="parvo m_only: M 인코더를 mean|ΔL|>tau 패치만으로 인코딩(mask token 채움, 1/255=0.00392)")
     parser.add_argument("--probe-noise-sigma", type=float, default=0.0,
                         help="§9 R2-3 현실적 sim: probe 학습·시험 양쪽 프레임에 가우시안 픽셀 노이즈 σ (0=끔)")
+    parser.add_argument("--probe-pos-embed", action="store_true",
+                        help="rope_encoder_plan §7-2 ②: attentive 판독기에 stream 별 학습 위치 임베딩(토큰에 더한 뒤 풀링)")
     parser.add_argument("--eval-perturb-list", nargs="*", default=None,
                         help="probe_action_calvin.py 와 같은 형식 'kind:l1,l2,..' (예 shift:8,16,32 res:288,320). 깨끗한 train 으로 "
                              "probe 1 회 fit(best epoch 고정 · 깨끗한 eval 로 고름) → eval 프레임만 교란해 재인코딩·평가 (action 전용)")
     args = parser.parse_args()
 
+    if args.probe_pos_embed:
+        assert args.readout == "attentive", "--probe-pos-embed 는 attentive 전용"
+        global PROBE_POS_EMBED
+        PROBE_POS_EMBED = True
     if args.readout == "attentive" and args.view == "both":
         raise ValueError("attentive readout은 단일 view만 지원 (both = feature-concat이 토큰 레이아웃 파괴)")
     if args.position_control != "none" and args.view == "both":
@@ -1219,9 +1239,9 @@ def main():
             perturb_results[kind] = {}
             for li, lv in enumerate(float(x) for x in levels.split(",")):
                 gen = torch.Generator().manual_seed(10_000 + 100 * PERTURB_KINDS.index(kind) + li)
-                if kind == "res":   # §3-3 해상도 외삽: 판독기 고정 · eval 만 lv 해상도 (APE 보간 / RoPE 주파수 재계산) → 원 해상도로 복귀
+                if kind in ("res", "resi"):   # §3-3 해상도 외삽 · resi = RoPE 좌표 보간(§7-2 ①): 판독기 고정 · eval 만 lv 해상도 (APE 보간 / RoPE 주파수 재계산) → 원 해상도로 복귀
                     assert args.encoder == "parvo", "res 교란은 parvo 전용"
-                    set_parvo_resolution(model, int(lv))
+                    set_parvo_resolution(model, int(lv), interp=(kind == "resi"))
                     emb_p, tgt_p, _, _ = collect_embed(eval_demos, f"eval/res={lv:g}", size=int(lv))
                     set_parvo_resolution(model, img_size)
                 else:
@@ -1287,6 +1307,7 @@ def main():
             "elapsed_seconds": float(elapsed),
             "img_size": img_size,
             "probe_seed": args.probe_seed,
+            "probe_pos_embed": bool(args.probe_pos_embed),
             "perturb": perturb_results or None,
         }
         if is_cls:

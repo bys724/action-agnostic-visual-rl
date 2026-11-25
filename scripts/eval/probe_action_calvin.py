@@ -119,6 +119,8 @@ def main():
                              "비율마다 재샘플(seed=probe seed 기반). 예) 1.0 0.2 0.05 0.02")
     parser.add_argument("--label-fixed-epochs", action="store_true",
                         help="라벨 효율 참고 열: step 매칭 대신 --probe-epochs 고정 (편향 점검용, 판정 미사용)")
+    parser.add_argument("--probe-pos-embed", action="store_true",
+                        help="rope_encoder_plan §7-2 ②: attentive 판독기에 stream 별 학습 위치 임베딩")
     parser.add_argument("--probe-seed", type=int, default=None,
                         help="probe 초기화·셔플 전용 seed (segment 샘플링은 --seed 고정 유지). "
                              "None=기존 동작. refinement_floor_plan §6 seed 3 반복용")
@@ -148,6 +150,10 @@ def main():
     parser.add_argument("--input-source", default="rgb", choices=list(INPUT_SOURCES),
                         help="E0: dinov2/siglip/vc1에 ΔL 한 장을 이미지로 (dl_signed | dl_abs). rgb = 기존 2프레임")
     args = parser.parse_args()
+    if args.probe_pos_embed:   # AttentivePoolProbe 는 probe_action_libero 모듈 스위치를 읽음
+        assert args.readout == "attentive", "--probe-pos-embed 는 attentive 전용"
+        import scripts.eval.probe_action_libero as _pal
+        _pal.PROBE_POS_EMBED = True
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -446,6 +452,7 @@ def main():
                 "n_eval_pairs": int(len(tgt_ev)),
                 "best_epoch": best["epoch"],
                 "probe_seed": args.probe_seed,
+                "probe_pos_embed": bool(args.probe_pos_embed),
                 "perturb": perturb_results or None,
                 "label_frac": label_results or None,
                 "label_fixed_epochs": bool(args.label_fixed_epochs),
