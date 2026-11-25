@@ -89,10 +89,11 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
-### ▶▶▶ 인계 (2026-11-25 9시) — 다음 세션은 여기부터
+### ▶▶▶ 인계 (2026-11-26 1시) — 다음 세션은 여기부터
 
 - **상태**: RoPE 실험 **판정 단계 완료** — 결론 = "① 성립 · ② 불성립 → 위치 의존성은 낮아졌으나 범용 기능 이득은 없다"(후보 아님) · 정본 `docs/rope_encoder_plan.md` §3-5 · 집계 `paper_artifacts/rope_judge/summary.md`.
-- **돌아가는 것 (11-25 10:4x)**: ① §7-2 사전 점검 ①② 체인 108 칸(`…/logs/rope_precheck_chain.log` → `paper_artifacts/rope_judge/precheck.md`) ② T1 θ 점검 두 판 44562828(θ 100) · 44562829(θ 10000) + 체인 둘(ep4 에서 자동 중지 → 관문 seed 3 → `theta_t1.md`). 전부 끝나면 결과 + θ · 해상도 자 · OOD 자 선택을 `VAULT_SYNC_TODO.md` 최상단 → Vault 확인 → R-full 이어 학습 제출. (A0 4-a 는 완료.)
+- **사전 점검 ①② 완료 (11-25 11:54)**: ① 무너짐 · ② 격차 그대로 → Vault 확인 항목 = `docs/VAULT_SYNC_TODO.md`(해상도 자 · OOD 자 · 보류 해제 · θ 는 T1 뒤 추가).
+- **돌아가는 것 (11-26 00:54)**: 없음(잡 0 · 체인 0). T1 두 판 + 관문 48 칸 완료 · **🔴 θ 100 관문 값 무효**(평가 로더가 θ 미전달 → θ 10000 으로 평가 · 상세 = 계획서 §7-2 "결과 ③") → 로더 수정 + θ 100 24 칸 재측정 완료(01:23) = **채택 θ 10000** → 다음 = Vault 확인(`VAULT_SYNC_TODO.md` 네 항목) → R-full 이어 학습 제출(`SUFFIX=T1th10000`).
 - **열린 것**: R₂(§4-1) **보류(사용자 11-25 확정)** — R 레시피 고정이라 R 이 후보에서 빠진 뒤 의미가 약함 · 무엇을 돌릴지는 Vault · 그 전 잡 0.
 - **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude` → `squeue -u $USER | grep rj_`.
 - **예산**: 공학 단계 R0 28.1 + A0 24.0 = 52.1 GPU·h(≤ 120) · MIG-1g 관문 1.6 h + 판정 격자 MIG-1g 13.1 h · MIG-3g 1.1 h.
@@ -103,8 +104,16 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 | 잡 ID | 자원 | --time | 무엇 | 결과 |
 |---|---|---|---|---|
-| 44562828 | AIP 1×4 H100 · CPU 16/task | 05:00:00 | T1 θ 100 · CHECKPOINT_SUFFIX `rope_T1th100` · 체인 로그 `…/logs/rope_theta_chain_T1th100.log` | ⏳ PENDING(11-25 10:4x 제출) |
-| 44562829 | 같음 | 05:00:00 | T1 θ 10000 · CHECKPOINT_SUFFIX `rope_T1th10000` · 체인 로그 `…/logs/rope_theta_chain_T1th10000.log` | ⏳ PENDING |
+| 44562828 | AIP 1×4 H100 · CPU 16/task | 05:00:00 | T1 θ 100 · CHECKPOINT_SUFFIX `rope_T1th100` · 체인 로그 `…/logs/rope_theta_chain_T1th100.log` | ✅ ep4 자동 중지(의도된 scancel) · 11-25 11:50:25–15:24:49 · 3:34:24 × 4 = **14.3 GPU·h** · ep4 손실 0.0272 · 관문 24 칸(44585619–642) COMPLETED · **🔴 관문 값 무효**(로더 θ 미전달) |
+| 44562829 | 같음 | 05:00:00 | T1 θ 10000 · CHECKPOINT_SUFFIX `rope_T1th10000` · 체인 로그 `…/logs/rope_theta_chain_T1th10000.log` | ✅ ep4 자동 중지 · 11-25 16:24:07–20:00:51 · 3:36:44 × 4 = **14.4 GPU·h** · ep4 손실 0.0277 · 관문 24 칸(44601472–495) COMPLETED · 값 유효 · 두 판 관문 합 5.83 MIG-1g·h(44585642 한 칸만 1h27m · olaf-g009 · 나머지 4–7 분) |
+
+### 2026-11-26 T1 θ 100 관문 24 칸 재측정 (사용자 11-26 "추천대로" · 로더 θ 전달 수정)
+
+**수정**: `pretrain.py` 저장 시 RoPE 판이면 `rope_theta` 기록 · `build_parvo_encoder` = ckpt 기록 또는 env `ROPE_THETA`(기록 없는 옛 ckpt · R0 는 10000) 로만 · 없거나 둘이 다르면 중단 · 로그에 `[parvo] rope_theta=…` · `theta_chain.sh` 가 `ROPE_THETA` 전달. CPU 확인 [확정]: R0 · T1th10000 · C1-DN 토큰 수정 전과 비트 동일 · 미지정/충돌 시 중단 · 기록된 ckpt 는 env 없이 100 복원. 무효 결과 24 폴더는 `…_invalid_theta` 로 이름 변경(집계 제외 · 삭제 아님).
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 44618194 + 체인 23 | mig-1g ×1 · CPU 4 · 48G | 02:00:00 | T1 θ 100 ep4 관문 8 칸 × 판독기 seed 0·1·2(`ROPE_THETA=100` · 나머지 설정 11-25 와 같음) · 첫 칸 확인 → 23 칸 → 24 로그 θ 확인 → `theta_summary.py` · 체인 `…/logs/rope_theta100_rerun.{sh,log}` | ✅ 24/24 COMPLETED(44618194 · 44618288–310) · 01:06–01:23 · **1.95 MIG-1g·h** · 24 로그 모두 θ 100 · **채택 θ 10000**(θ 100 M identity 잔여 +0.306 > 0.291 · 비중첩으로 더 나은 값 0) |
 
 ### 2026-11-25 RoPE §7-2 사전 점검 ①② — 최소 칸 (Vault 11-25 · 사용자 승인 · `docs/rope_encoder_plan.md` §7-2 · 결과 = 사후 보고 행 · §3 판정 불변)
 
@@ -115,7 +124,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 44562625 | mig-1g ×1 · CPU 4 · 48G | 03:00:00 | ① R0 · `m_only` · action · concat · gap20 · seed 0 · `EVAL_PERTURB="res:288,320 resi:288,320"` · SUFFIX `pc_ri_R0_m_act_pos_s0` | ✅ 12m52s · **§3 값 정확 재현**(깨끗한 0.865909 · 외삽 288 −6.588370 · 320 −9.219912 = `rj_R0_m_act_pos_s0`) · 보간 finite |
 | 44562626 | 같음 | 03:00:00 | ② R0 · OOD libero_goal · `p_t_m` · attentive · seed 0 · `PROBE_PE=1` · SUFFIX `pc_pe_R0_ood_goal_attn_s0` | ✅ 5m32s · finite · `probe_pos_embed: true` · best ep 20 |
 | 44562627 | 같음 | 03:00:00 | ② R0 · OOD CALVIN 교차 폴더 · gap30 · `p_t_m` · attentive · seed 0 · `PROBE_PE=1` · SUFFIX `pc_pe_R0_ood_calvin_attn_s0` | ✅ 9m49s · finite · `probe_pos_embed: true` · best ep 18 · 최소 칸 3 개 합 ≈ 0.47 MIG-1g·h |
-| (체인) | olaf1 `setsid nohup` · PID 846108 | — | **나머지 108 칸**(`scripts/cluster/rope/precheck_chain.sh` 고정 사본 `…/logs/rope_precheck_chain.sh`) = ① R0 seed 1·2 + ② 세 모델 × seed 3 × (관문 8 + OOD attn 4) − 최소 칸 2 · 동시 8(접두사 `pc_`) · 끝나면 `precheck_summary.py` → `paper_artifacts/rope_judge/precheck.md` · 10:09 시작 | 로그 `/proj/external_group/mrg/logs/rope_precheck_chain.log` |
+| (체인) | olaf1 `setsid nohup` · PID 846108 | — | **나머지 108 칸**(`scripts/cluster/rope/precheck_chain.sh` 고정 사본 `…/logs/rope_precheck_chain.sh`) = ① R0 seed 1·2 + ② 세 모델 × seed 3 × (관문 8 + OOD attn 4) − 최소 칸 2 · 동시 8(접두사 `pc_`) · 끝나면 `precheck_summary.py` → `paper_artifacts/rope_judge/precheck.md` · 10:09 시작 | ✅ 108/108 COMPLETED · 10:09:45–11:54:10 · 합 **9.94 MIG-1g·h**(최소 칸 포함 ≈ 10.4) · 읽기 = ① **무너짐**(R0 보간 낙폭 288 +4.10 · 320 +7.79 vs A0 0.15 · 0.39 · 외삽 §3 재현) · ② **격차 그대로**(비중첩 하락 벤치 3 → 3 · 단 LIBERO 격차 절반 이하로 감소 · CALVIN 만 남음) · R0 PE 판 M identity 잔여 +0.402 · 상세 = 계획서 §7-2 "결과 ①②" · Vault 확인 항목 = `docs/VAULT_SYNC_TODO.md` |
 | 44562750 | mig-1g ×1 · CPU 4 · 32G | 00:30:00 | **해상도 토큰 진단**(판정 아님 · ① 보조) — R0 · A0 · 프레임 8 쌍 · 240/256/288/320 × 외삽/보간: 보간 배율이 실제 토큰을 바꾸는가(APE 는 0 이어야) · 224 토큰 대비 코사인 · 노름 비 · 스크립트 `…/logs/rope_res_token_diag.py` | ✅ 수 초 · **보간 배율이 R0 토큰을 바꿈**(M 320 차 0.108 · A0 = 0) · 224 대비 코사인(보간) R0 M 0.988/0.978/0.896/0.824(240/256/288/320) vs A0 M 0.984–0.978 · R0 P 0.96 대 유지 · 노름 비 ≤ 1.08 → 붕괴는 R0 M 스트림 표현 이동(구현 결함 아님) |
 
 ### 2026-11-24 RoPE 판정 단계 — 새 측정 자 스모크 (C1-DN · 1 칸씩 · `docs/rope_encoder_plan.md` §3 dev 조작화)

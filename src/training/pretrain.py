@@ -1439,6 +1439,8 @@ def train(
                 'best_eval_loss': best_eval_loss,
                 'history': history,
             }
+            if getattr(model_to_save, 'rope', False):  # θ 는 가중치에 흔적이 없음 → 평가 로더가 읽을 수 있게 기록
+                checkpoint_data['rope_theta'] = float(model_to_save.rope_theta)
 
             # Save periodic checkpoint
             if save_interval and epoch % save_interval == 0:

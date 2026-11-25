@@ -217,6 +217,15 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
     _comp = any("m_recon" in k for k in sd)  # CoMP-MAE = M-recon 분기 보유
     _rope = _comp and "pos_embed_p" not in sd  # RoPE 판 R (rope_encoder_plan.md): APE 키 없음
+    # θ 는 가중치에 흔적이 없어 틀려도 로드가 조용히 성공한다 (11-26 T1 θ 100 을 10000 으로 평가해 24 칸 무효).
+    # → 기본값 없음: ckpt 기록(rope_theta) 또는 env ROPE_THETA(기록 없는 옛 ckpt · R0 = 10000) 로만. 둘이 다르면 중단.
+    _rope_kw = {}
+    if _rope:
+        _saved, _env = ckpt.get("rope_theta"), os.environ.get("ROPE_THETA")
+        assert _saved or _env, f"RoPE ckpt 에 rope_theta 기록 없음 — 학습 때 θ 를 ROPE_THETA 로 명시: {checkpoint}"
+        assert not (_saved and _env) or float(_saved) == float(_env), f"ckpt rope_theta {_saved} ≠ ROPE_THETA {_env}"
+        _rope_kw = {"rope_theta": float(_saved or _env)}
+        print(f"[parvo] rope_theta={_rope_kw['rope_theta']:g} ({'ckpt' if _saved else 'env ROPE_THETA'})", flush=True)
     # qk-norm ckpt 자동 감지 — 모델 생성 전 전역 스위치 (pretrain --qk-norm parity).
     # 미설정 시 strict=False가 q_norm/k_norm 가중치를 조용히 드랍 → 아키 불일치 inference.
     from src.models.common import blocks as _blocks
@@ -226,7 +235,7 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
         pair_mode=True, use_sobel=False, masked_anchor=True,
         m_embed_dim=sd["cls_token_m"].shape[-1] if _comp and not _rope else None,  # alpha §4-c 작은 M 폭 자동 감지
         m_only=_comp and not _rope and sd["cls_token_m"].shape[-1] != _ed,          # 작은 M 은 m_only 구성 (추론엔 영향 없음 · 전부 동결)
-        rope=_rope,
+        rope=_rope, **_rope_kw,
     )
     missing, unexpected = model.load_state_dict(sd, strict=False)
     _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]

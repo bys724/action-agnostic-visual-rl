@@ -32,7 +32,7 @@ IDS=()
 for s in 0 1 2; do for m in m pt; do for t in act id; do for p in "" _pos; do
   mode=$([[ $m == m ]] && echo m_only || echo p_t_only); tgt=$([[ $t == act ]] && echo action || echo identity)
   pc=$([[ -n $p ]] && echo concat || echo none); n=t1_${RUN}_${m}_${t}${p}_s$s
-  id=$(env ENCODER=parvo CHECKPOINT=$CK PROBE_SEED=$s READOUT=attentive TASK_SUITE=libero_object GAPS=20 PARVO_MODE=$mode \
+  id=$(env ROPE_THETA=$THETA ENCODER=parvo CHECKPOINT=$CK PROBE_SEED=$s READOUT=attentive TASK_SUITE=libero_object GAPS=20 PARVO_MODE=$mode \
        TARGET=$tgt POSCTRL=$pc SUFFIX=$n sbatch --parsable -p "$PART" --gres=gpu:1 --cpus-per-task=4 --mem=48G \
        --time=02:00:00 --job-name=$n --output=$L/${n}_%j.out --export=ALL scripts/cluster/probe_action_libero.sbatch)
   [ -n "$id" ] || { echo "sbatch failed for $n"; exit 1; }   # 빈 ID → squeue 전체 큐 → 무한 대기
