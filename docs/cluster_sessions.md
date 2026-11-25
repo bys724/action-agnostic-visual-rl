@@ -100,15 +100,17 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 합계 11 잡 · 전부 COMPLETED · MIG-1g 0.4 h. 결과 = `docs/VAULT_SYNC_TODO.md` "🟣 §8 0 단계 결과" · **다음 세션: Vault 확인(읽기 규칙 · M 전용 판 구현 안 1 · 1 단계 두 판) 뒤에만 코드 · 잡.** 주의: T1 · R0 체크포인트는 θ 기록이 없어 `ROPE_THETA` 필수(이번 잡 로그에서 100 / 10000 확인).
 
-### ▶▶▶ 인계 (2026-11-26 1시) — 다음 세션은 여기부터
+### ▶▶▶ 인계 (2026-11-26 아침) — 다음 세션은 여기부터
 
-- **◀ Vault 11-26 (사용자 확정)**: 네 확인 항목 처분 완료 → **R-full 제출 보류 · θ 10000 채택 보류** · 다음 = `docs/VAULT_SYNC_TODO.md` 최상단 "§8 판 선택 단계" 0 단계(학습 0 · ⚠ 확인 보고 → 복원 평가 스크립트 → 있는 체크포인트 측정 → 멈춤). 아래 "다음 = … R-full 이어 학습 제출(`SUFFIX=T1th10000`)"은 무효.
-- **상태**: RoPE 실험 **판정 단계 완료** — 결론 = "① 성립 · ② 불성립 → 위치 의존성은 낮아졌으나 범용 기능 이득은 없다"(후보 아님) · 정본 `docs/rope_encoder_plan.md` §3-5 · 집계 `paper_artifacts/rope_judge/summary.md`.
-- **사전 점검 ①② 완료 (11-25 11:54)**: ① 무너짐 · ② 격차 그대로 → Vault 확인 항목 = `docs/VAULT_SYNC_TODO.md`(해상도 자 · OOD 자 · 보류 해제 · θ 는 T1 뒤 추가).
-- **돌아가는 것 (11-26 00:54)**: 없음(잡 0 · 체인 0). T1 두 판 + 관문 48 칸 완료 · **🔴 θ 100 관문 값 무효**(평가 로더가 θ 미전달 → θ 10000 으로 평가 · 상세 = 계획서 §7-2 "결과 ③") → 로더 수정 + θ 100 24 칸 재측정 완료(01:23) = **채택 θ 10000** → 다음 = Vault 확인(`VAULT_SYNC_TODO.md` 네 항목) → R-full 이어 학습 제출(`SUFFIX=T1th10000`).
-- **열린 것**: R₂(§4-1) **보류(사용자 11-25 확정)** — R 레시피 고정이라 R 이 후보에서 빠진 뒤 의미가 약함 · 무엇을 돌릴지는 Vault · 그 전 잡 0.
-- **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude` → `squeue -u $USER | grep rj_`.
-- **예산**: 공학 단계 R0 28.1 + A0 24.0 = 52.1 GPU·h(≤ 120) · MIG-1g 관문 1.6 h + 판정 격자 MIG-1g 13.1 h · MIG-3g 1.1 h.
+- **상태**: RoPE §8 판 선택 단계의 **0 단계(학습 0) 완료 · 지시대로 멈춤** · 잡 0 · 체인 0 · HEAD = origin/main. 원격에 0 단계 뒤의 새 Vault 지시 없음(11-26 아침 fetch 확인).
+- **다음에 할 수 있는 일 = 없음(Vault 확인 대기)**. Vault 가 정할 것 = `docs/VAULT_SYNC_TODO.md` 최상단 "🟣 §8 0 단계 결과": ① 2 단계 읽기 규칙(dev 추천 = 판정 칸을 못 본 장면 4 칸으로 · 1 단계 결과 전 고정) ② M 전용 판 구현 안(dev 추천 = 안 1 · 같은 문서 "🟡 dev 확인 보고" ⓑ 표) ③ 1 단계 두 판(M 전용 × θ 100 / 10000 · 4 ep · ≈ 28.6 GPU·h) 제출. **확인 전 코드 · 잡 금지.**
+- **Vault 확인이 오면 (순서)**: `--rope-scope all|m` 구현(기본 all = 현행과 비트 동일 확인 · `RoutingInterpreterStep.forward` 에서 routing 과 self-attn 주파수 분리 · M 디코더 `dec_pos_embed_m` 유지) → CPU 점검 → 1-GPU sanity(`CHECKPOINT_SUFFIX` 필수) → 두 판 제출(T1 과 같은 명령 = 아래 "T1 θ 점검" 절 + scope 인자 · ep4 자동 중지 체인 `scripts/cluster/rope/theta_chain.sh`) → 복원 평가 → 집계.
+- **0 단계 결과 한 줄**: θ 읽기 = 못 가름(dev 제안 규칙) · 평행이동 · 확대 크롭 칸은 어떤 판 쌍도 못 가름 · 가르는 것은 못 본 장면(LIBERO · CALVIN) 4 칸뿐 · 규칙의 과반 조건은 구조적으로 도달 불가(문제로 보고 · 고치지 않음). 표 = `paper_artifacts/rope_judge/recon/recon_summary.md`.
+- **재현 명령**: 복원 평가 = `python scripts/eval/recon_eval.py --checkpoint <ckpt> --out paper_artifacts/rope_judge/recon/<판> [--check]`(RoPE 옛 ckpt = env `ROPE_THETA` 필수 · T1th100 = 100 · T1th10000 · R0 = 10000) · 집계 = `python scripts/cluster/rope/recon_summary.py --arms A0 R0 C1DN C1ep4 T1th100 T1th10000 --pair T1th100 T1th10000 --pair R0 A0 --pair T1th100 C1ep4 --pair T1th10000 C1ep4`. 체크포인트 경로 = 위 "RoPE §8 0 단계" 절 · 표본별 값 `<판>.npz` 는 이번만 강제 커밋(`.gitignore` 의 `*.npz` 예외 · 규칙이 바뀌면 재측정 없이 다시 읽기 위함).
+- **보류 그대로**: R-full 본학습 · θ 채택 · R₂(§4-1) — 전부 Vault.
+- **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude`(같은 대화 두 프로세스 확인) → `squeue -u $USER`.
+- **예산(§8 상한 ≈ 195 GPU·h)**: 지금까지 R0 28.1 + A0 24.0 + T1 28.7 = 80.8 GPU·h · MIG-1g 관문 · 판정 · 사전 점검 · 0 단계 합 ≈ 33 h · MIG-3g 1.1 h.
+- 미추적 잔여(무관 · 건드리지 않음): `…_invalid_theta` 24 폴더(무효 결과 보존) · `external/VideoMAE` · alpha smoke json 2.
 
 ### 2026-11-25 RoPE §7-2 ③ T1 θ 점검 — 처음부터 4 ep 두 판 (사용자 11-25 "추천대로 T1 만" · `docs/rope_encoder_plan.md` §7-2 ③ 재설계)
 
