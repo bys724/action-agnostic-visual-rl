@@ -1,0 +1,48 @@
+{
+ "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_rope_R0/20261124_104046/checkpoint_epoch0010.pt",
+ "rope": true,
+ "equivariance": {
+  "P": {
+   "frac_moved": 1.0,
+   "frac_ci": [
+    1.0,
+    1.0
+   ],
+   "cos_moved": 0.9973150634765625,
+   "cos_stay": 0.8897367358207703,
+   "n_demos": 100
+  },
+  "M": {
+   "frac_moved": 0.36055556416511536,
+   "frac_ci": [
+    0.35242709252983334,
+    0.3685288281068206
+   ],
+   "cos_moved": 0.9892753696441651,
+   "cos_stay": 0.9609826481342316,
+   "n_demos": 100
+  }
+ },
+ "position_readout": {
+  "per_seed": [
+   {
+    "seed": 0,
+    "top1": 0.9658163189888,
+    "near1": 0.9928571581840515
+   },
+   {
+    "seed": 1,
+    "top1": 0.96621173620224,
+    "near1": 0.9928954243659973
+   },
+   {
+    "seed": 2,
+    "top1": 0.9671428799629211,
+    "near1": 0.9933928847312927
+   }
+  ],
+  "top1_mean": 0.9663903117179871,
+  "n_test_tokens": 78400,
+  "chance": 0.00510204081632653
+ }
+}
