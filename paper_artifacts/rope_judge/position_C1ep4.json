@@ -1,0 +1,26 @@
+{
+ "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_refine_comp_s_bright/20260925_163504/checkpoint_epoch0004.pt",
+ "rope": false,
+ "equivariance": {
+  "P": {
+   "frac_moved": 0.9997500014305115,
+   "frac_ci": [
+    0.999541669473052,
+    0.9999305558204651
+   ],
+   "cos_moved": 0.999597675204277,
+   "cos_stay": 0.9447654521465302,
+   "n_demos": 100
+  },
+  "M": {
+   "frac_moved": 0.2158333380520344,
+   "frac_ci": [
+    0.21087500510737298,
+    0.2208638938255608
+   ],
+   "cos_moved": 0.9357351803779602,
+   "cos_stay": 0.9471536707878113,
+   "n_demos": 100
+  }
+ }
+}

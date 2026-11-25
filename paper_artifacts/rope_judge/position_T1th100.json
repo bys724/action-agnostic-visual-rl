@@ -1,0 +1,26 @@
+{
+ "checkpoint": "/proj/external_group/mrg/checkpoints/two_stream_v15b_rope_T1th100/20261125_130300/checkpoint_epoch0004.pt",
+ "rope": true,
+ "equivariance": {
+  "P": {
+   "frac_moved": 1.0,
+   "frac_ci": [
+    1.0,
+    1.0
+   ],
+   "cos_moved": 0.99818887591362,
+   "cos_stay": 0.9165289634466172,
+   "n_demos": 100
+  },
+  "M": {
+   "frac_moved": 0.7589166831970214,
+   "frac_ci": [
+    0.7488718921244144,
+    0.7684625157862902
+   ],
+   "cos_moved": 0.9940154629945755,
+   "cos_stay": 0.9139550685882568,
+   "n_demos": 100
+  }
+ }
+}
