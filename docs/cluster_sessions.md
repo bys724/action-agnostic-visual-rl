@@ -92,7 +92,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 ### ▶▶▶ 인계 (2026-11-25 9시) — 다음 세션은 여기부터
 
 - **상태**: RoPE 실험 **판정 단계 완료** — 결론 = "① 성립 · ② 불성립 → 위치 의존성은 낮아졌으나 범용 기능 이득은 없다"(후보 아님) · 정본 `docs/rope_encoder_plan.md` §3-5 · 집계 `paper_artifacts/rope_judge/summary.md`.
-- **돌아가는 것**: A0 4-a 3 칸 44561684–86(mig-3g · 보고 행 · 판정 무관 · mig-1g 판 44561680–82 는 GPU OOM) → 끝나면 `python scripts/cluster/rope/judge_summary.py` 재실행 · §3-5 표 4-a 칸 채움.
+- **돌아가는 것**: 없음. A0 4-a(44561684–86 · mig-3g)까지 끝나 §3-5 표 완성(mig-1g 판 44561680–82 는 GPU OOM).
 - **열린 것**: R₂(§4-1) **보류(사용자 11-25 확정)** — R 레시피 고정이라 R 이 후보에서 빠진 뒤 의미가 약함 · 무엇을 돌릴지는 Vault · 그 전 잡 0.
 - **시작 절차**: `git fetch && git merge --ff-only origin/main` → `ps -eo pid,etime,cmd | grep [c]laude` → `squeue -u $USER | grep rj_`.
 - **예산**: 공학 단계 R0 28.1 + A0 24.0 = 52.1 GPU·h(≤ 120) · MIG-1g 관문 1.6 h + 판정 격자 MIG-1g 13.1 h · MIG-3g 1.1 h.
@@ -108,7 +108,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 | 44531126 | mig-1g ×1 · CPU 4 · 48G | 01:00:00 | **해상도 고정 판독기 스모크** — 같은 칸 · `EVAL_PERTURB="res:224,288,320 shift:8"`(224 판독기로 288/320 평가) · 통과 기준 = 깨끗한 값 0.8987 · res 224 = 깨끗한 값(1e-6) · 해상도 왕복 뒤 shift 8 = 앞 스모크 0.7610 | ✅ COMPLETED · **smoke PASS**: 깨끗한 값 0.8987 · res 224 = 0.8987(왕복 정확) · 왕복 뒤 shift 8 = 0.7610(앞 스모크와 같음) · **고정 판독기 해상도 낙폭 = 288 0.651(−0.248) · 320 0.309(−0.590)** → 자가 구분력 있음 · 17:24 판정 격자 자동 시작 |
 | (체인) | olaf1 `setsid nohup` · PID 886791 | — | **판정 격자 체인** `…/logs/rope_judge_launch.sh` → 스모크 통과 확인 → `scripts/cluster/rope/judge_chain.sh` 고정 사본 실행 = C1-DN · R0 즉시 · A0 ep10 생기면 · 모델당 16 칸 × 판독기 seed 3 + 등변성·위치 판독 1 + 4-a 3(mig-3g) = 모델당 52 · 총 156 · 동시 8 · 끝나면 `judge_summary.py` → `paper_artifacts/rope_judge/summary.md` | 로그 `/proj/external_group/mrg/logs/rope_judge_chain.log` · 잡 이름 접두사 `rj_` · ✅ 156 칸 제출(17:24 – 23:05) · **153 COMPLETED · 실패 0** · 합 MIG-1g 13.05 h(150 칸) · MIG-3g 1.06 h(6 칸) · A0 4-a 3 칸(44541707–09)은 mig-3g 대기(예상 시작 11-26 09:19)라 11-25 08:5x 취소 → mig-1g 재제출(아래) · **판정 = ① 성립 · ② 불성립**(`rope_encoder_plan.md` §3-5) |
 | 44561680–44561682 | mig-1g ×1 · CPU 8 · 48G | 04:00:00 | A0 4-a 재제출(seed 42 · 1 · 2 · `alpha_readout.sbatch` · `-p mig-1g.10gb` · 출력 `paper_artifacts/rope_judge/alpha4a_A0`) · mig-1g 선례 = 10-20 42476734~ 14 칸 OOM 없음(⚠ 그건 `--target remaining` 모드 · 4-a 모드는 P 토큰 전부를 GPU 에 올림) | ❌ FAILED 3/3 · 2m04s · **CUDA OOM**(10 GB 조각 · P 토큰 캐시 1.67 GiB 추가 할당 실패) · 합 ≈ 0.1 MIG-1g·h → mig-3g 재제출(아래) |
-| 44561684–44561686 | mig-3g ×1 · CPU 8 · 48G | 04:00:00 | A0 4-a 재재제출(seed 42 · 1 · 2 · `alpha_readout.sbatch` 기본 파티션 = fdn · R0 4-a 와 같은 자원 · 출력 `paper_artifacts/rope_judge/alpha4a_A0`) · V100 은 bf16 등 수치 조건이 달라 제외 | ⏳ PENDING(mig-3g 대기 4) |
+| 44561684–44561686 | mig-3g ×1 · CPU 8 · 48G | 04:00:00 | A0 4-a 재재제출(seed 42 · 1 · 2 · `alpha_readout.sbatch` 기본 파티션 = fdn · R0 4-a 와 같은 자원 · 출력 `paper_artifacts/rope_judge/alpha4a_A0`) · V100 은 bf16 등 수치 조건이 달라 제외 | ✅ COMPLETED 3/3 · 11m27s–11m28s · 합 ≈ 0.57 MIG-3g·h · 4-a 위치 너머(나이 평균) A0 **0.293** [0.287, 0.299] = C1-DN 0.293 · R0 0.259(범위 안 겹침) · 보고 행 |
 | 44530622 | 같음 | 01:00:00 | `rope_position.py` C1-DN → `paper_artifacts/rope_judge/smoke_fdn_position.json` | ✅ COMPLETED 29s · 위치 판독 top-1 **0.979**(seed 0·1·2 = 0.979/0.979/0.978 · SC 0.977 재현) · 등변성 P **1.000**(옮겨 간 코사인 0.997 > 같은 자리 0.910 · 천장) · M **0.206** [0.200, 0.211](같은 자리 0.958 > 옮겨 간 0.913) |
 
 ### 2026-11-23 RoPE 인코더 — 공학 단계 R0 sanity (Vault 11-23 (2)(3) · 사용자 확정 · `docs/rope_encoder_plan.md` §2)
