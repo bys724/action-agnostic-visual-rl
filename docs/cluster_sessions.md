@@ -89,6 +89,21 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 ## 진행 중 세션 (sbatch / salloc)
 
+### 2026-11-26 RoPE §8 1 단계 — M 전용 판 (`--rope-scope m` · Vault 11-26 (2) 승인 · `docs/rope_encoder_plan.md` §8-5 · 구현 안 1)
+
+**구현**: `--rope-scope all|m`(기본 all) · `ROPE_SCOPE` env → `pretrain.sbatch` · 평가 로더가 키로 자동 감지(`pos_embed_m` 없음 ∧ `pos_embed_p` 있음 = m). 점검 스크립트 · 로그 = `/proj/external_group/mrg/logs/rope_scope_check/`(로그인 노드는 다른 세션이 cgroup 3.1 GB 사용 중이라 OOM → 계산 노드).
+
+| 잡 ID | 자원 | --time | 무엇 | 결과 |
+|---|---|---|---|---|
+| 44623117 | mig-1g ×1 · CPU 8 · 24G | 00:30:00 | CPU 점검: 수정 전 코드 사본(HEAD `2edbff8`) 대 수정 후 — C1-DN · R0 · T1th100 의 P · M 토큰 + 학습 forward 손실 16 개 / scope m: 버려지는 키 · P 토큰 · RoPE 가 들어가는 자리 · gradient 못 받는 파라미터 집합 | ✅ 1m28s · **플래그 off 비트 동일**(세 ckpt · 토큰 · 손실 16 개 전부) · scope m: 버려지는 키 = `pos_embed_m` 하나 · P 토큰 = C1-DN 비트 동일 · RoPE 자리 = M 인코더 · P 복원 routing 만 · gradient 없는 파라미터 집합 = APE 판과 같음 · **원점 이동 불변 점검 실패**(M 토큰 차 0.27) → 아래 잡으로 원인 분리 |
+| 44623127 | 같음 | 00:20:00 | 위 실패 원인 분리: scope m 대 scope all M 토큰 · 주의 점수 수준 원점 이동 | ✅ 4 s · scope m M 토큰 = scope all **비트 동일** · 패치↔패치 주의 점수 불변(1.7e-5) · **CLS↔패치 점수는 변함**(CLS 는 RoPE 미적용 = 11-23 기존 설계) → 실패는 M 전용 구현이 아니라 RoPE 판 공통(R0 · T1 포함)의 성질 · 원점 이동 시 M 토큰 변화 크기도 scope all 과 같음 |
+| 44623129 | mig-1g ×2(2 노드 · 실수) | 00:50:00 | sanity 제출에 `--nodes=1 --ntasks-per-node=1` 누락 → 2 노드로 잡힘 | ❌ 27 s 뒤 scancel(의도) · ≈ 0.015 MIG-1g·h |
+| 44623131 | mig-1g ×1 · CPU 6 · 48G | 00:50:00 | **sanity M 전용** — `ROPE_SCOPE=m ARM=R SUFFIX=sanity_M EPOCHS=2 MAX_VIDEOS=200 BATCH_SIZE_PER_GPU=16 NUM_WORKERS=6`(11-23 sanity R0 `44466134` 와 같은 설정 + scope · θ 10000 · C1-DN 이어 학습 레시피) · 확인 = Model args 에 `--rope --rope-scope m` · init 로그 버려진 키 = `pos_embed_m` 하나 · NaN 0 · ep2 손실이 sanity R0(0.018) · A(0.011) 범위 · 처리량 | ✅ COMPLETED 10:32–10:41 · 9m14s ≈ 0.15 MIG-1g·h · init missing 0 / unexpected = `pos_embed_m` 하나 · NaN 0 · MaxRSS 14 GB · 첫 손실 0.086(sanity R0 0.122) → ep2 끝 **0.0158**(R0 0.018 · A 0.011): L_t 0.0040 · L_pred 0.0042 · L_mB 0.0037 · 처리량 74.9–75.3 samp/s(R0 68.6–70.0) |
+| 44623194 | AIP 1×4 H100 · CPU 16/task | 05:00:00 | **M 전용 θ 100** 처음부터 4 ep — `ROPE_SCOPE=m ROPE_THETA=100 ARM=R RECIPE=c1 SUFFIX=M1th100 BATCH_SIZE_PER_GPU=256 USE_SCRATCH=1 bash scripts/cluster/rope/submit.sh --nodes=1 --ntasks-per-node=4 --gres=gpu:4 --cpus-per-task=16 --time=05:00:00`(= T1 `44562828` 명령 + scope) · CHECKPOINT_SUFFIX `rope_M1th100` · 코드 = 커밋 `84727db` · 체인 로그 `…/logs/rope_scope_chain_M1th100.log` | ⏳ 11-26 10:48 제출 · 대기(AIP 4-GPU 대기열 · T1 선례 = 판당 ≈ 3.6 h × 4 = 14.3 GPU·h) |
+| 44623195 | 같음 | 05:00:00 | **M 전용 θ 10000** — 위와 같되 `ROPE_THETA` 없음(기본 10000) · SUFFIX `M1th10000` · 체인 로그 `…/logs/rope_scope_chain_M1th10000.log` | ⏳ 11-26 10:48 제출 · 대기 |
+
+**체인**(olaf1 · `setsid nohup` · 고정 사본 `…/logs/rope_scope_chain.sh` = `scripts/cluster/rope/scope_chain.sh` · 판당 하나): ① Model args 에서 `--rope · --rope-scope m · --rope-theta` 를 뺀 것 = C1 `40275371` 인자 · 헤더(epochs 50 · 256/GPU · lr 2.8e-4) → 다르면 scancel ② `checkpoint_epoch0004.pt` 생기면 120 s 뒤 scancel ③ 복원 평가 `recon_eval.py`(→ `paper_artifacts/rope_judge/recon/M1th*.{npz,json}`) + 토큰 등변성 `rope_position.py --only equiv`(→ `position_M1th*.json`) · mig-1g ×1 각 1 잡 · 평가 로그의 θ · scope 가 기대와 다르면 "결과 무효"로 중단 ④ 두 판 산출물이 다 있으면 `recon_summary.py --arms M1th100 M1th10000 T1th100 T1th10000 C1ep4 --pair M1th100 T1th100 --pair M1th10000 T1th10000 --pair M1th100 M1th10000 --out recon_stage1` → `recon/recon_stage1.md`(로그 `…/logs/rope_scope_stage1_summary.log`). **읽기 규칙 = 못 본 장면 4 칸(Vault 11-26 (2))** — `recon_summary.py` 를 결과 전에 그 규칙으로 고침 · 0 단계 데이터 역적용 = θ 두 판 2/4 → 못 가름(Vault 기록과 일치) · 0 단계 표 `recon_summary.md` 는 옛 16 칸 규칙의 기록이라 덮어쓰지 않음.
+
 ### 2026-11-26 RoPE §8 0 단계 — 복원 평가 (Vault 11-26 · 학습 0 · `docs/rope_encoder_plan.md` §8 · 사용자 부재 중 자율 진행 지시)
 
 | JobID | 무엇 | 파티션 · 자원 | 제출 | 상태 |
@@ -100,7 +115,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 
 합계 11 잡 · 전부 COMPLETED · MIG-1g 0.4 h. 결과 = `docs/VAULT_SYNC_TODO.md` "🟣 §8 0 단계 결과" · **다음 세션: Vault 확인(읽기 규칙 · M 전용 판 구현 안 1 · 1 단계 두 판) 뒤에만 코드 · 잡.** 주의: T1 · R0 체크포인트는 θ 기록이 없어 `ROPE_THETA` 필수(이번 잡 로그에서 100 / 10000 확인).
 
-### ▶▶▶ 인계 (2026-11-26 아침) — 다음 세션은 여기부터
+### ▶▶▶ 인계 (2026-11-26 낮) — 다음 세션은 여기부터
+
+- **상태**: RoPE §8 **1 단계 실행 중** — M 전용 RoPE 판(θ 100 `44623194` · θ 10000 `44623195`) AIP 1×4 대기 · 체인 2 개가 olaf1 에서 감시(`pgrep -af rope_scope_chain`). 구현 · 점검 · sanity 는 위 "RoPE §8 1 단계" 절.
+- **잡이 끝나면(체인이 자동으로)**: ep4 자동 중지 → 복원 평가 + 토큰 등변성 → 두 판 다 끝나면 `paper_artifacts/rope_judge/recon/recon_stage1.md`. **dev 가 할 일**: ① 체인 로그 끝(`chain done` · `EVAL THETA/SCOPE MISMATCH` 없음) 확인 ② `sacct` 로 두 학습 잡 시간 기입(완료 표) ③ **2 단계 읽기** = 표의 세 쌍(같은 θ 의 M 전용 대 전부-RoPE 두 쌍 · M 전용 두 판의 θ) → 못 가르면 기본값(M 전용 · θ 100) → 고른 판 하나를 `docs/VAULT_SYNC_TODO.md` 최상단 → **멈춤**(본학습 제출은 Vault 등록 뒤 · §8-7).
+- **체인이 죽었으면**(olaf1 재부팅 등): `bash /proj/external_group/mrg/logs/rope_scope_chain.sh <잡 ID> <M1th100|M1th10000> <θ>` 를 `setsid nohup` 으로 다시 — 학습 잡이 살아 있으면 그대로 이어 감시. 학습이 ep4 를 넘겨 계속 돌고 있으면 scancel(예산) 후 ep4 로 ③ 부터 수동.
+- **보고할 사실(판정 아님)**: RoPE 판은 CLS 토큰이 RoPE 를 받지 않아 CLS↔패치 주의 경로로 절대 위치가 샐 수 있음(패치↔패치는 불변 1.7e-5 · R0 · T1 · M 전용 공통 · 11-23 설계) — `VAULT_SYNC_TODO.md` 에 기입.
+- **예산(§8 상한 ≈ 195 GPU·h)**: R0 28.1 + A0 24.0 + T1 28.7 = 80.8 + 이번 두 판 추정 28.6 = ≈ 109.4 GPU·h.
+
+### (지난 인계) 2026-11-26 아침
 
 - **상태**: RoPE §8 판 선택 단계의 **0 단계(학습 0) 완료 · 지시대로 멈춤** · 잡 0 · 체인 0 · HEAD = origin/main. 원격에 0 단계 뒤의 새 Vault 지시 없음(11-26 아침 fetch 확인).
 - **다음에 할 수 있는 일 = 없음(Vault 확인 대기)**. Vault 가 정할 것 = `docs/VAULT_SYNC_TODO.md` 최상단 "🟣 §8 0 단계 결과": ① 2 단계 읽기 규칙(dev 추천 = 판정 칸을 못 본 장면 4 칸으로 · 1 단계 결과 전 고정) ② M 전용 판 구현 안(dev 추천 = 안 1 · 같은 문서 "🟡 dev 확인 보고" ⓑ 표) ③ 1 단계 두 판(M 전용 × θ 100 / 10000 · 4 ep · ≈ 28.6 GPU·h) 제출. **확인 전 코드 · 잡 금지.**
