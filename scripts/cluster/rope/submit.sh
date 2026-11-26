@@ -8,6 +8,7 @@
 # 공학 단계 공통 수정(RoPE 고유 아님)은 env 로 넘기고 A 에도 같이 넣는다 (계획서 §2 단일 변수 규칙).
 #   RECIPE=c1 → 처음부터 C1 레시피(40275371 Model args 그대로 · LR 2.8e-4 · 50 ep · 워밍업 5 ep · init 없음 · 노이즈 제거 단계 인자 없음)
 #   = §7 R-full · T1 θ 점검(ROPE_THETA=100 등). 기본 RECIPE=dn 은 위 이어 학습 레시피(변경 없음).
+#   ROPE_SCOPE=m → M 전용 판(§8 안 1 · --rope-scope m · ARM=R 과 함께). 미지정 = 전부 RoPE.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 : "${ARM:?ARM=R|A}" "${SUFFIX:?SUFFIX}"

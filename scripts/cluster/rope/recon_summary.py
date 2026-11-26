@@ -2,9 +2,11 @@
 
 입력 = scripts/eval/recon_eval.py 의 <판>.npz (표본별 값). 출력 = recon_summary.{md,json}.
   ① 판별 표: 조건 × 항(절대 값) + 낙폭(조건 − base · 도움 몫은 base − 조건 → 클수록 나쁨)
-  ② 짝 비교(--pair A B ...): 판정 칸 16 개(항 2 × shift 3 · zoom 3 · libero · calvin)에서 Δ_A − Δ_B 의 짝 부트스트랩 CI
-     · "A 가 낫다" = CI 전부 < 0 ∧ |차| ≥ 두 판 base 평균의 5 % · 구분력 = 어느 판이든 |Δ| ≥ 자기 base 의 5 % 인 칸만
-     · 읽기 = 남은 칸의 과반에서 낫고 ∧ 반대로 나쁜 칸 0 ∧ base 에서 5 % 넘게 나쁘지 않음 → "낫다" · 그 외 "못 가름" · 남은 칸 < 4 → 멈춤
+  ② 짝 비교(--pair A B ...): Δ_A − Δ_B 의 짝 부트스트랩 CI · 칸 읽기 "A 가 낫다" = CI 전부 < 0 ∧ |차| ≥ 두 판 base 평균의 5 %
+     · **판정 칸 = 못 본 장면 2 조건(libero · calvin) × 항 2 = 4 칸** (§8-5 · Vault 11-26 (2) · 1 단계 결과 전 확정).
+       평행이동 3 · 확대 3 은 측정 · 표시만 하는 보고 행(0 단계에서 어떤 판 쌍도 못 가름).
+     · 읽기 = 4 칸 중 3 칸 이상 낫고 ∧ 반대 칸 0 ∧ base 에서 5 % 넘게 나쁘지 않음 ∧ 토큰 등변성 M(position_<판>.json · frac_moved CI)
+       이 비중첩으로 반대가 아님 → "낫다" · 그 외 "못 가름". (0 단계 표 recon_summary.md 는 옛 16 칸 규칙으로 만든 기록 — --out 을 달리 줄 것)
 사용: python scripts/cluster/rope/recon_summary.py --arms A0 R0 ... --pair T1th100 T1th10000 [--pair ...]
 """
 import argparse
@@ -15,7 +17,8 @@ import numpy as np
 
 DIR = Path(__file__).resolve().parents[3] / "paper_artifacts/rope_judge/recon"
 EGO = ["base", "indep", "win8", "win16", "shift8", "shift16", "shift32", "zoom1.25", "zoom1.5", "zoom2"]
-JUDGE = ["shift8", "shift16", "shift32", "zoom1.25", "zoom1.5", "zoom2", "libero", "calvin"]
+JUDGE = ["libero", "calvin"]                                                # 판정 칸 (× 항 2 = 4 칸)
+REPORT = ["shift8", "shift16", "shift32", "zoom1.25", "zoom1.5", "zoom2"]   # 보고 행
 NB, TOL = 2000, 0.05
 
 
@@ -92,34 +95,44 @@ def compare(a, b, ra, rb_):
     void_help = all(abs(stat(r["base"], "help")) < TOL * stat(r["base"], "Lpred") for r in (ra, rb_))
     for t in ("help", "mB"):
         ref = (abs(base[t]["a"]) + abs(base[t]["b"])) / 2
-        for c in JUDGE:
+        for c in JUDGE + REPORT:
             xa, xb = drop_samples(ra, c, t), drop_samples(rb_, c, t)
             pa = (-1.0 if t == "help" else 1.0) * (stat(ra[c], t) - stat(ra["base"], t))
             pb = (-1.0 if t == "help" else 1.0) * (stat(rb_[c], t) - stat(rb_["base"], t))
             lo, hi = ci(xa - xb)
-            disc = abs(pa) >= TOL * abs(base[t]["a"]) or abs(pb) >= TOL * abs(base[t]["b"])
+            disc = c in JUDGE   # 판정 칸 여부 (보고 행은 읽기에서 제외)
             big = abs(pa - pb) >= TOL * ref
             verdict = "a" if (hi < 0 and big) else "b" if (lo > 0 and big) else "같음"
             if t == "help" and void_help:
                 verdict, disc = "자 불성립", False
             cells.append({"term": t, "cond": c, "drop_a": pa, "drop_b": pb, "diff_ci": [lo, hi], "disc": bool(disc), "verdict": verdict})
             rows.append(f"| {t} | {c} | {pa:+.5f} [{ci(xa)[0]:+.5f}, {ci(xa)[1]:+.5f}] | {pb:+.5f} [{ci(xb)[0]:+.5f}, {ci(xb)[1]:+.5f}] | "
-                        f"[{lo:+.5f}, {hi:+.5f}] | {'예' if disc else '아니오'} | {verdict if disc else '(제외) ' + verdict} |")
+                        f"[{lo:+.5f}, {hi:+.5f}] | {'판정' if disc else '보고'} | {verdict} |")
     kept = [x for x in cells if x["disc"]]
     na, nb = sum(x["verdict"] == "a" for x in kept), sum(x["verdict"] == "b" for x in kept)
+    eq = {}
+    for arm in (a, b):   # 짝 자: 토큰 등변성 M (클수록 등변) — 없으면 읽기 보류
+        f = DIR.parent / f"position_{arm}.json"
+        eq[arm] = json.load(open(f))["equivariance"]["M"] if f.exists() else None
+    def eq_opposite(win, lose):   # 진 판의 등변성이 비중첩으로 더 높으면 반대
+        return eq[lose]["frac_ci"][0] > eq[win]["frac_ci"][1]
     if len(kept) < 4:
-        read = f"멈춤 (구분력 있는 칸 {len(kept)} < 4)"
-    elif na > len(kept) / 2 and nb == 0 and not any(base[t]["a_worse"] for t in base):
-        read = f"{a} 가 낫다"
-    elif nb > len(kept) / 2 and na == 0 and not any(base[t]["b_worse"] for t in base):
-        read = f"{b} 가 낫다"
+        read = f"멈춤 (판정 칸 {len(kept)} < 4 — 자 불성립)"
+    elif None in eq.values():
+        read = "보류 (토큰 등변성 파일 없음)"
+    elif na >= 3 and nb == 0 and not any(base[t]["a_worse"] for t in base):
+        read = f"{a} 가 낫다" if not eq_opposite(a, b) else "못 가름 (복원은 a · 토큰 등변성 M 이 비중첩으로 반대)"
+    elif nb >= 3 and na == 0 and not any(base[t]["b_worse"] for t in base):
+        read = f"{b} 가 낫다" if not eq_opposite(b, a) else "못 가름 (복원은 b · 토큰 등변성 M 이 비중첩으로 반대)"
     else:
         read = "못 가름"
     md = [f"### {a} (a) 대 {b} (b)", "",
           "base: " + " · ".join(f"{t} a {base[t]['a']:.5f} / b {base[t]['b']:.5f} (a 가 나쁜 쪽 차 CI [{base[t]['diff_worse_ci'][0]:+.5f}, {base[t]['diff_worse_ci'][1]:+.5f}])" for t in base),
-          "", "| 항 | 조건 | 낙폭 a [CI] | 낙폭 b [CI] | 낙폭 차 a − b CI | 구분력 | 칸 읽기 |", "|---|---|---|---|---|---|---|", *rows, "",
-          f"남은 칸 {len(kept)} · a 가 나은 칸 {na} · b 가 나은 칸 {nb} → **읽기 = {read}** (복원 자만 · 짝 자 대조 전)", ""]
-    return "\n".join(md), {"a": a, "b": b, "base": base, "cells": cells, "kept": len(kept), "n_a": na, "n_b": nb, "reading": read}
+          "", "| 항 | 조건 | 낙폭 a [CI] | 낙폭 b [CI] | 낙폭 차 a − b CI | 칸 종류 | 칸 읽기 |", "|---|---|---|---|---|---|---|", *rows, "",
+          "토큰 등변성 M (frac_moved [CI]): " + " · ".join(
+              f"{arm} " + (f"{eq[arm]['frac_moved']:.3f} [{eq[arm]['frac_ci'][0]:.3f}, {eq[arm]['frac_ci'][1]:.3f}]" if eq[arm] else "없음") for arm in (a, b)), "",
+          f"판정 칸 {len(kept)} · a 가 나은 칸 {na} · b 가 나은 칸 {nb} → **읽기 = {read}**", ""]
+    return "\n".join(md), {"a": a, "b": b, "base": base, "cells": cells, "kept": len(kept), "n_a": na, "n_b": nb, "equiv_M": eq, "reading": read}
 
 
 def main():

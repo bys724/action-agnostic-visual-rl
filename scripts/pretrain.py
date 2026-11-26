@@ -274,6 +274,8 @@ def main():
     parser.add_argument('--rope', action='store_true',
                         help='[comp-mae] 위치 = 전부 2D RoPE (인코더·routing·디코더, APE 4개 삭제). '
                              'docs/rope_encoder_plan.md 판 R. (--use-ape 는 구 two-stream 전용)')
+    parser.add_argument('--rope-scope', choices=['all', 'm'], default='all',
+                        help='[comp-mae --rope] all = 전부 RoPE (판 R) · m = M 인코더 + P 복원 routing 만 (rope_encoder_plan §8 안 1)')
     parser.add_argument('--rope-theta', type=float, default=10000.0,
                         help='[comp-mae --rope] RoPE 주파수 밑 θ (기본 10000)')
 
@@ -440,6 +442,7 @@ def main():
             m_only=args.m_only,
             rope=args.rope,
             rope_theta=args.rope_theta,
+            rope_scope=args.rope_scope,
         )
     elif args.model == 'videomae':
         # 2-frame 적응: 공식 0.75는 16-frame temporal redundancy 전제.

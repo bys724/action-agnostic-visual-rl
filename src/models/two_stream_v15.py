@@ -75,7 +75,7 @@ class RoutingInterpreterStep(nn.Module):
         self.decode_first = decode_first
 
     def forward(self, owner_state: torch.Tensor, helper_state: torch.Tensor,
-                freqs_cis: Optional[torch.Tensor] = None) -> torch.Tensor:
+                freqs_cis: Optional[torch.Tensor] = None, interp_freqs="same") -> torch.Tensor:
         """owner = V 소유(=복구 대상, residual·self-attn 대상), helper = Q/K 공급(routing pattern).
 
         인자명 generic화 (CoMP-MAE 미러링):
@@ -83,13 +83,16 @@ class RoutingInterpreterStep(nn.Module):
           - M-recon: forward(owner=M_state, helper=P_full)    → P→P attn, gather M (신규)
         같은 클래스를 인자만 swap해 미러 (단, 호출부는 **별도 인스턴스** 사용 = param-symmetry).
         freqs_cis: RoPE 판(rope=True)만 전달 — interp self-attn과 routing Q/K 둘 다. None = 기존 APE 경로.
+        interp_freqs: self-attn 용 주파수를 routing 과 따로 줄 때(M 전용 RoPE 판: routing 만 RoPE → None). 기본 = freqs_cis 와 같음.
         """
+        if isinstance(interp_freqs, str):
+            interp_freqs = freqs_cis
         if self.decode_first:
-            owner_state = self.interp(owner_state, freqs_cis=freqs_cis)                # 완성(self-attn) 먼저
+            owner_state = self.interp(owner_state, freqs_cis=interp_freqs)             # 완성(self-attn) 먼저
             owner_state = self.routing(owner_state, helper_state, freqs_cis=freqs_cis)  # routing 나중
         else:
             owner_state = self.routing(owner_state, helper_state, freqs_cis=freqs_cis)
-            owner_state = self.interp(owner_state, freqs_cis=freqs_cis)
+            owner_state = self.interp(owner_state, freqs_cis=interp_freqs)
         return owner_state
 
 
@@ -294,6 +297,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         # ── RoPE 판 R (docs/rope_encoder_plan.md · 11-23 · 기본 off = 기존 APE 경로 비트 동일) ──
         rope: bool = False,
         rope_theta: float = 10000.0,
+        rope_scope: str = "all",   # "m" = M 전용 판 (rope_encoder_plan §8 · 안 1)
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -548,7 +552,17 @@ class TwoStreamV15Model(TwoStreamV11Model):
         self._rope_cache = {}
         if rope:
             assert comp_mae and m_embed_dim is None and not m_only, "rope는 comp_mae(폭 공통 · 공동 학습) 전용"
+        # ── M 전용 판 (rope_scope="m" · §8 안 1): M 인코더만 RoPE 로 바꾸고 그로 인해 깨지는 곳만 메운다 ──
+        #   M 인코더 self-attn = RoPE(pos_embed_m 삭제) · P 복원 routing(Q/K = M 토큰) = RoPE · null routing 토큰 = 상수.
+        #   P 인코더 · 두 디코더 상태(dec_pos_embed_p/m) · 디코더 self-attn · M 복원 routing(Q/K = P full, APE 잔여) = APE 그대로.
+        #   rope_p = "P 쪽·디코더도 RoPE 인가"(scope all 에서만 참). M 쪽은 self.rope 로 판단.
+        assert rope_scope in ("all", "m"), rope_scope
+        self.rope_scope = rope_scope
+        self.rope_p = rope and rope_scope == "all"
+        if self.rope_p:
             del self.pos_embed_p, self.pos_embed_m, self.dec_pos_embed_p, self.dec_pos_embed_m
+        elif rope:
+            del self.pos_embed_m
 
     def _freqs(self, n: int, device: torch.device) -> Optional[torch.Tensor]:
         """RoPE 주파수 [n, head_dim//2] (rope off 면 None). n = 패치 수(정사각 격자)."""
@@ -583,8 +597,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         patches = self.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
         cls = self.cls_token_p.expand(B, -1, -1)
         x = torch.cat([cls, patches], dim=1)
-        x = x if self.rope else x + self.pos_embed_p
-        f = self._freqs(patches.shape[1], x.device)
+        x = x if self.rope_p else x + self.pos_embed_p
+        f = self._freqs(patches.shape[1], x.device) if self.rope_p else None
         for block in self.blocks_p:
             x = block(x, freqs_cis=f)
         return self.norm_p(x)
@@ -622,13 +636,13 @@ class TwoStreamV15Model(TwoStreamV11Model):
         patches = self.patch_embed_p(p_channel).flatten(2).transpose(1, 2)
         cls = self.cls_token_p.expand(B, -1, -1)
         tokens = torch.cat([cls, patches], dim=1)
-        tokens = tokens if self.rope else tokens + self.pos_embed_p
+        tokens = tokens if self.rope_p else tokens + self.pos_embed_p
         return self._encode_stream_visible(tokens, mask, self.blocks_p, self.norm_p,
-                                           freqs_cis=self._freqs(patches.shape[1], tokens.device))
+                                           freqs_cis=self._freqs(patches.shape[1], tokens.device) if self.rope_p else None)
 
     def _build_full_seq_p(self, p_visible: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         p_full = self._inject_mask_tokens(p_visible, mask, self.mask_token_p)
-        return p_full if self.rope else p_full + self.dec_pos_embed_p
+        return p_full if self.rope_p else p_full + self.dec_pos_embed_p
 
     def _build_full_seq_m(self, m_visible: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         return self._inject_mask_tokens(m_visible, mask, self.mask_token_m)
@@ -885,7 +899,7 @@ class TwoStreamV15Model(TwoStreamV11Model):
         p_state = full_seq
         f = self._freqs(mask.shape[1], p_state.device)      # RoPE 판: 디코더 self-attn + routing Q/K
         for step in self.p_motion_decoder:
-            p_state = step(p_state, m_routing, freqs_cis=f)
+            p_state = step(p_state, m_routing, freqs_cis=f, interp_freqs=f if self.rope_p else None)  # M 전용 판: routing 만 RoPE
         p_state = self.p_motion_decoder_norm(p_state)
         patch_pred = self.recon_head(p_state[:, 1:])          # [B, N, p*p*3]
         patch_target = self._patchify(target_image)
@@ -1068,8 +1082,8 @@ class TwoStreamV15Model(TwoStreamV11Model):
         m_full = self._inject_mask_tokens(m_visible, mask_m, self.mask_token_m)
         if self.m_up is not None:                                         # §4-c 작은 M: d_m → D
             m_full = self.m_up(m_full)
-        m_state = m_full if self.rope else m_full + self.dec_pos_embed_m  # mask token 주입 + APE (RoPE 판은 없음)
-        f = self._freqs(mask_m.shape[1], m_state.device)
+        m_state = m_full if self.rope_p else m_full + self.dec_pos_embed_m  # mask token 주입 + APE (전부-RoPE 판은 없음)
+        f = self._freqs(mask_m.shape[1], m_state.device) if self.rope_p else None   # M 전용 판: M 복원 디코더는 APE 경로 그대로
         for step in self.m_recon_decoder:
             m_state = step(m_state, p_helper_full, freqs_cis=f)   # owner=M(V), helper=P_full(Q/K) → P→P, gather M
         m_state = self.m_recon_decoder_norm(m_state)

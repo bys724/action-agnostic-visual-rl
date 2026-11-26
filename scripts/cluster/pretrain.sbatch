@@ -289,6 +289,7 @@ elif [ "$MODEL" = "two-stream-v15" ] || [ "$MODEL" = "two-stream-v15b" ]; then
     # RoPE 판 R (rope_encoder_plan.md): 위치 = 전부 2D RoPE (comp_mae 전용)
     [ "${ROPE:-0}" = "1" ] && MODEL_ARGS+=(--rope)
     [ -n "${ROPE_THETA:-}" ] && MODEL_ARGS+=(--rope-theta "$ROPE_THETA")
+    [ -n "${ROPE_SCOPE:-}" ] && MODEL_ARGS+=(--rope-scope "$ROPE_SCOPE")
     [ -n "${V15_LAMBDA_M_RECON:-}" ] && MODEL_ARGS+=(--v15-lambda-m-recon "$V15_LAMBDA_M_RECON")
     [ -n "${V15_MASK_RATIO_M_RECON:-}" ] && MODEL_ARGS+=(--v15-mask-ratio-m-recon "$V15_MASK_RATIO_M_RECON")
     [ -n "${V15_M_RECON_ITERS:-}" ] && MODEL_ARGS+=(--v15-m-recon-iters "$V15_M_RECON_ITERS")

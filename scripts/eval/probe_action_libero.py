@@ -216,7 +216,8 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
     _ed = sd["cls_token_p"].shape[-1]
     _md = len({k.split(".")[1] for k in sd if k.startswith("blocks_m.")})
     _comp = any("m_recon" in k for k in sd)  # CoMP-MAE = M-recon 분기 보유
-    _rope = _comp and "pos_embed_p" not in sd  # RoPE 판 R (rope_encoder_plan.md): APE 키 없음
+    _rope = _comp and "pos_embed_m" not in sd  # RoPE 판 (rope_encoder_plan.md): M 인코더 APE 키 없음
+    _scope = "m" if _rope and "pos_embed_p" in sd else "all"   # M 전용 판(§8 안 1)은 P 쪽 APE 를 유지
     # θ 는 가중치에 흔적이 없어 틀려도 로드가 조용히 성공한다 (11-26 T1 θ 100 을 10000 으로 평가해 24 칸 무효).
     # → 기본값 없음: ckpt 기록(rope_theta) 또는 env ROPE_THETA(기록 없는 옛 ckpt · R0 = 10000) 로만. 둘이 다르면 중단.
     _rope_kw = {}
@@ -235,8 +236,10 @@ def build_parvo_encoder(checkpoint: str, device: torch.device):
         pair_mode=True, use_sobel=False, masked_anchor=True,
         m_embed_dim=sd["cls_token_m"].shape[-1] if _comp and not _rope else None,  # alpha §4-c 작은 M 폭 자동 감지
         m_only=_comp and not _rope and sd["cls_token_m"].shape[-1] != _ed,          # 작은 M 은 m_only 구성 (추론엔 영향 없음 · 전부 동결)
-        rope=_rope, **_rope_kw,
+        rope=_rope, rope_scope=_scope, **_rope_kw,
     )
+    if _rope:
+        print(f"[parvo] rope_scope={_scope}", flush=True)
     missing, unexpected = model.load_state_dict(sd, strict=False)
     _enc_missing = [k for k in missing if k.startswith(("blocks_p", "blocks_m", "patch_embed_p", "patch_embed_m"))]
     assert not _enc_missing, f"parvo: P/M encoder 가중치 미로드 {_enc_missing[:5]}"
@@ -256,6 +259,7 @@ def set_parvo_resolution(model, img_size: int, interp: bool = False):
     interp=True = 좌표를 학습 격자 범위로 눌러 넣음(배율 g0/g · §7-2 ① 보간 재측정). APE 는 interp 와 무관(늘 bicubic)."""
     g = img_size // model.patch_size
     assert g * model.patch_size == img_size, f"img_size {img_size} 는 패치 {model.patch_size} 의 배수여야 함"
+    assert not (model.rope and not model.rope_p), "해상도 변경: M 전용 RoPE 판 미지원 (P = APE 보간 + M = RoPE 둘 다 필요 · §8 은 해상도를 재지 않음)"
     if model.rope:
         g0 = int(round(model.num_patches ** 0.5))
         model.rope_pos_scale = (g0 / g) if interp else 1.0
