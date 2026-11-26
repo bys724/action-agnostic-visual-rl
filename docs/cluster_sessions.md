@@ -122,6 +122,18 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 - **체인이 죽었으면**(olaf1 재부팅 등): `bash /proj/external_group/mrg/logs/rope_scope_chain.sh <잡 ID> <M1th100|M1th10000> <θ>` 를 `setsid nohup` 으로 다시 — 학습 잡이 살아 있으면 그대로 이어 감시. 학습이 ep4 를 넘겨 계속 돌고 있으면 scancel(예산) 후 ep4 로 ③ 부터 수동.
 - **보고할 사실(판정 아님)**: RoPE 판은 CLS 토큰이 RoPE 를 받지 않아 CLS↔패치 주의 경로로 절대 위치가 샐 수 있음(패치↔패치는 불변 1.7e-5 · R0 · T1 · M 전용 공통 · 11-23 설계) — `VAULT_SYNC_TODO.md` 에 기입.
 - **예산(§8 상한 ≈ 195 GPU·h)**: R0 28.1 + A0 24.0 + T1 28.7 = 80.8 + 이번 두 판 추정 28.6 = ≈ 109.4 GPU·h.
+- **대기 현황(11-26 11:47 확인)**: 두 잡 PENDING(사유 Priority) · Slurm 시작 추정이 11-27 22:23 ↔ 11-28 11:46 사이에서 흔들림 · 학습은 시작 뒤 판당 ≈ 3.6 h. **대기 잡에 hold/release · 파티션 이동 금지**(자원 요청이 부풂 · 1×4 구성은 T1 과 짝이라 바꾸지 않음). `squeue` 의 `ipl_*` 잡은 다른 저장소(imitation-policy-lab) 세션 것 — 건드리지 않음.
+- **새 세션 시작 절차**: ① `git fetch && git merge --ff-only origin/main`(새 Vault 지시가 있으면 그것이 우선) ② `ps -eo pid,etime,cmd | grep [c]laude` · `readlink /proc/<pid>/cwd` 로 이 저장소에 다른 세션이 없는지 ③ `squeue -u $USER` · `sacct -j 44623194,44623195 -X -o JobID,JobName,State,Start,End,Elapsed` ④ `pgrep -af rope_scope_chain.sh` · `tail /proj/external_group/mrg/logs/rope_scope_chain_M1th{100,10000}.log`.
+- **상태별로 할 일**:
+  - 둘 다 PENDING/RUNNING → 할 일 없음(보고만).
+  - 체인 로그에 `cancelled … (recipe mismatch)` → 그 판은 무효 · 로그의 diff 를 보고 원인 보고(재제출은 사용자 확인 뒤).
+  - 한 판만 끝남 → 그 판 체인은 `other arm not finished — summary skipped` 로 끝남(정상) · 나머지 판 대기.
+  - 두 판 다 끝났는데 `recon_stage1.md` 가 없음 → 수동 집계: `/proj/external_group/mrg/conda_envs/aavrl-train/bin/python scripts/cluster/rope/recon_summary.py --arms M1th100 M1th10000 T1th100 T1th10000 C1ep4 --pair M1th100 T1th100 --pair M1th10000 T1th10000 --pair M1th100 M1th10000 --out recon_stage1`(`python` 은 PATH 에 없음 · 로그인 노드에서 돌아감 · 필요한 입력 = `paper_artifacts/rope_judge/recon/M1th*.npz` · `position_M1th*.json`).
+- **2 단계 읽기 절차(표가 생긴 뒤 · 규칙 = `docs/rope_encoder_plan.md` §8-5 · 고치지 말 것)**:
+  1. 유효성: 두 `rc_M1th*` 로그에 `[parvo] rope_theta=<100|10000> (ckpt)` · `rope_scope=m` · 학습 로그 ep4 손실이 T1(0.0272 · 0.0277) 근처 · NaN 0.
+  2. 표의 세 쌍마다 맨 아래 "**읽기 =**" 줄을 그대로 옮김(스크립트가 4 칸 규칙 + 기준 5 % + 토큰 등변성 M 대조까지 적용): ⓐ M1th100 대 T1th100 · ⓑ M1th10000 대 T1th10000 = **자리**(M 전용 대 전부) · ⓒ M1th100 대 M1th10000 = **θ**.
+  3. 고르기: 자리 = ⓐⓑ 가 같은 쪽이면 그쪽 · 엇갈리거나 "못 가름"이면 기본값 **M 전용** / θ = ⓒ 가 가르면 그 θ · 못 가르면 기본값 **100**. ⓐⓑ 가 서로 반대 판을 고르는 경우는 규칙에 없음 → 고르지 말고 문제로 보고.
+  4. 기록: 고른 판 하나 + 세 쌍 읽기 + 신뢰도 태그(표현 학습 판당 1 회 · 4 ep · "본학습에 올릴 판 고르기" 한정)를 `docs/VAULT_SYNC_TODO.md` 최상단에 · `docs/STATUS.md`(최신 갱신 줄 · "열린 것" RoPE 블록 · "돌아가는 잡" 표 · 결정 이력) · 이 파일의 두 잡 행을 `sacct` 값으로(GPU·h = 4 × 경과 시간) · `recon_stage1.{md,json}` · `M1th*.json` · `position_M1th*.json` 커밋(`M1th*.npz` 는 `.gitignore` 대상 — 0 단계처럼 강제 커밋할지는 그때 판단) → push → **멈춤**. 본학습 제출 · 판독기 값으로 판 고르기 · 0 단계 θ 재판정은 하지 않음.
 
 ### (지난 인계) 2026-11-26 아침
 
