@@ -123,7 +123,15 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 - **보고할 사실(판정 아님)**: RoPE 판은 CLS 토큰이 RoPE 를 받지 않아 CLS↔패치 주의 경로로 절대 위치가 샐 수 있음(패치↔패치는 불변 1.7e-5 · R0 · T1 · M 전용 공통 · 11-23 설계) — `VAULT_SYNC_TODO.md` 에 기입.
 - **예산(§8 상한 ≈ 195 GPU·h)**: R0 28.1 + A0 24.0 + T1 28.7 = 80.8 + 이번 두 판 추정 28.6 = ≈ 109.4 GPU·h.
 - **대기 현황(11-26 11:47 확인)**: 두 잡 PENDING(사유 Priority) · Slurm 시작 추정이 11-27 22:23 ↔ 11-28 11:46 사이에서 흔들림 · 학습은 시작 뒤 판당 ≈ 3.6 h. **대기 잡에 hold/release · 파티션 이동 금지**(자원 요청이 부풂 · 1×4 구성은 T1 과 짝이라 바꾸지 않음). `squeue` 의 `ipl_*` 잡은 다른 저장소(imitation-policy-lab) 세션 것 — 건드리지 않음.
+- **🔴 11-28 01:40 감시 방식 교체(사용자 승인) — 로그인 노드 체인 폐지 → Slurm 감시 잡**: 같은 고정 사본(`…/logs/rope_scope_chain.sh` · 내용 불변)을 CPU 잡으로 제출 · `--dependency=after:<학습 잡>`(학습이 **시작되면** 시작) · VSCode · SSH · 로그인 노드와 무관. 로그인 노드 체인 2 개(PID 2052243 · 2052244)는 종료함 — **다시 띄우지 말 것**(평가 잡 중복 제출). 아래 "체인이 죽었으면" 항목은 이 줄로 대체: 확인 = `squeue -u $USER`(`watch_M1th*` · 대기 사유 Dependency 가 정상) · 로그 = `…/logs/rope_scope_watch_M1th{100,10000}_<잡 ID>.out` · 감시 잡이 실패했으면 `sacct -j 44854271,44854272` 로 사유 확인 뒤 같은 명령으로 재제출(`sbatch -p core_m --qos=core_m -n1 -c2 --mem=8G --time=1-00:00:00 [--dependency=after:<학습 잡>] --wrap "bash …/logs/rope_scope_chain.sh <학습 잡> <M1th100|M1th10000> <θ>"` · 학습이 이미 돌고 있으면 dependency 없이).
+
+  | 잡 ID | 자원 | --time | 무엇 | 결과 |
+  |---|---|---|---|---|
+  | 44854268 (+ 내부 44854269) | core_s CPU 1c | 00:05:00 | 계산 노드에서 `sbatch` · `scancel` · `squeue` · `sacct` 가 되는지 시험(core 파티션은 `--qos=core_s|core_m` 필수 — 없으면 Invalid qos) | ✅ 6 s · 내부 잡 제출 → 취소 성공 · GPFS · python 경로 · 저장소 쓰기 확인 |
+  | 44854271 | core_m CPU 2c · 8G · `after:44623194` | 1-00:00:00 | θ 100 판 감시(인자 확인 → ep4 중지 → 복원 평가 · 토큰 등변성 제출 → 집계) | ⏳ 11-28 01:39 제출 · 대기(Dependency) |
+  | 44854272 | 같음 · `after:44623195` | 1-00:00:00 | θ 10000 판 감시 | ⏳ 11-28 01:39 제출 · 대기(Dependency) |
 - **11-28 01:17 확인**: 두 잡 여전히 PENDING(Priority) · Slurm 시작 추정 11-30 23:24(11-26 추정보다 ≈ 3 일 밀림) · **감시 체인 2 개가 죽어 있었음**(olaf1 재부팅 없음 · 로그 0 바이트 = 스크립트 자체 종료 아님 · 원인 미상) → 위 절차대로 `setsid nohup` 재시작(PID 2052243 · 2052244). 다음 세션도 `pgrep -af rope_scope_chain.sh` 먼저.
+  - **원인 조사(11-28)**: 죽은 구간 = 11-27 09:23(살아 있음 · 이전 세션 pgrep) ~ 11-28 01:16. 배제 [확정]: 다른 노드 착시(이전 세션도 olaf1 — `/run/user` 소켓 · `/tmp` scratchpad) · 메모리 초과(dmesg 에 내 uid 없음 · 사용자 cgroup oom_kill 0) · 재부팅 · 다른 Claude 세션의 kill 명령(대화 기록에 없음) · 스크립트 자체 종료(모든 종료 경로가 로그를 남김) · logind 일괄 종료 정책(KillUserProcesses=no · 옛 세션 scope 는 abandoned 로 남음). 남은 것 [추정]: 이전 SSH 세션이 11-28 01:16 에 끊길 때 같이 정리됨(이전 VSCode 서버가 01:16:26 에 SIGPIPE 로 종료 · 그 세션 scope 가 통째로 사라짐) — 죽는 순간의 기록은 없음. 스크립트가 대기 중 로그를 안 남겨 죽은 시각을 못 좁힘.
 - **새 세션 시작 절차**: ① `git fetch && git merge --ff-only origin/main`(새 Vault 지시가 있으면 그것이 우선) ② `ps -eo pid,etime,cmd | grep [c]laude` · `readlink /proc/<pid>/cwd` 로 이 저장소에 다른 세션이 없는지 ③ `squeue -u $USER` · `sacct -j 44623194,44623195 -X -o JobID,JobName,State,Start,End,Elapsed` ④ `pgrep -af rope_scope_chain.sh` · `tail /proj/external_group/mrg/logs/rope_scope_chain_M1th{100,10000}.log`.
 - **상태별로 할 일**:
   - 둘 다 PENDING/RUNNING → 할 일 없음(보고만).
