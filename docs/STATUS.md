@@ -1,7 +1,8 @@
 # STATUS — action-agnostic-visual-rl
 
 > 정본형 문서: 본문은 **현재 상태만**. 무엇이 일어났는지는 `docs/cluster_sessions.md`, 왜 그렇게 정했는지는 하단 결정 이력.
-> 최신 갱신: 2026-11-26 dev (5) (**인계 보강 · 두 학습 잡 대기 그대로(시작 추정 11-27 밤 ~ 11-28 낮) · 다음 세션 = `cluster_sessions.md` "▶▶▶ 인계 (2026-11-26 낮)" 의 시작 절차 → 상태별 할 일 → 2 단계 읽기 절차**)
+> 최신 갱신: 2026-11-28 dev (**현황 점검 · 두 학습 잡 여전히 대기(시작 추정 11-30 23:24 로 밀림) · 감시 체인 2 개가 죽어 있어 재시작 · 새 Vault 지시 없음 · 결과 없음**)
+> 갱신: 2026-11-26 dev (5) (**인계 보강 · 두 학습 잡 대기 그대로(시작 추정 11-27 밤 ~ 11-28 낮) · 다음 세션 = `cluster_sessions.md` "▶▶▶ 인계 (2026-11-26 낮)" 의 시작 절차 → 상태별 할 일 → 2 단계 읽기 절차**)
 > 갱신: 2026-11-26 dev (4) (**Vault 11-26 (2) 머지 · §8 1 단계: M 전용 RoPE 판(`--rope-scope m`) 구현 · 플래그 off 비트 동일 · sanity 통과 → 두 판(θ 100 `44623194` · θ 10000 `44623195`) AIP 1×4 제출 · ep4 자동 중지 + 복원 평가 + 집계 체인 · 발견: RoPE 판은 CLS 가 RoPE 를 안 받아 CLS↔패치 경로로 절대 위치가 샐 수 있음(전 RoPE 판 공통 · 변경 없음 · Vault 보고)**)
 > 갱신: 2026-11-26 dev (3) (**세션 마무리 · 원격에 새 Vault 지시 없음 · §8 0 단계 뒤 Vault 확인 대기 그대로 · 다음 세션 = `cluster_sessions.md` "▶▶▶ 인계 (2026-11-26 아침)" 부터 · 표본별 값 npz 강제 커밋 · 잡 0**)
 > 갱신: 2026-11-26 dev (2) (**§8 0 단계 완료(학습 0 · 잡 11 · MIG-1g 0.4 h) · θ 읽기 = 못 가름(못 본 장면 M 복원 2 칸은 θ 10000 · 기준 도움 몫 · P 예측 오차는 θ 100) · 평행이동 · 확대 크롭은 RoPE 대 APE 포함 어떤 판 쌍도 못 가름 → 가르는 것은 못 본 장면 4 칸뿐 · 읽기 규칙이 구조적으로 '못 가름'만 냄(문제 보고) · 처음부터 RoPE 의 M 토큰 등변성 0.74~0.76(APE 0.21 · R0 0.36) → Vault 확인(`VAULT_SYNC_TODO.md` 최상단) · 잡 0**)
@@ -234,9 +235,9 @@ CoMP(대칭 cross-reconstruction Magno-Parvo MAE, 코드 v16) 논문 **AAAI-27 R
 
 | 잡 ID | 무엇을 왜 | 시작 | 결과 확인 방법 |
 |---|---|---|---|
-| 44623194 | M 전용 RoPE 판 θ 100 · 처음부터 4 ep(§8 1 단계 · RoPE 를 M 에만 넣는 판이 전부-RoPE 판보다 못 본 장면 복원 낙폭이 작은지) · AIP 1×4 | 11-26 10:48 제출 · 대기 | 체인 로그 `/proj/external_group/mrg/logs/rope_scope_chain_M1th100.log` → `paper_artifacts/rope_judge/recon/recon_stage1.md` |
+| 44623194 | M 전용 RoPE 판 θ 100 · 처음부터 4 ep(§8 1 단계 · RoPE 를 M 에만 넣는 판이 전부-RoPE 판보다 못 본 장면 복원 낙폭이 작은지) · AIP 1×4 | 11-26 10:48 제출 · 대기(11-28 확인 · 시작 추정 11-30 23:24) | 체인 로그 `/proj/external_group/mrg/logs/rope_scope_chain_M1th100.log` → `paper_artifacts/rope_judge/recon/recon_stage1.md` |
 | 44623195 | 같은 판 θ 10000 | 11-26 10:48 제출 · 대기 | `…/rope_scope_chain_M1th10000.log` · 같은 표 |
-| (체인 2) | olaf1 `setsid` · 인자 확인 → ep4 scancel → 복원 평가 · 토큰 등변성(mig-1g 각 1 잡) → 집계 | 11-26 10:48 | `pgrep -af rope_scope_chain` |
+| (체인 2) | olaf1 `setsid` · 인자 확인 → ep4 scancel → 복원 평가 · 토큰 등변성(mig-1g 각 1 잡) → 집계 | 11-28 01:17 재시작(원 체인은 원인 미상으로 죽어 있었음) | `pgrep -af rope_scope_chain.sh` |
 
 ## 이 문서의 용어
 

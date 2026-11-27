@@ -123,6 +123,7 @@ CPU도 동일: `청구일수 = ceil(월간 노드·초 누적 / 86400)` × 7,000
 - **보고할 사실(판정 아님)**: RoPE 판은 CLS 토큰이 RoPE 를 받지 않아 CLS↔패치 주의 경로로 절대 위치가 샐 수 있음(패치↔패치는 불변 1.7e-5 · R0 · T1 · M 전용 공통 · 11-23 설계) — `VAULT_SYNC_TODO.md` 에 기입.
 - **예산(§8 상한 ≈ 195 GPU·h)**: R0 28.1 + A0 24.0 + T1 28.7 = 80.8 + 이번 두 판 추정 28.6 = ≈ 109.4 GPU·h.
 - **대기 현황(11-26 11:47 확인)**: 두 잡 PENDING(사유 Priority) · Slurm 시작 추정이 11-27 22:23 ↔ 11-28 11:46 사이에서 흔들림 · 학습은 시작 뒤 판당 ≈ 3.6 h. **대기 잡에 hold/release · 파티션 이동 금지**(자원 요청이 부풂 · 1×4 구성은 T1 과 짝이라 바꾸지 않음). `squeue` 의 `ipl_*` 잡은 다른 저장소(imitation-policy-lab) 세션 것 — 건드리지 않음.
+- **11-28 01:17 확인**: 두 잡 여전히 PENDING(Priority) · Slurm 시작 추정 11-30 23:24(11-26 추정보다 ≈ 3 일 밀림) · **감시 체인 2 개가 죽어 있었음**(olaf1 재부팅 없음 · 로그 0 바이트 = 스크립트 자체 종료 아님 · 원인 미상) → 위 절차대로 `setsid nohup` 재시작(PID 2052243 · 2052244). 다음 세션도 `pgrep -af rope_scope_chain.sh` 먼저.
 - **새 세션 시작 절차**: ① `git fetch && git merge --ff-only origin/main`(새 Vault 지시가 있으면 그것이 우선) ② `ps -eo pid,etime,cmd | grep [c]laude` · `readlink /proc/<pid>/cwd` 로 이 저장소에 다른 세션이 없는지 ③ `squeue -u $USER` · `sacct -j 44623194,44623195 -X -o JobID,JobName,State,Start,End,Elapsed` ④ `pgrep -af rope_scope_chain.sh` · `tail /proj/external_group/mrg/logs/rope_scope_chain_M1th{100,10000}.log`.
 - **상태별로 할 일**:
   - 둘 다 PENDING/RUNNING → 할 일 없음(보고만).
